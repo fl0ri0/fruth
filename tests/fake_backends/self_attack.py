@@ -8,6 +8,7 @@ import struct
 from unittest.mock import patch
 
 from tests.fake_backends import FakeBackendHarness
+from tests.fake_backends.harness import FakeTranscriptionError
 from ollmo_g.semantic_role_profile import build_semantic_role_profile
 from ollmo_g.request_meta import extract_request_meta
 from scripts.run_graph_rebase_shadow_corpus import HttpResult
@@ -49,8 +50,13 @@ class SelfAttackBackend(FakeBackendHarness):
         payload = kwargs.get('payload') or {}
         input_path = Path(str(payload.get('file_path') or ''))
         input_sha = hashlib.sha256(input_path.read_bytes()).hexdigest() if input_path.is_file() else None
+        call_count = len(self.call_records)
         result = super()._invoke_internal_api_json_route(*args, **kwargs)
         body, status = result
+        if len(self.call_records) == call_count:
+            # Input verification failed before fake provider execution. Never
+            # attribute this rejected input to the preceding producer call.
+            return result
         if status == 200 and body.get('mode') == 'text_to_speech':
             # A deterministic fake codec: STT reads the source from the exact
             # saved WAV bytes, never from the requested/expected transcript.
@@ -62,29 +68,24 @@ class SelfAttackBackend(FakeBackendHarness):
             path = self.audio_dir / f'{hashlib.sha256(wav).hexdigest()}.wav'
             path.write_bytes(wav)
             body['saved_audio_path'] = str(path)
-        elif status == 200 and body.get('mode') == 'speech_to_text':
-            path = Path(str(payload.get('file_path') or ''))
-            transcript = None
-            if path.is_file():
-                wav = path.read_bytes()
-                offset = 12
-                while offset + 8 <= len(wav):
-                    name, size = wav[offset:offset + 4], struct.unpack('<I', wav[offset + 4:offset + 8])[0]
-                    if name == b'oltx':
-                        transcript = wav[offset + 8:offset + 8 + size].decode('utf-8')
-                        break
-                    offset += 8 + size + size % 2
-            if transcript is None:
-                result = ({'error': 'Fake STT has no decodable source in this exact input artifact.'}, 422)
-            else:
-                body['content'] = transcript
-                body['result']['transcript'] = transcript
         self.call_records[-1]['input_sha256'] = input_sha
         output_path = Path(str(body.get('saved_audio_path') or ''))
         if output_path.is_file():
             self.call_records[-1]['output_sha256'] = hashlib.sha256(output_path.read_bytes()).hexdigest()
         self.checkpoint('capability_provider_returned')
         return result
+
+    def _transcribe_audio(self, path):
+        # Decode the exact verified private input, not expected/request text.
+        if path.is_file():
+            wav = path.read_bytes()
+            offset = 12
+            while offset + 8 <= len(wav):
+                name, size = wav[offset:offset + 4], struct.unpack('<I', wav[offset + 4:offset + 8])[0]
+                if name == b'oltx':
+                    return wav[offset + 8:offset + 8 + size].decode('utf-8')
+                offset += 8 + size + size % 2
+        raise FakeTranscriptionError('Fake STT has no decodable source in this exact input artifact.')
 
     def _resolve_ghost_auto_route(self, data, *args, **kwargs):
         route, error = super()._resolve_ghost_auto_route(data, *args, **kwargs)

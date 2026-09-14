@@ -153,6 +153,7 @@ Frame ledger rules:
 - Every appended frame for the same response id must have a unique monotonic `frame_sequence` and matching `frame_id` such as `resp_x:frame-1`, `resp_x:frame-2`, `resp_x:frame-3`. If a live payload still carries stale successor metadata, persistence rewrites the append metadata so the new ledger fact links to the latest prior frame instead of reusing an old frame id.
 - Successor frames are new audit facts. They do not mutate the original frame and must be distinguishable during replay.
 - Late Fill producer/consumer result truth is also typed. A TTS producer records the exact final backend prompt and SHA-256 as `tts_semantic_source`, and every produced PCM WAV receives deterministic `tts_audio_integrity_evidence` bound to that source and file. HTTP 200, a readable WAV header, or non-zero file size is transport/artifact-existence truth only. Audio fulfillment additionally requires sufficient effective active-signal duration for the source and acceptable silence/trailing-padding ratios. Failed or unavailable integrity keeps the physical file and registry record as diagnostic evidence, marks it non-materializable, blocks the audio obligation, and requests branch repair. Its directly dependent STT consumer records `tts_stt_semantic_evidence` against that one bound source. Missing, drifted, ambiguous, or mismatching evidence blocks fulfillment with dependency-chain repair even if an audio artifact and transcript exist; expected source text is never supplied to STT.
+- `runtime.tts_semantic_regeneration` is additive attempt evidence for the named one-regeneration TTS policy. Each producer entry binds `failed_attempt_id`, a distinct `attempt_id`, `repairs_attempt`, consumed budget, original failed result/verdict, replacement result and verification outcome. The same branch/phase remains the original obligation; the repair execution/artifact identities are distinct. Failed original media is withdrawn from current public outputs but retained in audit evidence. Only a replacement accepted by the unchanged verifier may satisfy the audio obligation. A consumed entry is persisted and read back through the existing frame/CAS mechanism before invocation; restart never treats an uncertain in-flight attempt as a fresh budget. Readback must prove the exact appended frame and equality of the complete reservation in the frame owner’s canonical durable representation, including zero remaining budget and attempt/artifact lineage; omitted empty metadata is compared using that same established serialization. No old frame or historical suite result is rewritten.
 - `response_frame.current_state` is the compact current lookup snapshot captured inside that frame. It is recovery data for `/api/responses/<id>`, not permission to rewrite the frozen frame.
 - Persisted ledger rows are compact audit facts. Large internal snapshots such as full `runtime`, `working_frame`, request-phase graphs, context candidates, planner diagnostics, bulky semantic-review state, work trees, large request inputs, and oversized planning contracts may be moved into sidecar JSON files under `state/response_frames/snapshots/`. Sidecars are content-addressed by SHA-256, so separate semantic refs such as `runtime` and `current_state.runtime`, `planning.request_phase_graph` and `planning.artifact_flow.request_phase_graph`, or repeated work-tree projections may point at the same physical file when their payloads are byte-identical. Large nested runtime/working-frame subtrees are split into their own `*_snapshot_ref` entries rather than summarized; the parent snapshot keeps the ref structure, and the child sidecar keeps the full raw subtree. The ledger keeps machine-readable `*_snapshot_ref` / `external_snapshots` entries with path, SHA-256 digest, byte size, and JSON path. This preserves truth without duplicating multi-megabyte internal state in every successor row.
 - Successor ledger rows delta-log external snapshots against their parent frame. `external_snapshots.items` on a persisted successor contains only new or changed refs for that row; unchanged parent refs are listed under `external_snapshots.inheritance` and omitted from the row-local `items`. Recovery/replay merges the parent manifest before returning the current response view. When a recovered frame exposes both effective and row-local truth, `external_snapshots.items` is the effective merged manifest and `external_snapshots.delta_items` is the successor row's own diff.
@@ -580,6 +581,55 @@ and successfully saved CSS cannot fulfill a missing media obligation.
 ## Artifact Dossiers And Evidence
 
 Artifact continuity is centered on durable identity, not copied paths. `artifact_dossiers` are keyed by `artifact_ref` and gather identity, provenance, metadata, enrichments, linked response/message ids, and availability.
+
+Explicit selected-file collections retain every valid reference, in order,
+including producer response/branch/phase provenance and supplied file digests.
+Repeated intake normalization must not reduce the collection to the last file.
+Ghost receives a bounded path/type view of the complete collection; that view is
+not artifact authority. Message merging must distinguish different attachment
+collections even when their text envelopes are identical.
+
+Each single-file consumer uses its explicit execution-contract artifact ref or
+already-bound path. Without an exact binding, only one capability-compatible
+reference is unambiguous; collection order cannot choose among sibling files.
+Preserving n files does not create n obligations, but existing authorized
+consumers must retain access to each required input. Named predecessor edits
+still use their existing exact authorization filter.
+
+A carried predecessor **message bundle** is a different source claim from an
+explicit file collection. To ground source-sensitive truth-guard checks, its
+conversation, response/message identity, canonical message content and every
+claimed artifact must pass the existing predecessor proof. Normalization keeping
+all references does not confer that authority. A failed bundle proof excludes the
+claimed message and files from the guard's private source view; it does not mutate
+the request or reject independent explicit file selections. If the requested
+transformation then lacks a grounded source, the existing output guard returns
+`runtime.truth_guard.status = clarification_required`. This is an output-guard
+projection, not a requirement that every earlier intake rejection create a
+`runtime` object.
+
+For retained audio consumed by STT, the last input boundary verifies the selected
+Registry identity, the current source response artifact and producer provenance,
+and the source-bound digest against both the current saved file and the private
+copy actually sent to Whisper. Registered aliases retain canonical authority;
+unregistered refs, retargeted paths, missing/conflicting source evidence and
+changed bytes fail before Whisper. Direct uploads and same-response producer
+dependencies retain their existing paths. A direct same-response TTS dependency
+uses the completed producer's canonical fill-result identity before final
+publication. Late Fill preserves that artifact record ahead of saved-path
+shortcuts, selects by the consumer's accepted phase/artifact dependency, and
+passes a private immutable binding to internal infer. Request JSON cannot create
+this binding. Infer checks the exact ref/id/source/producer/path and physical
+verification digest against the source and its actual private input copy. This
+does not publish early or relax retained Registry verification. This binding check changes neither
+transcription nor TTS/STT semantic comparison.
+
+The infer response exposes `audio_reference_input_evidence` for this check. The
+current canonical Responses projection retains it on direct TTS→STT Late Fill
+results as a provider-copy identity witness. Retained-reference results do not
+currently persist that additional field;
+a canonical response alone therefore is not a retained provider-copy digest
+witness. Do not infer that telemetry from a successful transcript or Closure.
 
 Late branches should use existing dossier evidence when it satisfies the promoted branch contract. Examples:
 

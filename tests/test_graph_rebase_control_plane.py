@@ -129,6 +129,24 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             },
         }
 
+    def test_readiness_repeated_source_movement_is_http_conflict(self):
+        with patch.object(
+            ollmo_webserver, '_load_graph_rebase_readiness_registry',
+            return_value={'ok': True, 'records': []},
+        ), patch.object(
+            ollmo_webserver, '_load_graph_rebase_readiness_observation_pass',
+            return_value={'ok': False, 'error': {
+                'code': 'response_frame_index_moved',
+                'message': 'Index changed during both observation attempts.',
+            }},
+        ), patch.object(
+            ollmo_webserver, '_build_graph_rebase_readiness_report',
+        ) as report:
+            response = self.client.get('/api/graph_rebase/readiness')
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('response_frame_index_moved', response.get_data(as_text=True))
+        report.assert_not_called()
+
     def test_readiness_get_returns_canonical_mocked_corpus_without_mutation(self):
         report = self._readiness_report()
         observer = {
@@ -260,16 +278,16 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             return_value=registry_state,
         ), patch.object(
             ollmo_webserver,
-            '_load_response_frame_index',
-            return_value=index_state,
-        ), patch.object(
-            ollmo_webserver,
-            '_select_graph_rebase_observation_response_ids',
-            return_value=selection,
-        ), patch.object(
-            ollmo_webserver,
-            '_load_latest_response_observation_state',
-            return_value={'ok': True, 'response_payload': current_payload},
+            '_load_graph_rebase_readiness_observation_pass',
+            return_value={
+                'ok': True, 'empty_current_epoch': False,
+                'index_state': {k: v for k, v in index_state.items() if k != 'responses'},
+                'response_ids': list(index_state['responses']),
+                'selection': selection,
+                'observations': [{'response_id': 'resp-current', 'state': {
+                    'ok': True, 'response_payload': current_payload,
+                }}],
+            },
         ), patch.object(
             ollmo_webserver,
             '_project_graph_rebase_readiness_observation',
@@ -318,73 +336,24 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
                 'active_late_fill': False,
             },
         }
-        verified_epoch = {
-            'ok': True,
-            'index_state': {
-                'responses': {
-                    'resp-current': {
-                        'latest_frame_id': 'frame-current',
-                        'latest_frame_sequence': 8,
-                    }
-                }
-            },
-            'source_frame_sha256_by_response': {
-                'resp-current': 'c' * 64,
-            },
+        result = {
+            'kind': 'ollmo.graph_rebase_readiness_registry_append',
+            'status': 'appended', 'appended_record_count': 1,
+            'runtime_effect': 'none',
         }
         with patch.object(
-            ollmo_webserver,
-            '_project_graph_rebase_readiness_observation',
+            ollmo_webserver, '_project_graph_rebase_readiness_observation',
             return_value=projection,
         ), patch.object(
-            ollmo_webserver,
-            '_verify_response_frame_epoch',
-            return_value=verified_epoch,
-        ), patch.object(
-            ollmo_webserver,
-            '_select_graph_rebase_observation_response_ids',
-            return_value={
-                'selected_response_ids': ['resp-current'],
-                'scan_error_count': 0,
-            },
-        ), patch.object(
-            ollmo_webserver,
-            '_load_latest_response_observation_state',
-            return_value={
-                'ok': True,
-                'response_payload': projection,
-            },
-        ), patch.object(
-            ollmo_webserver,
-            '_build_graph_rebase_source_epoch_identity',
-            return_value={'source_epoch_id': 'epoch-current'},
-        ), patch.object(
-            ollmo_webserver,
-            '_append_graph_rebase_readiness_observation',
-            return_value={
-                'ok': True,
-                'status': 'appended',
-                'appended_record_count': 1,
-                'already_present_count': 0,
-                'record_count': 38,
-                'registry_sha256': 'd' * 64,
-            },
-        ) as mock_append:
-            diagnostic = (
-                ollmo_webserver._register_durable_graph_rebase_readiness_observation(
-                    {'id': 'resp-current'}
-                )
+            ollmo_webserver, '_register_finalizer_readiness_observation',
+            return_value=result,
+        ) as register:
+            diagnostic = ollmo_webserver._register_durable_graph_rebase_readiness_observation(
+                {'id': 'resp-current'}
             )
-
-        self.assertEqual(diagnostic['status'], 'appended')
-        self.assertEqual(diagnostic['appended_record_count'], 1)
-        mock_append.assert_called_once_with(
-            projection,
-            source_frame='c' * 64,
-            source_epoch={'source_epoch_id': 'epoch-current'},
-            verified_epoch=verified_epoch,
-            _observation_candidate=None,
-            frames_dir=ollmo_webserver.RESPONSE_FRAMES_DIR,
+        self.assertIs(diagnostic, result)
+        register.assert_called_once_with(
+            projection, frames_dir=ollmo_webserver.RESPONSE_FRAMES_DIR,
             registry_path=ollmo_webserver.GRAPH_REBASE_READINESS_REGISTRY_PATH,
         )
 
@@ -409,7 +378,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             return_value=projection,
         ), patch.object(
             ollmo_webserver,
-            '_verify_response_frame_epoch',
+            '_register_finalizer_readiness_observation',
         ) as mock_verify:
             diagnostic = (
                 ollmo_webserver._register_durable_graph_rebase_readiness_observation(

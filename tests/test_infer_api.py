@@ -37,6 +37,11 @@ class InferApiTests(unittest.TestCase):
             ollmo_webserver._GENERATED_IMAGE_POSTPROCESS.helper_error_cooldowns.clear()
         self._artifact_inputs_tmpdir = tempfile.TemporaryDirectory()
         self._artifact_inputs_root = Path(self._artifact_inputs_tmpdir.name) / "artifacts" / "inputs"
+        self._ocr_output_root = Path(self._artifact_inputs_tmpdir.name) / "artifacts" / "ocr"
+        # Exercise the real OCR writer without publishing test fixtures into user work.
+        self._ocr_export_dir_patcher = patch("ollmo_webserver.OCR_EXPORT_DIR", self._ocr_output_root)
+        self._ocr_export_dir_patcher.start()
+        self.addCleanup(self._ocr_export_dir_patcher.stop)
         self._persist_input_file_locally_patcher = patch(
             "ollmo_webserver._persist_input_file_locally",
             side_effect=self._persist_input_file_locally_to_temp,
@@ -46,6 +51,12 @@ class InferApiTests(unittest.TestCase):
     def tearDown(self):
         self._persist_input_file_locally_patcher.stop()
         self._artifact_inputs_tmpdir.cleanup()
+
+    def _assert_saved_ocr_artifact(self, payload):
+        saved_path = Path(payload["saved_text_path"])
+        self.assertEqual(saved_path.parent, self._ocr_output_root.resolve())
+        self.assertEqual(saved_path.read_bytes(), (payload["content"].strip() + "\n").encode("utf-8"))
+        self.assertEqual([path.resolve() for path in self._ocr_output_root.iterdir()], [saved_path])
 
     def _persist_input_file_locally_to_temp(
         self,
@@ -1675,7 +1686,6 @@ class InferApiTests(unittest.TestCase):
 
     @patch("ollmo_webserver._lookup_instance")
     @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._persist_text_markdown_locally")
     @patch("ollmo_webserver._render_pdf_pages_to_base64")
     @patch("ollmo_webserver._render_single_pdf_page_to_base64")
     @patch("ollmo_webserver._extract_pdf_text_content")
@@ -1686,7 +1696,6 @@ class InferApiTests(unittest.TestCase):
         mock_extract_pdf_text,
         mock_render_single_pdf_page,
         mock_render_pdf,
-        mock_persist_markdown,
         mock_append_history,
         mock_lookup,
     ):
@@ -1700,7 +1709,6 @@ class InferApiTests(unittest.TestCase):
         mock_extract_pdf_text.return_value = ""
         mock_render_single_pdf_page.return_value = "ZmFrZQ=="
         mock_render_pdf.return_value = (["ZmFrZTE=", "ZmFrZTI="], 12, ["processed first pages only"])
-        mock_persist_markdown.return_value = "/tmp/ocr_exports/scan.md"
         mock_generate.side_effect = [
             {"response": "Page 1 text"},
             {"response": "Page 2 text"},
@@ -1725,12 +1733,11 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(payload["pdf_total_pages"], 12)
         self.assertEqual(payload["pdf_processed_pages"], 2)
         self.assertEqual(payload["content"], "Gesamtzusammenfassung auf Deutsch")
-        self.assertEqual(payload["saved_text_path"], "/tmp/ocr_exports/scan.md")
+        self._assert_saved_ocr_artifact(payload)
         self.assertIn("processed first pages only", payload["warnings"])
         self.assertEqual(mock_generate.call_count, 3)
         self.assertEqual(mock_generate.call_args_list[0].kwargs["options"], {"num_predict": 8192})
         self.assertEqual(mock_generate.call_args_list[1].kwargs["options"], {"num_predict": 8192})
-        mock_persist_markdown.assert_called_once()
         mock_append_history.assert_called_once()
 
     @patch("ollmo_webserver.MAX_PDF_INLINE_RESPONSE_CHARS", 40)
@@ -1885,6 +1892,7 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("[Page 2]", payload["content"])
         self.assertTrue(any("Page 1" in warning for warning in payload["warnings"]))
         mock_append_history.assert_called_once()
+        self._assert_saved_ocr_artifact(payload)
 
     @patch("ollmo_webserver._lookup_instance")
     @patch("ollmo_webserver._append_infer_history")
@@ -1976,6 +1984,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(payload["pdf_processed_pages"], 1)
         self.assertEqual(mock_generate.call_count, 2)
         mock_append_history.assert_called_once()
+        self._assert_saved_ocr_artifact(payload)
 
     @patch("ollmo_webserver._lookup_instance")
     @patch("ollmo_webserver._append_infer_history")
@@ -2030,6 +2039,7 @@ class InferApiTests(unittest.TestCase):
         self.assertNotIn("User request/context", payload["content"])
         self.assertEqual(mock_generate.call_count, 2)
         mock_append_history.assert_called_once()
+        self._assert_saved_ocr_artifact(payload)
 
     @patch("ollmo_webserver._lookup_instance")
     @patch("ollmo_webserver._append_infer_history")
@@ -2080,6 +2090,7 @@ class InferApiTests(unittest.TestCase):
         self.assertNotIn("<|ref|>", payload["content"])
         self.assertNotIn("<|det|>", payload["content"])
         mock_append_history.assert_called_once()
+        self._assert_saved_ocr_artifact(payload)
 
     @patch("ollmo_webserver._lookup_instance")
     @patch("ollmo_webserver._append_infer_history")
@@ -2126,6 +2137,7 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("Recovered OCR from emergency generate", payload["content"])
         self.assertEqual(mock_generate.call_count, 2)
         mock_append_history.assert_called_once()
+        self._assert_saved_ocr_artifact(payload)
 
     @patch("ollmo_webserver._lookup_instance")
     @patch("ollmo_webserver._append_infer_history")
@@ -2176,6 +2188,7 @@ class InferApiTests(unittest.TestCase):
         self.assertNotIn("not because of their crystal forms, not because", payload["content"])
         self.assertEqual(mock_generate.call_count, 1)
         mock_append_history.assert_called_once()
+        self._assert_saved_ocr_artifact(payload)
 
     @patch("ollmo_webserver._lookup_instance")
     @patch("ollmo_webserver._append_infer_history")
@@ -2226,6 +2239,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(payload["pdf_processed_pages"], 1)
         self.assertEqual(mock_generate.call_count, 2)
         mock_append_history.assert_called_once()
+        self._assert_saved_ocr_artifact(payload)
 
     @patch("ollmo_webserver._lookup_instance")
     @patch("ollmo_webserver._append_infer_history")

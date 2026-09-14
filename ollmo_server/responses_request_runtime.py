@@ -22,6 +22,7 @@ from helpers.session_controls import (
     normalize_reasoning_effort,
     validate_reasoning_effort_for_instance,
 )
+from ollmo_services.artifact_contracts import execution_input_artifact_ref
 from ollmo_g.request_phase_graph import build_request_phase_graph
 from ollmo_g.execution_planner import resolve_internal_reasoning_effort
 from ollmo_server.repair_gate_runtime import classify_repair_execution_policy
@@ -7487,6 +7488,7 @@ class ResponsesRequestRuntimeOwner:
             selected_reference_artifacts,
             capability,
             instance=instance,
+            artifact_ref=execution_input_artifact_ref(normalized_payload),
         )
         responses_prompt = extract_responses_prompt(normalized_payload)
         responses_current_turn_prompt = extract_responses_current_turn_prompt(normalized_payload)

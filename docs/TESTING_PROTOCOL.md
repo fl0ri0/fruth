@@ -142,6 +142,28 @@ For labelled/count TTS extraction, output-side WAV integrity, and TTS-to-STT sem
 
 The expected current shape is exact branch-local speakable payload selection, contiguous labelled candidate authority, exclusion of transcript/analysis/code/JSON siblings, durable exact final-prompt `tts_semantic_source`, deterministic source/file-bound PCM-WAV signal evidence, direct-producer-only `tts_stt_semantic_evidence`, harmless transcript normalization acceptance, and fail-closed silence/truncation/padding/malformed/missing/digest/binding handling. HTTP 200 or a non-empty WAV must not fulfill audio by itself. Expected text must never enter the STT request, downstream joins must stay unexecuted on mismatch, and a physically materialized wrong WAV remains diagnostic evidence rather than fulfillment.
 
+For bounded TTS semantic regeneration, also run:
+
+    .venv/bin/python -m pytest tests/test_tts_semantic_regeneration.py -q
+    .venv/bin/python -m pytest tests/test_tts_semantic_checkpoint.py tests/test_response_frozen_lookup.py -q
+
+Checkpoint observation must cover a durable read before live checkpoint
+publication and another read afterward. Both reads must expose the identical
+canonical frozen frame for the exact ID/sequence, including when a recovered
+parent's durability envelope survives in live state. Keep current progress at
+the top level; do not mix expanded finalizer and compact durable bodies under
+one frozen identity. Exercise both successful and exhausted single repairs,
+repeated reads, unchanged predecessor bytes, and foreign/stale identity guards.
+
+The expected shape is a positive existing semantic mismatch with verified exact
+producer/file binding, one durable consumed repair attempt, fresh artifact,
+re-verification and normal Closure. Test unavailable/ambiguous/technical/binding
+failures and cancellation as noneligible; duplicate callbacks and restart must
+not reset the budget. Verify original evidence preservation, branch independence,
+accepted artifact/frame/registry projection and failed-repair exhaustion. Fake
+mechanics prove the policy; at most two explicitly authorized live cases prove
+integration and must not be repeated until a natural mismatch appears.
+
 For counted image handoff, explicit exhausted-pool retry, and frame-scoped recovery evidence, run:
 
     .venv/bin/python -m pytest tests/test_response_semantics_runtime.py -q -k "image_prompt or incomplete_image"
@@ -193,6 +215,31 @@ When touching intent-aligned repair/redraw scope selection, include:
 
 The expected current shape is that Runtime exposes `redraw_scope_ladder_review`, reserved/additive/binding/identity scopes are considered before partial or full rebase, graph repair proposals only consume the scope as orientation, rebase proposals preserve bounded scope fields, duplicate refs are canonicalized only when proven aliases, and conflicting duplicate refs stay repair-needed.
 
+For a direct TTS producer → STT input boundary, also run
+`tests/test_fake_audio_dependency.py`,
+`tests/test_same_response_audio_handoff.py`,
+`tests/test_selected_audio_reference_binding.py`, and
+`tests/test_tts_semantic_regeneration.py`. Exercise real canonical producer
+creation, dependency and infer preparation, and internal infer dispatch before
+Registry publication. Verify exact producer/ref selection with multiple audio
+producers, reject missing/conflicting identities and HTTP-injected authority,
+check current source/private-copy bytes, and compare later Registry/frame
+identity. Mock only provider execution and host probes; do not pre-seed the
+missing identity or skip the infer entrypoint.
+
+Direct test invocations of Late Fill completion must use the isolated Flask
+`TESTING` app context. This lets the existing scheduler keep successor work
+inside the test boundary; assert no in-flight worker remains before fixture
+teardown so later frame-store/CAS tests cannot receive escaped writes.
+
+The fake integration must execute a same-response TTS → STT Late Fill chain,
+decode the actual verified private WAV copy, retain semantic source evidence,
+and exercise the unchanged `exact_source_binding` oracle. Separate direct TTS
+and STT requests or verifier-only fixtures do not cover the private
+`direct_audio_dependency` invoker interface. The fake boundary reuses Runtime's
+identity/consumer/source-and-copy verification; it must not discard this
+argument, mint authority from request JSON or substitute equal-content media.
+
 For canonical artifact registration, run:
 
     .venv/bin/python -m pytest tests/test_canonical_artifact_registry.py tests/test_artifact_registry.py tests/test_artifact_dossiers.py tests/test_artifact_authority.py -q
@@ -241,7 +288,12 @@ current-turn obligation was explicitly promoted.
 
 For cleanup/archive retention policy, run:
 
-    .venv/bin/python -m pytest tests/test_clean_repo_state_policy.py tests/test_self_learning.py -q
+    .venv/bin/python -m pytest tests/test_maintenance_archive.py tests/test_clean_repo_state_policy.py tests/test_self_learning.py -q
+
+Maintenance tests use temporary repositories, including CLI dry-runs. Cover whole
+campaign copies and source/script preservation, internal report links, archive/cache
+exclusions, insufficient space, changing sources, copy verification and move failure
+before cleanup. A real checkout preview is a separate explicit read-only operation.
 
 Dry-run output should include learning-retained and missing response-frame sidecar counts. `state/self_learning/retention_manifest.json` and `state/self_learning/retained_sidecars/` are the evidence continuity surfaces; missing refs should be visible diagnostics, not silent hydration gaps.
 
@@ -297,11 +349,62 @@ entry bindings, relocated epochs, physical evidence changes during verification,
 downstream map tampering, and rejection of old readiness after a successor or
 same-byte file replacement. Private digest reuse must not extend file freshness.
 
+For Readiness-pass Index reuse, include `tests/test_readiness_index_pass.py` and
+`tests/test_graph_rebase_control_plane.py` in addition to those Epoch tests and
+the existing observation/Registry suites. Cover complete-map proof counts,
+per-response checks, Index/Ledger append and replacement, same-size/restored-mtime
+corruption, stat-only guards, selection restart, missing/corrupt evidence,
+process/thread/pass isolation, deterministic Registry equivalence and HTTP 409
+after repeated movement. A stable pass must verify the map once without reusing
+any response-specific authority. Evaluate scaling and the unchanged client timeout
+on isolated valid histories; never use production Ledger/Index as writable test
+fixtures or rerun the live Self-Attack corpus merely to validate this owner.
+
+For the finalizer's closed map ownership boundary, include
+`tests/test_finalizer_closed_map_owner.py` with the Epoch, observation receipt,
+Registry, frame persistence/parent-CAS/recovery, graph rebase and Readiness HTTP
+suites. The test-only deep alias oracle must cover nested manifest refs, actual
+returned observations, projections, Registry records, events and state summaries
+while the owner is active. Prove one real first map proof and exactly two permitted
+reuses; reject foreign/unadopted/consumed contexts, wrong phases/processes/threads,
+physical movement and changed authority bindings. Check that reuse guards perform
+only fixed metadata/stat work and that fallback, early results and exceptions
+revoke the proof, including before Registry writes. Exercise diagnostics enabled.
+Keep these deep test oracles out of clean benchmark runs. Preserve the ordinary
+selection/hydration/retention signatures and the independent Readiness-pass
+behavior. No live providers or Full Conformance are needed for this boundary.
+
 `ResponsesApiTests` must redirect `ollmo_webserver.RESPONSE_FRAMES_DIR` to a per-test temporary root. Tests must never scan or write the checkout's production `state/response_frames/responses.jsonl`. A globally fresh, coverage-verified response map may serve validated historical byte-offset hits and prove a missing response id without a ledger scan. Legacy, stale, incomplete, malformed, or corrupt coverage remains uncertain and must retain the safe full-ledger fallback. Do not weaken product timeout or state-transition limits merely to shorten this suite; first inspect duration output for missing mocks, unintended real subprocess/network work, or protected-state coupling.
 
 For the explicit legacy-index boundary, include the `attest_response_frame_index` regressions in `tests/test_response_frames.py`. Attestation must stream rather than call `Path.read_text()` or `_iter_ledger_frames`, preserve the existing `responses` mapping exactly, reject missing ids/latest-coordinate drift/malformed rows/moving evidence without writing, and use an atomic replace only after exact verification. `scripts/attest_response_frame_index.py --check-only` is the operator preflight; tests use temporary roots or a copied temp index with a symlinked source ledger and must never attest the checkout's production index implicitly.
 
 ## Fake-Backend E2E Truth Harness
+
+For selected-reference collections and retained audio handoff, run
+`tests/test_selected_reference_collection.py`,
+`tests/test_selected_audio_reference_binding.py` and
+`tests/test_request_intake_predecessor_context.py`. Cover n mixed/same-type
+references through repeated normalization and history projection, exact
+consumer input refs, ambiguous siblings, current source/Registry provenance,
+path confinement, source/copy digest changes and the real infer preparation
+boundary with a deterministic provider witness. Broaden with artifact/Registry,
+phase graph, Late Fill, saved-file dependency, Ghost and fake-backend suites.
+All files and source frames in these tests are temporary.
+
+The older `InferApiTests` slice has an unmocked status-only port probe in some
+cases, despite mocked inference providers. Under a strict offline runner this
+is a fixture failure. Isolate the status probe for those fake-provider tests;
+do not allow real model/network execution or change product status gates to
+make the validation pass.
+
+`InferApiTests` redirects `ollmo_webserver.OCR_EXPORT_DIR` to a per-test
+temporary directory. Keep the real Markdown writer active in OCR persistence
+checks and assert the saved path, exact bytes and output count there. Mocking
+the provider and infer-history append alone does not isolate artifact writes:
+successive `scan.pdf` tests can otherwise publish `scan.md`, `scan_2.md`, etc.
+into the checkout's `artifacts/ocr/`. Those suffixes are filename-collision
+counters, not PDF page identities. Never use historical OCR files as test
+fixtures or remove them to make validation pass.
 
 For PNG/SVG request typing and negative-format scope, run:
 
@@ -411,3 +514,20 @@ semantics and disposable-checkout API/E2E coverage. Instrumentation must preserv
 canonical bytes, owner outputs/exceptions, existing checks and scheduling.
 See [STATE_FLOW_DIAGNOSTICS](STATE_FLOW_DIAGNOSTICS.md) for scope bounds and
 partial byte/timing coverage. No live submission is implicit in these tests.
+
+### Research retention / candidate synchronization
+
+For changes to Research preservation, candidate sync or Gold resolution, run:
+
+```sh
+.venv/bin/python -m pytest -q tests/test_maintenance_archive.py tests/test_clean_repo_state_policy.py tests/test_ghost_reset_learning_state.py tests/test_self_learning.py tests/test_research_candidates.py tests/test_research_retention.py
+```
+
+The development-only Gold validator tests, `ollmo_research/gold-core/test_validate.py`,
+can also run when that local Research tree is present. `ollmo_research/` and its
+retained evidence are intentionally excluded from public uploads.
+
+Fixtures must use temporary runtime/Research roots. Read-only Gold validation is
+separate from test execution. Real retained-evidence materialization needs explicit
+authority, inventory, disk/source preflight and copied-byte verification. Never run
+production cleanup, provider inference or Full Conformance to validate retention.

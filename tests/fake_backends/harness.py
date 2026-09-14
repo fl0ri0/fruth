@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 from collections import Counter
 from contextlib import ExitStack
@@ -24,6 +25,10 @@ from .fixtures import (
     write_bytes,
     write_text,
 )
+
+
+class FakeTranscriptionError(ValueError):
+    """A fake codec failure, distinct from runtime input-binding rejection."""
 
 
 class FakeBackendHarness:
@@ -90,6 +95,11 @@ class FakeBackendHarness:
         self._stack.enter_context(patch.object(ollmo_webserver, "ARTIFACT_REGISTRY_LEDGER", self.registry_path))
         self._stack.enter_context(patch.object(ollmo_webserver, "CHAT_HISTORY_DIR", self.chat_history_dir))
         self._stack.enter_context(patch.object(ollmo_webserver, "GHOST_PREFERENCES_PATH", self.ghost_preferences_path))
+        self._stack.enter_context(patch.object(
+            ollmo_webserver, "_resolve_saved_downloadable_artifact_path",
+            lambda path: ollmo_webserver._resolve_saved_artifact_path(
+                path, allowed_roots={self.artifacts_dir.resolve()}),
+        ))
         self._stack.enter_context(patch.object(ollmo_webserver, "load_running_instances", self._load_running_instances))
         self._stack.enter_context(
             patch.object(ollmo_webserver, "merge_instances_with_runtime_status", self._merge_instances_with_runtime_status)
@@ -456,9 +466,12 @@ class FakeBackendHarness:
         *,
         payload: dict[str, Any] | None = None,
         upload: Any = None,
+        direct_audio_dependency=None,
     ) -> tuple[dict[str, Any], int]:
         request_payload = dict(payload or {})
         capability = self._capability_from_payload(request_payload)
+        if direct_audio_dependency is not None and capability != "speech_to_text":
+            return {"error": "Direct audio dependency input binding missing."}, 400
         prompt = str(request_payload.get("prompt") or "")
         if "timeout" in prompt.lower() or "fail" in prompt.lower():
             self.calls[f"{capability}_failure"] += 1
@@ -499,11 +512,41 @@ class FakeBackendHarness:
                 "voice": request_payload.get("voice") or "fake-voice",
             }
         elif capability == "speech_to_text":
-            self.calls["speech_to_text"] += 1
             file_path = str(request_payload.get("file_path") or "").strip()
+            references = ollmo_webserver._extract_selected_reference_artifacts(request_payload)
+            has_audio_reference = any(item.get("type") == "audio" for item in references)
+            suppressed = ollmo_webserver.parse_bool(
+                request_payload.get("suppress_reference_file_context"), default=False)
+            if direct_audio_dependency is not None and (not file_path or not has_audio_reference or suppressed):
+                return {"error": "Direct audio dependency input binding missing."}, 400
+            input_evidence = None
+            try:
+                if has_audio_reference and file_path and not suppressed:
+                    # Keep the real last-input verifier and its private-copy proof.
+                    # Only the provider/codec is fake; JSON never supplies authority.
+                    with tempfile.TemporaryDirectory(dir=self.root) as directory:
+                        copied = Path(directory) / "input.wav"
+                        resolved = ollmo_webserver._resolve_saved_downloadable_artifact_path(file_path)
+                        if not resolved:
+                            raise ValueError('Selected audio reference is invalid: source file unavailable.')
+                        shutil.copyfile(resolved, copied)
+                        input_evidence = ollmo_webserver._INFER_RUNTIME.verify_selected_audio_input(
+                            references, source_path=Path(file_path), temp_path=copied,
+                            direct_audio_dependency=direct_audio_dependency,
+                            execution_contract=request_payload.get("execution_contract"),
+                        )
+                        transcript = self._transcribe_audio(copied)
+                else:
+                    # Ordinary direct inputs do not gain canonical dependency evidence.
+                    transcript = self._transcribe_audio(Path(file_path))
+            except FakeTranscriptionError as exc:
+                return {"error": str(exc)}, 422
+            except (ValueError, OSError) as exc:
+                return {"error": str(exc)}, 400
+            self.calls["speech_to_text"] += 1
             result = {
                 "mode": "speech_to_text",
-                "content": TRANSCRIPT_TEXT,
+                "content": transcript,
                 "input_artifacts": [
                     {
                         "type": "audio",
@@ -512,8 +555,10 @@ class FakeBackendHarness:
                         "mime_type": "audio/wav",
                     }
                 ] if file_path else [],
-                "result": {"transcript": TRANSCRIPT_TEXT, "language": "en"},
+                "result": {"transcript": transcript, "language": "en"},
             }
+            if input_evidence:
+                result["audio_reference_input_evidence"] = input_evidence
         elif capability == "vision_analysis":
             self.calls["vision_analysis"] += 1
             file_path = str(request_payload.get("file_path") or "").strip()
@@ -535,6 +580,9 @@ class FakeBackendHarness:
             result = {"mode": capability, "content": f"Fake {capability} response."}
         self.call_records.append({"capability": capability, "payload": request_payload, "result": result})
         return result, 200
+
+    def _transcribe_audio(self, path: Path) -> str:
+        return TRANSCRIPT_TEXT
 
     def _execute_embedding_backend_request(self, **kwargs: Any) -> list[list[float]]:
         self.calls["embedding"] += 1

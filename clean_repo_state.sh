@@ -9,6 +9,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ARCHIVE_BASE_REL=".ollmo_archiv"
+ARCHIVE_HELPER="$ROOT_DIR/scripts/maintenance_archive.py"
 
 RESET_REGISTRY=0
 FORGET_GHOST=0
@@ -85,6 +86,9 @@ Default cleanup preserves:
   - state/self_learning/
   - state/self_learning/retained_sidecars/ generated from active learning refs
   - state/graph_rebase/readiness_observations.jsonl
+  - state/self_attack/, state/benchmarks/, state/diagnostics/ (including cache files)
+  - ollmo_research/ in every mode, including nested caches and retained Gold evidence
+  - .ollmo_archiv/ (excluded from recursive cache sweeps)
 
 In clean mode, `--full` / `--empty-state` is equivalent to:
   - --forget-ghost --reset-registry --reset-llama-catalog
@@ -96,6 +100,11 @@ Ghost preferences/compiled-memory residue after archiving. Use
 
 `--archiv` / `--archive` keeps the same live cleanup end state, but stores archived data under:
   - .ollmo_archiv/<timestamp>/
+
+Archive snapshots all three evidence trees and ollmo_research/ once in full and preserves their live sources.
+This includes completed campaigns without guessing completion for unknown/active runs.
+Reusable repository scripts remain active. Copies are space-checked and byte-verified;
+failure aborts before cleanup. Active evidence copies are not atomic final snapshots.
 
 macOS/Chrome note:
   After cleanup/archive preserves the standard artifacts/ bucket structure, Chrome may
@@ -248,19 +257,20 @@ stop_listener_on_port() {
 remove_cache_dirs() {
     local pattern="$1"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "[dry-run] remove directories named $pattern recursively"
+        log "[dry-run] remove directories named $pattern recursively (excluding evidence trees, ollmo_research and .ollmo_archiv)"
         return 0
     fi
-    find "$ROOT_DIR" -type d -name "$pattern" -prune -exec rm -rf {} +
+    find "$ROOT_DIR" \( -path "$ROOT_DIR/.ollmo_archiv" -o -path "$ROOT_DIR/ollmo_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" \) -prune -o -type d -name "$pattern" -prune -exec rm -rf {} +
 }
 
 remove_cache_files() {
     local pattern="$1"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "[dry-run] remove files named $pattern recursively"
+        log "[dry-run] remove files named $pattern recursively (excluding evidence trees, ollmo_research and .ollmo_archiv)"
         return 0
     fi
-    find "$ROOT_DIR" -type f -name "$pattern" -delete
+    # Do not use -delete: it implies depth-first traversal and defeats -prune.
+    find "$ROOT_DIR" \( -path "$ROOT_DIR/.ollmo_archiv" -o -path "$ROOT_DIR/ollmo_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" \) -prune -o -type f -name "$pattern" -exec rm -f {} +
 }
 
 archive_dir_contents() {
@@ -276,7 +286,11 @@ archive_dir_contents() {
         return 0
     fi
     mkdir -p "$dest"
-    find "$source" -mindepth 1 -maxdepth 1 -exec mv {} "$dest"/ \;
+    local entry
+    for entry in "$source"/* "$source"/.[!.]* "$source"/..?*; do
+        [[ -e "$entry" || -L "$entry" ]] || continue
+        mv "$entry" "$dest"/
+    done
 }
 
 archive_artifacts_preserving_base_dirs() {
@@ -289,7 +303,7 @@ archive_artifacts_preserving_base_dirs() {
         return 0
     fi
     mkdir -p "$ARCHIVE_RUN_DIR"
-    cp -R -p "$artifacts_root" "$ARCHIVE_RUN_DIR/"
+    python3 "$ARCHIVE_HELPER" copy "$artifacts_root" "$ARCHIVE_RUN_DIR/artifacts"
 }
 
 remove_artifacts_preserving_base_dirs() {
@@ -363,7 +377,7 @@ snapshot_path() {
         return 0
     fi
     mkdir -p "$(dirname "$dest")"
-    cp -R -p "$source" "$dest"
+    python3 "$ARCHIVE_HELPER" copy "$source" "$dest"
 }
 
 write_archive_manifest() {
@@ -384,6 +398,9 @@ write_archive_manifest() {
         printf 'live_cleanup_targets=artifact bucket contents(preserving standard artifact dirs including bundles),logs,state/chat_history,state/events.jsonl,state/infer_history.jsonl,state/artifact_registry.jsonl,state/generated_image_provenance.jsonl,state/response_frames(compact_ledger,current_index,sidecar_snapshots),state/runtime_status.json,caches\n'
         printf 'protected_ghost_snapshot_paths=state/ghost_preferences.json,state/ghost_compiled_memory.json,state/ghost_compiled_memory.md,state/self_learning\n'
         printf 'protected_graph_rebase_registry_snapshot_path=state/graph_rebase/readiness_observations.jsonl\n'
+        printf 'evidence_snapshot_paths=state/self_attack,state/benchmarks,state/diagnostics\n'
+        printf 'research_snapshot_path=ollmo_research (copy; active tree preserved in every mode)\n'
+        printf 'evidence_policy=whole_tree_verified_copy; live_sources_preserved; no_completion_inference; no_pruning\n'
         printf 'learning_retention_status=%s\n' "$LEARNING_RETENTION_STATUS"
         printf 'learning_retained_response_frame_sidecars=%s\n' "$LEARNING_RETAINED_SIDECAR_COUNT"
         printf 'learning_missing_response_frame_sidecars=%s\n' "$LEARNING_MISSING_SIDECAR_COUNT"
@@ -682,6 +699,15 @@ if [[ "$DRY_RUN" -eq 1 && "$ARCHIVE_MODE" -eq 1 ]]; then
 fi
 
 log
+if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
+    # Run before listener stops, retention writes, copies, moves or cleanup.
+    python3 "$ARCHIVE_HELPER" preflight "$ROOT_DIR" "$ARCHIVE_RUN_DIR" \
+        artifacts state/ghost_preferences.json state/ghost_compiled_memory.json \
+        state/ghost_compiled_memory.md state/self_learning \
+        state/graph_rebase/readiness_observations.jsonl \
+        state/self_attack state/benchmarks state/diagnostics ollmo_research
+fi
+
 log "1. Stopping repo-local listeners on standard Ollmo ports..."
 stop_listener_on_port 5001
 stop_listener_on_port 11434
@@ -700,6 +726,10 @@ prepare_graph_rebase_readiness_retention || true
 if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     log
     log "2. Archiving useful runtime/generated ballast into $ARCHIVE_RUN_REL ..."
+    snapshot_path "ollmo_research"
+    snapshot_path "state/self_attack"
+    snapshot_path "state/benchmarks"
+    snapshot_path "state/diagnostics"
     archive_artifacts_preserving_base_dirs
     archive_dir_contents "logs"
     archive_dir_contents "state/chat_history"

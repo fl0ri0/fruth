@@ -954,6 +954,11 @@ class RequestIntakeRuntimeOwner:
         ).strip()
         if source_response_id:
             payload['source_response_id'] = source_response_id
+        # A selected file remains evidence from its producer when forwarded to
+        # another consumer. Normalization must not erase that binding.
+        for key in ('branch_id', 'phase_id', 'slot_id', 'obligation_id'):
+            if raw_value.get(key):
+                payload[key] = raw_value[key]
         name = str(raw_value.get('name') or '').strip()
         if name:
             payload['name'] = name
@@ -996,10 +1001,13 @@ class RequestIntakeRuntimeOwner:
                 cached_image_state = get_cached_generated_image_state(str(resolved))
                 if cached_image_state:
                     payload['image_state'] = cached_image_state
-        return sanitize_artifact_record(
+        normalized = sanitize_artifact_record(
             payload,
             default_origin='conversation_reference',
         )
+        if normalized and raw_value.get('file_sha256'):
+            normalized['file_sha256'] = str(raw_value['file_sha256'])
+        return normalized
 
     def _sanitize_selected_reference_artifacts(
         self,
@@ -1009,7 +1017,7 @@ class RequestIntakeRuntimeOwner:
     ) -> list[dict[str, Any]]:
         raw_items = raw_value if isinstance(raw_value, list) else [raw_value]
         message_reference: Optional[dict[str, Any]] = None
-        artifact_reference: Optional[dict[str, Any]] = None
+        artifact_references: list[dict[str, Any]] = []
         bounded_artifact_references: list[dict[str, Any]] = []
         context = (
             payload_source.get('current_predecessor_context')
@@ -1055,14 +1063,7 @@ class RequestIntakeRuntimeOwner:
                 if any(reference_matches_entry(normalized, entry) for entry in bounded_entries):
                     bounded_artifact_references.append(normalized)
                 continue
-            if (
-                payload_source is None
-                and str(normalized.get('origin') or '').strip().lower()
-                == _CURRENT_PREDECESSOR_NAMED_TEXT_EDIT_ORIGIN
-            ):
-                bounded_artifact_references.append(normalized)
-                continue
-            artifact_reference = normalized
+            artifact_references.append(normalized)
 
         if bounded_entries:
             ordered_bounded: list[dict[str, Any]] = []
@@ -1092,24 +1093,9 @@ class RequestIntakeRuntimeOwner:
                 if isinstance(item, dict)
             ]
 
-        if payload_source is None and bounded_artifact_references:
-            unique_bounded: list[dict[str, Any]] = []
-            seen_bounded: set[tuple[str, str]] = set()
-            for reference in bounded_artifact_references:
-                identity = (
-                    str(reference.get('artifact_ref') or reference.get('ref') or '').strip(),
-                    str(reference.get('path') or reference.get('source_path') or '').strip(),
-                )
-                if identity in seen_bounded:
-                    continue
-                seen_bounded.add(identity)
-                unique_bounded.append(reference)
-            return [
-                item
-                for item in (message_reference, *unique_bounded)
-                if isinstance(item, dict)
-            ]
-        return [item for item in (message_reference, artifact_reference) if isinstance(item, dict)]
+        # Selection is a collection, not a last-file UI slot. Consumers decide
+        # which exact retained inputs their own contract requires.
+        return [item for item in (message_reference, *artifact_references) if isinstance(item, dict)]
 
     def _extract_selected_reference_artifacts(self, data: Any) -> list[dict[str, Any]]:
         payload_source = data if isinstance(data, dict) else dict(data)
@@ -1139,6 +1125,7 @@ class RequestIntakeRuntimeOwner:
         if not selected_references:
             return messages
         injected = list(messages or [])
+        file_references = []
         for selected_reference in selected_references:
             reference_type = str(selected_reference.get('type') or '').strip().lower()
             if reference_type == 'message':
@@ -1164,11 +1151,16 @@ class RequestIntakeRuntimeOwner:
                     }
                 )
                 continue
+            file_references.append(selected_reference)
+        if file_references:
+            # Keep the selected collection together: history-message merging
+            # coalesces identical text envelopes, so one envelope per file
+            # would lose sibling attachments despite intact runtime refs.
             injected.append(
                 {
                     'role': 'assistant',
                     'content': 'Selected reference artifact.',
-                    'artifacts': [selected_reference],
+                    'artifacts': file_references,
                     'selected_reference': True,
                 }
             )

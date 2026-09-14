@@ -21,7 +21,7 @@ import threading
 import time
 from typing import Any, Optional
 
-from ollmo_services.events import causal_event
+from ollmo_services.events import causal_event, measure_operation
 from ollmo_services.graph_rebase_rollout import (
     GRAPH_REBASE_READINESS_OBSERVATION_KIND,
     build_graph_rebase_readiness_report,
@@ -33,6 +33,9 @@ from ollmo_services.response_frames import (
     DEFAULT_RESPONSE_FRAMES_DIR,
     load_latest_response_observation_state,
     _reuse_response_observation_if_current,
+    _FinalizerMapProof,
+    _select_graph_rebase_observation_response_ids,
+    _load_latest_response_observation_state,
     select_graph_rebase_observation_response_ids,
     verify_response_frame_epoch,
 )
@@ -793,7 +796,6 @@ def append_graph_rebase_readiness_registry_records(
     }
 
 
-@observe_state('readiness.registry_validation_append', 'observation_and_verified_epoch', 'readiness_registry_record', labels=('NEW_AUTHORITY_BOUNDARY', 'REVALIDATION'), new_authority_boundary=True)
 def append_graph_rebase_readiness_observation(
     payload_or_projection: Mapping[str, Any],
     *,
@@ -807,7 +809,39 @@ def append_graph_rebase_readiness_observation(
     registry_path: Path | str = DEFAULT_GRAPH_REBASE_READINESS_REGISTRY,
 ) -> dict[str, Any]:
     """Project and append one settled observation with exact source lineage."""
+    return _append_graph_rebase_readiness_observation(
+        payload_or_projection, source_frame=source_frame, source_epoch=source_epoch,
+        verified_epoch=verified_epoch, _observation_candidate=_observation_candidate,
+        frames_dir=frames_dir, ledger_name=ledger_name, index_name=index_name,
+        registry_path=registry_path,
+    )
 
+
+@observe_state('readiness.registry_validation_append', 'observation_and_verified_epoch', 'readiness_registry_record', labels=('NEW_AUTHORITY_BOUNDARY', 'REVALIDATION'), new_authority_boundary=True)
+def _append_graph_rebase_readiness_observation(
+    payload_or_projection: Mapping[str, Any],
+    *,
+    source_frame: Mapping[str, Any] | str,
+    source_epoch: Optional[Mapping[str, Any]] = None,
+    verified_epoch: Optional[Mapping[str, Any]] = None,
+    _observation_candidate: Any = None,
+    frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
+    ledger_name: str = DEFAULT_RESPONSE_FRAME_LEDGER,
+    index_name: str = DEFAULT_RESPONSE_FRAME_INDEX,
+    registry_path: Path | str = DEFAULT_GRAPH_REBASE_READINESS_REGISTRY,
+    _finalizer_context: Any = None,
+) -> dict[str, Any]:
+    """Project and append one settled observation with exact source lineage."""
+
+    if _finalizer_context is not None:
+        if not (
+            type(_finalizer_context) is tuple and len(_finalizer_context) == 4
+            and type(_finalizer_context[0]) is _FinalizerMapProof
+            and _finalizer_context[0]._retention_matches(
+                _finalizer_context, verified_epoch, registry_path,
+            )
+        ):
+            _finalizer_context = None
     if not isinstance(payload_or_projection, Mapping):
         raise TypeError('payload_or_projection must be a mapping')
     projection = (
@@ -972,7 +1006,11 @@ def append_graph_rebase_readiness_observation(
     observed = _reuse_response_observation_if_current(
         _observation_candidate, response_id, frames_dir=frames_dir,
         index_state=index_state, verified_epoch=verified,
+        **({'_finalizer_context': _finalizer_context} if _finalizer_context is not None else {}),
     )
+    # Includes receipt misses before the digest seam; fallback cannot revive it.
+    if _finalizer_context is not None:
+        _finalizer_context[0].close()
     if observed is None:
         observed = load_latest_response_observation_state(
             response_id,
@@ -1034,6 +1072,208 @@ def append_graph_rebase_readiness_observation(
         [record],
         registry_path=registry_path,
     )
+
+
+class _FinalizerRegistration:
+    """One closed synchronous Epoch-through-retention operation; no map getters."""
+
+    __slots__ = ('__frames_dir', '__registry_path', '__projection', '__epoch',
+                 '__proof', '__invocation', '__process_thread', '__started')
+
+    def __init__(self, projection, *, frames_dir, registry_path):
+        self.__frames_dir = Path(frames_dir)
+        self.__registry_path = Path(registry_path)
+        self.__projection = projection
+        self.__epoch = None
+        self.__proof = _FinalizerMapProof()
+        self.__invocation = object()
+        self.__process_thread = (os.getpid(), threading.get_ident())
+        self.__started = False
+
+    def run(self):
+        if self.__started or self.__process_thread != (os.getpid(), threading.get_ident()):
+            raise RuntimeError('Finalizer registration is closed or foreign.')
+        self.__started = True
+        try:
+            return self._run()
+        finally:
+            self.__proof.close()
+            self.__epoch = self.__projection = None
+
+    def _run(self):
+        projection = self.__projection
+        with measure_operation('readiness_epoch_verification', role='derived_readiness_evidence'):
+            verified_epoch = verify_response_frame_epoch(
+                frames_dir=self.__frames_dir,
+                allow_relocated=False,
+            )
+        if verified_epoch.get('ok') is not True:
+            return {
+                'kind': 'ollmo.graph_rebase_readiness_registry_append',
+                'status': 'verification_failed',
+                'runtime_effect': 'none',
+                'error': dict(verified_epoch.get('error') or {}),
+            }
+        self.__epoch = verified_epoch
+        self.__proof._bind(self, self.__invocation, verified_epoch,
+                           self.__frames_dir, self.__registry_path)
+        context = (self.__proof, self, self.__invocation, verified_epoch)
+        index_state = (
+            verified_epoch.get('index_state')
+            if isinstance(verified_epoch.get('index_state'), Mapping)
+            else {}
+        )
+        with measure_operation('readiness_selection', role='derived_readiness_evidence'):
+            selection = _select_graph_rebase_observation_response_ids(
+                frames_dir=self.__frames_dir,
+                index_state=index_state,
+                _finalizer_context=context,
+            )
+        if int(selection.get('scan_error_count') or 0) > 0:
+            return {
+                'kind': 'ollmo.graph_rebase_readiness_registry_append',
+                'status': 'selection_failed',
+                'runtime_effect': 'none',
+                'error_count': int(selection.get('scan_error_count') or 0),
+                'errors': list(selection.get('scan_errors') or [])[:20],
+            }
+
+        response_id = str(projection.get('response_id') or '').strip()
+        if response_id not in set(selection.get('selected_response_ids') or []):
+            return {
+                'kind': 'ollmo.graph_rebase_readiness_registry_append',
+                'status': 'not_relevant',
+                'runtime_effect': 'none',
+                'response_id': response_id or None,
+            }
+
+        response_index = (
+            index_state.get('responses')
+            if isinstance(index_state.get('responses'), Mapping)
+            else {}
+        )
+        current_entry = (
+            response_index.get(response_id)
+            if isinstance(response_index.get(response_id), Mapping)
+            else {}
+        )
+        projected_frame_id = str(projection.get('frame_id') or '').strip()
+        projected_sequence = projection.get('ledger_sequence')
+        if (
+            str(current_entry.get('latest_frame_id') or '').strip() != projected_frame_id
+            or current_entry.get('latest_frame_sequence') != projected_sequence
+        ):
+            return {
+                'kind': 'ollmo.graph_rebase_readiness_registry_append',
+                'status': 'superseded_before_registration',
+                'runtime_effect': 'none',
+                'response_id': response_id,
+                'frame_id': projected_frame_id or None,
+            }
+
+
+        observation_candidates: list[Any] = []
+        with measure_operation('readiness_hydration', role='derived_readiness_evidence'):
+            observed_state = _load_latest_response_observation_state(
+                response_id,
+                frames_dir=self.__frames_dir,
+                index_state=index_state,
+                _finalizer_context=context,
+                _verified_epoch=verified_epoch,
+                _reuse_candidates=observation_candidates,
+            )
+        observed_payload = (
+            observed_state.get('response_payload')
+            if isinstance(observed_state.get('response_payload'), Mapping)
+            else {}
+        )
+        if observed_state.get('ok') is not True or not observed_payload:
+            return {
+                'kind': 'ollmo.graph_rebase_readiness_registry_append',
+                'status': 'hydration_failed',
+                'runtime_effect': 'none',
+                'response_id': response_id,
+                'frame_id': projected_frame_id or None,
+                'error': dict(observed_state.get('error') or {}),
+            }
+        with measure_operation('readiness_durable_projection', role='derived_readiness_evidence'):
+            durable_projection = project_graph_rebase_readiness_observation(
+                observed_payload
+            )
+        durable_readiness_state = (
+            durable_projection.get('readiness_state')
+            if isinstance(durable_projection.get('readiness_state'), Mapping)
+            else {}
+        )
+        if (
+            str(durable_projection.get('response_id') or '').strip() != response_id
+            or str(durable_projection.get('frame_id') or '').strip()
+            != projected_frame_id
+            or durable_projection.get('ledger_sequence') != projected_sequence
+            or durable_readiness_state.get('settled_final') is not True
+            or durable_readiness_state.get('active_late_fill') is True
+        ):
+            return {
+                'kind': 'ollmo.graph_rebase_readiness_registry_append',
+                'status': 'hydration_binding_mismatch',
+                'runtime_effect': 'none',
+                'response_id': response_id,
+                'frame_id': projected_frame_id or None,
+            }
+
+        source_frame_digests = (
+            verified_epoch.get('source_frame_sha256_by_response')
+            if isinstance(
+                verified_epoch.get('source_frame_sha256_by_response'),
+                Mapping,
+            )
+            else {}
+        )
+        with measure_operation('readiness_registry_append', role='secondary_evidence_registry'):
+            append_result = _append_graph_rebase_readiness_observation(
+                durable_projection,
+                source_frame=str(source_frame_digests.get(response_id) or '').strip(),
+                source_epoch=build_graph_rebase_source_epoch_identity(verified_epoch),
+                verified_epoch=verified_epoch,
+                _finalizer_context=context,
+                _observation_candidate=(observation_candidates[0] if observation_candidates else None),
+                frames_dir=self.__frames_dir,
+                registry_path=self.__registry_path,
+            )
+        if append_result.get('ok') is not True:
+            return {
+                'kind': 'ollmo.graph_rebase_readiness_registry_append',
+                'status': 'append_failed',
+                'runtime_effect': 'none',
+                'response_id': response_id,
+                'frame_id': projected_frame_id or None,
+                'error': dict(append_result.get('error') or {}),
+            }
+        return {
+            'kind': 'ollmo.graph_rebase_readiness_registry_append',
+            'status': str(append_result.get('status') or 'appended'),
+            'runtime_effect': 'none',
+            'response_id': response_id,
+            'frame_id': projected_frame_id or None,
+            'appended_record_count': int(
+                append_result.get('appended_record_count') or 0
+            ),
+            'already_present_count': int(
+                append_result.get('already_present_count') or 0
+            ),
+            'registry_record_count': int(append_result.get('record_count') or 0),
+            'registry_sha256': append_result.get('registry_sha256'),
+        }
+
+
+def _register_finalizer_readiness_observation(
+    projection: Mapping[str, Any], *, frames_dir: Path | str,
+    registry_path: Path | str,
+) -> dict[str, Any]:
+    """Return only the detached registration diagnostic to web orchestration."""
+    return _FinalizerRegistration(
+        projection, frames_dir=frames_dir, registry_path=registry_path,
+    ).run()
 
 
 def _expectation_error(

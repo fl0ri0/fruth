@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import logging
+import hashlib
+import os
+import stat
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +14,7 @@ from typing import Any, Mapping, Optional
 from flask import jsonify
 
 from helpers.model_capabilities import CAPABILITY_SPEECH_TO_TEXT
+from ollmo_services.artifact_contracts import DirectAudioDependency, execution_input_artifact_ref, selected_audio_source_binding
 from helpers.session_controls import (
     normalize_reasoning_effort,
     validate_reasoning_effort_for_instance,
@@ -105,6 +109,68 @@ class InferRuntimeOwner:
 
     def _hook(self, name: str) -> Any:
         return self.hooks[name]
+
+    def verify_selected_audio_input(
+        self,
+        references: list[dict[str, Any]],
+        *,
+        source_path: Path,
+        temp_path: Path,
+        direct_audio_dependency: Optional[DirectAudioDependency] = None,
+        execution_contract: Optional[Mapping[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """Bind the private STT input copy to one explicitly retained source."""
+        matches = [item for item in references
+                   if item.get('type') == 'audio'
+                   and str(item.get('path') or '') == str(source_path)]
+        unique = []
+        for item in matches:
+            if item not in unique:
+                unique.append(item)
+        if len(unique) != 1:
+            raise ValueError('Selected audio reference is invalid: ambiguous or unbound input.')
+        reference = unique[0]
+        resolved = self._hook('resolve_saved_downloadable_artifact_path')(str(source_path))
+        if not resolved:
+            raise ValueError('Selected audio reference is invalid: source file unavailable.')
+        if direct_audio_dependency is not None:
+            if not isinstance(direct_audio_dependency, DirectAudioDependency):
+                raise ValueError('Direct audio dependency requires runtime preparation.')
+            binding = direct_audio_dependency.verify(
+                reference, execution_contract, resolved_path=Path(resolved))
+        else:
+            registry = self._hook('find_artifact_registry_record_by_artifact_ref')(
+                reference.get('artifact_ref') or reference.get('ref')
+            ) or {}
+            artifact = registry.get('artifact') or {}
+            source_id = artifact.get('source_response_id') or (
+                (registry.get('provenance') or {}).get('source') or {}
+            ).get('response_id')
+            record = self._hook('get_response_lookup_record')(source_id) if source_id else {}
+            payload = (record or {}).get('response_payload') or {}
+            binding = selected_audio_source_binding(
+                reference, registry, payload, resolved_path=Path(resolved),
+            )
+        with Path(resolved).open('rb') as handle:
+            before = os.fstat(handle.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError('Selected audio reference is invalid: source is not a regular file.')
+            source_digest = hashlib.file_digest(handle, 'sha256').hexdigest()
+            after = os.fstat(handle.fileno())
+        current = Path(resolved).stat()
+        identity = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns, item.st_ctime_ns)
+        if (identity(before) != identity(after) or identity(after) != identity(current)
+                or source_digest != binding['file_sha256']):
+            raise ValueError('Selected audio reference is invalid: source changed or digest mismatch.')
+        # Hash the private copy actually submitted to Whisper, not just a path
+        # observed earlier. Source replacement during copying cannot pass this.
+        with temp_path.open('rb') as handle:
+            copied_digest = hashlib.file_digest(handle, 'sha256').hexdigest()
+        if copied_digest != binding['file_sha256']:
+            raise ValueError('Selected audio reference is invalid: STT input digest mismatch.')
+        return {**binding, 'provider_input_sha256': copied_digest,
+                'authority': ('canonical_direct_audio_dependency' if direct_audio_dependency
+                              else 'canonical_retained_audio_input'), 'status': 'verified'}
 
     def apply_required_session_control_defaults(
         self,
@@ -349,6 +415,7 @@ class InferRuntimeOwner:
             selected_reference_artifacts,
             capability,
             instance=instance,
+            artifact_ref=execution_input_artifact_ref(normalized_payload),
         )
         responses_prompt = extract_responses_prompt(normalized_payload)
         raw_file_path = explicit_file_path
@@ -666,7 +733,7 @@ class InferRuntimeOwner:
             filtered.pop('input_artifacts', None)
         return filtered
 
-    def execute_infer_request(self, data: Any, *, upload=None):
+    def execute_infer_request(self, data: Any, *, upload=None, direct_audio_dependency=None):
         rewind_upload_stream = self._hook('rewind_upload_stream')
         normalize_external_identifier = self._hook('normalize_external_identifier')
         lookup_instance = self._hook('lookup_instance')
@@ -803,6 +870,7 @@ class InferRuntimeOwner:
             reference_artifacts,
             capability,
             instance=instance,
+            artifact_ref=execution_input_artifact_ref(data),
         )
         if (
             not raw_file_path
@@ -1246,11 +1314,31 @@ class InferRuntimeOwner:
                 "request_exception_error": request_exception_error,
                 "max_pdf_inline_response_chars": self._hook('max_pdf_inline_response_chars')(),
             }
+            audio_reference_input_evidence = None
+            if direct_audio_dependency is not None and (
+                    capability != CAPABILITY_SPEECH_TO_TEXT or not temp_path or not resolved_source
+                    or suppress_reference_file_context
+                    or not any(item.get('type') == 'audio' for item in reference_artifacts)):
+                return jsonify({'error': 'Direct audio dependency input binding missing.'}), 400
+            if (capability == CAPABILITY_SPEECH_TO_TEXT and temp_path and resolved_source
+                    and not suppress_reference_file_context
+                    and any(item.get('type') == 'audio' for item in reference_artifacts)):
+                try:
+                    audio_reference_input_evidence = self.verify_selected_audio_input(
+                        reference_artifacts, source_path=resolved_source, temp_path=temp_path,
+                        direct_audio_dependency=direct_audio_dependency,
+                        execution_contract=data.get('execution_contract'),
+                    )
+                except (ValueError, OSError) as exc:
+                    return jsonify({'error': str(exc)}), 400
             payload, status_code = dispatch_infer_request(
                 infer_context,
                 infer_artifacts,
                 infer_ops,
             )
+            if audio_reference_input_evidence:
+                payload = {**(payload or {}),
+                           'audio_reference_input_evidence': audio_reference_input_evidence}
             if status_code < 400:
                 payload = dict(payload or {})
                 if reference_artifacts:

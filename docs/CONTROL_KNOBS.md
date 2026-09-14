@@ -170,6 +170,24 @@ Qwen3 Base splits nonempty newline-delimited text inside MLX-Audio and applies `
 
 Supported Qwen3 Base, VoiceDesign, and CustomVoice single-sequence generation has one narrow in-call recovery for a deterministically proven exact-ceiling result. Policy `qwen3_tts_single_sequence_generation_limit_retry_v2` retries only the exhausted logical sequence/chunk, only once, with the same source, language, voice/style instruction, format, and sampling controls. It changes only `max_tokens`, using `min(1200, max(initial + 128, ceil(initial * 1.5)))`. Eligibility reads the structured generation-limit evidence rather than the primary integrity reason, because a result can be too short, mostly trailing silence, and exactly at the hard cap simultaneously. Both attempts and their budgets, hashes, complete defect evidence, and selection state remain in chunk diagnostics. The retry bytes are usable only if the unchanged integrity policy passes them independently; a failed second attempt remains blocked. Segmented/unverified Qwen output, non-Qwen models, malformed audio, unavailable cap evidence, and Closure behavior do not use this in-call retry.
 
+Policy `tts_semantic_regeneration_v1` permits exactly one fresh TTS regeneration
+(`MAX_SEMANTIC_REGENERATIONS = 1`) after the existing deterministic semantic
+verifier positively records `TTS_STT_SEMANTIC_MISMATCH`. It requires a unique
+completed direct producer, exact retained final source/request controls, passed
+physical audio evidence with current file digest, and proof that the STT plan
+consumed that file. Missing/ambiguous evidence, technical/binding errors, explicit
+seed/reference-generator requests, cancellation/defer and unavailable durability
+are not eligible. This is a fixed conservative policy boundary, not a new UI knob.
+
+The response runtime retains `tts_semantic_regeneration` keyed by producer branch.
+Its one attempt is consumed in an append-only parent-CAS frame checkpoint and
+read back before backend invocation. A recovered uncertain attempt remains
+blocked; duplicate reviews cannot reset the budget. The failed artifact/result
+stays in attempt evidence, while only a reverified replacement may become public
+fulfillment. STT, comparison thresholds and Closure remain unchanged. This does
+not alter the separately named technical integrity/ceiling-recovery policies.
+
+
 External downstream execution is one provider mode, not a transfer of runtime
 authority. When Ollmo asks ChatGPT/Codex to execute an already-shaped branch,
 `[OLLMO_DOWNSTREAM_EXECUTION_V1]` is the first non-whitespace content. The

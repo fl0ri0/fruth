@@ -4773,7 +4773,9 @@ def persist_eval_cases(
 
     target = Path(output_path) if output_path else DEFAULT_SELF_LEARNING_DIR / DEFAULT_EVAL_CASE_LEDGER
     _validate_default_self_learning_output_targets([target])
-    _atomic_replace_file_set([(target, _eval_cases_jsonl_bytes(cases))])
+    case_payload = _eval_cases_jsonl_bytes(cases)
+    _atomic_replace_file_set([(target, case_payload)])
+    _sync_research_after_learning(target, case_payload)
     return target
 
 
@@ -4788,6 +4790,19 @@ def persist_self_learning_report(
     _validate_default_self_learning_output_targets([target])
     _atomic_replace_file_set([(target, _self_learning_report_json_bytes(report))])
     return target
+
+
+def _sync_research_after_learning(target: Path, payload: bytes) -> None:
+    # Secondary maintenance only. A research error cannot undo committed learning.
+    try:
+        from ollmo_services.research_candidates import sync_after_learning_persist
+        sync_after_learning_persist(target, payload)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            'Self-learning persisted; research candidate sync failed (%s). Resync explicitly.',
+            type(exc).__name__,
+        )
 
 
 def persist_self_learning_outputs(
@@ -4818,4 +4833,5 @@ def persist_self_learning_outputs(
             (report_target, report_payload),
         ]
     )
+    _sync_research_after_learning(eval_target, case_payload)
     return eval_target, report_target

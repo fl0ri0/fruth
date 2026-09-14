@@ -6829,6 +6829,24 @@ class ResponsesApiTests(unittest.TestCase):
         )
         self.assertNotIn('truth_guard', positive.get('runtime') or {})
 
+        # Lossless file normalization must not substitute for predecessor
+        # authorization. Explicit files without a carried message are a
+        # different contract and must retain the entire selected collection.
+        explicit_files_request = request_for(
+            conversation_id='conv-foreign',
+            artifacts=canonical_artifacts,
+        )
+        explicit_files_request['reference_artifacts'] = [
+            dict(item) for item in canonical_artifacts
+        ]
+        explicit_files_request.pop('ghost_messages')
+        explicit_files = _truth_gate_response_output_claims(
+            {'id': 'resp-explicit-files', 'output_text': 'Explicit selected sources.'},
+            request_payload=explicit_files_request,
+        )
+        self.assertEqual(explicit_files['output_text'], 'Explicit selected sources.')
+        self.assertNotIn('truth_guard', explicit_files.get('runtime') or {})
+
         foreign = _truth_gate_response_output_claims(
             {'id': 'resp-current-foreign', 'output_text': 'Ungrounded analysis and transcript.'},
             request_payload=request_for(

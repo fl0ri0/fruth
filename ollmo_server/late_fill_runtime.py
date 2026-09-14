@@ -5,6 +5,7 @@ from __future__ import annotations
 from ollmo_services.state_flow import observe_state
 
 from ollmo_services.artifact_contracts import (
+    bind_direct_audio_dependency,
     read_saved_file_snapshot, saved_file_dependency_contract,
     saved_file_consumer_prompt, saved_file_read_text, saved_file_read_issue, saved_file_consumption_issue,
     saved_file_consumption_artifact_issue,
@@ -17,6 +18,8 @@ from ollmo_services.late_fill_telemetry import (
     observe_worker,
     observe_schedule,
 )
+
+from ollmo_server import tts_semantic_regeneration
 
 import copy
 import hashlib
@@ -5083,6 +5086,13 @@ class LateFillRuntimeOwner:
                 raw_selected_references,
                 payload_source=late_fill_payload,
             )
+            declared_refs = {
+                str(item.get('artifact_ref') or item.get('ref') or '').strip()
+                for item in execution_contract.get('input_refs') or []
+                if isinstance(item, Mapping)
+                and str(item.get('artifact_ref') or item.get('ref') or '').strip()
+            }
+            selected_audio_candidates = []
             for artifact in selected_reference_candidates:
                 artifact_type = str(
                     artifact.get('type') or artifact.get('kind') or ''
@@ -5091,9 +5101,13 @@ class LateFillRuntimeOwner:
                     'audio', 'wav', 'mp3', 'm4a', 'flac', 'aac', 'ogg', 'opus'
                 }:
                     continue
-                selected_audio_path = self._artifact_record_path(artifact)
-                if selected_audio_path:
-                    break
+                artifact_ref = str(artifact.get('artifact_ref') or artifact.get('ref') or '').strip()
+                if declared_refs and artifact_ref not in declared_refs:
+                    continue
+                if self._artifact_record_path(artifact) and artifact not in selected_audio_candidates:
+                    selected_audio_candidates.append(artifact)
+            if len(selected_audio_candidates) == 1:
+                selected_audio_path = self._artifact_record_path(selected_audio_candidates[0])
             if selected_audio_path:
                 # Explicit file authority outranks both current input fallback
                 # and route reuse for this selected-reference branch.
@@ -9043,10 +9057,19 @@ class LateFillRuntimeOwner:
             record.setdefault('kind', artifact_type)
             record['path'] = path
             records.append(record)
+        # A saved-path shortcut must not erase the producer's canonical identity.
+        canonical_paths = {record['path'] for record in records
+                           if record.get('artifact_ref') or record.get('artifact_id')}
         deduped: list[dict[str, Any]] = []
         seen_paths: set[str] = set()
         for record in records:
             path = str(record.get('path') or '').strip()
+            if record.get('artifact_ref') or record.get('artifact_id'):
+                if record not in deduped:
+                    deduped.append(record)
+                continue
+            if path in canonical_paths:
+                continue
             if not path or path in seen_paths:
                 continue
             seen_paths.add(path)
@@ -18691,6 +18714,22 @@ class LateFillRuntimeOwner:
                     )
                 )
         if dependency_input_artifacts and target_capability in {'vision_analysis', 'speech_to_text'}:
+            if target_capability == 'speech_to_text':
+                contract = branch.get('execution_contract') or branch
+                input_refs = contract.get('input_refs') or []
+                exact_refs = {item.get('artifact_ref') or item.get('ref') for item in input_refs
+                              if isinstance(item, Mapping) and (item.get('artifact_ref') or item.get('ref'))}
+                exact_phases = {item.get('phase_id') for item in input_refs
+                                if isinstance(item, Mapping) and item.get('kind') == 'phase_output'
+                                and item.get('phase_id')}
+                if exact_refs:
+                    dependency_input_artifacts = [a for a in dependency_input_artifacts
+                                                  if a.get('artifact_ref') in exact_refs]
+                elif exact_phases:
+                    dependency_input_artifacts = [a for a in dependency_input_artifacts
+                                                  if a.get('phase_id') in exact_phases]
+                if not dependency_input_artifacts:
+                    raise ValueError('Direct audio dependency identity unavailable for accepted input refs.')
             first_path = str(dependency_input_artifacts[0].get('path') or '').strip()
             evidence = '\n'.join(
                 f"{str(item.get('type') or item.get('kind') or 'artifact').strip() or 'artifact'} artifact: {str(item.get('path') or '').strip()}"
@@ -19488,9 +19527,11 @@ class LateFillRuntimeOwner:
                 else {}
             )
         )
+        direct_audio_dependency = bind_direct_audio_dependency(current_payload, execution_contract)
         return {
             'response_id': current_payload.get('id'),
             'capability': expected_capability,
+            'direct_audio_dependency': direct_audio_dependency,
             'branch_id': str((execution_contract or {}).get('branch_id') or effective_data.get('branch_id') or '').strip() or None,
             'phase_id': str((execution_contract or {}).get('phase_id') or effective_data.get('phase_id') or '').strip() or None,
             'execution_contract': dict(execution_contract) if execution_contract else {},
@@ -20099,9 +20140,13 @@ class LateFillRuntimeOwner:
                     'External graph-owned chat phase returned no terminal status.'
                 )
         else:
+            internal_inputs = {}
+            if plan.get('direct_audio_dependency') is not None:
+                internal_inputs['direct_audio_dependency'] = plan['direct_audio_dependency']
             infer_result, status_code = self.invoke_internal_api_json_route(
                 payload=infer_payload,
                 upload=None,
+                **internal_inputs,
             )
             if status_code >= 400:
                 raise RuntimeError(str(infer_result.get('error') or 'Late fill request failed.'))
@@ -22453,7 +22498,9 @@ class LateFillRuntimeOwner:
                     branch_id = self.branch_id(branch)
                     if not branch_id:
                         continue
-                    repair_error = self.repair_branch_execution_error(
+                    repair_error = tts_semantic_regeneration.consumed_execution_error(
+                        branch, current_payload,
+                    ) or self.repair_branch_execution_error(
                         branch,
                         current_payload=current_payload,
                         artifact_gap=artifact_gap,
@@ -23033,6 +23080,31 @@ class LateFillRuntimeOwner:
                         infer_result['tts_stt_semantic_evidence'] = (
                             tts_stt_semantic_evidence
                         )
+                    if tts_stt_semantic_evidence.get('status') == 'mismatched':
+                        repair_payload = copy.deepcopy(current_payload)
+                        repair_payload.setdefault('late_fill', {}).update(
+                            fill_results=copy.deepcopy(fill_results),
+                            completed_branches=copy.deepcopy(completed_branch_records),
+                            failed_branches=copy.deepcopy(failed_branch_records),
+                            pending_branches=copy.deepcopy(pending_branches),
+                        )
+                        repair_outcome = tts_semantic_regeneration.run(
+                            self, branch=branch, result=infer_result,
+                            payload=repair_payload,
+                            consumer_plan=prepared_plans_by_branch_id.get(branch_id) or {},
+                            request_payload=request_payload, artifact_gap=artifact_gap,
+                            source_route_payload=source_route_payload,
+                            prepare_plan=prepare_plan, execute_plan=execute_plan,
+                        )
+                        if repair_outcome:
+                            current_payload = repair_outcome['payload']
+                            infer_result = repair_outcome['infer_result']
+                            updated_late_fill = current_payload['late_fill']
+                            fill_results = list(updated_late_fill.get('fill_results') or [])
+                            completed_branch_records = list(updated_late_fill.get('completed_branches') or [])
+                            failed_branch_records = list(updated_late_fill.get('failed_branches') or [])
+                            completed_branches = [self.branch_id(r) for r in completed_branch_records]
+                            failed_branches = [self.branch_id(r) for r in failed_branch_records]
                     evidence_error = self.dependency_evidence_error_for_branch_result(
                         branch,
                         infer_result,
@@ -23218,6 +23290,12 @@ class LateFillRuntimeOwner:
                         value = late_fill_route_runtime.get(key)
                         if value not in (None, '', [], {}):
                             fill_record[key] = value
+                    if capability == self.capability_text_to_speech:
+                        generation_request = tts_semantic_regeneration.request_snapshot(
+                            prepared_plans_by_branch_id.get(branch_id) or {}, infer_result,
+                        )
+                        if generation_request:
+                            fill_record['tts_generation_request'] = generation_request
                     if isinstance(branch.get('recovery_attempt'), Mapping):
                         fill_record['recovery_attempt'] = dict(
                             branch.get('recovery_attempt') or {}
@@ -23291,6 +23369,10 @@ class LateFillRuntimeOwner:
                             if value not in (None, '', [], {}):
                                 fill_record[key] = value
                     result_text = self.late_fill_text_from_result_payload(infer_result)
+                    audio_input_evidence = infer_result.get('audio_reference_input_evidence')
+                    if (isinstance(audio_input_evidence, Mapping)
+                            and audio_input_evidence.get('authority') == 'canonical_direct_audio_dependency'):
+                        fill_record['audio_reference_input_evidence'] = dict(audio_input_evidence)
                     result_artifact_type = self.artifact_type_for_capability(capability)
                     if result_text:
                         fill_record['result_text'] = result_text

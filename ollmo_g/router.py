@@ -579,6 +579,8 @@ def _merge_ghost_messages(*message_sets: Iterable[dict[str, Any]]) -> list[dict[
                 item.get('route_source'),
                 item.get('route_reason'),
                 item.get('context_mode'),
+                tuple((artifact.get('type'), artifact.get('path'))
+                      for artifact in item.get('artifacts') or []),
             )
             if key in seen_index:
                 existing = merged[seen_index[key]]

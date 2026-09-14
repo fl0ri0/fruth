@@ -334,6 +334,7 @@ from ollmo_services.response_frames import (
     load_latest_response_state as _load_latest_response_state,
     load_latest_response_wire_state as _load_latest_response_wire_state,
     load_response_frame_index as _load_response_frame_index,
+    load_graph_rebase_readiness_observation_pass as _load_graph_rebase_readiness_observation_pass,
     persist_response_frame as _persist_response_frame,
     response_frame_ledger_record_response_id as _response_frame_ledger_record_response_id,
     select_graph_rebase_observation_response_ids as _select_graph_rebase_observation_response_ids,
@@ -355,6 +356,7 @@ from ollmo_services.graph_rebase_operator import (
     record_graph_rebase_operator_action as _record_graph_rebase_operator_action,
 )
 from ollmo_services.graph_rebase_readiness_registry import (
+    _register_finalizer_readiness_observation,
     DEFAULT_GRAPH_REBASE_READINESS_REGISTRY_PATH,
     GraphRebaseReadinessRegistryError,
     append_graph_rebase_readiness_observation as _append_graph_rebase_readiness_observation,
@@ -954,161 +956,10 @@ def _register_durable_graph_rebase_readiness_observation(
             or None,
         }
 
-    with measure_operation('readiness_epoch_verification', role='derived_readiness_evidence'):
-        verified_epoch = _verify_response_frame_epoch(
-            frames_dir=RESPONSE_FRAMES_DIR,
-            allow_relocated=False,
-        )
-    if verified_epoch.get('ok') is not True:
-        return {
-            'kind': 'ollmo.graph_rebase_readiness_registry_append',
-            'status': 'verification_failed',
-            'runtime_effect': 'none',
-            'error': dict(verified_epoch.get('error') or {}),
-        }
-    index_state = (
-        verified_epoch.get('index_state')
-        if isinstance(verified_epoch.get('index_state'), Mapping)
-        else {}
+    return _register_finalizer_readiness_observation(
+        projection, frames_dir=RESPONSE_FRAMES_DIR,
+        registry_path=_effective_graph_rebase_readiness_registry_path(),
     )
-    with measure_operation('readiness_selection', role='derived_readiness_evidence'):
-        selection = _select_graph_rebase_observation_response_ids(
-            frames_dir=RESPONSE_FRAMES_DIR,
-            index_state=index_state,
-        )
-    if int(selection.get('scan_error_count') or 0) > 0:
-        return {
-            'kind': 'ollmo.graph_rebase_readiness_registry_append',
-            'status': 'selection_failed',
-            'runtime_effect': 'none',
-            'error_count': int(selection.get('scan_error_count') or 0),
-            'errors': list(selection.get('scan_errors') or [])[:20],
-        }
-
-    response_id = str(projection.get('response_id') or '').strip()
-    if response_id not in set(selection.get('selected_response_ids') or []):
-        return {
-            'kind': 'ollmo.graph_rebase_readiness_registry_append',
-            'status': 'not_relevant',
-            'runtime_effect': 'none',
-            'response_id': response_id or None,
-        }
-
-    response_index = (
-        index_state.get('responses')
-        if isinstance(index_state.get('responses'), Mapping)
-        else {}
-    )
-    current_entry = (
-        response_index.get(response_id)
-        if isinstance(response_index.get(response_id), Mapping)
-        else {}
-    )
-    projected_frame_id = str(projection.get('frame_id') or '').strip()
-    projected_sequence = projection.get('ledger_sequence')
-    if (
-        str(current_entry.get('latest_frame_id') or '').strip() != projected_frame_id
-        or current_entry.get('latest_frame_sequence') != projected_sequence
-    ):
-        return {
-            'kind': 'ollmo.graph_rebase_readiness_registry_append',
-            'status': 'superseded_before_registration',
-            'runtime_effect': 'none',
-            'response_id': response_id,
-            'frame_id': projected_frame_id or None,
-        }
-
-
-    observation_candidates: list[Any] = []
-    with measure_operation('readiness_hydration', role='derived_readiness_evidence'):
-        observed_state = _load_latest_response_observation_state(
-            response_id,
-            frames_dir=RESPONSE_FRAMES_DIR,
-            index_state=index_state,
-            _verified_epoch=verified_epoch,
-            _reuse_candidates=observation_candidates,
-        )
-    observed_payload = (
-        observed_state.get('response_payload')
-        if isinstance(observed_state.get('response_payload'), Mapping)
-        else {}
-    )
-    if observed_state.get('ok') is not True or not observed_payload:
-        return {
-            'kind': 'ollmo.graph_rebase_readiness_registry_append',
-            'status': 'hydration_failed',
-            'runtime_effect': 'none',
-            'response_id': response_id,
-            'frame_id': projected_frame_id or None,
-            'error': dict(observed_state.get('error') or {}),
-        }
-    with measure_operation('readiness_durable_projection', role='derived_readiness_evidence'):
-        durable_projection = _project_graph_rebase_readiness_observation(
-            observed_payload
-        )
-    durable_readiness_state = (
-        durable_projection.get('readiness_state')
-        if isinstance(durable_projection.get('readiness_state'), Mapping)
-        else {}
-    )
-    if (
-        str(durable_projection.get('response_id') or '').strip() != response_id
-        or str(durable_projection.get('frame_id') or '').strip()
-        != projected_frame_id
-        or durable_projection.get('ledger_sequence') != projected_sequence
-        or durable_readiness_state.get('settled_final') is not True
-        or durable_readiness_state.get('active_late_fill') is True
-    ):
-        return {
-            'kind': 'ollmo.graph_rebase_readiness_registry_append',
-            'status': 'hydration_binding_mismatch',
-            'runtime_effect': 'none',
-            'response_id': response_id,
-            'frame_id': projected_frame_id or None,
-        }
-
-    source_frame_digests = (
-        verified_epoch.get('source_frame_sha256_by_response')
-        if isinstance(
-            verified_epoch.get('source_frame_sha256_by_response'),
-            Mapping,
-        )
-        else {}
-    )
-    with measure_operation('readiness_registry_append', role='secondary_evidence_registry'):
-        append_result = _append_graph_rebase_readiness_observation(
-            durable_projection,
-            source_frame=str(source_frame_digests.get(response_id) or '').strip(),
-            source_epoch=_build_graph_rebase_source_epoch_identity(verified_epoch),
-            verified_epoch=verified_epoch,
-            _observation_candidate=(observation_candidates[0] if observation_candidates else None),
-            frames_dir=RESPONSE_FRAMES_DIR,
-            registry_path=_effective_graph_rebase_readiness_registry_path(),
-        )
-    if append_result.get('ok') is not True:
-        return {
-            'kind': 'ollmo.graph_rebase_readiness_registry_append',
-            'status': 'append_failed',
-            'runtime_effect': 'none',
-            'response_id': response_id,
-            'frame_id': projected_frame_id or None,
-            'error': dict(append_result.get('error') or {}),
-        }
-    return {
-        'kind': 'ollmo.graph_rebase_readiness_registry_append',
-        'status': str(append_result.get('status') or 'appended'),
-        'runtime_effect': 'none',
-        'response_id': response_id,
-        'frame_id': projected_frame_id or None,
-        'appended_record_count': int(
-            append_result.get('appended_record_count') or 0
-        ),
-        'already_present_count': int(
-            append_result.get('already_present_count') or 0
-        ),
-        'registry_record_count': int(append_result.get('record_count') or 0),
-        'registry_sha256': append_result.get('registry_sha256'),
-    }
 
 
 @observe_call('response_frame.finalize',
@@ -2125,6 +1976,21 @@ def _get_response_lookup_record(
             recovered_record, _error, _status_code = _recover_response_lookup_record_from_frames(normalized_id)
             if recovered_record:
                 return recovered_record
+        if latest_state.get('ok'):
+            live_payload = record.get('response_payload') or {}
+            durable_payload = latest_state.get('response_payload') or {}
+            identity = _response_wire_frame_identity(live_payload)
+            if identity and identity == _response_wire_frame_identity(durable_payload):
+                # A checkpoint can publish its expanded finalizer result after
+                # another reader has already observed the compact durable frame.
+                # Keep one canonical frozen body for this exact CAS pair, while
+                # retaining live progress only in the top-level projection.
+                record = dict(record)
+                record['response_payload'] = {
+                    **live_payload,
+                    'response_frame': copy.deepcopy(durable_payload['response_frame']),
+                    'durability': copy.deepcopy(durable_payload['durability']),
+                }
         return record
     if not recover_missing:
         return None
@@ -3490,6 +3356,9 @@ def _attach_runtime_truth_headers(response: Any, metadata: Mapping[str, Any]) ->
 
 _INFER_RUNTIME = InferRuntimeOwner(
     hooks={
+        'find_artifact_registry_record_by_artifact_ref': lambda ref: _find_artifact_registry_record_by_artifact_ref(ref, ledger_path=ARTIFACT_REGISTRY_LEDGER),
+        'get_response_lookup_record': lambda response_id: _get_response_lookup_record(response_id),
+        'resolve_saved_downloadable_artifact_path': lambda path: _resolve_saved_downloadable_artifact_path(path),
         'rewind_upload_stream': lambda upload: _rewind_upload_stream(upload),
         'normalize_external_identifier': lambda value, **kwargs: _normalize_external_identifier(value, **kwargs),
         'lookup_instance': lambda instance_id: _lookup_instance(instance_id),
@@ -7567,11 +7436,13 @@ def _select_matching_selected_reference_artifact(
     capability: Optional[str],
     *,
     instance: Optional[dict[str, Any]] = None,
+    artifact_ref: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
     return _RESPONSE_SEMANTICS_RUNTIME.select_matching_selected_reference_artifact(
         selected_reference_artifacts,
         capability,
         instance=instance,
+        artifact_ref=artifact_ref,
     )
 
 
@@ -10024,11 +9895,16 @@ def _invoke_internal_api_json_route(
     *,
     payload: Optional[dict] = None,
     upload=None,
+    direct_audio_dependency=None,
 ) -> tuple[dict, int]:
     def _invoke() -> tuple[dict, int]:
         if path in (None, '', '/api/infer'):
+            internal_inputs = {}
+            if direct_audio_dependency is not None:
+                internal_inputs['direct_audio_dependency'] = direct_audio_dependency
             return _coerce_internal_json_result(
-                _execute_infer_request(dict(payload or {}), upload=upload)
+                _execute_infer_request(dict(payload or {}), upload=upload,
+                                       **internal_inputs)
             )
         if path == '/api/chat':
             return _coerce_internal_json_result(
@@ -11986,9 +11862,13 @@ def api_stop_model():
     return jsonify(payload), status_code
 
 
-def _execute_infer_request(data: Any, *, upload=None):
+def _execute_infer_request(data: Any, *, upload=None, direct_audio_dependency=None):
     """Execute capability-aware inference for text, image, audio, and file prompts."""
-    return _INFER_RUNTIME.execute_infer_request(data, upload=upload)
+    internal_inputs = {}
+    if direct_audio_dependency is not None:
+        internal_inputs['direct_audio_dependency'] = direct_audio_dependency
+    return _INFER_RUNTIME.execute_infer_request(data, upload=upload,
+                                              **internal_inputs)
 
 
 @app.route('/api/infer', methods=['POST'])
@@ -12618,60 +12498,29 @@ def _graph_rebase_runtime_readiness() -> tuple[dict[str, Any], dict[str, Any]]:
         if isinstance(item, Mapping)
     ]
 
-    current_ledger_path = Path(RESPONSE_FRAMES_DIR) / 'responses.jsonl'
-    current_index_path = Path(RESPONSE_FRAMES_DIR) / 'current_index.json'
-    empty_current_epoch = (
-        not current_ledger_path.exists() and not current_index_path.exists()
+    observation_pass = _load_graph_rebase_readiness_observation_pass(
+        frames_dir=RESPONSE_FRAMES_DIR,
     )
-    index_state = (
-        {
-            'ok': True,
-            'status': 'empty',
-            'runtime_effect': 'none',
-            'index_path': str(current_index_path),
-            'ledger_path': str(current_ledger_path),
-            'ledger_line_count': 0,
-            'ledger_size_bytes': 0,
-            'response_map_digest': hashlib.sha256(b'{}').hexdigest(),
-            'responses': {},
-        }
-        if empty_current_epoch
-        else _load_response_frame_index(frames_dir=RESPONSE_FRAMES_DIR)
-    )
-    response_index = (
-        index_state.get('responses')
-        if isinstance(index_state.get('responses'), Mapping)
-        else {}
-    )
+    if observation_pass.get('ok') is not True:
+        error = observation_pass.get('error') or {}
+        raise GraphRebaseReadinessRegistryError(
+            str(error.get('code') or 'response_frame_index_unverified'),
+            str(error.get('message') or 'Readiness observation could not obtain stable frame truth.'),
+        )
+    empty_current_epoch = observation_pass['empty_current_epoch']
+    index_state = observation_pass['index_state']
+    response_index = dict.fromkeys(observation_pass['response_ids'])
     response_payloads: list[dict[str, Any]] = []
     load_errors: list[dict[str, Any]] = []
-    selection = (
-        {
-            'kind': 'ollmo.graph_rebase_observation_selection',
-            'runtime_effect': 'none',
-            'indexed_response_count': 0,
-            'selected_response_ids': [],
-            'selected_response_count': 0,
-            'scan_error_count': 0,
-            'scan_errors': [],
-        }
-        if empty_current_epoch
-        else _select_graph_rebase_observation_response_ids(
-            frames_dir=RESPONSE_FRAMES_DIR,
-            index_state=index_state,
-        )
-    )
+    selection = observation_pass['selection']
     observation_response_ids = [
         str(item).strip()
         for item in (selection.get('selected_response_ids') or [])
         if str(item or '').strip()
     ]
-    for response_id in observation_response_ids:
-        state = _load_latest_response_observation_state(
-            response_id,
-            frames_dir=RESPONSE_FRAMES_DIR,
-            index_state=index_state,
-        )
+    for observation in observation_pass['observations']:
+        response_id = observation['response_id']
+        state = observation['state']
         payload = (
             state.get('response_payload')
             if isinstance(state.get('response_payload'), Mapping)

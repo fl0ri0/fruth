@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Mapping
 
@@ -29,6 +30,7 @@ def make_isolated_cleanup_repo(
 
     cleanup_script = repo_root / 'clean_repo_state.sh'
     shutil.copy2(REPO_ROOT / 'clean_repo_state.sh', cleanup_script)
+    shutil.copy2(REPO_ROOT / 'scripts' / 'maintenance_archive.py', scripts_dir)
     (repo_root / 'ollmo').write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
     (repo_root / 'ollmo').chmod(0o755)
     (repo_root / 'model_ports.json').write_text('[]\n', encoding='utf-8')
@@ -110,17 +112,12 @@ def run_isolated_cleanup(
 
 
 def run_ollmo_dry_run(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    fake_bin = tmp_path / 'bin'
-    fake_bin.mkdir(exist_ok=True)
-    fake_lsof = fake_bin / 'lsof'
-    fake_lsof.write_text('#!/bin/sh\nexit 1\n', encoding='utf-8')
-    fake_lsof.chmod(0o755)
-
-    env = os.environ.copy()
-    env['PATH'] = f'{fake_bin}{os.pathsep}{env.get("PATH", "")}'
+    fixture = Path(tempfile.mkdtemp(dir=tmp_path))
+    repo_root, env, _ = make_isolated_cleanup_repo(fixture)
+    shutil.copy2(REPO_ROOT / 'ollmo', repo_root / 'ollmo')
     return subprocess.run(
-        [str(REPO_ROOT / 'ollmo'), *args, '--dry-run'],
-        cwd=REPO_ROOT,
+        [str(repo_root / 'ollmo'), *args, '--dry-run'],
+        cwd=repo_root,
         env=env,
         capture_output=True,
         text=True,

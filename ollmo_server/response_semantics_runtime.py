@@ -9437,14 +9437,10 @@ class ResponseSemanticsRuntimeOwner:
             if request_payload.get('selected_reference_artifacts') is not None
             else request_payload.get('selectedReferenceArtifacts')
         )
-        # The intake sanitizer intentionally projects a list to one message plus
-        # one compatibility artifact. Expanding beyond that legacy boundary is
-        # allowed only for a canonical, same-conversation predecessor bundle.
+        # Collection normalization preserves files; its output length is not
+        # evidence that a carried predecessor message/bundle is authorized.
         compatibility_selected_references = _sanitize_records(raw_selected_references)
         expanded_selected_references = _sanitize_record_collection(raw_selected_references)
-        expands_compatibility_projection = (
-            len(expanded_selected_references) > len(compatibility_selected_references)
-        )
         predecessor_bundle_verified = (
             isinstance(raw_selected_references, list)
             and len(raw_selected_references) >= 2
@@ -9454,29 +9450,23 @@ class ResponseSemanticsRuntimeOwner:
                 expanded_selected_references,
             )
         )
-        predecessor_bundle_authorized = bool(
-            expands_compatibility_projection
-            and predecessor_bundle_verified
-        )
-        lineage_bearing_bundle_claim = bool(
+        carried_predecessor_bundle_claim = bool(
             isinstance(raw_selected_references, list)
             and len(raw_selected_references) >= 2
             and any(
                 isinstance(item, Mapping)
+                and str(item.get('type') or '').strip().lower() == 'message'
                 and str(item.get('source_response_id') or '').strip()
                 for item in raw_selected_references
             )
         )
-        if predecessor_bundle_authorized:
+        if predecessor_bundle_verified:
             selected_references = expanded_selected_references
-        elif expands_compatibility_projection and lineage_bearing_bundle_claim:
-            # A failed carried-bundle proof must not leave its unverified
-            # message content behind as an independent text source.
-            selected_references = [
-                item
-                for item in compatibility_selected_references
-                if str(item.get('type') or '').strip().lower() != 'message'
-            ]
+        elif carried_predecessor_bundle_claim:
+            # Neither the claimed message nor its files can ground this guard
+            # after the canonical bundle proof fails. Independent explicit
+            # file selections (without a carried message claim) stay intact.
+            selected_references = []
         else:
             selected_references = compatibility_selected_references
         raw_predecessor_context = request_payload.get(
@@ -17903,6 +17893,7 @@ class ResponseSemanticsRuntimeOwner:
         capability: Optional[str],
         *,
         instance: Optional[dict[str, Any]] = None,
+        artifact_ref: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         sanitize_selected_reference_artifacts = self._hook('sanitize_selected_reference_artifacts')
 
@@ -17914,14 +17905,21 @@ class ResponseSemanticsRuntimeOwner:
         ]
         if not candidates or not normalized_capability:
             return None
+        matches = []
         for candidate in candidates:
+            if artifact_ref and str(candidate.get('artifact_ref') or candidate.get('ref') or '') != artifact_ref:
+                continue
             if self.selected_reference_matches_capability(
                 candidate,
                 normalized_capability,
                 instance=instance,
             ):
-                return candidate
-        return None
+                if candidate not in matches:
+                    matches.append(candidate)
+        # A single-file transport cannot infer a target from collection order.
+        # Branches can pass their exact reference (or their already-bound file
+        # path); an unbound collection remains reference context only.
+        return matches[0] if len(matches) == 1 else None
 
     def should_attach_selected_reference_file_context(
         self,

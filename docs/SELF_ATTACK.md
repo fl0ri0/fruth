@@ -44,13 +44,16 @@ The source release ships this guide, the harness/tests and two compact inputs:
 `config/graph_rebase_shadow_corpus.json`. Retained captures, local regression
 outputs and large forensic corpora under `state/` are generated evidence, not
 required release contents. See [Release Scope](RELEASE_SCOPE.md#source-selection-and-checksums).
-The [September 6 status report](SELF_ATTACK_STATUS_2026-09-06.md) is historical;
-it does not certify a changed checkout or expand representative live coverage.
+The [September 14 status report](SELF_ATTACK_STATUS_2026-09-14.md) records the
+completed full-live FAIL and the subsequent resolution of all eight frozen-frame
+findings across three cases. Targeted confirmations passed; no new full campaign
+was run after the fix. Earlier September 6 validation remains historical evidence.
 
 For the 0.1.1 release, see [release validation and evidence](RELEASE_NOTES_0.1.1.md#validation-and-reference-evidence).
 Packaging or owner-test success is not a fresh full Self-Attack campaign. The
-dated live summary and full-live INCOMPLETE verdict remain unchanged unless a
-separately authorized run supplies new evidence.
+September 6 full-live INCOMPLETE verdict and September 14 full-live FAIL remain
+their respective historical results. Later targeted resolution does not relabel
+either campaign or certify a changed checkout.
 
 ## Five boundaries, in priority order
 

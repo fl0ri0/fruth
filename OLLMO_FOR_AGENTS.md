@@ -63,6 +63,19 @@ This reset helper only touches files inside this repo. By default it clears runt
 
 `./ollmo archiv` and `./ollmo archive` do the same live cleanup, but first copy the `artifacts/` tree and archive the other useful runtime/generated ballast into `.ollmo_archiv/<timestamp>/` as hidden repo-local data storage. Live artifact cleanup then removes generated contents while preserving the standard bucket directories, including `artifacts/bundles/`; missing standard directories are created only as a fallback.
 
+Archive also copies all of `state/self_attack/`, `state/benchmarks/` and
+`state/diagnostics/` with their original relative topology. This preserves completed
+campaigns plus unknown/in-progress evidence without inferring completion or moving
+live evidence. All evidence sources and reusable repository scripts stay active;
+clean's recursive cache sweeps exclude those three trees and `.ollmo_archiv/`.
+Archive preflights copy bytes/free space with a 256 MiB-or-5% safety margin and
+verifies copies before cleanup. Failure keeps sources and any partial archive;
+existing timestamp destinations are rejected. Repeated copies consume additional
+space; nothing prunes them automatically. A changing campaign can fail verification,
+and active copies are not atomic final snapshots. External/absolute references are
+preserved verbatim and are not crawled. Use `--dry-run` to preview evidence paths,
+copy size and destination without lifecycle changes.
+
 If you want archive-first rotation with protected Ghost state preserved, use:
 
 - `./ollmo archive --full`
@@ -351,3 +364,21 @@ In short:
 `current body = focused local runtime/control plane + Ghost + artifacts + adapters`
 
 `external clients = orchestration and composition around it`
+
+## Research retention and learning candidates
+
+`ollmo_research/` survives every clean/full/forget/reset mode unchanged, including
+nested caches, candidate reviews, Gold metadata and retained evidence. Archive
+includes one byte-verified copy of the whole tree in its existing space preflight;
+the active Research tree remains. A verification failure prevents cleanup.
+
+Successful conventional self-learning eval persistence synchronizes an observational
+candidate queue. Source labels stay historical; Gold promotion requires explicit
+curation. Secondary sync failure logs a warning without rolling back learning.
+Before a fresh reset, validate the current retained Gold store; after reset, validate
+Gold again and refresh candidate availability. Candidates can retain review metadata
+while losing uncurated raw provenance. In a development checkout with a local
+Research tree, see `ollmo_research/README.md` for its lifecycle and
+`ollmo_research/candidates/README.md` for candidate recovery commands. The Research
+tree and its retained evidence are excluded from this public upload. Retention is
+internal only and does not authorize export or execution of a reset.

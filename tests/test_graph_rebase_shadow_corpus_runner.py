@@ -767,7 +767,8 @@ def test_all_predecessor_handles_reach_routing_direct_context_and_late_fill(tmp_
         payload['reference_artifacts'],
         payload_source=payload,
     )
-    assert [item['type'] for item in compatibility_selected] == ['message', 'text']
+    assert [item['type'] for item in compatibility_selected] == ['message', *[item['type'] for item in artifacts]]
+    assert {item['artifact_ref'] for item in compatibility_selected[1:]} == expected_refs
     assert compatibility_selected[-1]['artifact_ref'] == 'artifact:text-final'
     assert compatibility_selected[-1]['path'] == str(tmp_path / 'final.json')
     assert compatibility_selected[-1]['source_message_id'] == 'msg-root-final'

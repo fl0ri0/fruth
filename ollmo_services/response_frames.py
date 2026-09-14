@@ -2393,11 +2393,11 @@ def _response_frame_index_is_fresh(
     return indexed_size is not None and actual_size is not None and indexed_size == actual_size
 
 
-def _response_frame_index_has_verified_response_map(
+def _response_frame_index_has_verified_map_header(
     index_state: Mapping[str, Any],
     ledger_path: Path,
 ) -> bool:
-    """Return whether index absence is authoritative for the current ledger size."""
+    """Check the ordinary fixed-size coverage predicates, without proving the map."""
 
     if not _response_frame_index_is_fresh(index_state, ledger_path):
         return False
@@ -2417,7 +2417,19 @@ def _response_frame_index_has_verified_response_map(
         or not verified_digest
     ):
         return False
-    return verified_digest == _response_map_digest(responses)
+    return True
+
+
+def _response_frame_index_has_verified_response_map(
+    index_state: Mapping[str, Any],
+    ledger_path: Path,
+) -> bool:
+    """Return whether index absence is authoritative for the current ledger size."""
+    return (
+        _response_frame_index_has_verified_map_header(index_state, ledger_path)
+        and str(index_state.get('response_map_digest') or '').strip()
+        == _response_map_digest(index_state['responses'])
+    )
 
 
 @timed_operation('index_parent_frame_stub', role='canonical_parent_lookup')
@@ -7742,10 +7754,311 @@ def _observation_snapshot_failure(
     }
 
 
+# Initial observation plus one fresh restart, matching bounded canonical lookup
+# recovery. Continuous movement must reject, not loop or publish a mixed pass.
+_READINESS_INDEX_PASS_STABILITY_ATTEMPTS = 2
+
+
+class _FinalizerMapProof:
+    """Two-use representation receipt confined to the private registration owner.
+
+    Construction alone proves nothing. The owner binds its freshly verified
+    Epoch, then the shared selection core activates this receipt only after the
+    real complete-map proof. No supported API returns this object or its inputs.
+    Like _ReadinessIndexPass, this is call-graph ownership, not protection from
+    deliberate private-field/stack introspection or replacement of trusted code.
+    """
+
+    __slots__ = ('__owner', '__invocation', '__epoch', '__index', '__responses',
+                 '__frames_dir', '__ledger', '__index_path', '__registry',
+                 '__physical', '__header', '__process_thread', '__phase')
+
+    def __init__(self):
+        self.__phase = 'unadopted'
+
+    def _bind(self, owner, invocation, epoch, frames_dir, registry_path):
+        # This sole production caller is _FinalizerRegistration.run, immediately
+        # after its direct real Epoch verification. Binding cannot reactivate.
+        if self.__phase != 'unadopted':
+            return
+        self.__owner, self.__invocation = owner, invocation
+        self.__epoch = epoch
+        self.__index = epoch['index_state']
+        self.__responses = self.__index['responses']
+        self.__frames_dir = Path(frames_dir).resolve()
+        self.__ledger = _ledger_path(frames_dir=frames_dir).resolve()
+        self.__index_path = _index_path(frames_dir=frames_dir).resolve()
+        self.__registry = Path(registry_path).resolve()
+        self.__physical = (epoch['index_file_state'], epoch['ledger_file_state'],
+                           _response_frame_file_state(self.__registry))
+        self.__header = self._header()
+        self.__process_thread = (os.getpid(), threading.get_ident())
+        self.__phase = 'selection'
+
+    def _header(self):
+        index = self.__index
+        return (index.get('ok'), index.get('ledger_path'), index.get('index_path'),
+                index.get('ledger_size_bytes'), index.get('response_map_verified_size_bytes'),
+                index.get('response_map_entry_count'), index.get('response_map_digest'))
+
+    @timed_operation('finalizer_map_proof_guard', role='private_map_representation')
+    def _matches(self, context, index, frames_dir, ledger_path, phase):
+        if self.__phase in ('unadopted', 'closed'):
+            return False
+        valid = (
+            type(context) is tuple and len(context) == 4
+            and context[0] is self and context[1] is self.__owner
+            and context[2] is self.__invocation and context[3] is self.__epoch
+            and self.__phase == phase
+            and self.__process_thread == (os.getpid(), threading.get_ident())
+            and index is self.__index
+            and self.__epoch.get('index_state') is index
+            and index.get('responses') is self.__responses
+            and Path(frames_dir).resolve() == self.__frames_dir
+            and Path(ledger_path).resolve() == self.__ledger
+            and self.__epoch.get('ok') is True
+            and self.__epoch.get('relocated') is not True
+            and Path(self.__epoch.get('index_path', '')).resolve() == self.__index_path
+            and Path(self.__epoch.get('ledger_path', '')).resolve() == self.__ledger
+            and self.__epoch.get('response_map_digest') == self.__header[-1]
+            and self._header() == self.__header
+            and _response_frame_index_has_verified_map_header(index, self.__ledger)
+            and _response_frame_file_state(self.__index_path) == self.__physical[0]
+            and _response_frame_file_state(self.__ledger) == self.__physical[1]
+            and _response_frame_file_state(self.__registry) == self.__physical[2]
+        )
+        if not valid:
+            self.close()
+        return valid
+
+    def _retention_matches(self, context, epoch, registry_path):
+        if self.__phase in ('unadopted', 'closed'):
+            return False
+        if epoch is not self.__epoch or Path(registry_path).resolve() != self.__registry:
+            self.close()
+            return False
+        return self._matches(context, self.__index, self.__frames_dir,
+                             self.__ledger, 'receipt')
+
+    def _activate(self, context, index, ledger_path):
+        if self._matches(context, index, ledger_path.parent, ledger_path, 'selection'):
+            self.__phase = 'hydration'
+
+    def _take(self, context, index, frames_dir, ledger_path, phase):
+        if not self._matches(context, index, frames_dir, ledger_path, phase):
+            return False
+        if phase == 'hydration':
+            self.__phase = 'receipt'
+        elif phase == 'receipt':
+            self.close()
+        else:
+            self.close()
+            return False
+        state_flow_note(finalizer_map_proof_reuses=1)
+        return True
+
+    def close(self):
+        self.__phase = 'closed'
+        self.__owner = self.__invocation = self.__epoch = None
+        self.__index = self.__responses = None
+        self.__physical = self.__header = ()
+
+
+def _activate_finalizer_map_proof(context, index, ledger_path):
+    if type(context) is tuple and len(context) == 4 and type(context[0]) is _FinalizerMapProof:
+        context[0]._activate(context, index, ledger_path)
+
+
+def _finalizer_map_proof_matches(context, index, frames_dir, ledger_path, phase):
+    return (
+        type(context) is tuple and len(context) == 4
+        and type(context[0]) is _FinalizerMapProof
+        and context[0]._take(context, index, frames_dir, ledger_path, phase)
+    )
+
+
+class _ReadinessIndexPassChanged(RuntimeError):
+    def __init__(self, source: str):
+        super().__init__(f'Response-frame {source} changed during Readiness observation.')
+        self.error = {
+            'code': f'response_frame_{source}_moved',
+            'message': str(self),
+        }
+
+
+class _ReadinessIndexPass:
+    """Mutation-isolated Index representation owned by one observation pass.
+
+    Load our own map; never accept a caller's mutable map as a receipt. Only the
+    existing read-only selection/observation owners consume it. No map or entry
+    alias is returned, and close releases it even when the pass fails. This is
+    not an Epoch, a persisted proof, or authority for another request/thread.
+    """
+
+    __slots__ = (
+        '__frames_dir', '__ledger_path', '__index_path', '__owner', '__active',
+        '__index', '__physical', '__verified', '__empty',
+    )
+
+    def __init__(self, frames_dir: Path | str):
+        self.__frames_dir = Path(frames_dir)
+        self.__ledger_path = _ledger_path(frames_dir=frames_dir)
+        self.__index_path = _index_path(frames_dir=frames_dir)
+        self.__owner = (os.getpid(), threading.get_ident())
+        self.__active = True
+        self.__index: dict[str, Any] = {}
+        self.__physical: tuple = ()
+        self.__verified = False
+        self.__empty = False
+
+    def _require_scope(self) -> None:
+        if not self.__active or self.__owner != (os.getpid(), threading.get_ident()):
+            raise RuntimeError('Readiness Index scope is closed or belongs to another process/thread.')
+
+    def _physical_state(self) -> tuple:
+        return (
+            _response_frame_file_state(self.__index_path),
+            _response_frame_file_state(self.__ledger_path),
+        )
+
+    @timed_operation('readiness_index_freshness_guard', role='physical_index_ledger_freshness')
+    def _guard(self) -> None:
+        self._require_scope()
+        state_flow_note(readiness_pass_freshness_guards=1)
+        current = self._physical_state()
+        if current != self.__physical:
+            raise _ReadinessIndexPassChanged(
+                'ledger' if current[1] != self.__physical[1] else 'index'
+            )
+
+    def prepare(self) -> None:
+        self._require_scope()
+        self.__physical = self._physical_state()
+        self.__empty = (
+            not self.__ledger_path.exists() and not self.__index_path.exists()
+        )
+        if self.__empty:
+            self.__index = {
+                'ok': True, 'status': 'empty', 'runtime_effect': 'none',
+                'index_path': str(self.__index_path),
+                'ledger_path': str(self.__ledger_path),
+                'ledger_line_count': 0, 'ledger_size_bytes': 0,
+                'response_map_digest': hashlib.sha256(b'{}').hexdigest(),
+                'responses': {},
+            }
+        else:
+            self.__index = load_response_frame_index(frames_dir=self.__frames_dir)
+            state_flow_note(readiness_pass_full_verifications=1)
+            self.__verified = _response_frame_index_has_verified_response_map(
+                self.__index, self.__ledger_path,
+            )
+        # Bind the complete verification to the physical state that preceded
+        # its read, never to a newer state observed only after verification.
+        self._guard()
+
+    def _verified_for(self, index_state: Any, frames_dir: Path | str, ledger_path: Path) -> bool:
+        if (
+            index_state is not self.__index
+            or Path(frames_dir) != self.__frames_dir
+            or Path(ledger_path) != self.__ledger_path
+        ):
+            return False
+        self._guard()
+        if self.__verified:
+            state_flow_note(readiness_pass_index_reuses=1)
+        return self.__verified
+
+    def selection(self) -> dict[str, Any]:
+        self._require_scope()
+        if self.__empty:
+            result = {
+                'kind': 'ollmo.graph_rebase_observation_selection',
+                'runtime_effect': 'none', 'indexed_response_count': 0,
+                'selected_response_ids': [], 'selected_response_count': 0,
+                'scan_error_count': 0, 'scan_errors': [],
+            }
+        else:
+            result = select_graph_rebase_observation_response_ids(
+                frames_dir=self.__frames_dir, index_state=self.__index,
+                _readiness_index_pass=self,
+            )
+        self._guard()
+        return result
+
+    def observation(self, response_id: str) -> dict[str, Any]:
+        self._require_scope()
+        result = load_latest_response_observation_state(
+            response_id, frames_dir=self.__frames_dir, index_state=self.__index,
+            _readiness_index_pass=self,
+        )
+        self._guard()
+        return result
+
+    def result(self, selection: dict[str, Any], observations: list) -> dict[str, Any]:
+        self._guard()
+        # Only small metadata and ids escape; the global map has no caller alias.
+        metadata = {k: v for k, v in self.__index.items() if k != 'responses'}
+        return {
+            'ok': True, 'empty_current_epoch': self.__empty,
+            'index_state': json.loads(json.dumps(metadata)),
+            'response_ids': list(self.__index.get('responses') or {}),
+            'selection': selection, 'observations': observations,
+        }
+
+    def close(self) -> None:
+        self.__active = False
+        self.__verified = False
+        self.__index = {}
+        self.__physical = ()
+
+
+@observe_state('readiness.index_pass', 'physical_index_and_ledger', 'bounded_observations', labels=('REVALIDATION',))
+def load_graph_rebase_readiness_observation_pass(
+    *, frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
+) -> dict[str, Any]:
+    """Collect one stable selection/observation pass with no cross-pass reuse.
+
+    Movement discards all partial observations, then reloads/reverifies/reselects
+    once. Repeated movement returns an existing moved error, never partial truth.
+    Static missing/corrupt/unverified sources retain the normal reader errors.
+    """
+    for _attempt in range(_READINESS_INDEX_PASS_STABILITY_ATTEMPTS):
+        scope = _ReadinessIndexPass(frames_dir)
+        try:
+            scope.prepare()
+            selection = scope.selection()
+            observations = [
+                {'response_id': response_id, 'state': scope.observation(response_id)}
+                for response_id in selection.get('selected_response_ids') or []
+            ]
+            return scope.result(selection, observations)
+        except _ReadinessIndexPassChanged as exc:
+            state_flow_note(readiness_pass_invalidations=1)
+            error = exc.error
+        finally:
+            scope.close()
+    return {'ok': False, 'error': error}
+
+
 def select_graph_rebase_observation_response_ids(
     *,
     frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
     index_state: Optional[Mapping[str, Any]] = None,
+    _readiness_index_pass: Optional[_ReadinessIndexPass] = None,
+) -> dict[str, Any]:
+    """Select latest graph-rebase observations with ordinary complete-map validation."""
+    return _select_graph_rebase_observation_response_ids(
+        frames_dir=frames_dir, index_state=index_state,
+        _readiness_index_pass=_readiness_index_pass,
+    )
+
+
+def _select_graph_rebase_observation_response_ids(
+    *,
+    frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
+    index_state: Optional[Mapping[str, Any]] = None,
+    _readiness_index_pass: Optional[_ReadinessIndexPass] = None,
+    _finalizer_context: Any = None,
 ) -> dict[str, Any]:
     """Select only latest responses containing graph-rebase rollout evidence."""
 
@@ -7755,9 +8068,13 @@ def select_graph_rebase_observation_response_ids(
         else load_response_frame_index(frames_dir=frames_dir)
     )
     indexed_ledger_path = _ledger_path(frames_dir=frames_dir)
-    if not _response_frame_index_has_verified_response_map(
-        current_index,
-        indexed_ledger_path,
+    pass_verified = (
+        _finalizer_context is None
+        and type(_readiness_index_pass) is _ReadinessIndexPass
+        and _readiness_index_pass._verified_for(index_state, frames_dir, indexed_ledger_path)
+    )
+    if not pass_verified and not _response_frame_index_has_verified_response_map(
+        current_index, indexed_ledger_path,
     ):
         return {
             'kind': 'ollmo.graph_rebase_observation_selection',
@@ -7771,6 +8088,8 @@ def select_graph_rebase_observation_response_ids(
                 'message': 'Response-frame index is not completely verified for the current ledger.',
             }],
         }
+    if _finalizer_context is not None:
+        _activate_finalizer_map_proof(_finalizer_context, index_state, indexed_ledger_path)
     responses = (
         current_index.get('responses')
         if isinstance(current_index.get('responses'), Mapping)
@@ -8240,6 +8559,7 @@ def _reuse_response_observation_if_current(
     frames_dir: Path | str,
     index_state: Mapping[str, Any],
     verified_epoch: Mapping[str, Any],
+    _finalizer_context: Any = None,
 ) -> Optional[dict[str, Any]]:
     """Recheck source bytes and normal integrity gates, skipping only JSON hydration.
 
@@ -8256,7 +8576,10 @@ def _reuse_response_observation_if_current(
         return None
     entry = (index_state.get('responses') or {}).get(response_id)
     ledger_path = Path(str(entry.get('ledger_path') or verified_epoch['ledger_path']))
-    if not _response_frame_index_has_verified_response_map(index_state, ledger_path):
+    map_verified = _finalizer_map_proof_matches(
+        _finalizer_context, index_state, frames_dir, ledger_path, 'receipt',
+    )
+    if not map_verified and not _response_frame_index_has_verified_response_map(index_state, ledger_path):
         return None
     current_digests: list[str] = []
     frame, error = _read_indexed_response_frame(
@@ -8286,7 +8609,6 @@ def _reuse_response_observation_if_current(
         return json.loads(observed_bytes)
 
 
-@observe_state('response_frame.bounded_observation_load', 'ledger_and_CAS', 'bounded_observation', labels=('RECONSTRUCTION', 'REVALIDATION'), full_reconstruction=False, full_hydration=False)
 def load_latest_response_observation_state(
     response_id: str,
     *,
@@ -8295,6 +8617,27 @@ def load_latest_response_observation_state(
     index_state: Optional[Mapping[str, Any]] = None,
     _verified_epoch: Optional[Mapping[str, Any]] = None,
     _reuse_candidates: Optional[list[Any]] = None,
+    _readiness_index_pass: Optional[_ReadinessIndexPass] = None,
+) -> dict[str, Any]:
+    """Load bounded latest-frame truth with ordinary map and byte validation."""
+    return _load_latest_response_observation_state(
+        response_id, frames_dir=frames_dir, ledger_name=ledger_name,
+        index_state=index_state, _verified_epoch=_verified_epoch,
+        _reuse_candidates=_reuse_candidates, _readiness_index_pass=_readiness_index_pass,
+    )
+
+
+@observe_state('response_frame.bounded_observation_load', 'ledger_and_CAS', 'bounded_observation', labels=('RECONSTRUCTION', 'REVALIDATION'), full_reconstruction=False, full_hydration=False)
+def _load_latest_response_observation_state(
+    response_id: str,
+    *,
+    frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
+    ledger_name: str = DEFAULT_RESPONSE_FRAME_LEDGER,
+    index_state: Optional[Mapping[str, Any]] = None,
+    _verified_epoch: Optional[Mapping[str, Any]] = None,
+    _reuse_candidates: Optional[list[Any]] = None,
+    _readiness_index_pass: Optional[_ReadinessIndexPass] = None,
+    _finalizer_context: Any = None,
 ) -> dict[str, Any]:
     """Load bounded latest-frame truth for rollout observers without full hydration.
 
@@ -8341,7 +8684,15 @@ def load_latest_response_observation_state(
     # A size-aligned entry is not enough: a failed index write followed by an
     # unrelated append can make an older response coordinate look current.
     # Observation truth therefore requires the complete response-map digest.
-    if not _response_frame_index_has_verified_response_map(current_index, ledger_path):
+    pass_verified = (
+        type(_readiness_index_pass) is _ReadinessIndexPass
+        and _verified_epoch is None and _reuse_candidates is None
+        and _readiness_index_pass._verified_for(index_state, frames_dir, ledger_path)
+    )
+    map_verified = pass_verified or _finalizer_map_proof_matches(
+        _finalizer_context, index_state, frames_dir, ledger_path, 'hydration',
+    )
+    if not map_verified and not _response_frame_index_has_verified_response_map(current_index, ledger_path):
         stale_index = not _response_frame_index_is_fresh(
             current_index,
             ledger_path,

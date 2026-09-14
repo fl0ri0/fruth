@@ -65,8 +65,8 @@ def _make_release_source(tmp_path: Path) -> Path:
         '# Self-Attack\n',
     )
     _write(
-        source / 'docs' / 'SELF_ATTACK_STATUS_2026-09-06.md',
-        '# Self-Attack status\n',
+        source / 'docs' / 'SELF_ATTACK_STATUS_2026-09-14.md',
+        '# Self-Attack status: failure and subsequent fixes\n',
     )
     _write(
         source / 'docs' / 'STATE_FLOW_DIAGNOSTICS.md',
@@ -259,6 +259,8 @@ def _make_release_source(tmp_path: Path) -> Path:
     _write(source / 'logs' / 'runtime.log', 'private log\n')
     _write(source / 'artifacts' / 'images' / 'private.txt', 'private artifact\n')
     _write(source / 'plans' / 'private-plan.md', '# Private plan\n')
+    _write(source / 'ollmo_research/candidates/candidates.jsonl', '{"internal_only": true}\n')
+    _write(source / 'ollmo_research/retained-evidence/gold-core-v0/files/private.bin', 'private retained bytes\n')
     _write(source / '.env', 'SHOULD_NOT_ENTER_ARCHIVE=1\n')
     _write(source / 'Readme_current_building_state.md', '# Private build note\n')
     return source
@@ -282,6 +284,7 @@ def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> No
     assert staged_root.is_dir()
     assert (staged_root / 'model_ports.json').read_text(encoding='utf-8') == '[]\n'
     assert not (staged_root / 'state').exists()
+    assert not (staged_root / 'ollmo_research').exists()
     assert not (staged_root / 'logs').exists()
     assert {
         path.relative_to(staged_root)
@@ -292,7 +295,7 @@ def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> No
     assert not (staged_root / 'plans').exists()
     assert not (staged_root / '.env').exists()
     assert (staged_root / 'docs' / 'SELF_ATTACK.md').is_file()
-    assert (staged_root / 'docs' / 'SELF_ATTACK_STATUS_2026-09-06.md').is_file()
+    assert (staged_root / 'docs' / 'SELF_ATTACK_STATUS_2026-09-14.md').is_file()
     assert (staged_root / 'docs' / 'CAUSAL_TELEMETRY.md').is_file()
     assert (staged_root / 'docs' / 'STATE_FLOW_DIAGNOSTICS.md').is_file()
     assert (staged_root / 'docs' / 'ollmo-icon.svg').is_file()

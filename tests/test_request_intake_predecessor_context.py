@@ -249,9 +249,9 @@ class RequestIntakePredecessorContextTests(unittest.TestCase):
             ['configurator.html', 'styles.css'],
         )
         injected = owner._inject_selected_reference_message([], sanitized)
-        self.assertEqual(len(injected), 3)
+        self.assertEqual(len(injected), 2)
         self.assertEqual(
-            [item['artifacts'][0]['name'] for item in injected[1:]],
+            [artifact['name'] for item in injected[1:] for artifact in item['artifacts']],
             ['configurator.html', 'styles.css'],
         )
 

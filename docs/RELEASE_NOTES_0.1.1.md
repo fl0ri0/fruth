@@ -118,7 +118,7 @@ Evidence must retain its scope:
 | --- | --- | --- |
 | Current release metadata, package and regression checks | Tested behavior and public-file integrity for the prepared source | Not proof of every live model/workflow |
 | Deterministic/fake Self-Attack and its owner tests | Runtime authority and evidence invariants with controlled providers | Not live Ghost interpretation or provider quality |
-| [September 6 Self-Attack summary](SELF_ATTACK_STATUS_2026-09-06.md) | Historical fake PASS and representative live-gate PASS: six of seventeen profiles, ten selected cases | Full live conformance remains INCOMPLETE; no new live campaign is implied |
+| September 6 Self-Attack validation | Historical fake PASS and representative live-gate PASS: six of seventeen profiles, ten selected cases | Full live conformance remains INCOMPLETE; no new live campaign is implied |
 | [Five curated reference packages](../examples/README.md) | Historical completed examples with saved outputs, identity-bound evidence and checksum manifests | Publication-copy verification is not a fresh execution on 0.1.1 |
 | Performance investigations | Measurements for their recorded source, workload and environment | No universal speedup or relaxation of integrity gates |
 

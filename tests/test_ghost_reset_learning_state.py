@@ -5,6 +5,9 @@ from ollmo_g.reset_learning_state import reset_ghost_learning_state
 
 
 def test_reset_ghost_learning_state_archives_legacy_files_and_preserves_response_frames(tmp_path: Path):
+    research = tmp_path / 'ollmo_research/candidates/__pycache__/review.pyc'
+    research.parent.mkdir(parents=True)
+    research.write_bytes(b'promoted Gold link and retained evidence')
     state_dir = tmp_path / 'state'
     archive_root = state_dir / 'ghost_learning_archives' / 'test-reset'
     response_frames_dir = state_dir / 'response_frames'
@@ -80,3 +83,5 @@ def test_reset_ghost_learning_state_archives_legacy_files_and_preserves_response
     assert not compiled_memory_markdown.exists()
     assert not self_learning_dir.exists()
     assert (archive_root / 'state' / 'self_learning' / 'accepted_policy_snapshot.json').exists()
+
+    assert research.read_bytes() == b'promoted Gold link and retained evidence'

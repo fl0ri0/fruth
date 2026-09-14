@@ -216,6 +216,7 @@ outside the 0.1.1 contract.
 
 - [Release Scope](docs/RELEASE_SCOPE.md)
 - [Known Limitations](docs/KNOWN_LIMITATIONS.md)
+- [Self-Attack status: September 14 failure and subsequent fixes](docs/SELF_ATTACK_STATUS_2026-09-14.md)
 - [Security Policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 - [Third-Party Components](THIRD_PARTY_NOTICES.md)
@@ -528,6 +529,7 @@ Default cleanup preserves:
 - `state/ghost_compiled_memory.json`
 - `state/ghost_compiled_memory.md`
 - `state/self_learning/`
+- `state/self_attack/`, `state/benchmarks/`, `state/diagnostics/`, and `.ollmo_archiv/`, including retained cache files
 
 If you want a true empty repo-local state, combine:
 
@@ -616,6 +618,27 @@ and then applies the same live cleanup to `logs/` and the volatile `state/` path
 
 This is intentionally only a hidden repo-local data store, not a live runtime path.
 
+Archive also preserves completed Self-Attack, benchmark and diagnostic evidence by
+copying the entire `state/self_attack/`, `state/benchmarks/` and `state/diagnostics/`
+trees into the same relative archive paths. Completion conventions vary, so this
+conservative rule includes unknown/in-progress evidence and leaves every live
+evidence source in place. Internal directory structure, fixtures and campaign-local
+script copies are retained. Current tooling under `scripts/`, `tests/` and other
+source/documentation directories stays active. Clean does not independently prune
+these evidence trees or existing archives, including their cache files.
+
+`--dry-run` lists evidence entries, selected copy bytes, free space, the destination
+and the required safety margin (the larger of 256 MiB or 5% of selected copy bytes).
+Insufficient space aborts before listener stops or cleanup. Copies are verified by
+tree membership, file mode, symlink target and SHA-256 before cleanup; copy failure,
+detected source changes or verification failure aborts and retains sources and any
+partial archive. Existing timestamp destinations are rejected. Repeated archives
+duplicate these evidence trees; no automatic pruning is provided. Stop campaign
+writers before requesting a consistent final snapshot: active copies are not atomic.
+Relative links within copied trees keep their topology. Absolute checkout links
+and external references remain unchanged; artifacts/logs are included only through
+the existing archive scopes, with no dependency crawling or historical link rewrite.
+
 Important distinction:
 
 - `./ollmo clean`
@@ -629,6 +652,24 @@ Notes:
 
 - `archiv` / `archive` can also be combined with `--forget-ghost`, `--reset-registry`, or `--reset-llama-catalog`; if explicit removal/reset flags are used, the affected files are archived or snapshotted first and only then cleaned/reset.
 - `archiv` / `archive --full` is the concise archive-first rotation for runtime/generated ballast plus registry/catalog reset. It is not a Ghost-forget or self-learning reset shortcut.
+
+## Research retention and learning candidates
+
+`ollmo_research/` survives every clean/full/forget/reset mode unchanged, including
+nested caches, candidate reviews, Gold metadata and retained evidence. Archive
+includes one byte-verified copy of the whole tree in its existing space preflight;
+the active Research tree remains. A verification failure prevents cleanup.
+
+Successful conventional self-learning eval persistence synchronizes an observational
+candidate queue. Source labels stay historical; Gold promotion requires explicit
+curation. Secondary sync failure logs a warning without rolling back learning.
+Before a fresh reset, validate the current retained Gold store; after reset, validate
+Gold again and refresh candidate availability. Candidates can retain review metadata
+while losing uncurated raw provenance. In a development checkout with a local
+Research tree, see `ollmo_research/README.md` for its lifecycle and
+`ollmo_research/candidates/README.md` for candidate recovery commands. The Research
+tree and its retained evidence are excluded from this public upload. Retention is
+internal only and does not authorize export or execution of a reset.
 
 ## Ollama Lifecycle Ownership
 

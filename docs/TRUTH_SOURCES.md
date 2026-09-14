@@ -79,6 +79,37 @@ source, binding, integrity and freshness checks. In particular, the Readiness
 receipt rechecks indexed row and consumed sidecar bytes before avoiding repeated
 JSON hydration; it never substitutes a cached verdict for current evidence.
 
+One complete Readiness observation pass may reuse a privately loaded, fully
+coverage/digest-verified Index map. Before reuse and after selection, each
+response observation, and final collection, the response-frame owner checks the
+Index and Ledger device/inode/size/mtime/ctime bindings. A change discards the
+entire partial pass and triggers fresh loading, verification and selection.
+`_READINESS_INDEX_PASS_STABILITY_ATTEMPTS` permits the initial attempt and one
+restart; further movement rejects with the existing Index/Ledger-moved error
+family (HTTP 409). Missing/corrupt static state retains normal reader errors.
+The private representation closes at pass exit and cannot authorize another
+pass, thread, process, Epoch or Registry operation. Per-response row/frame/sequence,
+bounded CAS evidence and eligibility checks remain independent. This does not
+change the Readiness timeout or create a global cache.
+
+Finalizer registration has a separate closed private owner in the Readiness
+Registry module. It acquires its own fully verified Epoch, performs the first
+selection complete-map proof, and borrows that exact private map only into the
+shared synchronous selection, hydration and retention cores. Only the later
+hydration and observation-receipt complete-map computations may reuse the proof.
+The fixed-size guard checks owner/invocation/Epoch/Index/map identity, process,
+thread, phase, coverage/header scalars, expected paths and current physical
+Index/Ledger/Registry state; it never traverses, copies, serializes, hashes or
+structurally compares the map. Source movement disables reuse without creating
+new Registry rejection semantics. Exact rows, raw-byte digests, manifests, CAS,
+witnesses, eligibility, source Epoch, projection and Registry authority remain
+independent. The proof is revoked on fallback, after its last use, before Registry
+mutation, and in the owner's `finally`. Only detached registration diagnostics
+escape. This is supported call-graph ownership, like the Readiness pass, not
+language-enforced immutability or protection against hostile private-field/stack
+introspection. Ordinary caller-supplied Epochs/maps still receive full map proofs;
+the two ownership systems do not share capabilities or restart rules.
+
 ## Closure Repair Payload Truth
 
 Closure-promoted text artifact repairs are evidence packets, not generic retry prompts. A repair branch should receive the target artifact identity/path, the concrete defect class, and the current saved bytes needed to patch or replace only that target.

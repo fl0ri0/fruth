@@ -7,6 +7,7 @@ import base64
 import json
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -700,3 +701,189 @@ def saved_file_consumption_issue(branch, result, payload):
         return _saved_file_consumption_issue(branch, result, payload)
     except (AttributeError, KeyError, TypeError, ValueError, UnicodeError):
         return 'saved_file_consumption_evidence_malformed'
+
+
+@dataclass(frozen=True)
+class DirectAudioDependency:
+    """Private prepared binding from a completed producer, never HTTP authority."""
+
+    artifact_ref: str
+    artifact_id: str
+    source_response_id: str
+    branch_id: str
+    phase_id: str
+    obligation_id: str
+    path: str
+    file_sha256: str
+    consumer_contract: str
+
+    def verify(self, reference, execution_contract, *, resolved_path):
+        if json.dumps(execution_contract, sort_keys=True) != self.consumer_contract:
+            raise ValueError('Direct audio dependency consumer contract mismatch.')
+        for key in ('artifact_ref', 'artifact_id', 'source_response_id', 'branch_id', 'phase_id', 'path'):
+            if reference.get(key) != getattr(self, key):
+                raise ValueError(f'Direct audio dependency {key} mismatch.')
+        for key in ('obligation_id', 'file_sha256'):
+            if reference.get(key) and reference[key] != getattr(self, key):
+                raise ValueError(f'Direct audio dependency {key} mismatch.')
+        if reference.get('type') != 'audio' or Path(self.path).absolute() != resolved_path:
+            raise ValueError('Direct audio dependency canonical path/type mismatch.')
+        return {key: getattr(self, key) for key in
+                ('artifact_ref', 'artifact_id', 'source_response_id', 'branch_id',
+                 'phase_id', 'obligation_id', 'path', 'file_sha256')}
+
+
+def bind_direct_audio_dependency(source_payload, execution_contract):
+    """Select by accepted dependency/identity, never by path or equal bytes.
+
+    Called only by Late Fill with its current runtime payload. This does not
+    publish an artifact or replace Registry authority for retained references.
+    """
+    if execution_contract.get('capability') != 'speech_to_text':
+        return None
+    dependencies = set(execution_contract.get('depends_on') or [])
+    input_refs = execution_contract.get('input_refs') or []
+    phase_refs = {r.get('phase_id') for r in input_refs if isinstance(r, Mapping)
+                  and r.get('kind') == 'phase_output' and r.get('phase_id')}
+    artifact_refs = {r.get('artifact_ref') or r.get('ref') for r in input_refs
+                     if isinstance(r, Mapping) and (r.get('artifact_ref') or r.get('ref'))}
+    producers = [r for r in (source_payload.get('late_fill') or {}).get('fill_results') or []
+                 if isinstance(r, Mapping) and r.get('capability') == 'text_to_speech'
+                 and dependencies.intersection({r.get('branch_id'), r.get('phase_id')})]
+    if not producers:
+        return None
+    if phase_refs:
+        producers = [p for p in producers if p.get('phase_id') in phase_refs]
+    candidates = [(p, a) for p in producers for a in p.get('artifacts') or []
+                  if isinstance(a, Mapping) and a.get('type') == 'audio'
+                  and (not artifact_refs or a.get('artifact_ref') in artifact_refs)]
+    if len(candidates) != 1:
+        raise ValueError('Direct audio dependency producer identity unavailable or ambiguous.')
+    producer, artifact = candidates[0]
+    source_id = source_payload.get('id')
+    if not source_id or producer.get('source_response_id') != source_id:
+        raise ValueError('Direct audio dependency source response mismatch.')
+    for key in ('artifact_ref', 'artifact_id', 'branch_id', 'phase_id', 'source_response_id'):
+        if not producer.get(key) or artifact.get(key) != producer[key]:
+            raise ValueError(f'Direct audio dependency producer {key} mismatch.')
+    if producer.get('obligation_id') != artifact.get('obligation_id'):
+        raise ValueError('Direct audio dependency producer obligation mismatch.')
+    path = artifact.get('path')
+    if not path or path != producer.get('saved_audio_path'):
+        raise ValueError('Direct audio dependency producer path mismatch.')
+    evidence = producer.get('tts_audio_integrity_evidence') or {}
+    digest = evidence.get('artifact_sha256') or ''
+    if (producer.get('error') or producer.get('materialization_blocked')
+            or evidence.get('kind') != 'ollmo.tts_audio_integrity_evidence'
+            or evidence.get('authority') != 'runtime_deterministic_audio_verification'
+            or evidence.get('status') != 'passed'
+            or evidence.get('materialization_eligible') is not True
+            or evidence.get('artifact_path') != path
+            or not re.fullmatch(r'[0-9a-f]{64}', digest)
+            or (artifact.get('file_sha256') and artifact['file_sha256'] != digest)):
+        raise ValueError('Direct audio dependency producer integrity unavailable or conflicting.')
+    return DirectAudioDependency(
+        **{key: artifact[key] for key in ('artifact_ref', 'artifact_id', 'source_response_id',
+                                         'branch_id', 'phase_id', 'path')},
+        obligation_id=artifact.get('obligation_id') or '', file_sha256=digest,
+        consumer_contract=json.dumps(execution_contract, sort_keys=True))
+
+
+def selected_audio_source_binding(
+    reference: Mapping[str, Any],
+    registry_record: Mapping[str, Any],
+    source_payload: Mapping[str, Any],
+    *,
+    resolved_path: Path,
+) -> dict[str, Any]:
+    """Validate an explicitly retained audio identity against its current source.
+
+    Callers own canonical lookups and authorized path resolution. This function
+    never discovers files or substitutes a sibling, alias or content match.
+    It returns the source-bound digest to verify against the actual STT input.
+    """
+    def reject(reason: str) -> None:
+        raise ValueError(f'Selected audio reference is invalid: {reason}.')
+
+    if reference.get('type') != 'audio':
+        reject('not audio')
+    artifact = registry_record.get('artifact') or {}
+    canonical_ref = clean_text(registry_record.get('artifact_ref'))
+    requested_ref = clean_text(reference.get('artifact_ref') or reference.get('ref'))
+    aliases = registry_record.get('artifact_alias_refs') or []
+    if not canonical_ref or requested_ref not in {canonical_ref, *aliases}:
+        reject('artifact identity unavailable')
+    canonical_id = clean_text(artifact.get('artifact_id') or registry_record.get('artifact_id'))
+    requested_id = clean_text(reference.get('artifact_id'))
+    if requested_id and requested_id != canonical_id:
+        reject('artifact id mismatch')
+    if artifact.get('type') != 'audio' or artifact.get('artifact_ref') != canonical_ref:
+        reject('canonical audio identity mismatch')
+    canonical_path = clean_text(artifact.get('path'))
+    # Path spelling may normalize, but a Registry path replaced by a symlink
+    # cannot acquire authority over its new target merely by resolving there.
+    if not canonical_path or Path(canonical_path).absolute() != resolved_path:
+        reject('canonical path mismatch')
+    source_id = clean_text(artifact.get('source_response_id'))
+    provenance_source = (registry_record.get('provenance') or {}).get('source') or {}
+    source_id = source_id or clean_text(provenance_source.get('response_id'))
+    if not source_id or source_payload.get('id') != source_id:
+        reject('source response unavailable')
+    if reference.get('source_response_id') and reference['source_response_id'] != source_id:
+        reject('source response mismatch')
+    source_artifacts = [a for a in source_payload.get('artifacts') or []
+                        if isinstance(a, Mapping) and a.get('artifact_ref') == canonical_ref]
+    if len(source_artifacts) != 1:
+        reject('current source artifact unavailable or ambiguous')
+    source_artifact = source_artifacts[0]
+    for key, expected in (('type', 'audio'), ('artifact_id', canonical_id), ('path', canonical_path)):
+        if source_artifact.get(key) != expected:
+            reject(f'source {key} mismatch')
+    for key in ('branch_id', 'phase_id', 'obligation_id'):
+        expected = source_artifact.get(key)
+        for value in (reference.get(key), artifact.get(key), provenance_source.get(key)):
+            if value and value != expected:
+                reject(f'producer {key} mismatch')
+    # Known canonical producer surfaces, not model prose or recursive searches
+    # through arbitrary request/history records.
+    evidence = [source_payload.get('tts_audio_integrity_evidence')]
+    for result in (source_payload.get('late_fill') or {}).get('fill_results') or []:
+        if isinstance(result, Mapping):
+            evidence.append(result.get('tts_audio_integrity_evidence'))
+    digests = {clean_text(source_artifact.get('file_sha256'))} - {''}
+    for item in evidence:
+        if (isinstance(item, Mapping)
+                and item.get('kind') == 'ollmo.tts_audio_integrity_evidence'
+                and item.get('authority') == 'runtime_deterministic_audio_verification'
+                and item.get('artifact_path') == canonical_path):
+            digest = clean_text(item.get('artifact_sha256'))
+            if digest:
+                digests.add(digest)
+    if len(digests) != 1 or not re.fullmatch(r'[0-9a-f]{64}', next(iter(digests), '')):
+        reject('source digest unavailable or conflicting')
+    digest = next(iter(digests))
+    if reference.get('file_sha256') and reference['file_sha256'] != digest:
+        reject('requested digest mismatch')
+    frame = source_payload.get('response_frame') or {}
+    return {
+        'artifact_ref': canonical_ref, 'requested_artifact_ref': requested_ref,
+        'artifact_id': canonical_id, 'source_response_id': source_id,
+        'source_frame_id': frame.get('frame_id'),
+        'source_frame_sequence': frame.get('frame_sequence'),
+        'branch_id': source_artifact.get('branch_id'),
+        'phase_id': source_artifact.get('phase_id'),
+        'path': canonical_path, 'file_sha256': digest,
+    }
+
+
+def execution_input_artifact_ref(payload: Mapping[str, Any]) -> Optional[str]:
+    """Read the consumer's explicit artifact input, never infer it from prose."""
+    contract = payload.get('execution_contract')
+    source = contract if isinstance(contract, Mapping) else payload
+    refs = {
+        str(item.get('artifact_ref') or item.get('ref') or '').strip()
+        for item in source.get('input_refs') or []
+        if isinstance(item, Mapping)
+        and str(item.get('artifact_ref') or item.get('ref') or '').strip()
+    }
+    return next(iter(refs)) if len(refs) == 1 else None

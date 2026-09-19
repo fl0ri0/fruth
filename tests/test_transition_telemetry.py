@@ -6,9 +6,9 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_services import events, response_frames
-from ollmo_server.multi_materialization_runtime import MultiMaterializationRuntimeOwner
-from ollmo_server.late_fill_runtime import LateFillRuntimeOwner
+from fruth_services import events, response_frames
+from fruth_server.multi_materialization_runtime import MultiMaterializationRuntimeOwner
+from fruth_server.late_fill_runtime import LateFillRuntimeOwner
 
 
 def collector():
@@ -259,7 +259,7 @@ def test_transition_reserve_does_not_consume_normal_budget_and_uses_existing_per
 
 
 def test_worker_submission_context_reaches_existing_target_without_extra_start():
-    from ollmo_server import late_fill_runtime
+    from fruth_server import late_fill_runtime
     records, sink = collector()
     calls = []
     @events.observe_transition('late_fill.worker', target=lambda a: {'response_id': a['response_payload']['id']})

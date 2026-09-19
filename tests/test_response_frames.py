@@ -9,10 +9,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import ollmo_services.response_frames as response_frames_module
-from ollmo_g.request_phase_graph import build_request_phase_graph
-from ollmo_services.control_snapshots import build_control_snapshot
-from ollmo_services.response_frames import (
+import fruth_services.response_frames as response_frames_module
+from fruth_inference.request_phase_graph import build_request_phase_graph
+from fruth_services.control_snapshots import build_control_snapshot
+from fruth_services.response_frames import (
     _read_snapshot_ref_payload,
     attach_response_frame,
     build_response_frame,
@@ -24,7 +24,7 @@ from ollmo_services.response_frames import (
     persist_response_frame,
     response_payload_from_frame,
 )
-from ollmo_services.responses import (
+from fruth_services.responses import (
     build_canonical_outputs,
     build_canonical_response_artifacts,
     hoist_response_output_surfaces,
@@ -263,8 +263,8 @@ class ResponseFrameTests(unittest.TestCase):
                 "generated_image_scene",
             )
 
-    @patch('ollmo_services.artifact_dossiers.find_artifact_registry_record')
-    @patch('ollmo_services.artifact_dossiers.find_artifact_registry_record_by_artifact_ref')
+    @patch('fruth_services.artifact_dossiers.find_artifact_registry_record')
+    @patch('fruth_services.artifact_dossiers.find_artifact_registry_record_by_artifact_ref')
     def test_mixed_media_frame_keeps_distinct_refs_and_branch_producer_dossiers(
         self,
         mock_find_registry_by_ref,
@@ -427,8 +427,8 @@ class ResponseFrameTests(unittest.TestCase):
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={"ghost_route": True, "input": prompt},
-            route_payload={"capability": "text_to_speech", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True, "input": prompt},
+            route_payload={"capability": "text_to_speech", "route_source": "inference_carried"},
         )
         payload = {
             "id": "resp_txt_audio_review",
@@ -462,8 +462,8 @@ class ResponseFrameTests(unittest.TestCase):
         prompt = "Schreibe einen Satz. Lies ihn als Audio vor."
         graph = build_request_phase_graph(
             prompt,
-            request_payload={"ghost_route": True, "prompt": prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True, "prompt": prompt},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
         payload = {
             "id": "resp_terminal_branch_projection",
@@ -516,7 +516,7 @@ class ResponseFrameTests(unittest.TestCase):
 
     def test_direct_target_response_fulfills_matching_unique_follow_up_branch(self):
         graph = {
-            "kind": "ollmo.request_phase_graph",
+            "kind": "fruth.request_phase_graph",
             "current_phase_id": "phase-1",
             "phases": [
                 {
@@ -577,8 +577,8 @@ class ResponseFrameTests(unittest.TestCase):
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={"ghost_route": True, "prompt": prompt},
-            route_payload={"capability": "text_to_speech", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True, "prompt": prompt},
+            route_payload={"capability": "text_to_speech", "route_source": "inference_carried"},
         )
         payload = {
             "id": "resp_truth_guard_projection",
@@ -615,8 +615,8 @@ class ResponseFrameTests(unittest.TestCase):
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={"ghost_route": True, "prompt": prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True, "prompt": prompt},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
         payload = {
             "id": "resp_phase_output_repair_projection",
@@ -626,7 +626,7 @@ class ResponseFrameTests(unittest.TestCase):
             "runtime": {
                 "request_phase_graph": graph,
                 "truth_guard": {
-                    "kind": "ollmo.phase_output_acceptance_guard",
+                    "kind": "fruth.phase_output_acceptance_guard",
                     "status": "repair_required",
                     "reason": "control_envelope_not_speakable",
                 },
@@ -1424,7 +1424,7 @@ class ResponseFrameTests(unittest.TestCase):
 
     def test_response_frame_promotes_late_fill_saved_text_artifacts_with_images(self):
         graph = {
-            "kind": "ollmo.request_phase_graph",
+            "kind": "fruth.request_phase_graph",
             "current_phase_id": "phase-1",
             "phases": [
                 {
@@ -1609,7 +1609,7 @@ class ResponseFrameTests(unittest.TestCase):
 
     def test_response_frame_recovers_late_fill_saved_images_for_final_projection(self):
         graph = {
-            "kind": "ollmo.request_phase_graph",
+            "kind": "fruth.request_phase_graph",
             "current_phase_id": "phase-1",
             "phases": [
                 {
@@ -1847,7 +1847,7 @@ class ResponseFrameTests(unittest.TestCase):
                     }
                 ],
                 "work_tree": {
-                    "kind": "ollmo.work_tree",
+                    "kind": "fruth.work_tree",
                     "work_tree_source": "runtime_owned",
                     "authoritative": True,
                     "status": "tracked",
@@ -2342,7 +2342,7 @@ class ResponseFrameTests(unittest.TestCase):
             final_path = Path(tmpdir) / "joined-evidence.json"
             final_path.write_text(final_text, encoding="utf-8")
             phase_graph = {
-                "kind": "ollmo.request_phase_graph",
+                "kind": "fruth.request_phase_graph",
                 "graph_version": 2,
                 "mode": "phase_chain",
                 "current_phase_id": "phase-1",
@@ -2491,7 +2491,7 @@ class ResponseFrameTests(unittest.TestCase):
             final_path = Path(tmpdir) / "joined-evidence.json"
             final_path.write_text(final_text, encoding="utf-8")
             phase_graph = {
-                "kind": "ollmo.request_phase_graph",
+                "kind": "fruth.request_phase_graph",
                 "graph_version": 2,
                 "mode": "phase_chain",
                 "current_phase_id": "phase-1",
@@ -2658,8 +2658,8 @@ class ResponseFrameTests(unittest.TestCase):
         prompt = "Create exactly two local file artifacts: index.html and styles.css for a landing page."
         graph = build_request_phase_graph(
             prompt,
-            request_payload={"ghost_route": True, "prompt": prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True, "prompt": prompt},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
         repair_prompt = (
             "Target text artifact: artifacts/documents/index.html\n"
@@ -2773,8 +2773,8 @@ class ResponseFrameTests(unittest.TestCase):
         prompt = "Create exactly four images plus index.html and styles.css for a playful landing page."
         graph = build_request_phase_graph(
             prompt,
-            request_payload={"ghost_route": True, "prompt": prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True, "prompt": prompt},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
         branch_summary = (
             "branch-image_generation-5: Image generated.\n\n"
@@ -3290,10 +3290,10 @@ class ResponseFrameTests(unittest.TestCase):
 
     def test_canonical_outputs_hide_branch_semantic_review_control_slot(self):
         review_prompt = (
-            'Run a branch-local semantic review for the current Ollmo response graph.\n'
+            'Run a branch-local semantic review for the current Fruth response graph.\n'
             'Authority boundary:\n'
             'Return exactly one JSON object and no markdown.\n'
-            '{"kind": "ollmo.semantic_review_verdict"}\n'
+            '{"kind": "fruth.semantic_review_verdict"}\n'
             'Branch runtime evidence:\n{}'
         )
         payload = {'output_text': review_prompt}
@@ -3490,12 +3490,12 @@ class ResponseFrameTests(unittest.TestCase):
             request_payload={
                 "input": "hello",
                 "conversation_id": "responses-workbench",
-                "ghost_route": True,
+                "inference_route": True,
             },
         )
 
         self.assertEqual(frame["frame_version"], 9)
-        self.assertEqual(frame["kind"], "ollmo.response_frame")
+        self.assertEqual(frame["kind"], "fruth.response_frame")
         self.assertEqual(frame["response_id"], "resp_123")
         self.assertEqual(frame["target"]["instance_id"], "chat-1")
         self.assertEqual(frame["target"]["model"], "gpt-oss:20b")
@@ -3507,8 +3507,8 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(dossier["roles"], ["output"])
         self.assertEqual(dossier["artifact"]["path"], "artifacts/documents/one.md")
         self.assertEqual(frame["planning"]["artifact_flow"]["output_slots"][0]["status"], "fulfilled")
-        self.assertEqual(frame["planning"]["work_tree"]["kind"], "ollmo.work_tree")
-        self.assertEqual(frame["working_frame"]["kind"], "ollmo.working_frame")
+        self.assertEqual(frame["planning"]["work_tree"]["kind"], "fruth.work_tree")
+        self.assertEqual(frame["working_frame"]["kind"], "fruth.working_frame")
         self.assertEqual(frame["working_frame"]["status"], "frozen")
         self.assertEqual(frame["working_frame"]["closure"]["status"], "closed")
         self.assertEqual(frame["output"]["text"], "Hello.")
@@ -3518,7 +3518,7 @@ class ResponseFrameTests(unittest.TestCase):
 
     def test_build_response_frame_preserves_authorized_predecessor_bundle_contract(self):
         context = {
-            'kind': 'ollmo.current_predecessor_context',
+            'kind': 'fruth.current_predecessor_context',
             'status': 'authorized',
             'authorization': 'canonical_same_conversation_predecessor',
             'promotion_mode': 'named_text_edit',
@@ -3556,8 +3556,8 @@ class ResponseFrameTests(unittest.TestCase):
     def test_build_response_frame_exposes_intent_contract_in_planning(self):
         phase_graph = build_request_phase_graph(
             "Write a short prompt and generate an image from it.",
-            request_payload={"ghost_route": True},
-            route_payload={"capability": "image_generation", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True},
+            route_payload={"capability": "image_generation", "route_source": "inference_carried"},
             response_payload={"output_text": "A prompt is ready."},
         )
         frame = build_response_frame(
@@ -3574,7 +3574,7 @@ class ResponseFrameTests(unittest.TestCase):
                 "runtime": {
                     "request_phase_graph": phase_graph,
                     "graph_closure_review": {
-                        "kind": "ollmo.graph_closure_review",
+                        "kind": "fruth.graph_closure_review",
                         "status": "pending",
                         "reason": "image output remains open",
                         "contract_source": "request_ir.output_obligations",
@@ -3618,12 +3618,12 @@ class ResponseFrameTests(unittest.TestCase):
             },
             request_payload={
                 "prompt": "Write a short prompt and generate an image from it.",
-                "ghost_route": True,
+                "inference_route": True,
             },
         )
 
         contract = frame["planning"]["intent_contract"]
-        self.assertEqual(contract["kind"], "ollmo.intent_contract")
+        self.assertEqual(contract["kind"], "fruth.intent_contract")
         self.assertEqual(contract["source"], "request_ir.output_obligations")
         self.assertEqual(contract["status"], "pending")
         self.assertEqual(contract["pending_obligation_ids"], ["obligation-phase-2"])
@@ -3663,7 +3663,7 @@ class ResponseFrameTests(unittest.TestCase):
         )
 
         contract = frame["planning"]["context_contract"]
-        self.assertEqual(contract["kind"], "ollmo.context_contract")
+        self.assertEqual(contract["kind"], "fruth.context_contract")
         self.assertEqual(contract["status"], "active")
         self.assertEqual(contract["candidate_count"], 2)
         self.assertEqual(contract["promotion_count"], 1)
@@ -3675,8 +3675,8 @@ class ResponseFrameTests(unittest.TestCase):
     def test_build_response_frame_marks_explicit_waived_output_slots_ready(self):
         phase_graph = build_request_phase_graph(
             "Write a short prompt and generate an image from it.",
-            request_payload={"ghost_route": True},
-            route_payload={"capability": "image_generation", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True},
+            route_payload={"capability": "image_generation", "route_source": "inference_carried"},
             response_payload={"output_text": "A prompt is ready; image output is not needed."},
         )
         for phase in phase_graph["phases"]:
@@ -3702,7 +3702,7 @@ class ResponseFrameTests(unittest.TestCase):
             },
             request_payload={
                 "prompt": "Write a short prompt and generate an image from it.",
-                "ghost_route": True,
+                "inference_route": True,
             },
         )
 
@@ -3719,8 +3719,8 @@ class ResponseFrameTests(unittest.TestCase):
     def test_build_response_frame_marks_superseded_output_slots_ready(self):
         phase_graph = build_request_phase_graph(
             "Write a short prompt, replace the planned image branch, and keep the newer branch.",
-            request_payload={"ghost_route": True},
-            route_payload={"capability": "image_generation", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True},
+            route_payload={"capability": "image_generation", "route_source": "inference_carried"},
             response_payload={"output_text": "A prompt is ready; the first image branch was replaced."},
         )
         for phase in phase_graph["phases"]:
@@ -3750,7 +3750,7 @@ class ResponseFrameTests(unittest.TestCase):
             },
             request_payload={
                 "prompt": "Write a short prompt, replace the planned image branch, and keep the newer branch.",
-                "ghost_route": True,
+                "inference_route": True,
             },
         )
 
@@ -3770,7 +3770,7 @@ class ResponseFrameTests(unittest.TestCase):
         phase_graph = build_request_phase_graph(
             "Sketch a possible image direction, but do not generate it yet.",
             request_payload={
-                "ghost_route": True,
+                "inference_route": True,
                 "downstream_branches": [
                     {
                         "candidate_id": "candidate-image-1",
@@ -3783,7 +3783,7 @@ class ResponseFrameTests(unittest.TestCase):
                     }
                 ],
             },
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
             response_payload={"output_text": "A possible image direction is noted."},
         )
 
@@ -3802,7 +3802,7 @@ class ResponseFrameTests(unittest.TestCase):
             },
             request_payload={
                 "prompt": "Sketch a possible image direction, but do not generate it yet.",
-                "ghost_route": True,
+                "inference_route": True,
             },
         )
 
@@ -3855,7 +3855,7 @@ class ResponseFrameTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(snapshot["kind"], "ollmo.control_snapshot")
+        self.assertEqual(snapshot["kind"], "fruth.control_snapshot")
         self.assertEqual(snapshot["target"]["instance_id"], "image-1")
         self.assertEqual(snapshot["values"]["generation"]["temperature"], 0.4)
         self.assertEqual(snapshot["values"]["generation"]["top_p"], 0.8)
@@ -4115,7 +4115,7 @@ class ResponseFrameTests(unittest.TestCase):
                 "runtime": {
                     "request_phase_graph": {
                         "graph_version": 2,
-                        "kind": "ollmo.request_phase_graph",
+                        "kind": "fruth.request_phase_graph",
                         "mode": "phase_chain",
                         "current_phase_id": "phase-1",
                         "current_phase_capability": "chat",
@@ -4167,7 +4167,7 @@ class ResponseFrameTests(unittest.TestCase):
 
     def test_build_response_frame_derives_output_slots_from_runtime_owned_work_tree(self):
         work_tree = {
-            "kind": "ollmo.work_tree",
+            "kind": "fruth.work_tree",
             "status": "tracked",
             "root_node_id": "node-request",
             "node_order": ["node-request", "node-output-runtime-image"],
@@ -4233,7 +4233,7 @@ class ResponseFrameTests(unittest.TestCase):
     def test_runtime_owned_work_tree_does_not_give_bound_artifact_to_prior_text_node(self):
         final_path = "/tmp/runtime-owned-final.json"
         phase_graph = {
-            "kind": "ollmo.request_phase_graph",
+            "kind": "fruth.request_phase_graph",
             "graph_version": 2,
             "mode": "phase_chain",
             "current_phase_id": "phase-1",
@@ -4257,7 +4257,7 @@ class ResponseFrameTests(unittest.TestCase):
             ],
         }
         work_tree = {
-            "kind": "ollmo.work_tree",
+            "kind": "fruth.work_tree",
             "work_tree_source": "runtime_owned",
             "authoritative": True,
             "status": "tracked",
@@ -4381,7 +4381,7 @@ class ResponseFrameTests(unittest.TestCase):
 
     def test_build_response_frame_preserves_runtime_work_tree_across_late_fill_successor(self):
         work_tree = {
-            "kind": "ollmo.work_tree",
+            "kind": "fruth.work_tree",
             "status": "pending",
             "root_node_id": "node-request",
             "node_order": ["node-request", "node-output-phase-1", "node-output-phase-2"],
@@ -4455,7 +4455,7 @@ class ResponseFrameTests(unittest.TestCase):
 
     def test_build_response_frame_does_not_regenerate_runtime_work_tree_from_prose_fallbacks(self):
         empty_work_tree = {
-            "kind": "ollmo.work_tree",
+            "kind": "fruth.work_tree",
             "status": "empty",
             "root_node_id": "node-request",
             "node_order": ["node-request"],
@@ -4551,17 +4551,17 @@ class ResponseFrameTests(unittest.TestCase):
 
     def test_semantic_review_control_work_stays_out_of_public_frame_and_replay(self):
         review_prompt = (
-            'Run a whole-turn semantic closure review for the current Ollmo response.\n'
+            'Run a whole-turn semantic closure review for the current Fruth response.\n'
             'Authority boundary:\n'
             'Return exactly one JSON object and no markdown.\n'
             'Required schema:\n'
-            '{"kind": "ollmo.semantic_review_verdict"}\n'
+            '{"kind": "fruth.semantic_review_verdict"}\n'
             'Runtime evidence:\n{}'
         )
         review_branch_id = 'branch-global-semantic-closure-review-generation'
         review_phase_id = 'phase-global-semantic-closure-review-generation'
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'current_phase_id': 'phase-1',
             'current_phase_capability': 'chat',
             'phases': [
@@ -4640,7 +4640,7 @@ class ResponseFrameTests(unittest.TestCase):
                         {
                             **review_branch,
                             'result_text': (
-                                '{"kind":"ollmo.semantic_review_verdict",'
+                                '{"kind":"fruth.semantic_review_verdict",'
                                 '"verdict":"failed"}'
                             ),
                         },
@@ -4674,7 +4674,7 @@ class ResponseFrameTests(unittest.TestCase):
             [None, 'branch-image_generation-1'],
         )
         self.assertNotIn(review_prompt, json.dumps(frame['output']))
-        self.assertNotIn('ollmo.semantic_review_verdict', json.dumps(frame['output']))
+        self.assertNotIn('fruth.semantic_review_verdict', json.dumps(frame['output']))
         current_state_public_surface = {
             key: frame['current_state'].get(key)
             for key in ('output_text', 'output', 'outputs', 'output_slots', 'output_branches', 'result')
@@ -4689,7 +4689,7 @@ class ResponseFrameTests(unittest.TestCase):
 
         replayed = response_payload_from_frame(frame)
         self.assertNotIn(review_prompt, json.dumps(replayed.get('outputs') or []))
-        self.assertNotIn('ollmo.semantic_review_verdict', json.dumps(replayed.get('outputs') or []))
+        self.assertNotIn('fruth.semantic_review_verdict', json.dumps(replayed.get('outputs') or []))
         self.assertEqual(replayed['output_text'], 'Artifacts generated.')
         self.assertEqual(
             [item.get('artifact_ref') for item in replayed['artifacts']],
@@ -4698,11 +4698,11 @@ class ResponseFrameTests(unittest.TestCase):
 
     def test_legacy_semantic_review_only_payload_has_no_public_text_surface(self):
         review_prompt = (
-            'Run a branch-local semantic review for the current Ollmo response graph.\n'
+            'Run a branch-local semantic review for the current Fruth response graph.\n'
             'Authority boundary:\n'
             '- You are a semantic reviewer for one branch, not runtime truth.\n'
             'Return exactly one JSON object and no markdown, no prose outside JSON.\n'
-            '{"kind": "ollmo.semantic_review_verdict"}\n'
+            '{"kind": "fruth.semantic_review_verdict"}\n'
             'Branch runtime evidence:\n{}'
         )
         internal_slot = {
@@ -4834,7 +4834,7 @@ class ResponseFrameTests(unittest.TestCase):
                 "runtime": {
                     "request_phase_graph": {
                         "graph_version": 2,
-                        "kind": "ollmo.request_phase_graph",
+                        "kind": "fruth.request_phase_graph",
                         "mode": "phase_chain",
                         "current_phase_id": "phase-1",
                         "current_phase_capability": "chat",
@@ -4922,7 +4922,7 @@ class ResponseFrameTests(unittest.TestCase):
                 "runtime": {
                     "request_phase_graph": {
                         "graph_version": 3,
-                        "kind": "ollmo.request_phase_graph",
+                        "kind": "fruth.request_phase_graph",
                         "mode": "phase_chain",
                         "current_phase_id": "phase-1",
                         "current_phase_capability": "chat",
@@ -5009,7 +5009,7 @@ class ResponseFrameTests(unittest.TestCase):
                 "runtime": {
                     "request_phase_graph": {
                         "graph_version": 3,
-                        "kind": "ollmo.request_phase_graph",
+                        "kind": "fruth.request_phase_graph",
                         "mode": "phase_chain",
                         "current_phase_id": "phase-1",
                         "current_phase_capability": "chat",
@@ -5065,7 +5065,7 @@ class ResponseFrameTests(unittest.TestCase):
                 "runtime": {
                     "request_phase_graph": {
                         "graph_version": 3,
-                        "kind": "ollmo.request_phase_graph",
+                        "kind": "fruth.request_phase_graph",
                         "mode": "carried_phase_chain",
                         "current_phase_id": "phase-1",
                         "current_phase_capability": "chat",
@@ -5211,7 +5211,7 @@ class ResponseFrameTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(frame["controls"]["kind"], "ollmo.control_snapshot")
+        self.assertEqual(frame["controls"]["kind"], "fruth.control_snapshot")
         self.assertEqual(frame["controls"]["target"]["capability"], "image_generation")
         self.assertEqual(frame["controls"]["values"]["image"]["width"], 1024)
         self.assertEqual(frame["controls"]["values"]["image"]["height"], 1024)
@@ -5269,13 +5269,13 @@ class ResponseFrameTests(unittest.TestCase):
                 "output_text": "done",
                 "runtime": {
                     "working_frame": {
-                        "kind": "ollmo.working_frame",
+                        "kind": "fruth.working_frame",
                         "status": "frozen",
                         "loop": {"chain_id": "conv-1", "pass_index": 1},
                     }
                 },
                 "working_frame": {
-                    "kind": "ollmo.working_frame",
+                    "kind": "fruth.working_frame",
                     "status": "frozen",
                     "loop": {"chain_id": "conv-1", "pass_index": 1},
                 },
@@ -5306,27 +5306,27 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(framed["response_frame"]["request"]["prompt"], "a fox")
         self.assertEqual(framed["response_frame"]["target"]["capability"], "image_generation")
 
-    def test_build_response_frame_compacts_duplicate_ghost_preview_orchestration_truth(self):
+    def test_build_response_frame_compacts_duplicate_inference_preview_orchestration_truth(self):
         decision_contract = {
-            "kind": "ollmo.decision_contract",
+            "kind": "fruth.decision_contract",
             "semantic_planning_contract": {
                 "evidence": "repeated semantic planning evidence " * 3_000,
             },
         }
         phase_graph = {
-            "kind": "ollmo.request_phase_graph",
+            "kind": "fruth.request_phase_graph",
             "request_ir": {"decision_contract": decision_contract},
             "decision_contract": decision_contract,
         }
         working_frame = {
-            "kind": "ollmo.working_frame",
+            "kind": "fruth.working_frame",
             "status": "fluid",
             "request_phase_graph": phase_graph,
             "intent_contract": {"decision_contract": decision_contract},
         }
-        ghost_preview = {
+        inference_preview = {
             "instance": {
-                "instance_id": "chat-ghost-1",
+                "instance_id": "chat-inference-1",
                 "model": "local-chat",
                 "backend": "mlx",
                 "capability": "chat",
@@ -5339,14 +5339,14 @@ class ResponseFrameTests(unittest.TestCase):
                 "confidence": 0.97,
             },
             "request_meta": {
-                "ghost_mode": "improviser",
+                'semantic_role_ids': ['possibility_expander', 'materializer', 'quality_reviewer'],
                 "capability_hint": "chat",
                 "developer_flags": {"planner_timeout_ms": 12_000},
             },
             "runtime": {
                 "developer_diagnostics": {
-                    "routing_contract": "ghost_primary",
-                    "routing_policy": "ghost_first",
+                    "routing_contract": "inference_primary",
+                    "routing_policy": "inference_first",
                     "planner_timeout_ms": 12_000,
                     "route_graph_consistency": {
                         "status": "accepted",
@@ -5361,30 +5361,30 @@ class ResponseFrameTests(unittest.TestCase):
             },
             "working_frame": working_frame,
         }
-        raw_preview_size = len(json.dumps(ghost_preview).encode("utf-8"))
+        raw_preview_size = len(json.dumps(inference_preview).encode("utf-8"))
 
         frame = build_response_frame(
             {
-                "id": "resp_compact_ghost_preview",
+                "id": "resp_compact_inference_preview",
                 "object": "response",
                 "status": "completed",
                 "output_text": "done",
             },
             request_payload={
                 "prompt": "finish the routed request",
-                "ghost_route": True,
-                "ghost_preview": ghost_preview,
+                "inference_route": True,
+                "inference_preview": inference_preview,
             },
         )
 
-        compact_preview = frame["request"]["ghost_preview"]
+        compact_preview = frame["request"]["inference_preview"]
         compact_runtime = compact_preview["runtime"]
         diagnostics = compact_runtime["developer_diagnostics"]
         compact_preview_size = len(json.dumps(compact_preview).encode("utf-8"))
-        self.assertEqual(compact_preview["instance"]["instance_id"], "chat-ghost-1")
+        self.assertEqual(compact_preview["instance"]["instance_id"], "chat-inference-1")
         self.assertEqual(compact_preview["route"]["source"], "router")
-        self.assertEqual(compact_preview["request_meta"]["ghost_mode"], "improviser")
-        self.assertEqual(diagnostics["routing_contract"], "ghost_primary")
+        self.assertEqual(compact_preview["request_meta"]["semantic_role_ids"], ['possibility_expander', 'materializer', 'quality_reviewer'])
+        self.assertEqual(diagnostics["routing_contract"], "inference_primary")
         self.assertEqual(diagnostics["route_graph_consistency"]["status"], "accepted")
         self.assertTrue(all(len(key) <= 128 for key in compact_preview["instance"]))
         self.assertTrue(all(len(key) <= 128 for key in diagnostics))
@@ -5400,17 +5400,17 @@ class ResponseFrameTests(unittest.TestCase):
         }
         expected_runtime_digest = hashlib.sha256(
             json.dumps(
-                ghost_preview["runtime"],
+                inference_preview["runtime"],
                 ensure_ascii=False,
                 sort_keys=True,
                 separators=(",", ":"),
             ).encode("utf-8")
         ).hexdigest()
         self.assertEqual(
-            content_refs["ghost_preview.runtime"]["sha256"],
+            content_refs["inference_preview.runtime"]["sha256"],
             expected_runtime_digest,
         )
-        self.assertIn("ghost_preview.working_frame", content_refs)
+        self.assertIn("inference_preview.working_frame", content_refs)
         self.assertLess(compact_preview_size, 16_384)
         self.assertLess(compact_preview_size, raw_preview_size // 20)
 
@@ -5419,30 +5419,30 @@ class ResponseFrameTests(unittest.TestCase):
             target = persist_response_frame(frame, frames_dir=frames_dir)
             persisted_frame = json.loads(target.read_text(encoding="utf-8").splitlines()[0])
             recovered = load_latest_response_state(
-                "resp_compact_ghost_preview",
+                "resp_compact_inference_preview",
                 frames_dir=frames_dir,
             )
 
         persisted_refs = {
             item["json_path"]: item
-            for item in persisted_frame["request"]["ghost_preview"]["compaction"]["omitted_content_refs"]
+            for item in persisted_frame["request"]["inference_preview"]["compaction"]["omitted_content_refs"]
         }
         recovered_refs = {
             item["json_path"]: item
-            for item in recovered["response_frame"]["request"]["ghost_preview"]["compaction"]["omitted_content_refs"]
+            for item in recovered["response_frame"]["request"]["inference_preview"]["compaction"]["omitted_content_refs"]
         }
-        self.assertEqual(persisted_refs["ghost_preview.runtime"]["sha256"], expected_runtime_digest)
-        self.assertEqual(recovered_refs["ghost_preview.runtime"]["sha256"], expected_runtime_digest)
+        self.assertEqual(persisted_refs["inference_preview.runtime"]["sha256"], expected_runtime_digest)
+        self.assertEqual(recovered_refs["inference_preview.runtime"]["sha256"], expected_runtime_digest)
 
-    def test_ghost_preview_compaction_reports_only_actual_omissions(self):
-        compact_preview = response_frames_module._compact_request_ghost_preview(
+    def test_inference_preview_compaction_reports_only_actual_omissions(self):
+        compact_preview = response_frames_module._compact_request_inference_preview(
             {
                 "custom_scalar": "retained audit value",
                 "instance": {"instance_id": "route-1", "capability": "chat"},
                 "route": {"source": "router", "confidence": 0.75},
-                "request_meta": {"ghost_mode": "assistant"},
+                "request_meta": {'semantic_role_ids': ['materializer', 'quality_reviewer', 'transition_committer']},
                 "runtime": {
-                    "developer_diagnostics": {"routing_contract": "ghost_primary"},
+                    "developer_diagnostics": {"routing_contract": "inference_primary"},
                 },
             }
         )
@@ -5453,7 +5453,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertFalse(compact_preview["compaction"]["duplicate_orchestration_truth_omitted"])
         self.assertFalse(compact_preview["compaction"]["preview_detail_omitted"])
 
-        nested_preview = response_frames_module._compact_request_ghost_preview(
+        nested_preview = response_frames_module._compact_request_inference_preview(
             {
                 "instance": {
                     "instance_id": "route-2",
@@ -5464,7 +5464,7 @@ class ResponseFrameTests(unittest.TestCase):
                     "candidates": [{"instance_id": "candidate-1"}],
                 },
                 "request_meta": {
-                    "ghost_mode": "assistant",
+                    'semantic_role_ids': ['materializer', 'quality_reviewer', 'transition_committer'],
                     "nested_contract": {"status": "advisory"},
                 },
             }
@@ -5474,9 +5474,9 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(
             nested_compaction["omitted_nested_detail_paths"],
             [
-                "ghost_preview.instance.features",
-                "ghost_preview.request_meta.nested_contract",
-                "ghost_preview.route.candidates",
+                "inference_preview.instance.features",
+                "inference_preview.request_meta.nested_contract",
+                "inference_preview.route.candidates",
             ],
         )
         self.assertTrue(nested_compaction["preview_detail_omitted"])
@@ -5484,16 +5484,16 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(
             {item["json_path"] for item in nested_compaction["omitted_content_refs"]},
             {
-                "ghost_preview.instance",
-                "ghost_preview.request_meta",
-                "ghost_preview.route",
+                "inference_preview.instance",
+                "inference_preview.request_meta",
+                "inference_preview.route",
             },
         )
 
     def test_persist_response_frame_appends_jsonl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             target = persist_response_frame(
-                {"frame_version": 1, "kind": "ollmo.response_frame", "response_id": "resp_1"},
+                {"frame_version": 1, "kind": "fruth.response_frame", "response_id": "resp_1"},
                 frames_dir=Path(tmpdir),
             )
 
@@ -5524,7 +5524,7 @@ class ResponseFrameTests(unittest.TestCase):
                 persist_response_frame(
                     {
                         "frame_version": 1,
-                        "kind": "ollmo.response_frame",
+                        "kind": "fruth.response_frame",
                         "response_id": "resp_fsync_order",
                     },
                     frames_dir=Path(tmpdir),
@@ -5646,15 +5646,15 @@ class ResponseFrameTests(unittest.TestCase):
             runtime_ref["sha256"],
         )
 
-    def test_persist_response_frame_sidecars_legacy_full_ghost_preview(self):
+    def test_persist_response_frame_sidecars_legacy_full_inference_preview(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
             repeated_contract = {
-                "kind": "ollmo.decision_contract",
+                "kind": "fruth.decision_contract",
                 "evidence": "legacy repeated decision evidence " * 4_000,
             }
             phase_graph = {
-                "kind": "ollmo.request_phase_graph",
+                "kind": "fruth.request_phase_graph",
                 "request_ir": {"decision_contract": repeated_contract},
                 "decision_contract": repeated_contract,
             }
@@ -5666,9 +5666,9 @@ class ResponseFrameTests(unittest.TestCase):
                     "capability": "chat",
                 },
                 "route": {"source": "legacy_client", "confidence": 0.8},
-                "request_meta": {"ghost_mode": "assistant", "capability_hint": "chat"},
+                "request_meta": {'semantic_role_ids': ['materializer', 'quality_reviewer', 'transition_committer'], "capability_hint": "chat"},
                 "runtime": {
-                    "developer_diagnostics": {"routing_contract": "ghost_primary"},
+                    "developer_diagnostics": {"routing_contract": "inference_primary"},
                     "request_phase_graph": phase_graph,
                     "execution_planner": {"phase_graph": phase_graph},
                 },
@@ -5676,13 +5676,13 @@ class ResponseFrameTests(unittest.TestCase):
             }
             frame = {
                 "frame_version": 9,
-                "kind": "ollmo.response_frame",
-                "response_id": "resp_legacy_full_ghost_preview",
+                "kind": "fruth.response_frame",
+                "response_id": "resp_legacy_full_inference_preview",
                 "status": "completed",
                 "object": "response",
-                "request": {"ghost_preview": legacy_preview},
+                "request": {"inference_preview": legacy_preview},
                 "current_state": {
-                    "id": "resp_legacy_full_ghost_preview",
+                    "id": "resp_legacy_full_inference_preview",
                     "status": "completed",
                 },
             }
@@ -5692,16 +5692,16 @@ class ResponseFrameTests(unittest.TestCase):
             ledger_line = target.read_text(encoding="utf-8").splitlines()[0]
             ledger_frame = json.loads(ledger_line)
             request_frame = ledger_frame["request"]
-            preview_ref = request_frame["ghost_preview_snapshot_ref"]
+            preview_ref = request_frame["inference_preview_snapshot_ref"]
             snapshot_preview = _read_snapshot_ref_payload(preview_ref, frames_dir=frames_dir)
 
-        self.assertEqual(request_frame["ghost_preview"]["instance"]["instance_id"], "legacy-route-1")
+        self.assertEqual(request_frame["inference_preview"]["instance"]["instance_id"], "legacy-route-1")
         self.assertEqual(
-            request_frame["ghost_preview"]["runtime"]["developer_diagnostics"]["routing_contract"],
-            "ghost_primary",
+            request_frame["inference_preview"]["runtime"]["developer_diagnostics"]["routing_contract"],
+            "inference_primary",
         )
-        self.assertNotIn("request_phase_graph", request_frame["ghost_preview"]["runtime"])
-        self.assertIn("request.ghost_preview", ledger_frame["external_snapshots"]["items"])
+        self.assertNotIn("request_phase_graph", request_frame["inference_preview"]["runtime"])
+        self.assertIn("request.inference_preview", ledger_frame["external_snapshots"]["items"])
         self.assertEqual(
             snapshot_preview["runtime"]["request_phase_graph"]["decision_contract"]["evidence"],
             repeated_contract["evidence"],
@@ -5741,8 +5741,8 @@ class ResponseFrameTests(unittest.TestCase):
                                 },
                             }
                         ],
-                        "ghost_repair_feedback": {
-                            "kind": "ollmo.ghost_repair_feedback",
+                        "inference_repair_feedback": {
+                            "kind": "fruth.inference_repair_feedback",
                             "status": "repair_required",
                             "reason": "binding check",
                             "decision_contract_guidance": {
@@ -5784,22 +5784,22 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(compact_result["saved_image_path"], "/tmp/generated/compact.png")
         self.assertIn("image", compact_result["backend_result_summary"]["omitted_result_keys"])
         self.assertTrue(compact_result["full_result_in_snapshot"])
-        self.assertTrue(compact_late_fill["ghost_repair_feedback"]["decision_contract_guidance_externalized"])
+        self.assertTrue(compact_late_fill["inference_repair_feedback"]["decision_contract_guidance_externalized"])
         self.assertEqual(
             restored_late_fill["fill_results"][0]["branch_id"],
             "branch-image_generation-1",
         )
         self.assertEqual(
             restored_late_fill["fill_results"][0]["result"]["image"]["kind"],
-            "ollmo.snapshot_stripped_raw_media_payload",
+            "fruth.snapshot_stripped_raw_media_payload",
         )
         self.assertEqual(
-            restored_late_fill["ghost_repair_feedback"]["decision_contract_guidance"]["large_truth"],
+            restored_late_fill["inference_repair_feedback"]["decision_contract_guidance"]["large_truth"],
             guidance_text,
         )
         self.assertTrue(recovered["ok"])
         recovered_media_ref = recovered["response_payload"]["late_fill"]["fill_results"][0]["result"]["image"]
-        self.assertEqual(recovered_media_ref["kind"], "ollmo.snapshot_stripped_raw_media_payload")
+        self.assertEqual(recovered_media_ref["kind"], "fruth.snapshot_stripped_raw_media_payload")
         self.assertEqual(recovered_media_ref["sha256"], raw_image_sha)
         self.assertEqual(recovered_media_ref["truth_preservation"], "raw_media_digest_without_saved_artifact_truth")
 
@@ -5869,7 +5869,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertNotIn(raw_image, ledger_text)
         self.assertNotIn(raw_image, snapshot_text)
         media_ref = restored_late_fill["fill_results"][0]["result"]["image"]
-        self.assertEqual(media_ref["kind"], "ollmo.snapshot_externalized_media_payload")
+        self.assertEqual(media_ref["kind"], "fruth.snapshot_externalized_media_payload")
         self.assertEqual(media_ref["source_path"], relative_image_path)
         self.assertEqual(media_ref["artifact_ref"], "artifact:generated-image")
         self.assertEqual(media_ref["sha256"], image_sha)
@@ -5929,7 +5929,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertNotIn(raw_image, snapshot_text)
         self.assertIn("late_fill_snapshot_ref", ledger_frame)
         recovered_media_ref = recovered["response_payload"]["late_fill"]["fill_results"][0]["result"]["image"]
-        self.assertEqual(recovered_media_ref["kind"], "ollmo.snapshot_stripped_raw_media_payload")
+        self.assertEqual(recovered_media_ref["kind"], "fruth.snapshot_stripped_raw_media_payload")
         self.assertEqual(recovered_media_ref["sha256"], raw_sha)
         self.assertEqual(recovered_media_ref["raw_payload_externalized"], True)
         self.assertEqual(recovered_media_ref["truth_preservation"], "raw_media_digest_without_saved_artifact_truth")
@@ -5948,7 +5948,7 @@ class ResponseFrameTests(unittest.TestCase):
                 for index in range(8)
             ]
             work_tree = {
-                "kind": "ollmo.work_tree",
+                "kind": "fruth.work_tree",
                 "work_tree_source": "runtime_owned",
                 "authoritative": True,
                 "updated_at": "2026-05-12T20:00:00Z",
@@ -5967,13 +5967,13 @@ class ResponseFrameTests(unittest.TestCase):
                 ],
             }
             request_phase_graph = {
-                "kind": "ollmo.request_phase_graph",
+                "kind": "fruth.request_phase_graph",
                 "updated_at": "2026-05-12T20:01:00Z",
                 "nodes": [{"id": "phase-1", "summary": "phase truth " * 80}],
             }
             frame = {
                 "frame_version": 9,
-                "kind": "ollmo.response_frame",
+                "kind": "fruth.response_frame",
                 "response_id": "resp_compact_refs",
                 "status": "completed",
                 "object": "response",
@@ -5988,7 +5988,7 @@ class ResponseFrameTests(unittest.TestCase):
                 },
                 "runtime": {
                     "context_strategy": {
-                        "kind": "ollmo.context_strategy",
+                        "kind": "fruth.context_strategy",
                         "mode": "bounded_file_context",
                         "reason": "selected refs",
                         "context_candidates": context_candidates,
@@ -5998,7 +5998,7 @@ class ResponseFrameTests(unittest.TestCase):
                         },
                     },
                     "semantic_role_profile": {
-                        "kind": "ollmo.semantic_role_profile",
+                        "kind": "fruth.semantic_role_profile",
                         "mode": "explorer",
                         "mode_source": "compatibility_alias",
                         "semantic_role_orientation": {
@@ -6063,7 +6063,7 @@ class ResponseFrameTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
             graph_a = {
-                "kind": "ollmo.request_phase_graph",
+                "kind": "fruth.request_phase_graph",
                 "updated_at": "2026-05-12T20:00:00Z",
                 "nodes": [
                     {
@@ -6075,7 +6075,7 @@ class ResponseFrameTests(unittest.TestCase):
                 ],
             }
             graph_b = {
-                "kind": "ollmo.request_phase_graph",
+                "kind": "fruth.request_phase_graph",
                 "updated_at": "2026-05-12T20:05:00Z",
                 "nodes": [
                     {
@@ -6090,7 +6090,7 @@ class ResponseFrameTests(unittest.TestCase):
             first = persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": "resp_timestamp_a",
                     "status": "completed",
                     "object": "response",
@@ -6102,7 +6102,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": "resp_timestamp_b",
                     "status": "completed",
                     "object": "response",
@@ -6138,12 +6138,12 @@ class ResponseFrameTests(unittest.TestCase):
             frames_dir = Path(tmpdir)
             response_id = "resp_delta_snapshot_inheritance"
             large_graph = {
-                "kind": "ollmo.request_phase_graph",
+                "kind": "fruth.request_phase_graph",
                 "nodes": [{"id": f"phase-{index}", "summary": "stable phase truth " * 100} for index in range(12)],
             }
             initial_frame = {
                 "frame_version": 9,
-                "kind": "ollmo.response_frame",
+                "kind": "fruth.response_frame",
                 "response_id": response_id,
                 "status": "completed",
                 "object": "response",
@@ -6188,7 +6188,7 @@ class ResponseFrameTests(unittest.TestCase):
             frames_dir = Path(tmpdir)
             frame = {
                 "frame_version": 9,
-                "kind": "ollmo.response_frame",
+                "kind": "fruth.response_frame",
                 "response_id": "resp_prune_dossiers",
                 "status": "completed",
                 "object": "response",
@@ -6312,7 +6312,7 @@ class ResponseFrameTests(unittest.TestCase):
             working_ref = ledger_frame["working_frame_snapshot_ref"]
             working_payload = json.loads((frames_dir / working_ref["path"]).read_text(encoding="utf-8"))
 
-        self.assertEqual(working_payload["kind"], "ollmo.working_frame")
+        self.assertEqual(working_payload["kind"], "fruth.working_frame")
         self.assertIn("status", working_payload)
         self.assertIn("closure", working_payload)
         self.assertIn("loop", working_payload)
@@ -6331,7 +6331,7 @@ class ResponseFrameTests(unittest.TestCase):
             frames_dir = Path(tmpdir)
             response_id = "resp_graph_patch_lifecycle_graph_cas"
             decision_contract = {
-                "kind": "ollmo.ghost_decision_contract",
+                "kind": "fruth.inference_decision_contract",
                 "decision_contract_version": 11,
                 "status": "available",
                 "graph_repair_proposals": [
@@ -6352,7 +6352,7 @@ class ResponseFrameTests(unittest.TestCase):
                 ],
             }
             request_ir = {
-                "kind": "ollmo.request_ir",
+                "kind": "fruth.request_ir",
                 "ir_version": 7,
                 "graph_mode": "multi_phase",
                 "decision_contract": decision_contract,
@@ -6369,7 +6369,7 @@ class ResponseFrameTests(unittest.TestCase):
 
             def lifecycle_result(index: int) -> dict:
                 lifecycle = {
-                    "kind": "ollmo.graph_patch_lifecycle",
+                    "kind": "fruth.graph_patch_lifecycle",
                     "patch_id": f"patch-{index}",
                     "proposal_id": f"proposal-lifecycle-{index}",
                     "review_id": f"review-{index}",
@@ -6386,7 +6386,7 @@ class ResponseFrameTests(unittest.TestCase):
                     "outcome": {"status": "blocked", "runtime_effect": "none"},
                 }
                 graph = {
-                    "kind": "ollmo.request_phase_graph",
+                    "kind": "fruth.request_phase_graph",
                     "graph_version": 9,
                     "response_id": response_id,
                     "frame_id": f"source-frame-{index}",
@@ -6405,7 +6405,7 @@ class ResponseFrameTests(unittest.TestCase):
                 # budget before it reaches graph_patch_lifecycle_results.
                 **{
                     f"noise_{index:02d}_graph": {
-                        "kind": "ollmo.synthetic_diagnostic_graph",
+                        "kind": "fruth.synthetic_diagnostic_graph",
                         "payload": "unrelated generic split candidate " * 1_500,
                     }
                     for index in range(70)
@@ -6413,13 +6413,13 @@ class ResponseFrameTests(unittest.TestCase):
                 "graph_patch_lifecycle_results": lifecycle_results,
             }
             closure_review = {
-                "kind": "ollmo.graph_closure_review",
+                "kind": "fruth.graph_closure_review",
                 "status": "blocked",
                 "authority": "runtime_closure",
             }
             frame = {
                 "frame_version": 9,
-                "kind": "ollmo.response_frame",
+                "kind": "fruth.response_frame",
                 "response_id": response_id,
                 "status": "repair_needed",
                 "request": {"prompt": "Keep graph repair truth durable."},
@@ -6496,7 +6496,7 @@ class ResponseFrameTests(unittest.TestCase):
                 (request_ref, "request_ir"),
                 (contract_ref, "decision_contract"),
             ):
-                self.assertEqual(ref["kind"], "ollmo.response_frame_snapshot_ref")
+                self.assertEqual(ref["kind"], "fruth.response_frame_snapshot_ref")
                 self.assertTrue(ref["content_addressed"])
                 self.assertEqual(
                     ref["projection_role"],
@@ -6509,7 +6509,7 @@ class ResponseFrameTests(unittest.TestCase):
                 audit = ref["audit_summary"]
                 self.assertEqual(
                     audit["kind"],
-                    "ollmo.graph_patch_lifecycle_graph_body_audit_summary",
+                    "fruth.graph_patch_lifecycle_graph_body_audit_summary",
                 )
                 self.assertEqual(audit["body_key"], body_key)
                 self.assertEqual(audit["runtime_effect"], "none")
@@ -6570,32 +6570,32 @@ class ResponseFrameTests(unittest.TestCase):
                 frames_dir = Path(tmpdir)
                 response_id = f"resp_graph_patch_body_{failure_mode}"
                 decision_contract = {
-                    "kind": "ollmo.ghost_decision_contract",
+                    "kind": "fruth.inference_decision_contract",
                     "decision_contract_version": 11,
                     "evidence": "authoritative contract evidence " * 500,
                 }
                 request_ir = {
-                    "kind": "ollmo.request_ir",
+                    "kind": "fruth.request_ir",
                     "ir_version": 7,
                     "decision_contract": decision_contract,
                     "output_obligations": [{"obligation_id": "obligation-1"}],
                 }
                 graph = {
-                    "kind": "ollmo.request_phase_graph",
+                    "kind": "fruth.request_phase_graph",
                     "request_ir": request_ir,
                     "decision_contract": decision_contract,
                 }
                 target = persist_response_frame(
                     {
                         "frame_version": 9,
-                        "kind": "ollmo.response_frame",
+                        "kind": "fruth.response_frame",
                         "response_id": response_id,
                         "status": "repair_needed",
                         "runtime": {
                             "developer_diagnostics": {
                                 "graph_patch_lifecycle_results": [
                                     {
-                                        "kind": "ollmo.graph_patch_lifecycle",
+                                        "kind": "fruth.graph_patch_lifecycle",
                                         "status": "blocked",
                                         "patch_id": "patch-1",
                                         "proposal_id": "proposal-1",
@@ -6645,13 +6645,13 @@ class ResponseFrameTests(unittest.TestCase):
     def test_graph_patch_lifecycle_graph_bodies_keep_dual_runtime_roots_independent(self):
         def runtime_payload(label: str) -> dict:
             decision_contract = {
-                "kind": "ollmo.ghost_decision_contract",
+                "kind": "fruth.inference_decision_contract",
                 "decision_contract_version": 11,
                 "label": label,
                 "evidence": f"{label} decision evidence " * 400,
             }
             request_ir = {
-                "kind": "ollmo.request_ir",
+                "kind": "fruth.request_ir",
                 "ir_version": 7,
                 "label": label,
                 "decision_contract": decision_contract,
@@ -6666,13 +6666,13 @@ class ResponseFrameTests(unittest.TestCase):
                 "developer_diagnostics": {
                     "graph_patch_lifecycle_results": [
                         {
-                            "kind": "ollmo.graph_patch_lifecycle",
+                            "kind": "fruth.graph_patch_lifecycle",
                             "status": "blocked",
                             "patch_id": f"{label}-patch",
                             "proposal_id": f"{label}-proposal",
                             "blocked_reasons": ["review_required"],
                             "graph": {
-                                "kind": "ollmo.request_phase_graph",
+                                "kind": "fruth.request_phase_graph",
                                 "label": label,
                                 "request_ir": request_ir,
                                 "decision_contract": decision_contract,
@@ -6681,7 +6681,7 @@ class ResponseFrameTests(unittest.TestCase):
                     ]
                 },
                 "graph_closure_review": {
-                    "kind": "ollmo.graph_closure_review",
+                    "kind": "fruth.graph_closure_review",
                     "status": "blocked",
                     "label": label,
                 },
@@ -6699,7 +6699,7 @@ class ResponseFrameTests(unittest.TestCase):
                 target = persist_response_frame(
                     {
                         "frame_version": 9,
-                        "kind": "ollmo.response_frame",
+                        "kind": "fruth.response_frame",
                         "response_id": response_id,
                         "status": "repair_needed",
                         "runtime": primary_runtime,
@@ -6766,22 +6766,22 @@ class ResponseFrameTests(unittest.TestCase):
     def test_legacy_inline_graph_patch_lifecycle_graph_recovers_unchanged(self):
         response_id = "resp_legacy_inline_graph_patch_lifecycle"
         legacy_graph = {
-            "kind": "ollmo.request_phase_graph",
+            "kind": "fruth.request_phase_graph",
             "request_ir": {
-                "kind": "ollmo.request_ir",
+                "kind": "fruth.request_ir",
                 "ir_version": 6,
                 "decision_contract": {
-                    "kind": "ollmo.ghost_decision_contract",
+                    "kind": "fruth.inference_decision_contract",
                     "decision_contract_version": 10,
                 },
             },
             "decision_contract": {
-                "kind": "ollmo.ghost_decision_contract",
+                "kind": "fruth.inference_decision_contract",
                 "decision_contract_version": 10,
             },
         }
         legacy_result = {
-            "kind": "ollmo.graph_patch_lifecycle",
+            "kind": "fruth.graph_patch_lifecycle",
             "status": "blocked",
             "patch_id": "legacy-patch",
             "proposal_id": "legacy-proposal",
@@ -6790,7 +6790,7 @@ class ResponseFrameTests(unittest.TestCase):
         }
         legacy_frame = {
             "frame_version": 8,
-            "kind": "ollmo.response_frame",
+            "kind": "fruth.response_frame",
             "response_id": response_id,
             "frame_id": "legacy-frame-1",
             "frame_sequence": 1,
@@ -6828,7 +6828,7 @@ class ResponseFrameTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
             graph = {
-                "kind": "ollmo.request_phase_graph",
+                "kind": "fruth.request_phase_graph",
                 "nodes": [
                     {
                         "id": f"phase-{index}",
@@ -6852,7 +6852,7 @@ class ResponseFrameTests(unittest.TestCase):
             }
             frame = {
                 "frame_version": 9,
-                "kind": "ollmo.response_frame",
+                "kind": "fruth.response_frame",
                 "response_id": "resp_recursive_sidecar_split",
                 "status": "completed",
                 "object": "response",
@@ -6890,7 +6890,7 @@ class ResponseFrameTests(unittest.TestCase):
             frames_dir = Path(tmpdir)
             response_id = "resp_two_level_recursive_sidecar"
             candidate_graph = {
-                "kind": "ollmo.candidate_graph",
+                "kind": "fruth.candidate_graph",
                 "nodes": [
                     {
                         "id": f"candidate-{index}",
@@ -6906,7 +6906,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "runtime": {"candidate_graph": candidate_graph},
@@ -6970,7 +6970,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "runtime": runtime,
@@ -7017,7 +7017,7 @@ class ResponseFrameTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
             lens_contract = {
-                "kind": "ollmo.semantic_review_lens_contract",
+                "kind": "fruth.semantic_review_lens_contract",
                 "semantic_role_id": "quality_reviewer",
                 "semantic_role_name": "Quality reviewer",
                 "authority": "advisory_read_model_only",
@@ -7038,7 +7038,7 @@ class ResponseFrameTests(unittest.TestCase):
 
             def attention_frame(index: int) -> dict[str, object]:
                 return {
-                    "kind": "ollmo.controlled_attention_frame",
+                    "kind": "fruth.controlled_attention_frame",
                     "frame_id": f"attention-{index}",
                     "scope": "runtime_state_transition",
                     "priority": "high",
@@ -7051,7 +7051,7 @@ class ResponseFrameTests(unittest.TestCase):
 
             def semantic_proposal(index: int) -> dict[str, object]:
                 return {
-                    "kind": "ollmo.semantic_decision_proposal",
+                    "kind": "fruth.semantic_decision_proposal",
                     "proposal_id": f"semantic-proposal-{index}",
                     "action": "review_before_close",
                     "confidence": 0.72,
@@ -7061,23 +7061,23 @@ class ResponseFrameTests(unittest.TestCase):
                 }
 
             guidance = {
-                "kind": "ollmo.decision_contract_guidance",
+                "kind": "fruth.decision_contract_guidance",
                 "authority": "advisory_read_model_only",
                 "controlled_attention_review": {
-                    "kind": "ollmo.controlled_attention_review",
+                    "kind": "fruth.controlled_attention_review",
                     "frame_count": 18,
                     "authority": "advisory_read_model_only",
                 },
                 "controlled_attention_frames": [attention_frame(index) for index in range(18)],
                 "semantic_decision_review": {
-                    "kind": "ollmo.semantic_decision_review",
+                    "kind": "fruth.semantic_decision_review",
                     "proposal_count": 12,
                     "authority": "advisory_read_model_only",
                 },
                 "semantic_decision_proposals": [semantic_proposal(index) for index in range(12)],
             }
             graph_closure_review = {
-                "kind": "ollmo.graph_closure_review",
+                "kind": "fruth.graph_closure_review",
                 "status": "pending",
                 "checks": [
                     {
@@ -7106,8 +7106,8 @@ class ResponseFrameTests(unittest.TestCase):
                     "runtime": {"graph_closure_review": graph_closure_review},
                     "late_fill": {
                         "status": "running",
-                        "ghost_repair_feedback": {
-                            "kind": "ollmo.ghost_repair_feedback",
+                        "inference_repair_feedback": {
+                            "kind": "fruth.inference_repair_feedback",
                             "status": "repair_required",
                             "reason": "advisory review pending",
                             "decision_contract_guidance": guidance,
@@ -7137,7 +7137,7 @@ class ResponseFrameTests(unittest.TestCase):
                 return json.loads((frames_dir / str(ref["path"])).read_text(encoding="utf-8"))
 
             raw_late_fill = raw_snapshot(ledger_frame["late_fill_snapshot_ref"])
-            feedback_ref = raw_late_fill["ghost_repair_feedback_snapshot_ref"]
+            feedback_ref = raw_late_fill["inference_repair_feedback_snapshot_ref"]
             raw_feedback = raw_snapshot(feedback_ref)
             guidance_ref = raw_feedback["decision_contract_guidance_snapshot_ref"]
             raw_guidance = raw_snapshot(guidance_ref)
@@ -7145,8 +7145,8 @@ class ResponseFrameTests(unittest.TestCase):
             raw_proposals = raw_snapshot(raw_guidance["semantic_decision_proposals_snapshot_ref"])
             recovered = load_latest_response_state("resp_advisory_compaction", frames_dir=frames_dir)
 
-        self.assertIn("ghost_repair_feedback_snapshot_ref", raw_late_fill)
-        self.assertNotIn("ghost_repair_feedback", raw_late_fill)
+        self.assertIn("inference_repair_feedback_snapshot_ref", raw_late_fill)
+        self.assertNotIn("inference_repair_feedback", raw_late_fill)
         self.assertIn("decision_contract_guidance_snapshot_ref", raw_feedback)
         self.assertNotIn("decision_contract_guidance", raw_feedback)
         self.assertIn("controlled_attention_frames_snapshot_ref", raw_guidance)
@@ -7167,7 +7167,7 @@ class ResponseFrameTests(unittest.TestCase):
         }
         self.assertEqual(len(lens_shas), 1)
         self.assertTrue(recovered["ok"])
-        recovered_guidance = recovered["response_payload"]["late_fill"]["ghost_repair_feedback"]["decision_contract_guidance"]
+        recovered_guidance = recovered["response_payload"]["late_fill"]["inference_repair_feedback"]["decision_contract_guidance"]
         self.assertEqual(
             recovered_guidance["controlled_attention_frames"][0]["semantic_review_lens_contract"]["semantic_role_id"],
             "quality_reviewer",
@@ -7181,7 +7181,7 @@ class ResponseFrameTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
             lens_contract = {
-                "kind": "ollmo.semantic_review_lens_contract",
+                "kind": "fruth.semantic_review_lens_contract",
                 "semantic_role_id": "transition_committer",
                 "authority": "advisory_read_model_only",
                 "focus_questions": [
@@ -7195,7 +7195,7 @@ class ResponseFrameTests(unittest.TestCase):
             }
             attention_frames = [
                 {
-                    "kind": "ollmo.controlled_attention_frame",
+                    "kind": "fruth.controlled_attention_frame",
                     "frame_id": f"attention-{index}",
                     "scope": "runtime_state_transition",
                     "question": "Which bounded transition is justified by runtime truth? " * 5,
@@ -7206,7 +7206,7 @@ class ResponseFrameTests(unittest.TestCase):
             ]
             semantic_proposals = [
                 {
-                    "kind": "ollmo.semantic_decision_proposal",
+                    "kind": "fruth.semantic_decision_proposal",
                     "proposal_id": f"proposal-{index}",
                     "action": "review_before_close",
                     "reason": "Generic proposal list should split only in semantic decision context. " * 5,
@@ -7232,19 +7232,19 @@ class ResponseFrameTests(unittest.TestCase):
                     "late_fill": {
                         "status": "running",
                         "controlled_attention_review": {
-                            "kind": "ollmo.controlled_attention_review",
+                            "kind": "fruth.controlled_attention_review",
                             "authority": "advisory_read_model_only",
                             "frame_count": len(attention_frames),
                             "frames": attention_frames,
                         },
                         "semantic_decision_review": {
-                            "kind": "ollmo.semantic_decision_review",
+                            "kind": "fruth.semantic_decision_review",
                             "authority": "advisory_read_model_only",
                             "proposal_count": len(semantic_proposals),
                             "proposals": semantic_proposals,
                         },
                         "surface_state": {
-                            "kind": "ollmo.surface_state",
+                            "kind": "fruth.surface_state",
                             "items": surface_items,
                         },
                     },
@@ -7306,7 +7306,7 @@ class ResponseFrameTests(unittest.TestCase):
                 }
 
             accepted_learning_hints = {
-                "kind": "ollmo.accepted_learning_runtime_hints",
+                "kind": "fruth.accepted_learning_runtime_hints",
                 "status": "available",
                 "enabled": True,
                 "authority": "soft_hint",
@@ -7315,10 +7315,10 @@ class ResponseFrameTests(unittest.TestCase):
                 "hints": [large_record("accepted-learning-hint", index) for index in range(6)],
             }
             graph_closure_review = {
-                "kind": "ollmo.graph_closure_review",
+                "kind": "fruth.graph_closure_review",
                 "status": "repair_needed",
                 "intent_graph_adequacy": {
-                    "kind": "ollmo.intent_graph_adequacy_review",
+                    "kind": "fruth.intent_graph_adequacy_review",
                     "status": "pending",
                     "checks": [large_record("intent-adequacy-check", index) for index in range(10)],
                 },
@@ -7326,7 +7326,7 @@ class ResponseFrameTests(unittest.TestCase):
                 "graph_repair_reviews": [large_record("graph-repair-review", index) for index in range(8)],
                 "graph_rebase_lifecycle": [large_record("graph-rebase-lifecycle", index) for index in range(6)],
                 "redraw_scope_ladder_review": {
-                    "kind": "ollmo.redraw_scope_ladder_review",
+                    "kind": "fruth.redraw_scope_ladder_review",
                     "status": "selected",
                     "selected_scopes": ["repair_artifact_ref_identity"],
                     "scope_candidates": [large_record("redraw-scope-candidate", index) for index in range(8)],
@@ -7334,7 +7334,7 @@ class ResponseFrameTests(unittest.TestCase):
                 "successor_reopen_requests": [
                     {
                         **large_record("successor-reopen", index),
-                        "kind": "ollmo.graph_patch_successor_reopen_request",
+                        "kind": "fruth.graph_patch_successor_reopen_request",
                     }
                     for index in range(4)
                 ],
@@ -7437,20 +7437,20 @@ class ResponseFrameTests(unittest.TestCase):
             }
             frame = {
                 "frame_version": 9,
-                "kind": "ollmo.response_frame",
+                "kind": "fruth.response_frame",
                 "response_id": "resp_large_contract",
                 "status": "completed",
                 "object": "response",
                 "planning": {
                     "intent_contract": {
-                        "kind": "ollmo.intent_contract",
+                        "kind": "fruth.intent_contract",
                         "status": "pending",
                         "counts": {"pending": 1, "fulfilled": 0},
                         "pending_obligation_ids": ["obligation-large"],
                         "checks": [large_check],
                     },
                     "context_contract": {
-                        "kind": "ollmo.context_contract",
+                        "kind": "fruth.context_contract",
                         "status": "candidate_only",
                         "candidate_count": 1,
                         "context_gate_review": {
@@ -7626,7 +7626,7 @@ class ResponseFrameTests(unittest.TestCase):
                             "request_phase_graph": {
                                 "successor_reopen_requests": [
                                     {
-                                        "kind": "ollmo.graph_patch_successor_reopen_request",
+                                        "kind": "fruth.graph_patch_successor_reopen_request",
                                         "status": "applied_to_successor",
                                         "patch_id": "patch-terminal-successor",
                                     }
@@ -7897,12 +7897,12 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "runtime": {
                         "request_phase_graph": {
-                            "kind": "ollmo.request_phase_graph",
+                            "kind": "fruth.request_phase_graph",
                             "nodes": [
                                 {
                                     "id": "phase-large-private-truth",
@@ -7939,7 +7939,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "late_fill": {"completed_branch_count": 1, "status": "completed"},
@@ -8096,7 +8096,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "output": {"item_count": 1, "outputs": [output]},
@@ -8199,7 +8199,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "output": {"item_count": 0, "text": output_text},
@@ -8246,7 +8246,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "failed",
                     "output": {"item_count": 0, "outputs": []},
@@ -8363,7 +8363,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "output": {"item_count": 0, "text": output_text},
@@ -8446,7 +8446,7 @@ class ResponseFrameTests(unittest.TestCase):
         )
         frame = {
             "frame_version": 9,
-            "kind": "ollmo.response_frame",
+            "kind": "fruth.response_frame",
             "response_id": response_id,
             "status": "completed",
             "output": {"item_count": 1, "outputs": collection},
@@ -8535,7 +8535,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "output": {"item_count": 0, "outputs": []},
@@ -8572,7 +8572,7 @@ class ResponseFrameTests(unittest.TestCase):
     def test_ref_shaped_user_json_and_deep_no_ref_payload_remain_ordinary_truth(self):
         response_id = "resp_ref_shaped_user_json"
         ref_shaped_value = {
-            "kind": "ollmo.response_frame_snapshot_ref",
+            "kind": "fruth.response_frame_snapshot_ref",
             "json_path": "user.claim",
             "path": "snapshots/content_sha256/ff/not-real.json",
             "sha256": "f" * 64,
@@ -8587,7 +8587,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "output": {"item_count": 0, "outputs": []},
@@ -8626,7 +8626,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": source_id,
                     "status": "completed",
                     "output": {"item_count": 0, "text": source_body},
@@ -8648,7 +8648,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": target_id,
                     "status": "completed",
                     "output": {"item_count": 0, "outputs": []},
@@ -8683,7 +8683,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": source_id,
                     "status": "completed",
                     "runtime": {"private_runtime_marker": "SOURCE_ONLY"},
@@ -8718,7 +8718,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": target_id,
                     "status": "completed",
                     "runtime": {
@@ -8785,7 +8785,7 @@ class ResponseFrameTests(unittest.TestCase):
                 persist_response_frame(
                     {
                         "frame_version": 9,
-                        "kind": "ollmo.response_frame",
+                        "kind": "fruth.response_frame",
                         "response_id": response_id,
                         "status": "completed",
                         "output": {"item_count": 0, "text": body},
@@ -8835,7 +8835,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "output": {"item_count": 0, "outputs": []},
@@ -8906,7 +8906,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "batch": {"count": high_index, "prompts": []},
@@ -8959,7 +8959,7 @@ class ResponseFrameTests(unittest.TestCase):
             "status": "completed",
             "lifecycle_state": "completed",
             "message_id": "msg-public-metadata",
-            "route_source": "ghost_router",
+            "route_source": "inference_router",
             "route_reason": "capability and affinity match",
             "route_confidence": 0.91,
             "route_reuse_last_artifact": True,
@@ -8988,7 +8988,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": legacy_id,
                     "status": "completed",
                     "route": {
@@ -9035,7 +9035,7 @@ class ResponseFrameTests(unittest.TestCase):
             self.assertEqual(canonical_state["response_payload"][key], response[key])
         self.assertEqual(
             wire_state["response_frame"]["route"]["route_source"],
-            "ghost_router",
+            "inference_router",
         )
         self.assertEqual(
             legacy_wire["response_payload"]["route_source"],
@@ -9138,7 +9138,7 @@ class ResponseFrameTests(unittest.TestCase):
                 for key, value in raw_runtime.items()
                 if key.endswith("_snapshot_ref")
                 and isinstance(value, dict)
-                and value.get("kind") == "ollmo.response_frame_snapshot_ref"
+                and value.get("kind") == "fruth.response_frame_snapshot_ref"
             )
             (frames_dir / child_ref["path"]).unlink()
 
@@ -9209,7 +9209,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "output": {"item_count": 0, "text": output_text},
@@ -9261,7 +9261,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "output": {"item_count": 65, "outputs": outputs},
@@ -9328,7 +9328,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "batch": {"count": 2, "prompts": prompts},
@@ -9412,7 +9412,7 @@ class ResponseFrameTests(unittest.TestCase):
             response_id = "resp_bounded_closure_observation"
             sentinel = "CLOSURE_CHILD_SENTINEL_" + ("z" * 1_000_000)
             closure_review = {
-                "kind": "ollmo.graph_closure_review",
+                "kind": "fruth.graph_closure_review",
                 "status": "repair_needed",
                 "reason": "one branch needs bounded repair",
                 "continuation_required": True,
@@ -9434,14 +9434,14 @@ class ResponseFrameTests(unittest.TestCase):
                     "active_categories": ["blocked", "repair_pending"],
                     "category_counts": {"blocked": 1, "repair_pending": 1},
                     "items": [{"private_evidence": sentinel}],
-                    "kind": "ollmo.surface_state",
+                    "kind": "fruth.surface_state",
                     "status": "repair_needed",
                 },
             }
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "completed",
                     "runtime": {
@@ -9535,7 +9535,7 @@ class ResponseFrameTests(unittest.TestCase):
             persist_response_frame(
                 {
                     "frame_version": 9,
-                    "kind": "ollmo.response_frame",
+                    "kind": "fruth.response_frame",
                     "response_id": response_id,
                     "status": "repair_needed",
                     "request": {
@@ -9544,7 +9544,7 @@ class ResponseFrameTests(unittest.TestCase):
                     },
                     "runtime": {
                         "graph_closure_review": {
-                            "kind": "ollmo.graph_closure_review",
+                            "kind": "fruth.graph_closure_review",
                             "status": "repair_needed",
                             "recommended_transition": "partial_subtree_rebase",
                             "repair_needed": True,
@@ -9566,7 +9566,7 @@ class ResponseFrameTests(unittest.TestCase):
                             },
                         },
                         "request_phase_graph": {
-                            "kind": "ollmo.request_phase_graph",
+                            "kind": "fruth.request_phase_graph",
                             "graph_rebase_proposals": [
                                 {
                                     "proposal_id": "rebase-opportunity-1",
@@ -9742,7 +9742,7 @@ class ResponseFrameTests(unittest.TestCase):
             self.assertLess(older_entry["ledger_size_bytes"], current_index["ledger_size_bytes"])
 
             with patch(
-                "ollmo_services.response_frames._iter_ledger_frames",
+                "fruth_services.response_frames._iter_ledger_frames",
                 side_effect=AssertionError("fresh indexed lookup must not scan the shared ledger"),
             ):
                 state = load_latest_response_state(older_response_id, frames_dir=frames_dir)
@@ -9775,7 +9775,7 @@ class ResponseFrameTests(unittest.TestCase):
             )
 
             with patch(
-                "ollmo_services.response_frames._iter_ledger_frames",
+                "fruth_services.response_frames._iter_ledger_frames",
                 side_effect=AssertionError("verified negative lookup must not scan the ledger"),
             ):
                 state = load_latest_response_state(
@@ -9814,7 +9814,7 @@ class ResponseFrameTests(unittest.TestCase):
             index_path.write_text(json.dumps(incomplete_index), encoding="utf-8")
 
             with patch(
-                "ollmo_services.response_frames._iter_ledger_frames",
+                "fruth_services.response_frames._iter_ledger_frames",
                 wraps=response_frames_module._iter_ledger_frames,
             ) as iter_ledger:
                 state = load_latest_response_state(hidden_response_id, frames_dir=frames_dir)
@@ -9950,7 +9950,7 @@ class ResponseFrameTests(unittest.TestCase):
             legacy_index.pop("response_map_digest", None)
             legacy_index["responses"]["resp_attest_a"]["effective_snapshot_manifest"] = {
                 "runtime.synthetic": {
-                    "kind": "ollmo.response_frame_snapshot_ref",
+                    "kind": "fruth.response_frame_snapshot_ref",
                     "sha256": "a" * 64,
                 }
             }
@@ -9964,10 +9964,10 @@ class ResponseFrameTests(unittest.TestCase):
                 "read_text",
                 side_effect=AssertionError("attestation must not use Path.read_text"),
             ), patch(
-                "ollmo_services.response_frames._iter_ledger_frames",
+                "fruth_services.response_frames._iter_ledger_frames",
                 side_effect=AssertionError("attestation must not materialize the ledger"),
             ), patch(
-                "ollmo_services.response_frames.os.replace",
+                "fruth_services.response_frames.os.replace",
                 wraps=os.replace,
             ) as atomic_replace:
                 result = response_frames_module.attest_response_frame_index(
@@ -10151,7 +10151,7 @@ class ResponseFrameTests(unittest.TestCase):
                     return scan_result
 
                 with patch(
-                    "ollmo_services.response_frames._scan_response_frame_ledger_index_truth",
+                    "fruth_services.response_frames._scan_response_frame_ledger_index_truth",
                     side_effect=scan_then_move,
                 ):
                     result = response_frames_module.attest_response_frame_index(
@@ -10666,7 +10666,7 @@ if __name__ == "__main__":
 
 def test_manifest_hydration_sanitizes_tree_once_without_rewalking_restored_children(tmp_path):
     from unittest.mock import patch
-    from ollmo_services import response_frames as owner
+    from fruth_services import response_frames as owner
 
     value = {'leaf': {'value': 'retained', 'response_frame': {'hidden': True}, 'empty': []}}
     for _ in range(25):

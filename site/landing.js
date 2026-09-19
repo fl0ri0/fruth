@@ -369,8 +369,8 @@
     resetTimer = window.setTimeout(() => {
       if (label) label.textContent = 'Copy';
       if (status) status.textContent = '';
-      copyButton.setAttribute('aria-label', 'Copy the Ollmo installation commands');
-      copyButton.title = 'Copy the Ollmo installation commands';
+      copyButton.setAttribute('aria-label', 'Copy the Fruth installation commands');
+      copyButton.title = 'Copy the Fruth installation commands';
       resetTimer = null;
     }, 1800);
   }
@@ -438,17 +438,17 @@
 (() => {
   'use strict';
 
-  const ghostStage = document.querySelector('.ghost-stage');
+  const mascotStage = document.querySelector('.mascot-stage');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  if (!ghostStage) return;
+  if (!mascotStage) return;
 
   let ambientTimer = null;
   let vanishTimer = null;
 
   function setRandomAuraDuration() {
     const auraDurationMs = 18000 + Math.floor(Math.random() * 6001);
-    ghostStage.style.setProperty(
-      '--ghost-aura-duration',
+    mascotStage.style.setProperty(
+      '--mascot-aura-duration',
       `${auraDurationMs}ms`,
     );
   }
@@ -458,7 +458,7 @@
       window.clearTimeout(vanishTimer);
       vanishTimer = null;
     }
-    ghostStage.classList.remove('ghost-stage--vanished');
+    mascotStage.classList.remove('mascot-stage--vanished');
   }
 
   function stopAmbientVanish() {
@@ -490,7 +490,7 @@
       if (Math.random() < 0.1) {
         const hideDurationMs = 2000 + Math.floor(Math.random() * 1500);
         clearVanishState();
-        ghostStage.classList.add('ghost-stage--vanished');
+        mascotStage.classList.add('mascot-stage--vanished');
         vanishTimer = window.setTimeout(() => {
           clearVanishState();
           scheduleAmbientVanish();

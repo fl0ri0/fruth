@@ -11,9 +11,9 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_services import response_frames as rf, graph_rebase_readiness_registry as registry
-from ollmo_services import state_flow as sf, events
-from ollmo_services.graph_rebase_rollout import project_graph_rebase_readiness_observation as project
+from fruth_services import response_frames as rf, graph_rebase_readiness_registry as registry
+from fruth_services import state_flow as sf, events
+from fruth_services.graph_rebase_rollout import project_graph_rebase_readiness_observation as project
 from tests.test_readiness_observation_reuse import frame
 
 
@@ -35,7 +35,7 @@ def stable(tmp_path):
 @pytest.fixture(autouse=True)
 def diagnostics(tmp_path, monkeypatch):
     target = tmp_path / 'diagnostics'
-    monkeypatch.setenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', str(target))
+    monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(target))
     with sf.state_flow_scope(), events.causal_scope(lambda **record: None):
         yield target
 

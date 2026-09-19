@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_webserver import _RESPONSE_LOOKUP, app
+from fruth_webserver import _RESPONSE_LOOKUP, app
 
 
 class ChatHistoryApiTests(unittest.TestCase):
@@ -13,7 +13,7 @@ class ChatHistoryApiTests(unittest.TestCase):
         self.client = app.test_client()
         _RESPONSE_LOOKUP.clear()
 
-    @patch('ollmo_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
+    @patch('fruth_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
     def test_chat_history_round_trip(self, _mock_history_dir):
         response = self.client.post(
             '/api/chat_history',
@@ -53,7 +53,7 @@ class ChatHistoryApiTests(unittest.TestCase):
         self.assertEqual(delete_response.status_code, 200)
         self.assertTrue(delete_response.get_json()['deleted'])
 
-    @patch('ollmo_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
+    @patch('fruth_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
     def test_chat_history_round_trip_for_responses_workbench(self, mock_history_dir):
         response = self.client.post(
             '/api/chat_history',
@@ -95,7 +95,7 @@ class ChatHistoryApiTests(unittest.TestCase):
         self.assertTrue(delete_response.get_json()['deleted'])
         self.assertFalse((mock_history_dir / 'responses_workbench.json').exists())
 
-    @patch('ollmo_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
+    @patch('fruth_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
     def test_chat_history_post_reconciles_reduced_response_projection_before_write(self, _mock_history_dir):
         response_id = 'resp_multi_artifact_history_post'
         _RESPONSE_LOOKUP[response_id] = {
@@ -185,7 +185,7 @@ class ChatHistoryApiTests(unittest.TestCase):
             ['audio', 'document', 'image'],
         )
 
-    @patch('ollmo_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
+    @patch('fruth_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
     def test_chat_history_get_synthesizes_missing_assistant_from_user_request_snapshot_response_id(self, _mock_history_dir):
         response_id = 'resp_missing_assistant_history'
         post_response = self.client.post(
@@ -265,7 +265,7 @@ class ChatHistoryApiTests(unittest.TestCase):
         self.assertEqual(len(assistant['output_branches']), 3)
         self.assertEqual(assistant['request_snapshot']['response_id'], response_id)
 
-    @patch('ollmo_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
+    @patch('fruth_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
     def test_chat_history_round_trip_preserves_request_snapshot(self, _mock_history_dir):
         response = self.client.post(
             '/api/chat_history',
@@ -327,7 +327,7 @@ class ChatHistoryApiTests(unittest.TestCase):
         self.assertEqual(snapshot['settings']['pdfSynthesize'], False)
         self.assertEqual(snapshot['reference_artifacts'][0]['path'], '/tmp/reference-voice.wav')
 
-    @patch('ollmo_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
+    @patch('fruth_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
     def test_chat_history_rotate_keeps_previous_file_and_returns_successor(self, mock_history_dir):
         seed_response = self.client.post(
             '/api/chat_history',
@@ -368,7 +368,7 @@ class ChatHistoryApiTests(unittest.TestCase):
         self.assertEqual(successor_get.status_code, 200)
         self.assertEqual(successor_get.get_json()['instance_id'], payload['instance_id'])
 
-    @patch('ollmo_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
+    @patch('fruth_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
     def test_chat_history_slot_endpoint_returns_latest_responses_successor(self, _mock_history_dir):
         seed_response = self.client.post(
             '/api/chat_history',
@@ -423,7 +423,7 @@ class ChatHistoryApiTests(unittest.TestCase):
         self.assertEqual(payload['instance_id'], successor_id)
         self.assertEqual(payload['messages'][0]['content'], 'latest successor reply')
 
-    @patch('ollmo_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
+    @patch('fruth_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
     def test_chat_history_rotate_supports_fresh_root_for_responses_workbench(self, _mock_history_dir):
         seed_response = self.client.post(
             '/api/chat_history',
@@ -459,7 +459,7 @@ class ChatHistoryApiTests(unittest.TestCase):
         self.assertTrue(payload['rotation_event']['fresh_root'])
         self.assertNotIn('parent_conversation_id', payload['rotation_event'])
 
-    @patch('ollmo_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
+    @patch('fruth_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))
     def test_chat_history_index_endpoint_lists_all_saved_chats(self, _mock_history_dir):
         first_response = self.client.post(
             '/api/chat_history',
@@ -471,7 +471,7 @@ class ChatHistoryApiTests(unittest.TestCase):
                     'label': 'responses-workbench',
                 },
                 'messages': [
-                    {'role': 'user', 'content': 'hello from ollmo', 'timestamp': '2026-04-08T10:00:00Z'},
+                    {'role': 'user', 'content': 'hello from fruth', 'timestamp': '2026-04-08T10:00:00Z'},
                 ],
             },
         )

@@ -12,8 +12,8 @@ LIFECYCLE_OUTPUT_FILES = (
     REPO_ROOT / 'stop_multi_models.sh',
     REPO_ROOT / 'restart.sh',
     REPO_ROOT / 'scripts' / 'startup_model_manager.py',
-    REPO_ROOT / 'ollmo_runtime' / 'ollama_model_manager.py',
-    REPO_ROOT / 'ollmo_runtime' / 'mlx_model_manager.py',
+    REPO_ROOT / 'fruth_runtime' / 'ollama_model_manager.py',
+    REPO_ROOT / 'fruth_runtime' / 'mlx_model_manager.py',
 )
 COMPOUND_STARTUP_ICONS = ('ℹ️', '⚠️', '▶️', '➡️')
 

@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_core.inference import detect_text_artifact_requests, extract_text_artifact_payloads
-from ollmo_g.intent import analyze_prompt_intent, materialization_is_deferred
-from ollmo_g.request_phase_graph import build_request_phase_graph, _prompt_reserves_materialization_capability
+from fruth_core.inference import detect_text_artifact_requests, extract_text_artifact_payloads
+from fruth_inference.intent import analyze_prompt_intent, materialization_is_deferred
+from fruth_inference.request_phase_graph import build_request_phase_graph, _prompt_reserves_materialization_capability
 from tests.test_generated_image_artifact_routing import semantics
 from tests import test_explicit_file_contract_preservation as files
 
@@ -29,7 +29,7 @@ def test_image_reservation_pronouns_keep_their_nearest_artifact_scope(prompt, re
 
 
 def pending(owner, prompt):
-    graph = build_request_phase_graph(prompt, request_payload={'prompt': prompt, 'ghost_route': True})
+    graph = build_request_phase_graph(prompt, request_payload={'prompt': prompt, 'inference_route': True})
     branches = owner.extract_pending_deferred_branches(
         route_payload={'route_runtime': {'request_phase_graph': graph}})
     return graph, branches
@@ -123,7 +123,7 @@ def test_saved_file_producer_consumer_executes_with_unrelated_exclusions(tmp_pat
     ('Do not create files.', set(), False),
 ])
 def test_request_schedules_only_executable_files(tmp_path, constraint, expected_names, closed):
-    import ollmo_webserver as web
+    import fruth_webserver as web
     from tests.test_generated_image_artifact_routing import _GeneratedWebHarness
 
     prompt = files.PROMPT + ' ' + constraint
@@ -154,7 +154,7 @@ def test_request_schedules_only_executable_files(tmp_path, constraint, expected_
             return True
         with patch.object(web, '_schedule_response_late_fill', side_effect=complete_inline), \
              patch.object(web, 'ARTIFACT_OUTPUTS_DOCUMENTS_DIR', harness.documents_dir):
-            initial, status = harness.post_response({'response_id': 'scope-files', 'prompt': prompt, 'ghost_route': True})
+            initial, status = harness.post_response({'response_id': 'scope-files', 'prompt': prompt, 'inference_route': True})
         assert status == 200
         assert len(scheduled) == bool(expected_names)
         if scheduled:

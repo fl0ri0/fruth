@@ -1,0 +1,175 @@
+{
+  "artifacts": [
+    {
+      "artifact_ref": "artifact:text_7065146270a39644e11b6631",
+      "branch_id": "branch-text_artifact-2",
+      "bundle_path": "bundle/assets/files/file-01.json",
+      "mime_type": "application/json",
+      "phase_id": "phase-3",
+      "published_path": "artifacts/documents/document-01.json",
+      "sha256": "0c2d338502a3b8b106815e34004c2234f3b5eb1defa649f737e3dbc4a69ebf4f",
+      "size_bytes": 9,
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:text_0656a621669b250d86fbed81",
+      "branch_id": "branch-text_artifact-1",
+      "bundle_path": "bundle/index.html",
+      "mime_type": "text/html",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/documents/index.html",
+      "sha256": "94dca090157c0d2d345ab326d5054781e7092864a84a3129d0f71c12484f3a5b",
+      "size_bytes": 1220,
+      "type": "text"
+    }
+  ],
+  "bundle": {
+    "entrypoint": "index.html",
+    "files": [
+      {
+        "artifact_ref": "artifact:text_7065146270a39644e11b6631",
+        "relative_path": "assets/files/file-01.json",
+        "sha256": "0c2d338502a3b8b106815e34004c2234f3b5eb1defa649f737e3dbc4a69ebf4f",
+        "size_bytes": 9,
+        "source_sha256": "0c2d338502a3b8b106815e34004c2234f3b5eb1defa649f737e3dbc4a69ebf4f",
+        "type": "text"
+      },
+      {
+        "artifact_ref": "artifact:text_0656a621669b250d86fbed81",
+        "relative_path": "index.html",
+        "sha256": "94dca090157c0d2d345ab326d5054781e7092864a84a3129d0f71c12484f3a5b",
+        "size_bytes": 1220,
+        "source_sha256": "94dca090157c0d2d345ab326d5054781e7092864a84a3129d0f71c12484f3a5b",
+        "type": "text"
+      }
+    ],
+    "link_check": {
+      "status": "passed"
+    },
+    "raw_runtime_manifest_published": false,
+    "resolved_links": [],
+    "schema": "fruth.public_bundle_manifest.v1",
+    "source_bundle_id": "bundle:8e8de22226553d164dc6856c",
+    "source_response_id": "resp_1789748256967_fcaea6cbf63d38",
+    "status": "bundled",
+    "version": 1
+  },
+  "integrity": {
+    "frame_identity_verified": true,
+    "index_only_wire_lookup": true,
+    "ledger_fallback_used": false,
+    "observation_snapshot_digests_verified": true,
+    "source_frame_record_sha256": "eda620ce66036452185475b3077df35d52421ffdbcb33e01501b281622de2b8c",
+    "source_frame_record_size_bytes": 768318,
+    "verified_response_map": true
+  },
+  "outputs": [
+    {
+      "branch_id": "phase-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-1",
+      "slot_id": "output-phase-1",
+      "status": "fulfilled",
+      "type": "document"
+    },
+    {
+      "artifact_ref": "artifact:text_0656a621669b250d86fbed81",
+      "branch_id": "branch-text_artifact-1",
+      "bundle_path": "bundle/index.html",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/documents/index.html",
+      "slot_id": "output-phase-2",
+      "status": "fulfilled",
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:text_7065146270a39644e11b6631",
+      "branch_id": "branch-text_artifact-2",
+      "bundle_path": "bundle/assets/files/file-01.json",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-3",
+      "published_path": "artifacts/documents/document-01.json",
+      "slot_id": "output-phase-3",
+      "status": "fulfilled",
+      "type": "text"
+    }
+  ],
+  "provenance": {
+    "original_runtime_truth_remains_authoritative": true,
+    "raw_frame_published": false,
+    "runtime_effect": "none",
+    "source": "indexed final response frame and canonical artifact bytes"
+  },
+  "request": {
+    "prompt_path": "prompt.txt",
+    "prompt_sha256": "d099a2346fc5296943b7559bde5657791526777e4e572354fea0a052988083ff",
+    "runtime_request_sha256": "e276ca01e0277f6c28d50a297521c6c347945121fe9ae17f8b4e39bc7adbadff",
+    "verified": true
+  },
+  "response": {
+    "frame_id": "resp_1789748256967_fcaea6cbf63d38:frame-2",
+    "frame_sequence": 2,
+    "frame_version": 9,
+    "id": "resp_1789748256967_fcaea6cbf63d38",
+    "lifecycle_state": "completed",
+    "status": "completed",
+    "status_semantics": {
+      "has_actionable_repair": false,
+      "has_open_continuation": false,
+      "is_terminal": true,
+      "terminal": true
+    }
+  },
+  "runtime_truth": {
+    "closure": {
+      "continuation_required": false,
+      "counts": {
+        "blocked": 0,
+        "deferred": 0,
+        "fulfilled": 3,
+        "pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "obligation_count": 3,
+      "pending_branch_count": 0,
+      "status": "fulfilled"
+    },
+    "late_fill": {
+      "counts": {
+        "cancelled": 0,
+        "completed": 2,
+        "failed": 0,
+        "pending": 0
+      },
+      "final_materialization_contract_status": "fulfilled",
+      "status": "completed"
+    },
+    "surface": {
+      "active_categories": [
+        "completed",
+        "reconsiderable",
+        "controlled_attention_advisory",
+        "aspiration_advisory",
+        "commitment_advisory"
+      ],
+      "category_counts": {
+        "aspiration_advisory": 6,
+        "blocked": 0,
+        "commitment_advisory": 12,
+        "completed": 3,
+        "controlled_attention_advisory": 80,
+        "open": 0,
+        "reconsiderable": 3,
+        "repair_pending": 0,
+        "semantic_review_pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "status": "fulfilled"
+    }
+  },
+  "schema": "fruth.public_reference_run.v1",
+  "version": 1
+}

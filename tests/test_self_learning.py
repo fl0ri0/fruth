@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-import ollmo_services.self_learning as self_learning_module
-from ollmo_g.payload import build_ghost_payload
-from ollmo_g.router import build_route_context
-from ollmo_g.decision_contracts import build_ghost_decision_contract
-from ollmo_services.self_learning import (
+import fruth_services.self_learning as self_learning_module
+from fruth_inference.payload import build_inference_payload
+from fruth_inference.router import build_route_context
+from fruth_inference.decision_contracts import build_inference_decision_contract
+from fruth_services.self_learning import (
     CHAT_ROUTE_HEALTH_CASE_KIND,
     build_accepted_learning_runtime_hints,
     build_eval_cases_from_response_frame,
@@ -27,7 +27,7 @@ from ollmo_services.self_learning import (
     persist_self_learning_outputs,
     set_accepted_learning_policy_enabled,
 )
-from ollmo_services.self_learning_retention import (
+from fruth_services.self_learning_retention import (
     collect_self_learning_retention_roots,
     copy_retained_sidecars,
     retention_summary,
@@ -140,7 +140,7 @@ def test_reverse_jsonl_reader_is_bounded_and_preserves_recent_record_semantics(t
             + json.dumps({'id': 'new', 'text': 'Grüezi'}, ensure_ascii=False)
         ).encode('utf-8')
     )
-    monkeypatch.setattr('ollmo_services.self_learning._JSONL_REVERSE_READ_CHUNK_BYTES', 17)
+    monkeypatch.setattr('fruth_services.self_learning._JSONL_REVERSE_READ_CHUNK_BYTES', 17)
 
     def fail_read_text(*_args, **_kwargs):
         raise AssertionError('bounded JSONL reads must not call Path.read_text')
@@ -181,7 +181,7 @@ def test_self_learning_report_streams_response_frames_without_read_jsonl_list(tm
     def fail_list_reader(*_args, **_kwargs):
         raise AssertionError('response frames must stream through _iter_jsonl')
 
-    monkeypatch.setattr('ollmo_services.self_learning._read_jsonl', fail_list_reader)
+    monkeypatch.setattr('fruth_services.self_learning._read_jsonl', fail_list_reader)
     report = build_self_learning_report(
         response_frame_ledger_path=frames_path,
         self_learning_dir=tmp_path / 'self_learning',
@@ -230,7 +230,7 @@ def _semantic_decision_frame(status: str = 'pending') -> dict:
                 'counts': {'pending': 1 if status != 'fulfilled' else 0, 'fulfilled': 1 if status == 'fulfilled' else 0},
                 'decision_contract_review': {
                     'semantic_decision_review': {
-                        'kind': 'ollmo.semantic_decision_review',
+                        'kind': 'fruth.semantic_decision_review',
                         'status': 'active',
                         'proposal_count': 1,
                         'proposals': [
@@ -243,7 +243,7 @@ def _semantic_decision_frame(status: str = 'pending') -> dict:
                     }
                 },
                 'surface_state': {
-                    'kind': 'ollmo.surface_state',
+                    'kind': 'fruth.surface_state',
                     'status': status,
                     'category_counts': {
                         'open': 1 if status != 'fulfilled' else 0,
@@ -274,7 +274,7 @@ def _controlled_attention_frame(status: str = 'pending') -> dict:
                 'counts': {'pending': 1 if status != 'fulfilled' else 0, 'fulfilled': 1 if status == 'fulfilled' else 0},
                 'decision_contract_review': {
                     'controlled_attention_review': {
-                        'kind': 'ollmo.controlled_attention_review',
+                        'kind': 'fruth.controlled_attention_review',
                         'status': 'active',
                         'frame_count': 1,
                         'frames': [
@@ -314,7 +314,7 @@ def _orientation_frame(review_key: str, status: str = 'pending') -> dict:
                 'decision_contract_review': {
                     frame_key: 1,
                     review_key: {
-                        'kind': f'ollmo.{review_key}',
+                        'kind': f'fruth.{review_key}',
                         'status': 'active',
                         'authority': 'advisory_read_model_only',
                         'frame_count': 1,
@@ -350,7 +350,7 @@ def _global_semantic_closure_frame(status: str = 'pending') -> dict:
                 'status': status,
                 'counts': {'pending': 1 if status != 'fulfilled' else 0, 'fulfilled': 1 if status == 'fulfilled' else 0},
                 'global_semantic_closure_review': {
-                    'kind': 'ollmo.global_semantic_closure_review',
+                    'kind': 'fruth.global_semantic_closure_review',
                     'status': status,
                     'proposal_count': 1 if status != 'fulfilled' else 0,
                     'reason': 'whole-turn semantic closure requires review before truthful freeze',
@@ -384,10 +384,10 @@ def _semantic_verdict_frame(verdict: str = 'failed') -> dict:
             'graph_closure_review': {
                 'status': status,
                 'global_semantic_closure_review': {
-                    'kind': 'ollmo.global_semantic_closure_review',
+                    'kind': 'fruth.global_semantic_closure_review',
                     'status': status,
                     'semantic_review_verdict': {
-                        'kind': 'ollmo.semantic_review_verdict',
+                        'kind': 'fruth.semantic_review_verdict',
                         'verdict': verdict,
                         'status': status,
                         'recommended_transition': 'truthful_freeze' if verdict == 'passed' else 'repair_dependency_chain',
@@ -414,12 +414,12 @@ def _branch_semantic_verdict_frame(verdict: str = 'failed') -> dict:
                         'status': status,
                         'branch_id': 'branch-semantic-review-final',
                         'branch_semantic_review': {
-                            'kind': 'ollmo.branch_semantic_review',
+                            'kind': 'fruth.branch_semantic_review',
                             'status': status,
                             'source_branch_id': 'branch-final-review',
                         },
                         'semantic_review_verdict': {
-                            'kind': 'ollmo.semantic_review_verdict',
+                            'kind': 'fruth.semantic_review_verdict',
                             'verdict': verdict,
                             'status': status,
                             'recommended_transition': 'truthful_freeze' if verdict == 'passed' else 'repair_dependency_chain',
@@ -562,7 +562,7 @@ def _graph_repair_outcome_frame() -> dict:
             'graph_closure_review': {
                 'status': 'fulfilled',
                 'surface_state': {
-                    'kind': 'ollmo.surface_state',
+                    'kind': 'fruth.surface_state',
                     'state': 'pending',
                     'category_counts': {
                         'controlled_attention_advisory': 2,
@@ -625,7 +625,7 @@ def _graph_repair_missing_despite_evidence_frame() -> dict:
             'graph_closure_review': {
                 'status': 'fulfilled',
                 'surface_state': {
-                    'kind': 'ollmo.surface_state',
+                    'kind': 'fruth.surface_state',
                     'state': 'review_pending',
                     'category_counts': {'semantic_review_pending': 1},
                     'items': [
@@ -655,7 +655,7 @@ def _graph_patch_lifecycle_outcome_frame(closure_status: str = 'fulfilled') -> d
             'graph_closure_review': {
                 'status': closure_status,
                 'surface_state': {
-                    'kind': 'ollmo.surface_state',
+                    'kind': 'fruth.surface_state',
                     'state': 'blocked' if closure_status != 'fulfilled' else 'completed',
                     'category_counts': {'blocked': 1} if closure_status != 'fulfilled' else {'completed': 1},
                 },
@@ -663,7 +663,7 @@ def _graph_patch_lifecycle_outcome_frame(closure_status: str = 'fulfilled') -> d
             'developer_diagnostics': {
                 'graph_patch_lifecycle': [
                     {
-                        'kind': 'ollmo.graph_patch_lifecycle',
+                        'kind': 'fruth.graph_patch_lifecycle',
                         'patch_id': 'patch-materialization',
                         'proposal_id': 'proposal-materialization',
                         'repair_class': 'missing_materialization_branch',
@@ -675,7 +675,7 @@ def _graph_patch_lifecycle_outcome_frame(closure_status: str = 'fulfilled') -> d
                         'outcome': {'status': 'applied'},
                     },
                     {
-                        'kind': 'ollmo.graph_patch_lifecycle',
+                        'kind': 'fruth.graph_patch_lifecycle',
                         'patch_id': 'patch-conflict',
                         'proposal_id': 'proposal-conflict',
                         'repair_class': 'branch_identity_split',
@@ -686,7 +686,7 @@ def _graph_patch_lifecycle_outcome_frame(closure_status: str = 'fulfilled') -> d
                         'idempotency_key': 'idem-conflict',
                     },
                     {
-                        'kind': 'ollmo.graph_patch_lifecycle',
+                        'kind': 'fruth.graph_patch_lifecycle',
                         'patch_id': 'patch-degraded',
                         'proposal_id': 'proposal-degraded',
                         'repair_class': 'degraded_liveness_only',
@@ -702,7 +702,7 @@ def _graph_patch_lifecycle_outcome_frame(closure_status: str = 'fulfilled') -> d
             'request_phase_graph': {
                 'graph_patch_lifecycle': [
                     {
-                        'kind': 'ollmo.graph_patch_lifecycle',
+                        'kind': 'fruth.graph_patch_lifecycle',
                         'patch_id': 'patch-materialization',
                         'proposal_id': 'proposal-materialization',
                         'repair_class': 'missing_materialization_branch',
@@ -728,7 +728,7 @@ def _graph_patch_duplicate_lifecycle_frame() -> dict:
             'graph_closure_review': {
                 'status': 'blocked',
                 'surface_state': {
-                    'kind': 'ollmo.surface_state',
+                    'kind': 'fruth.surface_state',
                     'state': 'blocked',
                     'category_counts': {'blocked': 1},
                 },
@@ -736,7 +736,7 @@ def _graph_patch_duplicate_lifecycle_frame() -> dict:
             'request_phase_graph': {
                 'graph_patch_lifecycle': [
                     {
-                        'kind': 'ollmo.graph_patch_lifecycle',
+                        'kind': 'fruth.graph_patch_lifecycle',
                         'patch_id': 'patch-conflict-final',
                         'proposal_id': 'proposal-conflict-final',
                         'status': 'staged',
@@ -747,7 +747,7 @@ def _graph_patch_duplicate_lifecycle_frame() -> dict:
             'developer_diagnostics': {
                 'graph_patch_lifecycle_results': [
                     {
-                        'kind': 'ollmo.graph_patch_lifecycle',
+                        'kind': 'fruth.graph_patch_lifecycle',
                         'patch_id': 'patch-conflict-final',
                         'proposal_id': 'proposal-conflict-final',
                         'repair_class': 'branch_identity_split',
@@ -777,7 +777,7 @@ def _apply_enforced_patch_lifecycle_frame(closure_status: str = 'fulfilled') -> 
             'graph_closure_review': {
                 'status': closure_status,
                 'surface_state': {
-                    'kind': 'ollmo.surface_state',
+                    'kind': 'fruth.surface_state',
                     'state': 'completed' if closure_status == 'fulfilled' else 'blocked',
                     'category_counts': {'completed': 1} if closure_status == 'fulfilled' else {'blocked': 1},
                 },
@@ -785,7 +785,7 @@ def _apply_enforced_patch_lifecycle_frame(closure_status: str = 'fulfilled') -> 
             'developer_diagnostics': {
                 'graph_patch_lifecycle': [
                     {
-                        'kind': 'ollmo.graph_patch_lifecycle',
+                        'kind': 'fruth.graph_patch_lifecycle',
                         'patch_id': 'patch-enforced-materialization',
                         'proposal_id': 'proposal-enforced-materialization',
                         'repair_class': 'missing_materialization_branch',
@@ -797,8 +797,8 @@ def _apply_enforced_patch_lifecycle_frame(closure_status: str = 'fulfilled') -> 
                         'source_evidence_refs': ['closure:intent_graph_adequacy'],
                         'idempotency_key': 'idem-enforced-materialization',
                         'enforced_policy_review': {
-                            'kind': 'ollmo.enforced_policy_review',
-                            'policy_id': 'ollmo-enforced-policy-v1',
+                            'kind': 'fruth.enforced_policy_review',
+                            'policy_id': 'fruth-enforced-policy-v1',
                             'status': 'allowed',
                             'allowed': True,
                             'policy_mode': 'safe_v1',
@@ -809,7 +809,7 @@ def _apply_enforced_patch_lifecycle_frame(closure_status: str = 'fulfilled') -> 
                         'outcome': {'status': 'applied', 'runtime_effect': 'graph_mutated'},
                     },
                     {
-                        'kind': 'ollmo.graph_patch_lifecycle',
+                        'kind': 'fruth.graph_patch_lifecycle',
                         'patch_id': 'patch-enforced-default-deny',
                         'proposal_id': 'proposal-enforced-default-deny',
                         'repair_class': 'missing_materialization_branch',
@@ -822,8 +822,8 @@ def _apply_enforced_patch_lifecycle_frame(closure_status: str = 'fulfilled') -> 
                         'blocked_reasons': ['enforced_policy_off'],
                         'idempotency_key': 'idem-enforced-default-deny',
                         'enforced_policy_review': {
-                            'kind': 'ollmo.enforced_policy_review',
-                            'policy_id': 'ollmo-enforced-policy-v1',
+                            'kind': 'fruth.enforced_policy_review',
+                            'policy_id': 'fruth-enforced-policy-v1',
                             'status': 'blocked',
                             'allowed': False,
                             'policy_mode': 'off',
@@ -848,7 +848,7 @@ def _graph_rebase_outcome_frame(closure_status: str = 'blocked', successor_statu
             'graph_closure_review': {
                 'status': closure_status,
                 'surface_state': {
-                    'kind': 'ollmo.surface_state',
+                    'kind': 'fruth.surface_state',
                     'state': 'blocked' if closure_status != 'fulfilled' else 'completed',
                     'category_counts': {'blocked': 1} if closure_status != 'fulfilled' else {'completed': 1},
                 },
@@ -856,19 +856,19 @@ def _graph_rebase_outcome_frame(closure_status: str = 'blocked', successor_statu
             'request_phase_graph': {
                 'graph_rebase_proposals': [
                     {
-                        'kind': 'ollmo.graph_rebase_proposal',
+                        'kind': 'fruth.graph_rebase_proposal',
                         'proposal_id': 'rebase-proposal-accepted',
                         'source': 'runtime_closure_review',
                         'evidence_refs': ['closure:intent_graph_adequacy'],
                     },
                     {
-                        'kind': 'ollmo.graph_rebase_proposal',
+                        'kind': 'fruth.graph_rebase_proposal',
                         'proposal_id': 'rebase-proposal-learning',
                         'source': 'accepted_learning',
                         'evidence_refs': ['accepted_learning:case-1'],
                     },
                     {
-                        'kind': 'ollmo.graph_rebase_proposal',
+                        'kind': 'fruth.graph_rebase_proposal',
                         'proposal_id': 'rebase-proposal-degraded',
                         'source': 'runtime_closure_review',
                         'evidence_refs': ['route_health:degraded_liveness_only'],
@@ -876,28 +876,28 @@ def _graph_rebase_outcome_frame(closure_status: str = 'blocked', successor_statu
                 ],
                 'graph_rebase_reviews': [
                     {
-                        'kind': 'ollmo.graph_rebase_review',
+                        'kind': 'fruth.graph_rebase_review',
                         'review_id': 'rebase-review-accepted',
                         'proposal_id': 'rebase-proposal-accepted',
                         'status': 'accepted',
                         'blocked_reasons': [],
                     },
                     {
-                        'kind': 'ollmo.graph_rebase_review',
+                        'kind': 'fruth.graph_rebase_review',
                         'review_id': 'rebase-review-learning',
                         'proposal_id': 'rebase-proposal-learning',
                         'status': 'rejected',
                         'blocked_reasons': ['accepted_learning_not_rebase_authority'],
                     },
                     {
-                        'kind': 'ollmo.graph_rebase_review',
+                        'kind': 'fruth.graph_rebase_review',
                         'review_id': 'rebase-review-degraded',
                         'proposal_id': 'rebase-proposal-degraded',
                         'status': 'rejected',
                         'blocked_reasons': ['backend_route_health_signal_is_not_rebase_authority'],
                     },
                     {
-                        'kind': 'ollmo.graph_rebase_review',
+                        'kind': 'fruth.graph_rebase_review',
                         'review_id': 'rebase-review-preservation',
                         'proposal_id': 'rebase-proposal-preservation',
                         'status': 'blocked',
@@ -906,7 +906,7 @@ def _graph_rebase_outcome_frame(closure_status: str = 'blocked', successor_statu
                 ],
                 'graph_rebase_lifecycle': [
                     {
-                        'kind': 'ollmo.graph_rebase_lifecycle',
+                        'kind': 'fruth.graph_rebase_lifecycle',
                         'rebase_id': 'rebase-stage',
                         'proposal_id': 'rebase-proposal-accepted',
                         'status': 'staged',
@@ -916,7 +916,7 @@ def _graph_rebase_outcome_frame(closure_status: str = 'blocked', successor_statu
                         'outcome': {'status': 'staged', 'runtime_effect': 'staged_no_executable_mutation'},
                     },
                     {
-                        'kind': 'ollmo.graph_rebase_lifecycle',
+                        'kind': 'fruth.graph_rebase_lifecycle',
                         'rebase_id': 'rebase-successor',
                         'proposal_id': 'rebase-proposal-accepted',
                         'status': 'applied',
@@ -926,7 +926,7 @@ def _graph_rebase_outcome_frame(closure_status: str = 'blocked', successor_statu
                         'outcome': {'status': 'applied', 'runtime_effect': 'successor_rebase_created'},
                     },
                     {
-                        'kind': 'ollmo.graph_rebase_lifecycle',
+                        'kind': 'fruth.graph_rebase_lifecycle',
                         'rebase_id': 'rebase-enforced',
                         'proposal_id': 'rebase-proposal-enforced',
                         'status': 'blocked',
@@ -936,8 +936,8 @@ def _graph_rebase_outcome_frame(closure_status: str = 'blocked', successor_statu
                         'blocked_reasons': ['full_successor_rebase_not_enforced_v1'],
                         'idempotency_key': 'idem-rebase-enforced',
                         'enforced_policy_review': {
-                            'kind': 'ollmo.enforced_policy_review',
-                            'policy_id': 'ollmo-enforced-policy-v1',
+                            'kind': 'fruth.enforced_policy_review',
+                            'policy_id': 'fruth-enforced-policy-v1',
                             'status': 'blocked',
                             'allowed': False,
                             'policy_mode': 'safe_v1',
@@ -950,7 +950,7 @@ def _graph_rebase_outcome_frame(closure_status: str = 'blocked', successor_statu
                 ],
                 'successor_rebase_requests': [
                     {
-                        'kind': 'ollmo.graph_rebase_successor_request',
+                        'kind': 'fruth.graph_rebase_successor_request',
                         'rebase_id': 'rebase-successor',
                         'proposal_id': 'rebase-proposal-accepted',
                         'status': successor_status,
@@ -974,7 +974,7 @@ def _partial_graph_rebase_execution_frame(
     root_prompt_replay: bool = False,
 ) -> dict:
     execution = {
-        'kind': 'ollmo.graph_rebase_partial_successor_execution',
+        'kind': 'fruth.graph_rebase_partial_successor_execution',
         'status': execution_status,
         'successor_key': 'partial-successor-key-1',
         'execution_key': 'partial-execution-key-1',
@@ -1012,7 +1012,7 @@ def _partial_graph_rebase_execution_frame(
 
 def _redraw_scope_ladder_frame() -> dict:
     partial_review = {
-        'kind': 'ollmo.redraw_scope_ladder_review',
+        'kind': 'fruth.redraw_scope_ladder_review',
         'review_id': 'redraw-scope-partial',
         'status': 'selected',
         'selected_scope': 'partial_subtree_rebase',
@@ -1031,7 +1031,7 @@ def _redraw_scope_ladder_frame() -> dict:
         'artifact_identity': {'canonicalization_required': False},
     }
     blocked_review = {
-        'kind': 'ollmo.redraw_scope_ladder_review',
+        'kind': 'fruth.redraw_scope_ladder_review',
         'review_id': 'redraw-scope-blocked',
         'status': 'blocked',
         'selected_scope': 'observe',
@@ -1061,7 +1061,7 @@ def _redraw_scope_ladder_frame() -> dict:
             'graph_closure_review': {
                 'status': 'repair_required',
                 'surface_state': {
-                    'kind': 'ollmo.surface_state',
+                    'kind': 'fruth.surface_state',
                     'state': 'blocked',
                     'category_counts': {'blocked': 1},
                 },
@@ -1101,8 +1101,8 @@ def test_eval_case_extraction_names_artifact_collapse_and_control_json_leak() ->
     cases = build_eval_cases_from_response_frame(_artifact_collapse_frame())
     by_kind = {case['case_kind']: case for case in cases}
 
-    assert by_kind['artifact_request_collapsed_to_plain_chat']['target_area'] == 'ghost_intake_graph_policy'
-    assert by_kind['artifact_control_json_leaked_to_user']['target_area'] == 'ghost_decision_contract_policy'
+    assert by_kind['artifact_request_collapsed_to_plain_chat']['target_area'] == 'inference_intake_graph_policy'
+    assert by_kind['artifact_control_json_leaked_to_user']['target_area'] == 'inference_decision_contract_policy'
     assert by_kind['open_output_slots_after_terminal_state']['target_area'] == 'artifact_fulfillment_policy'
     assert by_kind['artifact_request_collapsed_to_plain_chat']['metadata']['saved_artifact_count'] == 0
 
@@ -1143,7 +1143,7 @@ def test_eval_case_extraction_names_target_text_artifact_binding_violation() -> 
 
     assert by_kind['target_text_artifact_binding_violation']['severity'] == 'high'
     assert by_kind['target_text_artifact_binding_violation']['target_area'] == 'artifact_fulfillment_policy'
-    assert 'ollmo_server/late_fill_runtime.py' in by_kind['target_text_artifact_binding_violation']['target_surfaces']
+    assert 'fruth_server/late_fill_runtime.py' in by_kind['target_text_artifact_binding_violation']['target_surfaces']
 
 
 def test_eval_case_extraction_names_fulfilled_contract_with_nonterminal_failure() -> None:
@@ -1192,7 +1192,7 @@ def test_eval_case_extraction_does_not_call_active_late_fill_open_work_missing_r
             'graph_closure_review': {
                 'status': 'pending',
                 'surface_state': {
-                    'kind': 'ollmo.surface_state',
+                    'kind': 'fruth.surface_state',
                     'state': 'pending',
                     'active_categories': ['open', 'late_fill_pending'],
                     'items': [
@@ -1227,7 +1227,7 @@ def test_eval_case_extraction_does_not_call_missing_source_truth_guard_missing_r
             'graph_closure_review': {
                 'status': 'repair_needed',
                 'surface_state': {
-                    'kind': 'ollmo.surface_state',
+                    'kind': 'fruth.surface_state',
                     'state': 'repair_needed',
                     'reason': 'artifact request used a demonstrative reference without a current or selected source',
                 },
@@ -1347,7 +1347,7 @@ def test_eval_case_extraction_observes_partial_rebase_successor_execution_once()
     assert created['metadata']['authority'] == 'non_authoritative_observer'
     assert created['metadata']['observer_runtime_effect'] == 'none'
     assert created['metadata']['successor_rebase_execution']['kind'] == (
-        'ollmo.graph_rebase_partial_successor_execution'
+        'fruth.graph_rebase_partial_successor_execution'
     )
 
 
@@ -1482,7 +1482,7 @@ def test_accepted_graph_repair_learning_remains_soft_hint_only() -> None:
 
 def _accepted_learning_snapshot_with_targets(target_areas: list[str], *, enabled: bool = True) -> dict:
     return {
-        'kind': 'ollmo.accepted_learning_policy_snapshot',
+        'kind': 'fruth.accepted_learning_policy_snapshot',
         'status': 'enabled' if enabled else 'disabled',
         'enabled': enabled,
         'authority': 'soft_hint',
@@ -1507,7 +1507,7 @@ def test_accepted_learning_runtime_hints_include_all_valid_learnings_by_default(
         [
             'closure_review_policy',
             'artifact_fulfillment_policy',
-            'ghost_decision_contract_policy',
+            'inference_decision_contract_policy',
             'semantic_decision_policy',
             'workload_decision_policy',
             'graph_repair_policy',
@@ -1532,7 +1532,7 @@ def test_accepted_learning_runtime_hints_respect_explicit_limit() -> None:
         [
             'closure_review_policy',
             'artifact_fulfillment_policy',
-            'ghost_decision_contract_policy',
+            'inference_decision_contract_policy',
             'semantic_decision_policy',
             'workload_decision_policy',
             'graph_repair_policy',
@@ -1581,8 +1581,8 @@ def test_policy_candidates_preserve_specific_target_areas_for_named_failures() -
     candidates = build_policy_improvement_candidates(cases)
     target_areas = {candidate['target_area'] for candidate in candidates}
 
-    assert 'ghost_intake_graph_policy' in target_areas
-    assert 'ghost_decision_contract_policy' in target_areas
+    assert 'inference_intake_graph_policy' in target_areas
+    assert 'inference_decision_contract_policy' in target_areas
     assert 'closure_review_policy' in target_areas
     assert 'workload_decision_policy' in target_areas
     assert 'artifact_fulfillment_policy' in target_areas
@@ -1817,13 +1817,13 @@ def test_eval_cases_can_be_persisted_as_jsonl(tmp_path: Path) -> None:
 
     rows = [json.loads(line) for line in output.read_text(encoding='utf-8').splitlines()]
     assert len(rows) == len(cases)
-    assert rows[0]['kind'] == 'ollmo.self_learning_eval_case'
+    assert rows[0]['kind'] == 'fruth.self_learning_eval_case'
 
 
 def test_accepted_learning_policy_snapshot_defaults_to_disabled(tmp_path: Path) -> None:
     snapshot = load_accepted_learning_policy_snapshot(snapshot_path=tmp_path / 'accepted_policy_snapshot.json')
 
-    assert snapshot['kind'] == 'ollmo.accepted_learning_policy_snapshot'
+    assert snapshot['kind'] == 'fruth.accepted_learning_policy_snapshot'
     assert snapshot['enabled'] is False
     assert snapshot['runtime_effect'] == 'none'
     assert snapshot['activation_policy'] == 'disabled_until_explicit_review'
@@ -1990,8 +1990,8 @@ def test_accepted_learning_runtime_hint_names_basic_intent_graph_repair_boundary
     snapshot = promote_policy_improvement_candidate(
         None,
         {
-            'candidate_id': 'policy-improvement-ghost_intake_graph_policy',
-            'target_area': 'ghost_intake_graph_policy',
+            'candidate_id': 'policy-improvement-inference_intake_graph_policy',
+            'target_area': 'inference_intake_graph_policy',
             'summary': 'Basic current-turn intent was underrepresented in the graph.',
             'case_kinds': {'intent_graph_inadequacy': 2, 'open_graph_obligation': 1},
             'severity_counts': {'high': 2, 'medium': 1},
@@ -2019,7 +2019,7 @@ def test_accepted_learning_runtime_hint_names_basic_intent_graph_repair_boundary
 
 def test_decision_contract_preserves_accepted_learning_hint_details() -> None:
     accepted_learning_hints = {
-        'kind': 'ollmo.accepted_learning_runtime_hints',
+        'kind': 'fruth.accepted_learning_runtime_hints',
         'enabled': True,
         'authority': 'soft_hint',
         'status': 'active',
@@ -2027,7 +2027,7 @@ def test_decision_contract_preserves_accepted_learning_hint_details() -> None:
         'hint_count': 1,
         'hints': [
             {
-                'kind': 'ollmo.accepted_learning_runtime_hint',
+                'kind': 'fruth.accepted_learning_runtime_hint',
                 'learning_id': 'accepted-policy-improvement-artifact_fulfillment_policy',
                 'candidate_id': 'policy-improvement-artifact_fulfillment_policy',
                 'target_area': 'artifact_fulfillment_policy',
@@ -2039,7 +2039,7 @@ def test_decision_contract_preserves_accepted_learning_hint_details() -> None:
         ],
     }
 
-    contract = build_ghost_decision_contract(
+    contract = build_inference_decision_contract(
         candidate_graph={},
         promotion_review={},
         workload_graph={},
@@ -2064,13 +2064,13 @@ def test_decision_contract_preserves_accepted_learning_hint_details() -> None:
     assert attention_frame['non_authority_boundary'] == 'attention_only_runtime_contracts_closure_decide_truth'
 
 
-def test_accepted_learning_allows_ghost_decision_contract_target_area() -> None:
+def test_accepted_learning_allows_inference_decision_contract_target_area() -> None:
     snapshot = promote_policy_improvement_candidate(
         None,
         {
-            'candidate_id': 'policy-improvement-ghost-decision-contract',
-            'target_area': 'ghost_decision_contract_policy',
-            'summary': 'Keep reconsideration and supersession visible to Ghost as soft orientation.',
+            'candidate_id': 'policy-improvement-inference-decision-contract',
+            'target_area': 'inference_decision_contract_policy',
+            'summary': 'Keep reconsideration and supersession visible to interpretive inference as soft orientation.',
             'evidence_case_ids': ['eval-1'],
         },
         reviewer='test',
@@ -2086,7 +2086,7 @@ def test_accepted_learning_allows_ghost_decision_contract_target_area() -> None:
     hints = build_accepted_learning_runtime_hints(snapshot)
 
     assert hints['hint_count'] == 1
-    assert hints['hints'][0]['target_area'] == 'ghost_decision_contract_policy'
+    assert hints['hints'][0]['target_area'] == 'inference_decision_contract_policy'
     assert hints['hints'][0]['allowed_use'] == 'soft_hint_only'
 
 
@@ -2117,11 +2117,11 @@ def test_accepted_learning_allows_aspiration_and_commitment_target_areas() -> No
         assert hints['hints'][0]['allowed_use'] == 'soft_hint_only'
 
 
-def test_ghost_payload_exposes_compact_offline_self_learning_summary(tmp_path: Path) -> None:
+def test_inference_payload_exposes_compact_offline_self_learning_summary(tmp_path: Path) -> None:
     ledger = tmp_path / 'responses.jsonl'
     _write_jsonl(ledger, [_problem_frame()])
 
-    payload = build_ghost_payload(
+    payload = build_inference_payload(
         [],
         recent_events=[],
         runtime_log_path=tmp_path / 'missing.log',
@@ -2138,7 +2138,7 @@ def test_ghost_payload_exposes_compact_offline_self_learning_summary(tmp_path: P
     assert 'Offline Self Learning' in payload['markdown']
 
 
-def test_ghost_payload_and_route_context_surface_enabled_hints_as_soft_runtime_context(tmp_path: Path) -> None:
+def test_inference_payload_and_route_context_surface_enabled_hints_as_soft_runtime_context(tmp_path: Path) -> None:
     ledger = tmp_path / 'responses.jsonl'
     _write_jsonl(ledger, [_problem_frame()])
     report = build_self_learning_report(
@@ -2163,7 +2163,7 @@ def test_ghost_payload_and_route_context_surface_enabled_hints_as_soft_runtime_c
     snapshot_path = tmp_path / 'accepted_policy_snapshot.json'
     persist_accepted_learning_policy_snapshot(snapshot, output_path=snapshot_path)
 
-    payload = build_ghost_payload(
+    payload = build_inference_payload(
         [],
         recent_events=[],
         runtime_log_path=tmp_path / 'missing.log',
@@ -2177,7 +2177,7 @@ def test_ghost_payload_and_route_context_surface_enabled_hints_as_soft_runtime_c
         conversation_id=None,
         messages=[],
         runtime_manifest={'capabilities': {}, 'instances': []},
-        ghost_payload=payload,
+        inference_payload=payload,
         instances=[],
     )
 
@@ -2309,7 +2309,7 @@ def test_self_learning_retention_collector_finds_nested_sidecar_refs_and_missing
     retained_paths = {item['path'] for item in manifest['retained_response_frame_sidecars']}
     missing_paths = {item['path'] for item in manifest['missing_response_frame_sidecars']}
     unsafe_paths = {item['path'] for item in manifest['external_or_unsafe_refs']}
-    assert manifest['kind'] == 'ollmo.self_learning_retention_manifest'
+    assert manifest['kind'] == 'fruth.self_learning_retention_manifest'
     assert manifest['status'] == 'partial'
     assert retained_paths == {'snapshots/runtime.json', 'snapshots/child.json'}
     assert missing_paths == {'snapshots/missing.json'}
@@ -2555,7 +2555,7 @@ def _terminal_successor_reopen_frame(status: str = 'candidate') -> dict:
             'request_phase_graph': {
                 'successor_reopen_requests': [
                     {
-                        'kind': 'ollmo.graph_patch_successor_reopen_request',
+                        'kind': 'fruth.graph_patch_successor_reopen_request',
                         'status': status,
                         'parent_response_id': 'resp-terminal-parent',
                         'parent_frame_id': 'resp-terminal-parent:frame-1',
@@ -2641,7 +2641,7 @@ def _write_graph_rebase_corpus_manifest(path: Path, cases: list[object], *, sche
     path.write_text(
         json.dumps(
             {
-                'kind': 'ollmo.graph_rebase_shadow_corpus_manifest',
+                'kind': 'fruth.graph_rebase_shadow_corpus_manifest',
                 'schema_version': schema_version,
                 'corpus_id': 'test-corpus',
                 'corpus_digest': 'test-corpus-digest',
@@ -2685,7 +2685,7 @@ def test_graph_rebase_corpus_includes_outside_window_and_overlays_eval_only_grap
     _write_jsonl(ledger, [corpus_frame, recent_frame])
 
     patch_record = {
-        'kind': 'ollmo.graph_patch_lifecycle',
+        'kind': 'fruth.graph_patch_lifecycle',
         'patch_id': 'patch-from-corpus-debug',
         'proposal_id': 'proposal-from-corpus-debug',
         'repair_class': 'missing_dependency_edge',
@@ -2693,7 +2693,7 @@ def test_graph_rebase_corpus_includes_outside_window_and_overlays_eval_only_grap
         'outcome': {'status': 'applied'},
     }
     redraw_scope = {
-        'kind': 'ollmo.redraw_scope_ladder_review',
+        'kind': 'fruth.redraw_scope_ladder_review',
         'review_id': 'redraw-from-corpus-debug',
         'status': 'selected',
         'selected_scope': 'repair_binding_dependency',
@@ -2732,7 +2732,7 @@ def test_graph_rebase_corpus_includes_outside_window_and_overlays_eval_only_grap
     assert report['graph_rebase_corpus']['corpus_linked_response_count'] == 1
     assert 'graph_patch_applied_and_closed' in case_kinds
     assert 'redraw_scope_selected' in case_kinds
-    assert all(case['kind'] == 'ollmo.self_learning_eval_case' for case in corpus_cases)
+    assert all(case['kind'] == 'fruth.self_learning_eval_case' for case in corpus_cases)
     assert all(case['optimization_policy'] == 'proposal_only_reviewed_patch_required' for case in corpus_cases)
     assert all('graph_rebase_corpus' in case['metadata'] for case in corpus_cases)
     assert accepted_path.read_bytes() == accepted_bytes
@@ -3081,7 +3081,7 @@ def _historical_eval_case(
 ) -> dict:
     resolved_response_id = response_id or f'resp-{case_id}'
     return {
-        'kind': 'ollmo.self_learning_eval_case',
+        'kind': 'fruth.self_learning_eval_case',
         'case_version': 1,
         'case_id': case_id,
         'response_id': resolved_response_id,
@@ -3092,7 +3092,7 @@ def _historical_eval_case(
         'summary': f'Historical eval evidence for {case_id}.',
         'evidence': f'historical.eval_case:{case_id}',
         'target_area': 'graph_rebase_policy',
-        'target_surfaces': ['ollmo_services/graph_rebase.py'],
+        'target_surfaces': ['fruth_services/graph_rebase.py'],
         'suggested_action': 'Keep as reviewed offline evidence only.',
         'metadata': {'historical_fixture': True},
         'optimization_policy': 'proposal_only_reviewed_patch_required',
@@ -3299,7 +3299,7 @@ def test_self_learning_report_keeps_default_replacement_order_and_content(tmp_pa
     [
         '{not-json\n',
         json.dumps(['not', 'an', 'eval', 'case']) + '\n',
-        json.dumps({'kind': 'ollmo.self_learning_eval_case', 'summary': 'missing case id'}) + '\n',
+        json.dumps({'kind': 'fruth.self_learning_eval_case', 'summary': 'missing case id'}) + '\n',
         (
             json.dumps(_historical_eval_case('eval-duplicate'))
             + '\n'
@@ -3480,7 +3480,7 @@ def test_persist_self_learning_outputs_preserves_complete_case_payloads(tmp_path
         'null_value': None,
     }
     report = {
-        'kind': 'ollmo.self_learning_report',
+        'kind': 'fruth.self_learning_report',
         'case_count': 1,
         'eval_cases': [historical_case],
     }
@@ -3513,7 +3513,7 @@ def test_persist_self_learning_outputs_uses_normal_creation_mode_for_new_files(
 
     persist_self_learning_outputs(
         [_historical_eval_case('eval-new-file-mode')],
-        {'kind': 'ollmo.self_learning_report', 'case_count': 1},
+        {'kind': 'fruth.self_learning_report', 'case_count': 1},
         eval_case_output_path=eval_path,
         report_output_path=report_path,
     )
@@ -3610,7 +3610,7 @@ def test_self_learning_service_persistence_rejects_default_protected_targets(
     with pytest.raises(ValueError, match='protected state'):
         persist_self_learning_outputs(
             [_historical_eval_case('eval-service-protected-target')],
-            {'kind': 'ollmo.self_learning_report', 'case_count': 1},
+            {'kind': 'fruth.self_learning_report', 'case_count': 1},
             eval_case_output_path=Path('state/self_learning/eval_cases.jsonl'),
             report_output_path=protected_report_path,
         )
@@ -3650,7 +3650,7 @@ def test_self_learning_service_protects_repository_state_outside_repository_cwd(
     with pytest.raises(ValueError, match='protected state'):
         persist_self_learning_outputs(
             [_historical_eval_case('eval-outside-cwd-protection')],
-            {'kind': 'ollmo.self_learning_report', 'case_count': 1},
+            {'kind': 'fruth.self_learning_report', 'case_count': 1},
             eval_case_output_path=outside_cwd / 'eval_cases.jsonl',
             report_output_path=protected_report_path,
         )
@@ -3689,7 +3689,7 @@ def test_self_learning_persistence_rejects_symlink_output_paths_without_mutation
     with pytest.raises(ValueError, match='cannot contain symlinks'):
         persist_self_learning_outputs(
             [_historical_eval_case('eval-symlink-rejection')],
-            {'kind': 'ollmo.self_learning_report', 'case_count': 1},
+            {'kind': 'fruth.self_learning_report', 'case_count': 1},
             eval_case_output_path=eval_path,
             report_output_path=report_path,
         )
@@ -3725,7 +3725,7 @@ def test_atomic_self_learning_pair_rolls_back_when_report_install_fails(
     with pytest.raises(OSError, match='injected report install failure'):
         persist_self_learning_outputs(
             [_historical_eval_case('eval-new-case')],
-            {'kind': 'ollmo.self_learning_report', 'case_count': 1},
+            {'kind': 'fruth.self_learning_report', 'case_count': 1},
             eval_case_output_path=eval_path,
             report_output_path=report_path,
         )
@@ -3765,7 +3765,7 @@ def test_atomic_self_learning_pair_staging_failure_leaves_prior_files(
     with pytest.raises(OSError, match='injected report staging failure'):
         persist_self_learning_outputs(
             [_historical_eval_case('eval-stage-new-case')],
-            {'kind': 'ollmo.self_learning_report', 'case_count': 1},
+            {'kind': 'fruth.self_learning_report', 'case_count': 1},
             eval_case_output_path=eval_path,
             report_output_path=report_path,
         )
@@ -3800,7 +3800,7 @@ def test_atomic_self_learning_pair_first_install_failure_leaves_prior_files(
     with pytest.raises(OSError, match='injected eval install failure'):
         persist_self_learning_outputs(
             [_historical_eval_case('eval-install-new-case')],
-            {'kind': 'ollmo.self_learning_report', 'case_count': 1},
+            {'kind': 'fruth.self_learning_report', 'case_count': 1},
             eval_case_output_path=eval_path,
             report_output_path=report_path,
         )
@@ -3837,7 +3837,7 @@ def test_atomic_self_learning_pair_retains_recovery_files_when_rollback_fails(
     with pytest.raises(RuntimeError, match='recovery files retained at'):
         persist_self_learning_outputs(
             [_historical_eval_case('eval-recovery-new-case')],
-            {'kind': 'ollmo.self_learning_report', 'case_count': 1},
+            {'kind': 'fruth.self_learning_report', 'case_count': 1},
             eval_case_output_path=eval_path,
             report_output_path=report_path,
         )

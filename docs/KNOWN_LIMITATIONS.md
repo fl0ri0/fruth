@@ -1,12 +1,12 @@
-# Known Limitations in Ollmo 0.1.1
+# Known Limitations in Fruth 0.1.2
 
-This list records current limits of the 0.1.1 release.
+This list records current limits of the 0.1.2 source package.
 It is not a roadmap or a general backlog.
 
 ## Platform and Packaging
 
 - The primary tested platform is macOS on Apple Silicon. Windows, Linux, and
-  Intel Mac behavior is not guaranteed for 0.1.1.
+  Intel Mac behavior is not guaranteed for 0.1.2.
 - Distribution is a source archive. It is not a signed or notarized macOS app,
   a container image, or a package-manager release.
 - Backend packages and model weights are not bundled. A capability can be
@@ -16,7 +16,7 @@ It is not a roadmap or a general backlog.
   the default installation because its upstream terms are AGPL-3.0 or a
   commercial Artifex license. Without it, text-layer extraction still uses
   `pypdf`, and macOS may provide a limited first-page rendering fallback.
-- The bundled Ollmo skill is Codex-specific in 0.1.1 and must be copied into
+- The bundled Fruth skill is Codex-specific in 0.1.2 and must be copied into
   the user's Codex skills directory manually; marketplace/plugin distribution
   and other agent integrations are outside this release.
 - The dashboard currently requests Google Fonts, Axios, and Font Awesome from
@@ -26,7 +26,7 @@ It is not a roadmap or a general backlog.
 
 ## Runtime
 
-- Ollmo is intended for local, single-user operation. Remote exposure and
+- Fruth is intended for local, single-user operation. Remote exposure and
   multi-user isolation are not supported.
 - Flask remains the current control-plane implementation.
 - Optional models and modalities can be unavailable or degraded. This is
@@ -43,22 +43,22 @@ It is not a roadmap or a general backlog.
 ## Optional ChatGPT Route
 
 - The ChatGPT execution route uses Codex, is optional and cloud-based, and must
-  be explicitly enabled. It accepts a prompt plus files or Ollmo artifacts
+  be explicitly enabled. It accepts a prompt plus files or Fruth artifacts
   explicitly selected for the current turn. Referential turns may also include
-  context promoted by Ollmo's context gate, but the provider response is text
+  context promoted by Fruth's context gate, but the provider response is text
   only.
-- Ollmo can reuse authentication owned by the ChatGPT app or Codex CLI, but it
+- Fruth can reuse authentication owned by the ChatGPT app or Codex CLI, but it
   cannot guarantee that the app's internal executable location will remain
   unchanged. Discovery fails closed and then tries the documented fallback.
 - Automatic model selection means the invoked Codex executable chooses its
-  current default. Ollmo neither receives the exact GPT variant nor mirrors
+  current default. Fruth neither receives the exact GPT variant nor mirrors
   the model selected in an already open ChatGPT conversation. Model prose is
   not authoritative identity evidence.
 - The dashboard's ChatGPT tab is an external conversation target. It has no
   local lifecycle controls and is intentionally excluded from Start, Stop,
   Pull, Delete, and Arena.
 - Direct ChatGPT tab turns are ephemeral and independent. Displayed history is
-  retained for inspection. For referential turns, Ollmo may promote bounded
+  retained for inspection. For referential turns, Fruth may promote bounded
   relevant context into the current request, but it does not resume a hidden
   provider session or resend the entire conversation automatically.
 - Recognized images are attached through Codex's native image-input path.
@@ -69,7 +69,7 @@ It is not a roadmap or a general backlog.
 - The fixed request limits are 5 files, 100 MiB per file, and 250 MiB in total.
   URLs, folders, and symbolic links are not accepted.
 - Direct API-key management and other external providers remain outside this
-  optional route's 0.1.1 contract.
+  optional route's 0.1.2 contract.
 
 ## Compatibility
 
@@ -77,4 +77,4 @@ It is not a roadmap or a general backlog.
   predate 0.1.0.
 - Public `0.x` interfaces may evolve as the runtime contracts mature.
 
-See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.1 release boundary.
+See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.2 release boundary.

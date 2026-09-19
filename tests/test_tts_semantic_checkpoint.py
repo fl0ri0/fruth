@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from ollmo_server import tts_semantic_regeneration as policy
-from ollmo_services.response_frames import load_latest_response_state
+from fruth_server import tts_semantic_regeneration as policy
+from fruth_services.response_frames import load_latest_response_state
 
 
 @pytest.fixture
 def real_checkpoint(tmp_path, monkeypatch):
-    import ollmo_webserver as web
+    import fruth_webserver as web
     spec = importlib.util.spec_from_file_location('policy_test_fixture', Path(__file__).with_name('test_tts_semantic_regeneration.py'))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -83,7 +83,7 @@ def test_real_checkpoint_allows_one_fresh_repair(real_checkpoint):
 
 
 def test_actual_append_failure_never_calls_backend(real_checkpoint, monkeypatch):
-    import ollmo_webserver as web
+    import fruth_webserver as web
     e = real_checkpoint
     def fail(*a, **kw):
         raise OSError('injected disk append failure')
@@ -214,7 +214,7 @@ def test_failed_second_attempt_exhausts_real_durable_budget(real_checkpoint, fai
 
 
 @pytest.mark.parametrize('profile', [
-    {'ghost_mode': 'improviser'},
+    {'semantic_role_ids': ['possibility_expander', 'materializer', 'quality_reviewer']},
     {'developer_flags': {'planner_timeout_ms': 7200000}},
     {'developer_flags': {'accepted_learning_authority': 'preferred'}},
 ])
@@ -223,7 +223,7 @@ def test_checkpoint_lookup_keeps_exact_frozen_representation(
     real_checkpoint, monkeypatch, tmp_path, profile, second_mismatch,
 ):
     """A read during append followed by checkpoint publication has one frame body."""
-    import ollmo_webserver as web
+    import fruth_webserver as web
     from scripts.self_attack_checks import audit_history
     from scripts.run_graph_rebase_shadow_corpus import stable_digest
 

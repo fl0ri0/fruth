@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from ollmo_services import artifact_registry as registry
-from ollmo_services.response_frames import attach_response_frame
-from ollmo_services.responses import hoist_response_output_surfaces
+from fruth_services import artifact_registry as registry
+from fruth_services.response_frames import attach_response_frame
+from fruth_services.responses import hoist_response_output_surfaces
 
 
 def registry_handoff_fixture(root):
@@ -179,7 +179,7 @@ def test_registry_preserves_artifact_and_late_fill_producer_bindings(tmp_path):
 
 
 def test_successor_ledger_recovery_and_registry_agree(tmp_path):
-    from ollmo_services.response_frames import persist_response_frame, load_latest_response_state
+    from fruth_services.response_frames import persist_response_frame, load_latest_response_state
 
     _, _, payload = registry_handoff_fixture(tmp_path / 'files')
     frame_root, ledger = tmp_path / 'frames', tmp_path / 'registry.jsonl'

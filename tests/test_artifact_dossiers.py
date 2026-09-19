@@ -3,11 +3,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from ollmo_services.artifact_dossiers import build_artifact_dossier_index
+from fruth_services.artifact_dossiers import build_artifact_dossier_index
 
 
 class ArtifactDossierTests(unittest.TestCase):
-    @patch('ollmo_services.artifact_dossiers.find_artifact_registry_record_by_artifact_ref')
+    @patch('fruth_services.artifact_dossiers.find_artifact_registry_record_by_artifact_ref')
     def test_build_artifact_dossier_index_uses_actual_provenance_metadata_when_available(self, mock_find_registry):
         mock_find_registry.return_value = {
             'artifact_ref': 'artifact:image_deadbeef',
@@ -121,8 +121,8 @@ class ArtifactDossierTests(unittest.TestCase):
             self.assertEqual(dossier['metadata']['availability_source'], 'filesystem')
             self.assertGreater(dossier['metadata']['size_bytes'], 0)
 
-    @patch('ollmo_services.artifact_dossiers.find_artifact_registry_record')
-    @patch('ollmo_services.artifact_dossiers.find_artifact_registry_record_by_artifact_ref')
+    @patch('fruth_services.artifact_dossiers.find_artifact_registry_record')
+    @patch('fruth_services.artifact_dossiers.find_artifact_registry_record_by_artifact_ref')
     def test_late_fill_producer_metadata_precedes_root_fallback_before_registry_persistence(
         self,
         mock_find_registry_by_ref,
@@ -179,7 +179,7 @@ class ArtifactDossierTests(unittest.TestCase):
             'text_to_speech',
         )
 
-    @patch('ollmo_services.artifact_dossiers.find_artifact_registry_record_by_artifact_ref')
+    @patch('fruth_services.artifact_dossiers.find_artifact_registry_record_by_artifact_ref')
     def test_build_artifact_dossier_index_reads_durable_registry_enrichments_without_response_overlay(self, mock_find_registry):
         mock_find_registry.return_value = {
             'artifact_ref': 'artifact:image_live',

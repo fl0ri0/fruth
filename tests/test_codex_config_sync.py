@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_integrations.codex.config_sync import build_provider_blocks, sync_codex_config
+from fruth_integrations.codex.config_sync import build_provider_blocks, sync_codex_config
 
 
 class CodexConfigSyncTests(unittest.TestCase):
@@ -17,13 +17,13 @@ class CodexConfigSyncTests(unittest.TestCase):
             }
         ]
 
-        with patch.dict("os.environ", {"OLLMO_WEB_BASE": "http://127.0.0.1:5001"}):
+        with patch.dict("os.environ", {"FRUTH_WEB_BASE": "http://127.0.0.1:5011"}):
             blocks, count = build_provider_blocks(instances)
 
         self.assertEqual(count, 1)
         self.assertIn('[model_providers.local-11436]', blocks)
         self.assertIn(
-            'base_url = "http://127.0.0.1:5001/api/local_provider/sample%2Fmodel%3A1/v1"',
+            'base_url = "http://127.0.0.1:5011/api/local_provider/sample%2Fmodel%3A1/v1"',
             blocks,
         )
         self.assertIn('wire_api = "responses"', blocks)
@@ -65,7 +65,7 @@ class CodexConfigSyncTests(unittest.TestCase):
             config_path = Path(tmpdir) / "config.toml"
             config_path.write_text(original, encoding="utf-8")
 
-            with patch.dict("os.environ", {"OLLMO_WEB_BASE": "http://127.0.0.1:5001"}):
+            with patch.dict("os.environ", {"FRUTH_WEB_BASE": "http://127.0.0.1:5011"}):
                 changed = sync_codex_config(instances, config_path=config_path)
 
             self.assertTrue(changed)
@@ -74,7 +74,7 @@ class CodexConfigSyncTests(unittest.TestCase):
             self.assertNotIn('[model_providers.local-11435]', updated)
             self.assertIn('[model_providers.local-11439]', updated)
             self.assertIn(
-                'base_url = "http://127.0.0.1:5001/api/local_provider/sample%3Amodel/v1"',
+                'base_url = "http://127.0.0.1:5011/api/local_provider/sample%3Amodel/v1"',
                 updated,
             )
 

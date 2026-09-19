@@ -1,19 +1,20 @@
 import hashlib
 import json
 from email.message import Message
+from http.client import IncompleteRead
 from pathlib import Path
 import threading
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request
 
 import pytest
 
-from ollmo_g.router import extract_recent_artifacts
-from ollmo_server.late_fill_runtime import LateFillRuntimeOwner
-from ollmo_server.request_intake_runtime import RequestIntakeRuntimeOwner
-from ollmo_server.responses_request_runtime import ResponsesRequestRuntimeOwner
-from ollmo_services.artifact_contracts import sanitize_artifact_record
+from fruth_inference.router import extract_recent_artifacts
+from fruth_server.late_fill_runtime import LateFillRuntimeOwner
+from fruth_server.request_intake_runtime import RequestIntakeRuntimeOwner
+from fruth_server.responses_request_runtime import ResponsesRequestRuntimeOwner
+from fruth_services.artifact_contracts import sanitize_artifact_record
 from scripts.run_graph_rebase_shadow_corpus import (
     CorpusError,
     HttpResult,
@@ -65,7 +66,7 @@ def _write_corpus(path: Path, cases=None, **overrides):
 
 def _readiness_payload(settled=6):
     return {
-        'kind': 'ollmo.graph_rebase_rollout_readiness',
+        'kind': 'fruth.graph_rebase_rollout_readiness',
         'runtime_effect': 'none',
         'report_digest': f'readiness-{settled}',
         'corpus': {
@@ -349,8 +350,8 @@ class FakeClient:
                         }
                     ],
                 )
-            if path == '/api/ghost_preferences':
-                return HttpResult(200, {'preferences': {'primary': 'ghost-live'}})
+            if path == '/api/inference_preferences':
+                return HttpResult(200, {'preferences': {'primary': 'inference-live'}})
             if path == '/api/graph_rebase/readiness':
                 self.readiness_count += 1
                 return HttpResult(200, _readiness_payload(5 + self.readiness_count), 800)
@@ -397,10 +398,10 @@ def _runner(tmp_path, corpus, manifest, client, **overrides):
 @pytest.mark.parametrize(
     'base_url',
     [
-        'http://example.test:5001',
+        'http://example.test:5011',
         'http://127.0.0.1:5999',
-        'http://user:pass@127.0.0.1:5001',
-        'http://127.0.0.1:5001/nested',
+        'http://user:pass@127.0.0.1:5011',
+        'http://127.0.0.1:5011/nested',
         'http://127.0.0.1:not-a-port',
     ],
 )
@@ -413,7 +414,7 @@ def test_shadow_corpus_transport_disables_proxy_and_redirects():
     with patch(
         'scripts.run_graph_rebase_shadow_corpus.build_opener'
     ) as mock_build_opener:
-        JsonHttpClient('http://127.0.0.1:5001')
+        JsonHttpClient('http://127.0.0.1:5011')
     handlers = mock_build_opener.call_args.args
     proxy_handlers = [
         handler for handler in handlers if isinstance(handler, ProxyHandler)
@@ -422,9 +423,35 @@ def test_shadow_corpus_transport_disables_proxy_and_redirects():
     assert proxy_handlers[0].proxies == {}
 
     handler = _RejectRedirectHandler()
-    request = Request('http://127.0.0.1:5001/api/responses')
+    request = Request('http://127.0.0.1:5011/api/responses')
     with pytest.raises(HTTPError, match='Redirects are forbidden'):
         handler.http_error_302(request, None, 302, 'Found', Message())
+
+
+@pytest.mark.parametrize('method', ['GET', 'POST'])
+@pytest.mark.parametrize('http_error', [False, True])
+def test_shadow_corpus_transport_discards_incomplete_bodies_without_replay(method, http_error):
+    client = JsonHttpClient('http://127.0.0.1:5011')
+    response = MagicMock()
+    response.__enter__.return_value = response
+    response.status = 200
+    response.read.side_effect = IncompleteRead(b'{"output_text":"partial"}', 10)
+    client._opener = MagicMock()
+    if http_error:
+        client._opener.open.side_effect = HTTPError(
+            'http://127.0.0.1:5011/api/responses', 503, 'Service Unavailable', Message(), response,
+        )
+    else:
+        client._opener.open.return_value = response
+
+    result = client.request_json(method, '/api/responses', payload={} if method == 'POST' else None)
+
+    assert not result.ok and result.status_code == 0
+    assert result.payload == {} and result.byte_count == 0
+    assert 'IncompleteRead' in result.error
+    assert 'partial' not in result.error
+    assert client._opener.open.call_count == 1
+    assert client._opener.open.call_args.args[0].get_method() == method
 
 
 def test_corpus_digest_ids_and_conversations_are_stable_and_prompt_bound(tmp_path):
@@ -498,7 +525,7 @@ def test_corpus_rejects_cycles_duplicates_and_runner_owned_overrides(tmp_path):
                 'case_id': 'a',
                 'category': 'chat',
                 'prompt': 'A',
-                'request_overrides': {'instance_id': 'bypass-ghost'},
+                'request_overrides': {'instance_id': 'bypass-inference'},
             }
         ],
     )
@@ -549,7 +576,7 @@ def test_unlabeled_opportunity_sequence_is_preserved_but_not_sent_to_runtime(tmp
         deterministic_conversation_id(corpus, corpus['cases'][1])
     )
     root_payload = build_request_payload(manifest, manifest['cases'][0], {})
-    assert 'ghost_messages' not in root_payload
+    assert 'inference_messages' not in root_payload
     assert 'reference_artifacts' not in root_payload
     assert 'predecessor_context' not in root_payload['request_meta']
     with pytest.raises(CorpusError, match='not settled'):
@@ -559,7 +586,7 @@ def test_unlabeled_opportunity_sequence_is_preserved_but_not_sent_to_runtime(tmp
     request_payload = build_request_payload(manifest, manifest['cases'][1], {})
     assert 'opportunity_contract' not in request_payload
     assert 'opportunity_contract' not in request_payload['request_meta']
-    assert request_payload['ghost_messages'][0]['content'] == (
+    assert request_payload['inference_messages'][0]['content'] == (
         'Exact prior assistant text.'
     )
     assert request_payload['reference_artifacts'][0]['type'] == 'message'
@@ -611,7 +638,7 @@ def test_opportunity_followup_carries_exact_bounded_predecessor_context(tmp_path
         MAX_PREDECESSOR_CONTEXT_BYTES + 8_192
     )
     assert 'input_artifacts' not in payload
-    assistant = payload['ghost_messages'][0]
+    assistant = payload['inference_messages'][0]
     assert assistant['role'] == 'assistant'
     assert assistant['content'] == 'The exact immutable predecessor answer.'
     assert assistant['message_id'] == 'msg-root-final'
@@ -689,11 +716,11 @@ def test_runner_dispatches_opportunity_root_then_one_context_bound_followup(tmp_
     posts = [call[2] for call in client.calls if call[0] == 'POST']
     assert len(posts) == 2
     assert posts[0]['response_id'] == root_id
-    assert 'ghost_messages' not in posts[0]
+    assert 'inference_messages' not in posts[0]
     assert 'reference_artifacts' not in posts[0]
     assert posts[1]['response_id'] == follow_id
-    assert posts[1]['ghost_messages'][0]['response_id'] == root_id
-    assert posts[1]['ghost_messages'][0]['message_id'] == f'msg-{root_id}'
+    assert posts[1]['inference_messages'][0]['response_id'] == root_id
+    assert posts[1]['inference_messages'][0]['message_id'] == f'msg-{root_id}'
     assert posts[1]['reference_artifacts'][1]['artifact_ref'] == 'artifact:text:1'
     assert posts[1]['request_meta']['predecessor_context']['response_id'] == root_id
     assert [payload['response_id'] for payload in posts] == [root_id, follow_id]
@@ -726,7 +753,7 @@ def test_all_predecessor_handles_reach_routing_direct_context_and_late_fill(tmp_
     expected_refs = {item['artifact_ref'] for item in artifacts}
     expected_paths = {item['path'] for item in artifacts}
 
-    routed = extract_recent_artifacts(payload['ghost_messages'])
+    routed = extract_recent_artifacts(payload['inference_messages'])
     assert {item['path'] for item in routed} == expected_paths
     assert len(routed) == len(artifacts)
 
@@ -778,8 +805,8 @@ def test_all_predecessor_handles_reach_routing_direct_context_and_late_fill(tmp_
 @pytest.mark.parametrize(
     'override_key',
     (
-        'ghost_messages',
-        'ghost_messages_json',
+        'inference_messages',
+        'inference_messages_json',
         'input',
         'input_artifacts',
         'reference_artifacts',
@@ -1150,10 +1177,10 @@ def test_runner_gets_before_single_post_polls_status_and_fetches_debug_once(tmp_
     assert case['state'] == 'settled_terminal'
     assert case['final_debug']['status'] == 'captured'
     assert case['final_debug']['summary']['rebase_opportunity']['runtime_effect'] == 'none'
-    assert case['dispatch_request']['ghost_route'] is True
+    assert case['dispatch_request']['inference_route'] is True
     assert case['dispatch_request']['response_id'] == response_id
     assert case['dispatch_request']['conversation_id'] == case['conversation_id']
-    assert case['dispatch_request']['ghost_preferences'] == {'primary': 'ghost-live'}
+    assert case['dispatch_request']['inference_preferences'] == {'primary': 'inference-live'}
 
     response_calls = [call for call in client.calls if '/api/responses' in call[1]]
     assert response_calls[0][:2] == ('GET', f'/api/responses/{response_id}?view=status')

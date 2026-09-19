@@ -3,13 +3,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import ollmo_webserver
+import fruth_webserver
 from flask import has_app_context
 from requests.exceptions import ConnectionError, RequestException, Timeout
 from unittest.mock import Mock
 from unittest.mock import patch
 
-from ollmo_webserver import (
+from fruth_webserver import (
     _GENERATED_IMAGE_STATE_CACHE,
     _GENERATED_IMAGE_STATE_ENRICHMENT_IN_FLIGHT,
     _build_image_state_for_generated_image,
@@ -19,12 +19,12 @@ from ollmo_webserver import (
     _schedule_generated_image_payload_enrichment,
     app,
 )
-from ollmo_services.artifact_registry import (
+from fruth_services.artifact_registry import (
     find_artifact_registry_record,
     find_generated_image_provenance,
     persist_generated_image_provenance,
 )
-from ollmo_core.transports import persist_input_file_locally
+from fruth_core.transports import persist_input_file_locally
 
 
 class InferApiTests(unittest.TestCase):
@@ -33,17 +33,17 @@ class InferApiTests(unittest.TestCase):
         self.client = app.test_client()
         _GENERATED_IMAGE_STATE_CACHE.clear()
         _GENERATED_IMAGE_STATE_ENRICHMENT_IN_FLIGHT.clear()
-        if hasattr(ollmo_webserver._GENERATED_IMAGE_POSTPROCESS, "helper_error_cooldowns"):
-            ollmo_webserver._GENERATED_IMAGE_POSTPROCESS.helper_error_cooldowns.clear()
+        if hasattr(fruth_webserver._GENERATED_IMAGE_POSTPROCESS, "helper_error_cooldowns"):
+            fruth_webserver._GENERATED_IMAGE_POSTPROCESS.helper_error_cooldowns.clear()
         self._artifact_inputs_tmpdir = tempfile.TemporaryDirectory()
         self._artifact_inputs_root = Path(self._artifact_inputs_tmpdir.name) / "artifacts" / "inputs"
         self._ocr_output_root = Path(self._artifact_inputs_tmpdir.name) / "artifacts" / "ocr"
         # Exercise the real OCR writer without publishing test fixtures into user work.
-        self._ocr_export_dir_patcher = patch("ollmo_webserver.OCR_EXPORT_DIR", self._ocr_output_root)
+        self._ocr_export_dir_patcher = patch("fruth_webserver.OCR_EXPORT_DIR", self._ocr_output_root)
         self._ocr_export_dir_patcher.start()
         self.addCleanup(self._ocr_export_dir_patcher.stop)
         self._persist_input_file_locally_patcher = patch(
-            "ollmo_webserver._persist_input_file_locally",
+            "fruth_webserver._persist_input_file_locally",
             side_effect=self._persist_input_file_locally_to_temp,
         )
         self._persist_input_file_locally_patcher.start()
@@ -73,7 +73,7 @@ class InferApiTests(unittest.TestCase):
             output_root=self._artifact_inputs_root,
         )
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_infer_route_rejects_traversal_shaped_instance_id(self, mock_lookup):
         response = self.client.post(
             "/api/infer",
@@ -87,12 +87,12 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("invalid path segments", response.get_json()["error"])
         mock_lookup.assert_not_called()
 
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch.object(ollmo_webserver._GENERATED_IMAGE_POSTPROCESS, "schedule_generated_image_payload_enrichment")
-    @patch("ollmo_webserver._persist_image_data_url_locally")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
+    @patch("fruth_webserver._lookup_instance")
+    @patch.object(fruth_webserver._GENERATED_IMAGE_POSTPROCESS, "schedule_generated_image_payload_enrichment")
+    @patch("fruth_webserver._persist_image_data_url_locally")
+    @patch("fruth_webserver._ollama_generate")
     def test_image_generation_infer(self, mock_generate, mock_persist, mock_schedule_enrichment, mock_lookup, mock_activity, mock_success):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -110,8 +110,8 @@ class InferApiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             provenance_path = Path(tmpdir) / "artifact_registry.jsonl"
             with (
-                patch("ollmo_webserver.ARTIFACT_REGISTRY_LEDGER", provenance_path),
-                patch("ollmo_webserver._ollama_openai_image_generation", return_value=None),
+                patch("fruth_webserver.ARTIFACT_REGISTRY_LEDGER", provenance_path),
+                patch("fruth_webserver._ollama_openai_image_generation", return_value=None),
             ):
                 response = self.client.post(
                     "/api/infer",
@@ -152,12 +152,12 @@ class InferApiTests(unittest.TestCase):
             mock_activity.assert_called_once()
             mock_success.assert_called_once()
 
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch.object(ollmo_webserver._GENERATED_IMAGE_POSTPROCESS, "schedule_generated_image_payload_enrichment")
-    @patch("ollmo_webserver._persist_image_data_url_locally")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
+    @patch("fruth_webserver._lookup_instance")
+    @patch.object(fruth_webserver._GENERATED_IMAGE_POSTPROCESS, "schedule_generated_image_payload_enrichment")
+    @patch("fruth_webserver._persist_image_data_url_locally")
+    @patch("fruth_webserver._ollama_generate")
     def test_image_generation_suppresses_stale_selected_reply_for_authoritative_branch_prompt(
         self,
         mock_generate,
@@ -187,7 +187,7 @@ class InferApiTests(unittest.TestCase):
             "brushed titanium on a dark background."
         )
 
-        with patch("ollmo_webserver._ollama_openai_image_generation", return_value=None):
+        with patch("fruth_webserver._ollama_openai_image_generation", return_value=None):
             response = self.client.post(
                 "/api/infer",
                 json={
@@ -211,12 +211,12 @@ class InferApiTests(unittest.TestCase):
         self.assertNotIn("Selected prior assistant reply", mock_generate.call_args.args[2])
         self.assertNotIn("lighthouse", mock_generate.call_args.args[2])
 
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch.object(ollmo_webserver._GENERATED_IMAGE_POSTPROCESS, "schedule_generated_image_payload_enrichment")
-    @patch("ollmo_webserver._persist_image_data_url_locally")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
+    @patch("fruth_webserver._lookup_instance")
+    @patch.object(fruth_webserver._GENERATED_IMAGE_POSTPROCESS, "schedule_generated_image_payload_enrichment")
+    @patch("fruth_webserver._persist_image_data_url_locally")
+    @patch("fruth_webserver._ollama_generate")
     def test_responses_to_infer_selected_reference_prefix_is_applied_once(
         self,
         mock_generate,
@@ -251,9 +251,9 @@ class InferApiTests(unittest.TestCase):
 
         with app.test_request_context("/api/responses", method="POST"):
             infer_payload, _route_info, _has_file_context, _expose_input_artifacts = (
-                ollmo_webserver._build_responses_infer_execution_payload(
+                fruth_webserver._build_responses_infer_execution_payload(
                     {
-                        "ghost_route": True,
+                        "inference_route": True,
                         "prompt": branch_prompt,
                         "selected_reference_artifacts": [selected_reply],
                     },
@@ -270,7 +270,7 @@ class InferApiTests(unittest.TestCase):
                 )
             )
 
-        with patch("ollmo_webserver._ollama_openai_image_generation", return_value=None):
+        with patch("fruth_webserver._ollama_openai_image_generation", return_value=None):
             response = self.client.post("/api/infer", json=infer_payload)
 
         self.assertEqual(response.status_code, 200)
@@ -284,7 +284,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(backend_prompt.count("Current user request:"), 1)
         self.assertTrue(backend_prompt.endswith(branch_prompt))
 
-    @patch("ollmo_webserver._execute_infer_request")
+    @patch("fruth_webserver._execute_infer_request")
     def test_invoke_internal_api_json_route_establishes_app_context(self, mock_execute_infer):
         def fake_execute(payload, upload=None):
             self.assertTrue(has_app_context())
@@ -297,7 +297,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(status_code, 200)
         self.assertTrue(payload["ok"])
 
-    @patch("ollmo_server.infer_postprocess.threading.Thread")
+    @patch("fruth_server.infer_postprocess.threading.Thread")
     def test_schedule_generated_image_payload_enrichment_only_starts_one_worker_per_path(self, mock_thread):
         worker = Mock()
         mock_thread.return_value = worker
@@ -425,9 +425,9 @@ class InferApiTests(unittest.TestCase):
         self.assertIsNotNone(selected)
         self.assertEqual(selected["instance_id"], "vision-chat-2")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_build_image_state_for_generated_image_schedules_generated_image_state_enrichment_helper_terminal(
         self,
         mock_load_running_instances,
@@ -474,7 +474,7 @@ class InferApiTests(unittest.TestCase):
         )
 
         with patch.object(
-            ollmo_webserver._GENERATED_IMAGE_POSTPROCESS,
+            fruth_webserver._GENERATED_IMAGE_POSTPROCESS,
             "schedule_post_response_substrate_hygiene",
         ) as mock_schedule_hygiene:
             payload = _build_image_state_for_generated_image("/tmp/generated.png")
@@ -495,9 +495,9 @@ class InferApiTests(unittest.TestCase):
             "generated_image_state_enrichment_helper_terminal",
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_build_image_state_for_generated_image_tries_next_helper_after_exception(
         self,
         mock_load_running_instances,
@@ -546,7 +546,7 @@ class InferApiTests(unittest.TestCase):
         ]
 
         with patch.object(
-            ollmo_webserver._GENERATED_IMAGE_POSTPROCESS,
+            fruth_webserver._GENERATED_IMAGE_POSTPROCESS,
             "schedule_post_response_substrate_hygiene",
         ) as mock_schedule_hygiene:
             payload = _build_image_state_for_generated_image("/tmp/generated.png")
@@ -573,9 +573,9 @@ class InferApiTests(unittest.TestCase):
             {"generated_image_state_enrichment_helper_terminal"},
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_build_image_state_for_generated_image_uses_backend_agnostic_helper_cooldown(
         self,
         mock_load_running_instances,
@@ -625,7 +625,7 @@ class InferApiTests(unittest.TestCase):
         first_payload = _build_image_state_for_generated_image("/tmp/generated.png")
 
         self.assertEqual(first_payload["subject"], "temple")
-        cooldowns = ollmo_webserver._GENERATED_IMAGE_POSTPROCESS.helper_error_cooldowns
+        cooldowns = fruth_webserver._GENERATED_IMAGE_POSTPROCESS.helper_error_cooldowns
         self.assertIn("vision-chat-z", cooldowns)
 
         mock_invoke.reset_mock()
@@ -644,7 +644,7 @@ class InferApiTests(unittest.TestCase):
             image_path.write_bytes(b'png')
             ledger_path = Path(tmpdir) / 'artifact_registry.jsonl'
             provenance = {
-                'kind': 'ollmo.generated_image_provenance',
+                'kind': 'fruth.generated_image_provenance',
                 'provenance_id': 'generated_image_deadbeef',
                 'created_at': '2026-04-14T00:00:00Z',
                 'image_path': str(image_path),
@@ -672,9 +672,9 @@ class InferApiTests(unittest.TestCase):
             )
 
             with (
-                patch('ollmo_webserver.ARTIFACT_REGISTRY_LEDGER', ledger_path),
+                patch('fruth_webserver.ARTIFACT_REGISTRY_LEDGER', ledger_path),
                 patch.object(
-                    ollmo_webserver._GENERATED_IMAGE_POSTPROCESS,
+                    fruth_webserver._GENERATED_IMAGE_POSTPROCESS,
                     'build_image_state_for_generated_image',
                     return_value={
                         'summary': 'dream temple above silver water',
@@ -682,7 +682,7 @@ class InferApiTests(unittest.TestCase):
                     },
                 ),
             ):
-                payload = ollmo_webserver._enrich_generated_image_payload(
+                payload = fruth_webserver._enrich_generated_image_payload(
                     {
                         'mode': 'image_generation',
                         'saved_image_path': str(image_path),
@@ -706,10 +706,10 @@ class InferApiTests(unittest.TestCase):
                 'background_analysis',
             )
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._persist_image_data_url_locally")
-    @patch("ollmo_webserver._ollama_openai_image_generation")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_image_data_url_locally")
+    @patch("fruth_webserver._ollama_openai_image_generation")
+    @patch("fruth_webserver._ollama_generate")
     def test_image_generation_uses_openai_fallback_when_no_inline_image(
         self,
         mock_generate,
@@ -753,7 +753,7 @@ class InferApiTests(unittest.TestCase):
         )
         mock_persist.assert_called_once()
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_image_generation_rejects_single_dimension_without_the_other(self, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -775,11 +775,11 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Width and Height together", response.get_json()["error"])
 
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._persist_transcript_text_locally")
-    @patch("ollmo_webserver._whisper_transcribe")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_transcript_text_locally")
+    @patch("fruth_webserver._whisper_transcribe")
     def test_speech_to_text_with_audio_upload(self, mock_transcribe, mock_persist_transcript, mock_lookup, mock_activity, mock_success):
         mock_lookup.return_value = {
             "instance_id": "whisper-1",
@@ -812,11 +812,11 @@ class InferApiTests(unittest.TestCase):
         mock_activity.assert_called_once()
         mock_success.assert_called_once()
 
-    @patch("ollmo_webserver.record_instance_failure")
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._whisper_transcribe")
+    @patch("fruth_webserver.record_instance_failure")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._whisper_transcribe")
     def test_speech_to_text_missing_audio_is_contract_error_not_backend_failure(
         self,
         mock_transcribe,
@@ -854,11 +854,11 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(mock_activity.call_args_list[0].kwargs["activity"], "busy")
         self.assertEqual(mock_activity.call_args_list[1].kwargs["activity"], "idle")
 
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._persist_audio_bytes_locally")
-    @patch("ollmo_webserver._mlx_audio_speech")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_audio_bytes_locally")
+    @patch("fruth_webserver._mlx_audio_speech")
     def test_text_to_speech_infer_returns_saved_audio_artifact(
         self,
         mock_tts,
@@ -888,7 +888,7 @@ class InferApiTests(unittest.TestCase):
             "/api/infer",
             data={
                 "instance_id": "tts-1",
-                "prompt": "Guten Tag aus Ollmo.",
+                "prompt": "Guten Tag aus Fruth.",
                 "voice": "Chelsie",
                 "instruct": "Warm, calm, elegant German narration.",
                 "speed": "0.95",
@@ -925,11 +925,11 @@ class InferApiTests(unittest.TestCase):
         mock_activity.assert_called_once()
         mock_success.assert_called_once()
 
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._persist_audio_bytes_locally")
-    @patch("ollmo_webserver._mlx_audio_speech")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_audio_bytes_locally")
+    @patch("fruth_webserver._mlx_audio_speech")
     def test_text_to_speech_infer_derives_language_from_text_when_auto(
         self,
         mock_tts,
@@ -979,7 +979,7 @@ class InferApiTests(unittest.TestCase):
         _args, kwargs = mock_tts.call_args
         self.assertEqual(kwargs["lang_code"], "german")
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_text_to_speech_customvoice_rejects_unsupported_speaker(self, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "tts-2",
@@ -1005,7 +1005,7 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("Speaker 'Karl'", payload["error"])
         self.assertIn("VoiceDesign", payload["error"])
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_text_to_speech_customvoice_requires_speaker(self, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "tts-3",
@@ -1031,10 +1031,10 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("requires a speaker", payload["error"])
         self.assertIn("VoiceDesign", payload["error"])
 
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._mlx_chat_completions")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._mlx_chat_completions")
     def test_mlx_vlm_vision_analysis_with_image_upload(self, mock_mlx_chat, mock_lookup, mock_activity, mock_success):
         mock_lookup.return_value = {
             "instance_id": "vlm-1",
@@ -1077,7 +1077,7 @@ class InferApiTests(unittest.TestCase):
         mock_activity.assert_called_once()
         mock_success.assert_called_once()
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_infer_rejects_invalid_reasoning_effort(self, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "vlm-1",
@@ -1100,7 +1100,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("reasoning_effort", response.get_json()["error"])
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_infer_rejects_reasoning_effort_not_advertised_by_model(self, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "vlm-1",
@@ -1123,7 +1123,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("not available", response.get_json()["error"])
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_speech_to_text_rejects_non_audio_upload(self, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "whisper-1",
@@ -1146,8 +1146,8 @@ class InferApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertIn("Expected an audio file", payload["error"])
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_chat")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_chat")
     def test_chat_infer_plain_prompt(self, mock_chat, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "qwen-1",
@@ -1177,8 +1177,8 @@ class InferApiTests(unittest.TestCase):
             timeout_sec=1200,
         )
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_chat")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_chat")
     def test_chat_timeout_honors_request_budget_without_pdf_advice(self, mock_chat, mock_lookup):
         mock_lookup.return_value = {
             'instance_id': 'qwen-1', 'port': 11436, 'model': 'qwen3.5:27b',
@@ -1196,9 +1196,9 @@ class InferApiTests(unittest.TestCase):
         self.assertNotIn('PDF', error)
         self.assertNotIn('pdf_page_timeout_sec', error)
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_chat")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_chat")
     def test_chat_infer_persists_structured_text_artifact_request(
         self,
         mock_chat,
@@ -1235,9 +1235,9 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(mock_persist_text_artifact.call_args.args[0], "# Einsatzprotokoll\n\n- Risiko: Vereisung.")
         self.assertEqual(mock_persist_text_artifact.call_args.kwargs["source_name"], "einsatzprotokoll")
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_chat")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_chat")
     def test_chat_infer_preserves_distinct_files_with_the_same_extension(
         self,
         mock_chat,
@@ -1301,13 +1301,13 @@ class InferApiTests(unittest.TestCase):
             ["index", "styles", "configurator", "pricing"],
         )
 
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._persist_request_input_artifacts", return_value=[])
-    @patch("ollmo_webserver._ollama_generate")
-    @patch("ollmo_webserver._save_local_path_to_temp")
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_request_input_artifacts", return_value=[])
+    @patch("fruth_webserver._ollama_generate")
+    @patch("fruth_webserver._save_local_path_to_temp")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path")
     def test_chat_infer_selected_reference_image_and_message_use_file_context_and_prompt_anchor(
         self,
         mock_resolve_saved_artifact,
@@ -1378,12 +1378,12 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("Current user request:\ndescribe", prompt)
         self.assertTrue(mock_generate.call_args.kwargs["images"])
 
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._persist_request_input_artifacts", return_value=[])
-    @patch("ollmo_webserver._ollama_generate")
-    @patch("ollmo_webserver._save_local_path_to_temp")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_request_input_artifacts", return_value=[])
+    @patch("fruth_webserver._ollama_generate")
+    @patch("fruth_webserver._save_local_path_to_temp")
     def test_chat_infer_artifact_binding_file_path_does_not_repersist_input_artifact(
         self,
         mock_save_local_path,
@@ -1442,13 +1442,13 @@ class InferApiTests(unittest.TestCase):
         mock_persist_input_artifacts.assert_not_called()
         mock_generate.assert_called_once()
 
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._find_artifact_registry_record")
-    @patch("ollmo_webserver._persist_request_input_artifacts", return_value=[])
-    @patch("ollmo_webserver._ollama_generate")
-    @patch("ollmo_webserver._save_local_path_to_temp")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._find_artifact_registry_record")
+    @patch("fruth_webserver._persist_request_input_artifacts", return_value=[])
+    @patch("fruth_webserver._ollama_generate")
+    @patch("fruth_webserver._save_local_path_to_temp")
     def test_chat_infer_registry_known_file_path_does_not_repersist_input_artifact(
         self,
         mock_save_local_path,
@@ -1507,8 +1507,8 @@ class InferApiTests(unittest.TestCase):
         mock_find_registry_record.assert_called_once()
         mock_persist_input_artifacts.assert_not_called()
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_chat")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_chat")
     def test_chat_infer_text_file_appended_to_prompt(self, mock_chat, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "coder-1",
@@ -1537,8 +1537,8 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("[Attached file content]", called_messages[0]["content"])
         self.assertIn("line1", called_messages[0]["content"])
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_chat")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_chat")
     def test_chat_infer_local_text_path_appended_to_prompt(self, mock_chat, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "coder-1",
@@ -1571,8 +1571,8 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("[Attached file content]", called_messages[0]["content"])
         self.assertIn("alpha", called_messages[0]["content"])
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_chat")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_chat")
     def test_chat_infer_large_text_file_adds_explicit_truncation_note(self, mock_chat, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "coder-1",
@@ -1601,7 +1601,7 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("truncated to first 250000 of 250100 bytes", called_messages[0]["content"])
         self.assertIn("[Attached file content truncated", called_messages[0]["content"])
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_infer_rejects_upload_and_file_path_together(self, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "coder-1",
@@ -1631,12 +1631,12 @@ class InferApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertIn("either 'file' or 'file_path'", payload["error"])
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._persist_text_markdown_locally")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._persist_text_markdown_locally")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_text_layer(
         self,
         mock_generate,
@@ -1684,12 +1684,12 @@ class InferApiTests(unittest.TestCase):
         mock_render_pdf.assert_called_once()
         mock_append_history.assert_called_once()
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._render_single_pdf_page_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._render_single_pdf_page_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_scan_pages_with_synthesis(
         self,
         mock_generate,
@@ -1740,13 +1740,13 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(mock_generate.call_args_list[1].kwargs["options"], {"num_predict": 8192})
         mock_append_history.assert_called_once()
 
-    @patch("ollmo_webserver.MAX_PDF_INLINE_RESPONSE_CHARS", 40)
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._persist_text_markdown_locally")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver.MAX_PDF_INLINE_RESPONSE_CHARS", 40)
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._persist_text_markdown_locally")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_text_layer_persists_full_source_and_flags_inline_truncation(
         self,
         mock_generate,
@@ -1792,14 +1792,14 @@ class InferApiTests(unittest.TestCase):
         self.assertTrue(any("saved markdown artifact" in warning for warning in payload["warnings"]))
         mock_append_history.assert_called_once()
 
-    @patch("ollmo_webserver.MAX_PDF_INLINE_RESPONSE_CHARS", 60)
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._persist_text_markdown_locally")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._render_single_pdf_page_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver.MAX_PDF_INLINE_RESPONSE_CHARS", 60)
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._persist_text_markdown_locally")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._render_single_pdf_page_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_scan_flags_inline_truncation_but_saves_full_artifact(
         self,
         mock_generate,
@@ -1844,12 +1844,12 @@ class InferApiTests(unittest.TestCase):
         self.assertTrue(any("saved markdown artifact" in warning for warning in payload["warnings"]))
         mock_append_history.assert_called_once()
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._render_single_pdf_page_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._render_single_pdf_page_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_scan_returns_partial_result_when_one_page_times_out(
         self,
         mock_generate,
@@ -1894,12 +1894,12 @@ class InferApiTests(unittest.TestCase):
         mock_append_history.assert_called_once()
         self._assert_saved_ocr_artifact(payload)
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._render_single_pdf_page_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._render_single_pdf_page_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_scan_all_pages_timeout_returns_504(
         self,
         mock_generate,
@@ -1937,12 +1937,12 @@ class InferApiTests(unittest.TestCase):
         self.assertTrue(any(("timeout" in warning.lower()) or ("timed out" in warning.lower()) for warning in payload["warnings"]))
         mock_append_history.assert_called_once()
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._render_single_pdf_page_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._render_single_pdf_page_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_scan_uses_emergency_generate_when_generate_empty(
         self,
         mock_generate,
@@ -1986,12 +1986,12 @@ class InferApiTests(unittest.TestCase):
         mock_append_history.assert_called_once()
         self._assert_saved_ocr_artifact(payload)
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._render_single_pdf_page_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._render_single_pdf_page_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_scan_rejects_prompt_echo_and_uses_fallback(
         self,
         mock_generate,
@@ -2041,12 +2041,12 @@ class InferApiTests(unittest.TestCase):
         mock_append_history.assert_called_once()
         self._assert_saved_ocr_artifact(payload)
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._render_single_pdf_page_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._render_single_pdf_page_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_scan_strips_deepseek_grounding_markup(
         self,
         mock_generate,
@@ -2092,12 +2092,12 @@ class InferApiTests(unittest.TestCase):
         mock_append_history.assert_called_once()
         self._assert_saved_ocr_artifact(payload)
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._render_single_pdf_page_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._render_single_pdf_page_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_scan_rejects_low_quality_repetition_and_uses_fallback(
         self,
         mock_generate,
@@ -2139,12 +2139,12 @@ class InferApiTests(unittest.TestCase):
         mock_append_history.assert_called_once()
         self._assert_saved_ocr_artifact(payload)
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._render_single_pdf_page_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._render_single_pdf_page_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_scan_replaces_repeated_phrase_noise_with_unclear(
         self,
         mock_generate,
@@ -2190,12 +2190,12 @@ class InferApiTests(unittest.TestCase):
         mock_append_history.assert_called_once()
         self._assert_saved_ocr_artifact(payload)
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._render_single_pdf_page_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._render_single_pdf_page_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_pdf_scan_uses_emergency_generate_when_generate_http_500(
         self,
         mock_generate,
@@ -2241,11 +2241,11 @@ class InferApiTests(unittest.TestCase):
         mock_append_history.assert_called_once()
         self._assert_saved_ocr_artifact(payload)
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._append_infer_history")
-    @patch("ollmo_webserver._render_pdf_pages_to_base64")
-    @patch("ollmo_webserver._extract_pdf_text_content")
-    @patch("ollmo_webserver._ollama_chat")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._extract_pdf_text_content")
+    @patch("fruth_webserver._ollama_chat")
     def test_chat_pdf_scan_requires_vision_model(
         self,
         mock_chat,
@@ -2280,10 +2280,10 @@ class InferApiTests(unittest.TestCase):
         mock_chat.assert_not_called()
         mock_append_history.assert_called_once()
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._find_cached_pdf_insight")
-    @patch("ollmo_webserver._hash_file_sha256")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._find_cached_pdf_insight")
+    @patch("fruth_webserver._hash_file_sha256")
+    @patch("fruth_webserver._ollama_generate")
     def test_pdf_cached_result_is_reused(
         self,
         mock_generate,
@@ -2326,7 +2326,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(payload["content"], "Cached OCR summary")
         mock_generate.assert_not_called()
 
-    @patch("ollmo_webserver._read_infer_history")
+    @patch("fruth_webserver._read_infer_history")
     def test_infer_history_endpoint_filters(self, mock_read_history):
         mock_read_history.return_value = [
             {"id": "1", "file_kind": "pdf", "mode": "vision_analysis_pdf_scan", "capability": "vision_analysis"},
@@ -2339,7 +2339,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(payload["count"], 1)
         self.assertEqual(payload["items"][0]["id"], "1")
 
-    @patch("ollmo_webserver._read_infer_history")
+    @patch("fruth_webserver._read_infer_history")
     def test_find_cached_pdf_insight_skips_prompt_echo_entries(self, mock_read_history):
         mock_read_history.return_value = [
             {
@@ -2381,8 +2381,8 @@ class InferApiTests(unittest.TestCase):
         self.assertIsNotNone(cached)
         self.assertEqual(cached["id"], "good-entry")
 
-    @patch("ollmo_webserver._open_path_in_file_manager")
-    @patch("ollmo_webserver._resolve_generated_image_path")
+    @patch("fruth_webserver._open_path_in_file_manager")
+    @patch("fruth_webserver._resolve_generated_image_path")
     def test_open_saved_image_success(self, mock_resolve_path, mock_open_path):
         mock_resolve_path.return_value = Path("/tmp/artifacts/images/cat.png")
 
@@ -2396,7 +2396,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(payload["status"], "opened")
         mock_open_path.assert_called_once_with(Path("/tmp/artifacts/images/cat.png"))
 
-    @patch("ollmo_webserver._resolve_generated_image_path")
+    @patch("fruth_webserver._resolve_generated_image_path")
     def test_open_saved_image_rejects_invalid_path(self, mock_resolve_path):
         mock_resolve_path.return_value = None
 
@@ -2409,8 +2409,8 @@ class InferApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertIn("artifacts/images", payload["error"])
 
-    @patch("ollmo_webserver._open_path_in_file_manager")
-    @patch("ollmo_webserver._resolve_saved_openable_artifact_path")
+    @patch("fruth_webserver._open_path_in_file_manager")
+    @patch("fruth_webserver._resolve_saved_openable_artifact_path")
     def test_open_saved_artifact_success(self, mock_resolve_path, mock_open_path):
         mock_resolve_path.return_value = Path("/tmp/artifacts/ocr/result.md")
 
@@ -2424,7 +2424,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(payload["status"], "opened")
         mock_open_path.assert_called_once_with(Path("/tmp/artifacts/ocr/result.md"))
 
-    @patch("ollmo_webserver._resolve_saved_openable_artifact_path")
+    @patch("fruth_webserver._resolve_saved_openable_artifact_path")
     def test_open_saved_artifact_rejects_invalid_path(self, mock_resolve_path):
         mock_resolve_path.return_value = None
 
@@ -2438,7 +2438,7 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("artifacts/audio", payload["error"])
         self.assertIn("artifacts/ocr", payload["error"])
 
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path")
     def test_download_saved_artifact_success(self, mock_resolve_path):
         with tempfile.NamedTemporaryFile(suffix=".md", delete=False) as tmp:
             tmp.write(b"# OCR\n\nhello\n")
@@ -2455,7 +2455,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(response.data, b"# OCR\n\nhello\n")
         response.close()
 
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path")
     def test_download_saved_artifact_rejects_invalid_path(self, mock_resolve_path):
         mock_resolve_path.return_value = None
 
@@ -2469,7 +2469,7 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("artifacts/audio", payload["error"])
         self.assertIn("artifacts/ocr", payload["error"])
 
-    @patch("ollmo_webserver._resolve_saved_viewable_artifact_path")
+    @patch("fruth_webserver._resolve_saved_viewable_artifact_path")
     def test_view_saved_artifact_success(self, mock_resolve_path):
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp.write(b"fake image bytes")
@@ -2488,7 +2488,7 @@ class InferApiTests(unittest.TestCase):
         self.assertNotIn("attachment", content_disposition.lower())
         response.close()
 
-    @patch("ollmo_webserver._resolve_saved_viewable_artifact_path")
+    @patch("fruth_webserver._resolve_saved_viewable_artifact_path")
     def test_view_saved_html_artifact_sets_csp_without_unsafe_eval(self, mock_resolve_path):
         with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
             tmp.write(b"<!doctype html><title>Artifact</title>")
@@ -2508,7 +2508,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(response.headers.get("X-Content-Type-Options"), "nosniff")
         response.close()
 
-    @patch("ollmo_webserver._resolve_saved_viewable_artifact_path")
+    @patch("fruth_webserver._resolve_saved_viewable_artifact_path")
     def test_view_saved_artifact_rejects_invalid_path(self, mock_resolve_path):
         mock_resolve_path.return_value = None
 
@@ -2522,7 +2522,7 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("artifacts/audio", payload["error"])
         self.assertIn("artifacts/ocr", payload["error"])
 
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path")
     def test_delete_saved_artifact_success(self, mock_resolve_path):
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp.write(b"fake image bytes")
@@ -2540,7 +2540,7 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(payload["status"], "deleted")
         self.assertFalse(tmp_path.exists())
 
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path")
     def test_delete_saved_artifact_rejects_invalid_path(self, mock_resolve_path):
         mock_resolve_path.return_value = None
 
@@ -2554,8 +2554,8 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("artifacts/audio", payload["error"])
         self.assertIn("artifacts/ocr", payload["error"])
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_deepseek_image_ocr_mode_uses_grounding_prompt(
         self,
         mock_generate,
@@ -2590,8 +2590,8 @@ class InferApiTests(unittest.TestCase):
         first_prompt = mock_generate.call_args_list[0].args[2]
         self.assertIn("<|grounding|>Convert the document to markdown.", first_prompt)
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_deepseek_image_ocr_mode_uses_emergency_fallback(
         self,
         mock_generate,
@@ -2629,8 +2629,8 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("<|grounding|>Convert the document to markdown.", first_prompt)
         self.assertIn("Free OCR.", second_prompt)
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_deepseek_image_ocr_rejects_low_quality_repetition(
         self,
         mock_generate,
@@ -2664,8 +2664,8 @@ class InferApiTests(unittest.TestCase):
         self.assertIn("Recovered OCR text", payload["content"])
         self.assertEqual(mock_generate.call_count, 2)
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_analysis_deepseek_image_ocr_replaces_numeric_spam_with_unclear(
         self,
         mock_generate,
@@ -2698,8 +2698,8 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(payload["content"], "[unclear]")
         self.assertEqual(mock_generate.call_count, 1)
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._ollama_generate")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._ollama_generate")
     def test_vision_infer_connection_error_returns_503(self, mock_generate, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "ocr-1",
@@ -2724,8 +2724,8 @@ class InferApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertIn("interrupted", payload["error"])
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._acquire_infer_slot")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._acquire_infer_slot")
     def test_infer_duplicate_request_returns_409(self, mock_acquire_slot, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "ocr-1",

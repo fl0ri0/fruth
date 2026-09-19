@@ -1,11 +1,14 @@
-# Ollmo self-attack conformance
+# Fruth self-attack conformance
 
 **Knobs may change strategy, never truth.**
+
+Recorded campaign: [Fruth Self-Attack status — September 19, 2026](SELF_ATTACK_STATUS_2026-09-19.md)
+reports a full fake and live pass for its recorded source and scope.
 
 Run from the checkout:
 
 ```sh
-./ollmo self-attack
+./fruth self-attack
 ```
 
 The command writes `report.md` and `results.json` under a new
@@ -37,23 +40,20 @@ graph, promotion, closure, Late Fill and response-frame owners, and the existing
 resumable graph-rebase shadow runner. It does not start models or modify
 production preferences, operator authorization, or learning state. Fake model
 decisions are deterministic substitutes; this mode does not certify a live
-Ghost model's interpretation.
+interpretive inference model's interpretation.
 
-The source release ships this guide, the harness/tests and two compact inputs:
+The source release ships this guide, the dated public campaign summary, the
+harness/tests and two compact inputs:
 `config/self_attack_corpus.json` (the default adversarial corpus) and
 `config/graph_rebase_shadow_corpus.json`. Retained captures, local regression
 outputs and large forensic corpora under `state/` are generated evidence, not
 required release contents. See [Release Scope](RELEASE_SCOPE.md#source-selection-and-checksums).
-The [September 14 status report](SELF_ATTACK_STATUS_2026-09-14.md) records the
-completed full-live FAIL and the subsequent resolution of all eight frozen-frame
-findings across three cases. Targeted confirmations passed; no new full campaign
-was run after the fix. Earlier September 6 validation remains historical evidence.
 
-For the 0.1.1 release, see [release validation and evidence](RELEASE_NOTES_0.1.1.md#validation-and-reference-evidence).
-Packaging or owner-test success is not a fresh full Self-Attack campaign. The
-September 6 full-live INCOMPLETE verdict and September 14 full-live FAIL remain
-their respective historical results. Later targeted resolution does not relabel
-either campaign or certify a changed checkout.
+Packaging and unit-test results do not establish live conformance. Each campaign
+result applies to its recorded source, models, profiles and cases. Targeted
+confirmations do not certify the full campaign or a changed installation. Use the
+commands below to generate and inspect evidence for the current installation;
+this guide makes no full-live conformance claim for it.
 
 ## Five boundaries, in priority order
 
@@ -80,7 +80,7 @@ nor an accepted regression label.
 
 `controls.json` discovers controls from active source files and records their
 sources. Finite sweep domains come from canonical runtime catalogs and bounds:
-legacy Ghost mode aliases, embedding signals, explicit resolver timeout,
+canonical semantic-role combinations, embedding signals, explicit resolver timeout,
 accepted-learning orientation levels, repair autonomy, rebase autonomy,
 enforced policy and materialization concurrency. Invalid autonomy/policy input
 is also checked for fail-closed normalization.
@@ -99,17 +99,17 @@ normalizers and role/policy builders. Full response captures retain request
 and runtime control evidence. These are distinct from merely requested values.
 No global environment control is sent to a running server as a request override.
 
-## Live Ghost execution
+## Live interpretive inference execution
 
-With a compatible Ollmo control plane and models already running:
+With a compatible Fruth control plane and models already running:
 
 ```sh
-./ollmo self-attack --mode live --fake-evidence /absolute/path/to/fake/results.json
+./fruth self-attack --mode live --fake-evidence /absolute/path/to/fake/results.json
 ```
 
 This executes actual adversarial requests and therefore creates response
-frames and artifacts through Ollmo. It uses only the local control plane,
-cached preflight observations, persisted Ghost preferences and canonical
+frames and artifacts through Fruth. It uses only the local control plane,
+cached preflight observations, persisted interpretive inference preferences and canonical
 Responses requests. There are no lifecycle or operator actions. Live profiles
 sweep request controls; environment controls are covered in the isolated mode.
 Full graph/evidence checks read `?view=truth`; the bounded debug view remains
@@ -125,6 +125,9 @@ retagged. A companion truth-fetch failure is persisted under
 attempt and elapsed/remaining time. Transient companion failures receive at most
 one immediate retry within the same sequence deadline, and do not suppress a
 later canonical read merely because compact status is unchanged.
+Truncated HTTP bodies, including error bodies, are recorded as transport failures;
+their partial bytes cannot become canonical evidence. The same bounded companion
+GET retry applies. The transport client never retries a POST automatically.
 
 Dependent turns share a conversation id and carry their exact predecessor's
 recorded context. A pending response is observed by its existing id. Persisted
@@ -136,16 +139,16 @@ manifest to force a resubmission.
 Useful options:
 
 ```sh
-./ollmo self-attack --output state/self_attack/my-run
-./ollmo self-attack --pairwise --seed 42
-./ollmo self-attack --profile-limit 2 --profile-timeout 30 --minimize-budget 4
-./ollmo self-attack --corpus config/graph_rebase_shadow_corpus.json
+./fruth self-attack --output state/self_attack/my-run
+./fruth self-attack --pairwise --seed 42
+./fruth self-attack --profile-limit 2 --profile-timeout 30 --minimize-budget 4
+./fruth self-attack --corpus config/graph_rebase_shadow_corpus.json
 ```
 
 `--profile-timeout` defaults to 600 seconds per fake profile, shared evenly across
 its independent sequences. Live mode uses the separate hard limits below. Each sequence gets its own process; a timeout kills
 that diagnostic worker and leaves evidence and an incomplete result. It does
-not declare an Ollmo model failed or make a semantic judgment. Increase this
+not declare a Fruth model failed or make a semantic judgment. Increase this
 explicit budget for long local workloads. `--max-cycles` bounds shadow
 observation cycles. `--owner-timeout` defaults to 600 seconds per existing test
 group. `--skip-owner-tests` and a truncated `--profile-limit` always disclose
@@ -161,7 +164,7 @@ After changing the diagnostic oracle, recheck retained captures without
 executing requests:
 
 ```sh
-./ollmo self-attack --recheck state/self_attack/my-run
+./fruth self-attack --recheck state/self_attack/my-run
 ```
 
 This creates a separate report under `my-run/rechecks/`, preserves the original
@@ -172,7 +175,7 @@ To add the scope labels to a completed report using its existing verdicts and
 case evidence, without running the suite or reapplying the oracle:
 
 ```sh
-./ollmo self-attack --refresh-report state/self_attack/my-run
+./fruth self-attack --refresh-report state/self_attack/my-run
 ```
 
 This updates only `results.json` and `report.md`, saves their previous versions in
@@ -217,7 +220,7 @@ activated as a learning policy or operator authorization.
 Replay one explicitly:
 
 ```sh
-./ollmo self-attack --replay state/self_attack/regressions/CASE.json
+./fruth self-attack --replay state/self_attack/regressions/CASE.json
 ```
 
 For a saved live case, also supply `--mode live` and matching `--fake-evidence`. External proposals can be
@@ -231,7 +234,7 @@ Analyze the retained corpus without dispatching requests, probing the control
 plane, running models, or changing runtime behavior:
 
 ```sh
-./ollmo self-attack --audit-convergence state/self_attack --detach --output state/self_attack/convergence-audit-example
+./fruth self-attack --audit-convergence state/self_attack --detach --output state/self_attack/convergence-audit-example
 ```
 
 This uses the same self-attack manifests, captures, profiles, response identities,
@@ -268,7 +271,7 @@ Interpretation is deliberately conservative:
 - Ranked exposure identifies where a more precise measurement could matter;
   recoverable latency remains unknown unless causality proves otherwise.
 
-The audit preserves Ollmo's existing truth model. Missing provenance is an audit
+The audit preserves Fruth's existing truth model. Missing provenance is an audit
 boundary, not a runtime defect. Any recommended extra provenance belongs on
 existing debug/frame/capture records. The command never implements that
 instrumentation, changes a scheduling policy, or launches a follow-up workload.
@@ -292,9 +295,9 @@ as well as accept valid strategy differences.
 
 ## Hardening and live observations
 
-Run the entire deterministic sweep followed by bounded live Ghost observations:
+Run the entire deterministic sweep followed by bounded live interpretive inference observations:
 
-    ./ollmo self-attack --live-after-fake
+    ./fruth self-attack --live-after-fake
 
 The default fake sweep runs every discovered finite value and four seeded mixed
 profiles (currently 38). `--jobs 2` bounds isolated profile concurrency; `--jobs 1`
@@ -333,7 +336,7 @@ accepted mismatched evidence is a deterministic failure.
 ## Hard live budgets and detached execution
 
 The live corpus and profile selection are unchanged: ten cases in five two-turn
-sequences, using baseline and `ghost_mode: repair` by default. The main sweep has
+sequences, using baseline and `semantic_role_ids: ["repairer", "evidence_reasoner", "doubt_challenger"]` by default. The main sweep has
 ten sequences across those two profiles. The defaults are explicit:
 
 | Option | Default | Scope |
@@ -376,7 +379,18 @@ automatically rejoin the regression replay queue.
 
 Launch the same one-command pipeline independently of the terminal or Codex:
 
-    ./ollmo self-attack --detach --live-after-fake --output state/self_attack/my-detached-run
+    ./fruth self-attack --detach --live-after-fake --output state/self_attack/my-detached-run
+
+That command runs all fake profiles followed by the default two live profiles.
+For the full current live matrix (17 profiles × 10 cases), select it explicitly
+and provide a main budget suitable for several hours of local inference:
+
+    ./fruth self-attack --detach --live-after-fake --live-profile-limit 17 --live-main-budget 43200 --output state/self_attack/full-conformance
+
+This example allows up to 12 hours for the live main sweep, plus the unchanged
+15-minute confirmation allowance and preceding fake validation. Per-sequence
+limits, evidence requirements and all conformance checks remain unchanged.
+A larger campaign allowance does not guarantee completion or a passing verdict.
 
 `--detach` creates a new OS session, disconnects standard input, and sends stdout
 and stderr to `stdout-stderr.log`. `process.json` records the controller PID,
@@ -386,7 +400,7 @@ controller or its workers. The computer must remain running.
 
 For a smaller live corpus across broader control diversity, use:
 
-    ./ollmo self-attack --detach --live-after-fake --live-profile-limit 6 --live-high-risk --output state/self_attack/diverse-live-gate
+    ./fruth self-attack --detach --live-after-fake --live-profile-limit 6 --live-high-risk --output state/self_attack/diverse-live-gate
 
 The fake sweep still covers the full corpus and all 38 profiles. The live
 selection retains baseline/repair and chooses four other profiles from the
@@ -412,7 +426,7 @@ cannot yield a full-live-conformance pass. The gate never expands itself to all
 To explicitly hand off an interrupted live run while retaining its exact response
 IDs and ambiguous POST state:
 
-    ./ollmo self-attack --detach --live-after-fake --resume-live-from state/self_attack/previous/live --output state/self_attack/continued
+    ./fruth self-attack --detach --live-after-fake --resume-live-from state/self_attack/previous/live --output state/self_attack/continued
 
 The handoff verifies the exact corpus, profiles and seed, records source
 provenance in `live-handoff.json`, and copies retained shadow evidence. Pending

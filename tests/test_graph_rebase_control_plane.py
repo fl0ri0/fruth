@@ -5,15 +5,15 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-import ollmo_webserver
-from ollmo_services.graph_rebase import stable_graph_rebase_prompt_digest
-from ollmo_services.graph_rebase_operator import GraphRebaseOperatorRegistryError
-from ollmo_services.graph_rebase_readiness_registry import (
+import fruth_webserver
+from fruth_services.graph_rebase import stable_graph_rebase_prompt_digest
+from fruth_services.graph_rebase_operator import GraphRebaseOperatorRegistryError
+from fruth_services.graph_rebase_readiness_registry import (
     load_graph_rebase_readiness_observations,
     load_graph_rebase_readiness_registry,
     sync_graph_rebase_readiness_epoch,
 )
-from ollmo_services.response_frames import (
+from fruth_services.response_frames import (
     ResponseFrameParentCASMismatch,
     load_latest_response_state,
     persist_response_frame,
@@ -23,18 +23,18 @@ from ollmo_services.response_frames import (
 class GraphRebaseControlPlaneTests(unittest.TestCase):
     def setUp(self):
         self.operator_token = 'test-graph-rebase-operator-token-000000000000'
-        self._prior_operator_token = ollmo_webserver.app.config.get(
+        self._prior_operator_token = fruth_webserver.app.config.get(
             'GRAPH_REBASE_OPERATOR_TOKEN'
         )
-        self._prior_operator_identity = ollmo_webserver.app.config.get(
+        self._prior_operator_identity = fruth_webserver.app.config.get(
             'GRAPH_REBASE_OPERATOR_IDENTITY'
         )
-        ollmo_webserver.app.config['GRAPH_REBASE_OPERATOR_TOKEN'] = self.operator_token
-        ollmo_webserver.app.config['GRAPH_REBASE_OPERATOR_IDENTITY'] = (
+        fruth_webserver.app.config['GRAPH_REBASE_OPERATOR_TOKEN'] = self.operator_token
+        fruth_webserver.app.config['GRAPH_REBASE_OPERATOR_IDENTITY'] = (
             'control-plane-test-operator'
         )
-        ollmo_webserver.app.config['TESTING'] = True
-        self.client = ollmo_webserver.app.test_client()
+        fruth_webserver.app.config['TESTING'] = True
+        self.client = fruth_webserver.app.test_client()
         self.expected = {
             'expected_response_id': 'resp-rebase-control',
             'expected_frame_id': 'frame-rebase-parent',
@@ -75,10 +75,10 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
         }
 
     def tearDown(self):
-        ollmo_webserver.app.config['GRAPH_REBASE_OPERATOR_TOKEN'] = (
+        fruth_webserver.app.config['GRAPH_REBASE_OPERATOR_TOKEN'] = (
             self._prior_operator_token
         )
-        ollmo_webserver.app.config['GRAPH_REBASE_OPERATOR_IDENTITY'] = (
+        fruth_webserver.app.config['GRAPH_REBASE_OPERATOR_IDENTITY'] = (
             self._prior_operator_identity
         )
 
@@ -97,15 +97,15 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             f"/api/responses/{self.expected['expected_response_id']}/graph_rebase/operator",
             json=payload,
             headers={
-                'X-Ollmo-Graph-Rebase-Operator-Token': self.operator_token,
-                'X-Ollmo-Graph-Rebase-Operator': 'control-plane-test-operator',
+                'X-Fruth-Graph-Rebase-Operator-Token': self.operator_token,
+                'X-Fruth-Graph-Rebase-Operator': 'control-plane-test-operator',
             },
         )
 
     @staticmethod
     def _readiness_report(*, shadow_ready=False, partial_ready=False):
         return {
-            'kind': 'ollmo.graph_rebase_readiness_report',
+            'kind': 'fruth.graph_rebase_readiness_report',
             'schema_version': 1,
             'runtime_effect': 'none',
             'report_digest': 'readiness-report-1',
@@ -131,16 +131,16 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
 
     def test_readiness_repeated_source_movement_is_http_conflict(self):
         with patch.object(
-            ollmo_webserver, '_load_graph_rebase_readiness_registry',
+            fruth_webserver, '_load_graph_rebase_readiness_registry',
             return_value={'ok': True, 'records': []},
         ), patch.object(
-            ollmo_webserver, '_load_graph_rebase_readiness_observation_pass',
+            fruth_webserver, '_load_graph_rebase_readiness_observation_pass',
             return_value={'ok': False, 'error': {
                 'code': 'response_frame_index_moved',
                 'message': 'Index changed during both observation attempts.',
             }},
         ), patch.object(
-            ollmo_webserver, '_build_graph_rebase_readiness_report',
+            fruth_webserver, '_build_graph_rebase_readiness_report',
         ) as report:
             response = self.client.get('/api/graph_rebase/readiness')
         self.assertEqual(response.status_code, 409)
@@ -150,7 +150,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
     def test_readiness_get_returns_canonical_mocked_corpus_without_mutation(self):
         report = self._readiness_report()
         observer = {
-            'kind': 'ollmo.graph_rebase_readiness_observer',
+            'kind': 'fruth.graph_rebase_readiness_observer',
             'runtime_effect': 'none',
             'hydrated_response_count': 3,
             'trusted_operator_record_count': 2,
@@ -159,20 +159,20 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             'index_ok': True,
         }
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_runtime_readiness',
             return_value=(report, observer),
         ) as mock_corpus_helper, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_record_graph_rebase_operator_action',
         ) as mock_registry_mutation, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_persist_graph_rebase_stage_successor',
         ) as mock_stage_mutation, patch.object(
-            ollmo_webserver._RESPONSES_REQUEST_RUNTIME,
+            fruth_webserver._RESPONSES_REQUEST_RUNTIME,
             'prepare_terminal_partial_graph_rebase_successor',
         ) as mock_prepare, patch.object(
-            ollmo_webserver._LATE_FILL_RUNTIME,
+            fruth_webserver._LATE_FILL_RUNTIME,
             'persist_and_schedule_partial_graph_rebase_successor',
         ) as mock_handoff:
             response = self.client.get('/api/graph_rebase/readiness')
@@ -192,9 +192,9 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
 
     def test_readiness_get_fails_closed_when_evidence_registry_is_corrupt(self):
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_runtime_readiness',
-            side_effect=ollmo_webserver.GraphRebaseReadinessRegistryError(
+            side_effect=fruth_webserver.GraphRebaseReadinessRegistryError(
                 'readiness_registry_corrupt_line',
                 'Readiness registry line is corrupt.',
                 details={'line_number': 2},
@@ -269,15 +269,15 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             encoding='utf-8',
         )
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             'RESPONSE_FRAMES_DIR',
             current_frames_dir,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_load_graph_rebase_readiness_registry',
             return_value=registry_state,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_load_graph_rebase_readiness_observation_pass',
             return_value={
                 'ok': True, 'empty_current_epoch': False,
@@ -289,19 +289,19 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
                 }}],
             },
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_project_graph_rebase_readiness_observation',
             return_value=current,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_load_graph_rebase_operator_records',
             return_value=[],
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_build_graph_rebase_readiness_report',
             return_value=expected_report,
         ) as mock_report:
-            report, observer = ollmo_webserver._graph_rebase_runtime_readiness()
+            report, observer = fruth_webserver._graph_rebase_runtime_readiness()
 
         self.assertEqual(report, expected_report)
         observations = mock_report.call_args.args[0]
@@ -316,7 +316,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
         self.assertEqual(observer['combined_observation_count'], 2)
         self.assertEqual(
             observer['multi_epoch_source_identity']['kind'],
-            'ollmo.graph_rebase_readiness_multi_epoch_source',
+            'fruth.graph_rebase_readiness_multi_epoch_source',
         )
 
     def test_settled_relevant_frame_is_registered_after_durable_append(self):
@@ -337,24 +337,24 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             },
         }
         result = {
-            'kind': 'ollmo.graph_rebase_readiness_registry_append',
+            'kind': 'fruth.graph_rebase_readiness_registry_append',
             'status': 'appended', 'appended_record_count': 1,
             'runtime_effect': 'none',
         }
         with patch.object(
-            ollmo_webserver, '_project_graph_rebase_readiness_observation',
+            fruth_webserver, '_project_graph_rebase_readiness_observation',
             return_value=projection,
         ), patch.object(
-            ollmo_webserver, '_register_finalizer_readiness_observation',
+            fruth_webserver, '_register_finalizer_readiness_observation',
             return_value=result,
         ) as register:
-            diagnostic = ollmo_webserver._register_durable_graph_rebase_readiness_observation(
+            diagnostic = fruth_webserver._register_durable_graph_rebase_readiness_observation(
                 {'id': 'resp-current'}
             )
         self.assertIs(diagnostic, result)
         register.assert_called_once_with(
-            projection, frames_dir=ollmo_webserver.RESPONSE_FRAMES_DIR,
-            registry_path=ollmo_webserver.GRAPH_REBASE_READINESS_REGISTRY_PATH,
+            projection, frames_dir=fruth_webserver.RESPONSE_FRAMES_DIR,
+            registry_path=fruth_webserver.GRAPH_REBASE_READINESS_REGISTRY_PATH,
         )
 
     def test_settled_ordinary_frame_does_not_scan_whole_epoch(self):
@@ -364,7 +364,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             'ledger_sequence': 9,
             'runtime': {
                 'request_phase_graph': {
-                    'kind': 'ollmo.request_phase_graph',
+                    'kind': 'fruth.request_phase_graph',
                 }
             },
             'readiness_state': {
@@ -373,15 +373,15 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             },
         }
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_project_graph_rebase_readiness_observation',
             return_value=projection,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_register_finalizer_readiness_observation',
         ) as mock_verify:
             diagnostic = (
-                ollmo_webserver._register_durable_graph_rebase_readiness_observation(
+                fruth_webserver._register_durable_graph_rebase_readiness_observation(
                     {'id': 'resp-ordinary'}
                 )
             )
@@ -391,12 +391,12 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
 
     def test_alternate_frame_epoch_uses_isolated_readiness_registry(self):
         with tempfile.TemporaryDirectory() as tmpdir, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             'RESPONSE_FRAMES_DIR',
             Path(tmpdir) / 'state' / 'response_frames',
         ):
             registry_path = (
-                ollmo_webserver._effective_graph_rebase_readiness_registry_path()
+                fruth_webserver._effective_graph_rebase_readiness_registry_path()
             )
 
         self.assertEqual(
@@ -427,29 +427,29 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
         }
         expected_report = self._readiness_report()
         with tempfile.TemporaryDirectory() as tmpdir, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             'RESPONSE_FRAMES_DIR',
             Path(tmpdir) / 'state' / 'response_frames',
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_load_graph_rebase_readiness_registry',
             return_value=registry_state,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_load_response_frame_index',
         ) as mock_load_index, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_select_graph_rebase_observation_response_ids',
         ) as mock_select, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_load_graph_rebase_operator_records',
             return_value=[],
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_build_graph_rebase_readiness_report',
             return_value=expected_report,
         ) as mock_report:
-            report, observer = ollmo_webserver._graph_rebase_runtime_readiness()
+            report, observer = fruth_webserver._graph_rebase_runtime_readiness()
 
         self.assertEqual(report, expected_report)
         self.assertEqual(mock_report.call_args.args[0], [historical])
@@ -474,7 +474,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             oversized_marker = 'raw-only-oversized-' * 1500
             persist_response_frame(
                 {
-                    'kind': 'ollmo.response_frame',
+                    'kind': 'fruth.response_frame',
                     'frame_version': 9,
                     'response_id': response_id,
                     'status': 'completed',
@@ -489,10 +489,10 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
                     },
                     'runtime': {
                         'request_phase_graph': {
-                            'kind': 'ollmo.request_phase_graph',
+                            'kind': 'fruth.request_phase_graph',
                             'graph_rebase_proposals': [
                                 {
-                                    'kind': 'ollmo.graph_rebase_proposal',
+                                    'kind': 'fruth.graph_rebase_proposal',
                                     'proposal_id': 'proposal-online-sync',
                                     'payload': oversized_marker,
                                 }
@@ -515,16 +515,16 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             self.assertTrue(full_state['ok'])
 
             with patch.object(
-                ollmo_webserver,
+                fruth_webserver,
                 'RESPONSE_FRAMES_DIR',
                 frames_dir,
             ), patch.object(
-                ollmo_webserver,
+                fruth_webserver,
                 'GRAPH_REBASE_READINESS_REGISTRY_PATH',
                 registry_path,
             ):
                 diagnostic = (
-                    ollmo_webserver._register_durable_graph_rebase_readiness_observation(
+                    fruth_webserver._register_durable_graph_rebase_readiness_observation(
                         full_state['response_payload']
                     )
                 )
@@ -544,7 +544,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
 
             persist_response_frame(
                 {
-                    'kind': 'ollmo.response_frame',
+                    'kind': 'fruth.response_frame',
                     'frame_version': 9,
                     'response_id': 'resp-unrelated-after-online',
                     'status': 'completed',
@@ -584,12 +584,12 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             'evidence_refs': ['operator:review'],
             **self.expected,
         }
-        prior_token = ollmo_webserver.app.config['GRAPH_REBASE_OPERATOR_TOKEN']
-        ollmo_webserver.app.config['GRAPH_REBASE_OPERATOR_TOKEN'] = ''
+        prior_token = fruth_webserver.app.config['GRAPH_REBASE_OPERATOR_TOKEN']
+        fruth_webserver.app.config['GRAPH_REBASE_OPERATOR_TOKEN'] = ''
         try:
             unconfigured = self.client.post(path, json=request_payload)
         finally:
-            ollmo_webserver.app.config['GRAPH_REBASE_OPERATOR_TOKEN'] = prior_token
+            fruth_webserver.app.config['GRAPH_REBASE_OPERATOR_TOKEN'] = prior_token
         self.assertEqual(unconfigured.status_code, 503)
         self.assertEqual(
             unconfigured.get_json()['error_detail']['code'],
@@ -600,8 +600,8 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             path,
             json=request_payload,
             headers={
-                'X-Ollmo-Graph-Rebase-Operator-Token': 'wrong-token',
-                'X-Ollmo-Graph-Rebase-Operator': 'control-plane-test-operator',
+                'X-Fruth-Graph-Rebase-Operator-Token': 'wrong-token',
+                'X-Fruth-Graph-Rebase-Operator': 'control-plane-test-operator',
             },
         )
         self.assertEqual(unauthorized.status_code, 401)
@@ -610,7 +610,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             path,
             json=request_payload,
             headers={
-                'X-Ollmo-Graph-Rebase-Operator-Token': self.operator_token,
+                'X-Fruth-Graph-Rebase-Operator-Token': self.operator_token,
             },
         )
         self.assertEqual(missing_identity.status_code, 400)
@@ -623,8 +623,8 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             path,
             json=request_payload,
             headers={
-                'X-Ollmo-Graph-Rebase-Operator-Token': self.operator_token,
-                'X-Ollmo-Graph-Rebase-Operator': 'different-local-caller',
+                'X-Fruth-Graph-Rebase-Operator-Token': self.operator_token,
+                'X-Fruth-Graph-Rebase-Operator': 'different-local-caller',
             },
         )
         self.assertEqual(wrong_identity.status_code, 401)
@@ -635,17 +635,17 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
 
     def test_adjudicate_forwards_every_exact_cas_binding_to_registry(self):
         operator_record = {
-            'kind': 'ollmo.graph_rebase_operator_record',
+            'kind': 'fruth.graph_rebase_operator_record',
             'record_id': 'operator-review-1',
             'action': 'adjudicate',
             'adjudication': 'useful_proposal',
         }
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_payload_for_operator',
             return_value=(self.response_payload, None, 200),
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_record_graph_rebase_operator_action',
             return_value=operator_record,
         ) as mock_record:
@@ -692,7 +692,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             '1.0',
         )
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_payload_for_operator',
         ) as mock_payload:
             for sequence in invalid_sequences:
@@ -712,18 +712,18 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
     def test_stage_red_readiness_gate_blocks_before_registry_mutation(self):
         report = self._readiness_report(shadow_ready=False)
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_payload_for_operator',
             return_value=(self.response_payload, None, 200),
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_runtime_readiness',
             return_value=(report, {'runtime_effect': 'none'}),
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_record_graph_rebase_operator_action',
         ) as mock_record, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_persist_graph_rebase_stage_successor',
         ) as mock_persist:
             response = self._post('stage')
@@ -737,27 +737,27 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
     def test_authorize_partial_red_gate_blocks_before_registry_mutation(self):
         report = self._readiness_report(partial_ready=False)
         promotion_gate = {
-            'kind': 'ollmo.graph_rebase_promotion_gate',
+            'kind': 'fruth.graph_rebase_promotion_gate',
             'status': 'blocked',
             'decision': 'keep_partial_non_executable',
         }
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_payload_for_operator',
             return_value=(self.response_payload, None, 200),
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_runtime_readiness',
             return_value=(report, {'runtime_effect': 'none'}),
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_build_partial_graph_rebase_promotion_gate',
             return_value=promotion_gate,
         ) as mock_gate, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_record_graph_rebase_operator_action',
         ) as mock_record, patch.object(
-            ollmo_webserver._RESPONSES_REQUEST_RUNTIME,
+            fruth_webserver._RESPONSES_REQUEST_RUNTIME,
             'prepare_terminal_partial_graph_rebase_successor',
         ) as mock_prepare:
             response = self._post('authorize_partial')
@@ -771,20 +771,20 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
 
     def test_authorize_partial_explicit_off_blocks_before_registry_mutation(self):
         with patch.dict(
-            ollmo_webserver.os.environ,
-            {'OLLMO_GRAPH_REBASE_AUTONOMY': 'off'},
+            fruth_webserver.os.environ,
+            {'FRUTH_GRAPH_REBASE_AUTONOMY': 'off'},
             clear=True,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_runtime_readiness',
         ) as mock_readiness, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_payload_for_operator',
         ) as mock_payload, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_record_graph_rebase_operator_action',
         ) as mock_record, patch.object(
-            ollmo_webserver._RESPONSES_REQUEST_RUNTIME,
+            fruth_webserver._RESPONSES_REQUEST_RUNTIME,
             'prepare_terminal_partial_graph_rebase_successor',
         ) as mock_prepare:
             response = self._post('authorize_partial')
@@ -803,20 +803,20 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
 
     def test_stage_explicit_off_blocks_before_registry_or_frame_mutation(self):
         with patch.dict(
-            ollmo_webserver.os.environ,
-            {'OLLMO_GRAPH_REBASE_AUTONOMY': 'off'},
+            fruth_webserver.os.environ,
+            {'FRUTH_GRAPH_REBASE_AUTONOMY': 'off'},
             clear=True,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_runtime_readiness',
         ) as mock_readiness, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_payload_for_operator',
         ) as mock_payload, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_record_graph_rebase_operator_action',
         ) as mock_record, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_persist_graph_rebase_stage_successor',
         ) as mock_persist:
             response = self._post('stage')
@@ -853,19 +853,19 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             current_parent_frame_sequence=self.expected['expected_frame_sequence'] + 1,
         )
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_validate_graph_rebase_proposal',
             return_value={'status': 'accepted'},
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_build_graph_rebase_lifecycle',
             return_value=lifecycle,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_apply_validated_graph_rebase',
             return_value=application,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_load_latest_response_state',
             return_value={
                 'ok': True,
@@ -874,11 +874,11 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
                 ),
             },
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_finalize_response_frame_payload',
             side_effect=mismatch,
         ) as mock_finalize:
-            result = ollmo_webserver._persist_graph_rebase_stage_successor(
+            result = fruth_webserver._persist_graph_rebase_stage_successor(
                 self.response_payload,
                 proposal_id=self.expected['expected_proposal_id'],
                 operator_record={'record_id': 'operator-stage-cas'},
@@ -907,7 +907,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
     def test_stage_projects_durable_audit_only_successor(self):
         report = self._readiness_report(shadow_ready=True)
         operator_record = {
-            'kind': 'ollmo.graph_rebase_operator_record',
+            'kind': 'fruth.graph_rebase_operator_record',
             'record_id': 'operator-stage-1',
             'action': 'stage',
             'status': 'staged',
@@ -930,23 +930,23 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             },
         }
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_payload_for_operator',
             return_value=(self.response_payload, None, 200),
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_runtime_readiness',
             return_value=(report, {'runtime_effect': 'none'}),
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_record_graph_rebase_operator_action',
             return_value=operator_record,
         ) as mock_record, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_persist_graph_rebase_stage_successor',
             return_value=staged,
         ) as mock_persist, patch.object(
-            ollmo_webserver._LATE_FILL_RUNTIME,
+            fruth_webserver._LATE_FILL_RUNTIME,
             'persist_and_schedule_partial_graph_rebase_successor',
         ) as mock_handoff:
             response = self._post('stage')
@@ -970,20 +970,20 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
     def test_authorize_partial_rejoins_trusted_authorization_then_hands_off(self):
         report = self._readiness_report(partial_ready=True)
         promotion_gate = {
-            'kind': 'ollmo.graph_rebase_promotion_gate',
+            'kind': 'fruth.graph_rebase_promotion_gate',
             'gate_id': 'partial-gate-1',
             'gate': 'partial_stage_to_apply_reviewed',
             'status': 'ready',
             'decision': 'promote',
         }
         operator_record = {
-            'kind': 'ollmo.graph_rebase_operator_record',
+            'kind': 'fruth.graph_rebase_operator_record',
             'record_id': 'operator-authorize-1',
             'action': 'authorize_partial',
             'status': 'accepted',
         }
         trusted_authorization = {
-            'kind': 'ollmo.graph_rebase_authorization',
+            'kind': 'fruth.graph_rebase_authorization',
             'registry_record_id': operator_record['record_id'],
             'response_id': self.expected['expected_response_id'],
             'frame_id': self.expected['expected_frame_id'],
@@ -1018,35 +1018,35 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
         }
         route_payload = {'route_source': 'durable-parent-route'}
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_payload_for_operator',
             return_value=(self.response_payload, None, 200),
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_runtime_readiness',
             return_value=(report, {'runtime_effect': 'none'}),
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_build_partial_graph_rebase_promotion_gate',
             return_value=promotion_gate,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_record_graph_rebase_operator_action',
             return_value=operator_record,
         ) as mock_record, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_find_trusted_graph_rebase_authorization',
             return_value=trusted_authorization,
         ) as mock_join, patch.object(
-            ollmo_webserver._RESPONSES_REQUEST_RUNTIME,
+            fruth_webserver._RESPONSES_REQUEST_RUNTIME,
             'prepare_terminal_partial_graph_rebase_successor',
             return_value=prepared,
         ) as mock_prepare, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_get_response_lookup_record',
             return_value={'route_payload': route_payload},
         ), patch.object(
-            ollmo_webserver._LATE_FILL_RUNTIME,
+            fruth_webserver._LATE_FILL_RUNTIME,
             'persist_and_schedule_partial_graph_rebase_successor',
             return_value=handoff,
         ) as mock_handoff:
@@ -1074,7 +1074,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             base_graph_digest=self.expected['expected_base_graph_digest'],
             candidate_graph_digest=self.expected['expected_candidate_graph_digest'],
             requested_rebase_class='partial_subtree_rebase',
-            registry_path=ollmo_webserver.GRAPH_REBASE_OPERATOR_REGISTRY_PATH,
+            registry_path=fruth_webserver.GRAPH_REBASE_OPERATOR_REGISTRY_PATH,
         )
         mock_prepare.assert_called_once_with(
             self.response_payload,
@@ -1090,7 +1090,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
     def test_authorize_partial_never_crosses_full_rebase_registry_boundary(self):
         report = self._readiness_report(partial_ready=True)
         promotion_gate = {
-            'kind': 'ollmo.graph_rebase_promotion_gate',
+            'kind': 'fruth.graph_rebase_promotion_gate',
             'status': 'ready',
             'decision': 'promote',
         }
@@ -1106,29 +1106,29 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             )
 
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_payload_for_operator',
             return_value=(self.response_payload, None, 200),
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_graph_rebase_runtime_readiness',
             return_value=(report, {'runtime_effect': 'none'}),
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_build_partial_graph_rebase_promotion_gate',
             return_value=promotion_gate,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_record_graph_rebase_operator_action',
             side_effect=reject_full,
         ) as mock_record, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_find_trusted_graph_rebase_authorization',
         ) as mock_join, patch.object(
-            ollmo_webserver._RESPONSES_REQUEST_RUNTIME,
+            fruth_webserver._RESPONSES_REQUEST_RUNTIME,
             'prepare_terminal_partial_graph_rebase_successor',
         ) as mock_prepare, patch.object(
-            ollmo_webserver._LATE_FILL_RUNTIME,
+            fruth_webserver._LATE_FILL_RUNTIME,
             'persist_and_schedule_partial_graph_rebase_successor',
         ) as mock_handoff:
             response = self._post(
@@ -1148,7 +1148,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
 
     def test_operator_payload_uses_only_exact_durable_projections(self):
         frame = {
-            'kind': 'ollmo.response_frame',
+            'kind': 'fruth.response_frame',
             'response_id': 'resp-durable-operator',
             'frame_id': 'frame-durable-operator-2',
             'frame_sequence': 2,
@@ -1160,7 +1160,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             'response_payload': {
                 'id': 'resp-durable-operator',
                 'response_id': 'resp-durable-operator',
-                'runtime': {'request_phase_graph': {'kind': 'ollmo.request_phase_graph'}},
+                'runtime': {'request_phase_graph': {'kind': 'fruth.request_phase_graph'}},
             },
         }
         observation_state = {
@@ -1172,18 +1172,18 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
         }
 
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_load_latest_response_state',
             return_value=full_state,
         ) as load_full, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_load_latest_response_observation_state',
             return_value=observation_state,
         ) as load_observation, patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_get_response_lookup_record',
         ) as lookup:
-            payload, error, status = ollmo_webserver._graph_rebase_payload_for_operator(
+            payload, error, status = fruth_webserver._graph_rebase_payload_for_operator(
                 'resp-durable-operator'
             )
 
@@ -1218,15 +1218,15 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
         }
 
         with patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_load_latest_response_state',
             return_value=full_state,
         ), patch.object(
-            ollmo_webserver,
+            fruth_webserver,
             '_load_latest_response_observation_state',
             return_value=observation_state,
         ):
-            payload, error, status = ollmo_webserver._graph_rebase_payload_for_operator(
+            payload, error, status = fruth_webserver._graph_rebase_payload_for_operator(
                 'resp-durable-operator'
             )
 
@@ -1240,13 +1240,13 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
 
 class PartialGraphRebaseDurableHandoffTests(unittest.TestCase):
     def setUp(self):
-        self.owner = ollmo_webserver._LATE_FILL_RUNTIME
+        self.owner = fruth_webserver._LATE_FILL_RUNTIME
         self.response_id = 'resp-partial-handoff'
         self.parent_frame_id = 'frame-parent-handoff'
         self.execution_key = 'partial-execution-handoff-1'
         self.root_prompt = 'Create the exact parent request and its bounded successor.'
         self.execution = {
-            'kind': 'ollmo.graph_rebase_partial_successor_execution',
+            'kind': 'fruth.graph_rebase_partial_successor_execution',
             'execution_key': self.execution_key,
             'response_id': self.response_id,
             'parent_frame_id': self.parent_frame_id,

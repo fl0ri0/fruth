@@ -5,9 +5,9 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-import ollmo_webserver as webserver
-import ollmo_services.response_frames as response_frames
-from ollmo_services import response_wire
+import fruth_webserver as webserver
+import fruth_services.response_frames as response_frames
+from fruth_services import response_wire
 
 
 class ResponseWireTests(unittest.TestCase):

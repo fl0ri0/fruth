@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_services.scoped_command_tools import run_scoped_command
+from fruth_services.scoped_command_tools import run_scoped_command
 
 
 class ScopedCommandToolTests(unittest.TestCase):

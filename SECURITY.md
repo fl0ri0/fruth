@@ -1,6 +1,6 @@
 # Security Policy
 
-Ollmo 0.1.1 is experimental, local-first software intended for one trusted
+Fruth 0.1.2 is experimental, local-first software intended for one trusted
 user on one machine.
 
 ## Local Boundary
@@ -8,10 +8,10 @@ user on one machine.
 The web control plane binds to `127.0.0.1` by default. Do not expose it through
 a public interface, reverse proxy, tunnel, or shared host without a separate
 security review and an authentication/authorization layer. Remote and
-multi-user deployment are not supported in 0.1.1.
+multi-user deployment are not supported in 0.1.2.
 
 Runtime state, prompts, history, logs, and generated artifacts can contain
-sensitive information. Keep the Ollmo directory private and review files
+sensitive information. Keep the Fruth directory private and review files
 before sharing them.
 
 ## Generated HTML Preview
@@ -19,14 +19,14 @@ before sharing them.
 Generated HTML is untrusted content. The ordinary saved-artifact view remains
 non-interactive. The explicit HTML Preview uses a trusted wrapper around a CSP-
 sandboxed iframe with an opaque origin: scripts may run, but they do not receive
-Ollmo's origin, forms, popups, ordinary top-navigation, workers, or external network access. Local
+Fruth's origin, forms, popups, ordinary top-navigation, workers, or external network access. Local
 styles, scripts, images, media, and static `fetch()` dependencies are served
 through a process-local signed read-only capability scoped to one portable
 bundle (or one nested source-project directory). If a canonical response has
-only flat artifacts, Ollmo derives the exact response-owned dependency set into
+only flat artifacts, Fruth derives the exact response-owned dependency set into
 a private temporary preview package; it does not register that package as an
 artifact or persistent bundle. Temporary packages have an absolute lifetime and
-bounded process-local storage, and restarting Ollmo removes them and invalidates
+bounded process-local storage, and restarting Fruth removes them and invalidates
 their capabilities. Flat artifact buckets themselves are never interactive-
 preview boundaries.
 
@@ -40,13 +40,13 @@ Do not weaken this boundary by adding `allow-same-origin`, `unsafe-eval`, broad
 
 ## ChatGPT Through Codex and Cloud Processing
 
-Ollmo stays local by default. The optional ChatGPT route is disabled until the
+Fruth stays local by default. The optional ChatGPT route is disabled until the
 user explicitly enables the external connection. When ChatGPT is selected for
-a turn, the prompt, context Ollmo promotes for that turn, and only the local
-files or Ollmo artifacts explicitly selected for that turn leave the machine
+a turn, the prompt, context Fruth promotes for that turn, and only the local
+files or Fruth artifacts explicitly selected for that turn leave the machine
 and are processed by OpenAI.
 
-Ollmo:
+Fruth:
 
 - discovers a Codex executable and asks that executable for login status;
 - does not read, copy, or persist provider credentials, OAuth tokens,
@@ -70,7 +70,7 @@ and its available tools can interpret that format semantically.
 Review every selected file or artifact before sending it, and do not include
 secrets in prompts or selected files. Disable the ChatGPT connection when cloud
 processing is not intended. Normal request teardown removes the temporary
-working copy; it does not delete the original Ollmo artifact or make any claim
+working copy; it does not delete the original Fruth artifact or make any claim
 about deletion by the external service.
 
 ## Release Archives

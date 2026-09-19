@@ -1,13 +1,13 @@
 import unittest
 from unittest.mock import patch
 
-from ollmo_core.backend_fabric import build_backend_fabric_snapshot
+from fruth_core.backend_fabric import build_backend_fabric_snapshot
 
 
 class BackendFabricTests(unittest.TestCase):
-    @patch('ollmo_core.backend_fabric.describe_llama_cpp_runtime_probe')
-    @patch('ollmo_core.backend_fabric.describe_mlx_runtime_variants')
-    @patch('ollmo_core.backend_fabric.describe_ollama_runtime_probe')
+    @patch('fruth_core.backend_fabric.describe_llama_cpp_runtime_probe')
+    @patch('fruth_core.backend_fabric.describe_mlx_runtime_variants')
+    @patch('fruth_core.backend_fabric.describe_ollama_runtime_probe')
     def test_snapshot_reports_runtime_and_wiring_states(
         self,
         mock_ollama_probe,

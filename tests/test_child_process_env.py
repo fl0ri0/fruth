@@ -7,17 +7,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from helpers import ollmoctl
-from ollmo_runtime import (
+from helpers import fruthctl
+from fruth_runtime import (
     llama_cpp_model_manager,
     mlx_model_manager,
     ollama_model_manager,
 )
-from ollmo_runtime.child_process_env import (
+from fruth_runtime.child_process_env import (
     GRAPH_REBASE_OPERATOR_ENV_KEYS,
     sanitized_child_process_env,
 )
-from ollmo_runtime.ollama_model_manager import build_ollama_env
+from fruth_runtime.ollama_model_manager import build_ollama_env
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -41,7 +41,7 @@ class ChildProcessEnvironmentTests(unittest.TestCase):
         self.assertEqual(sanitized['SAFE_CHILD_VALUE'], 'preserved')
         self.assertEqual(source, {**SECRET_ENV, 'SAFE_CHILD_VALUE': 'preserved'})
 
-    @patch('ollmo_runtime.ollama_model_manager.OLLAMA_LIBRARY_DIR_CANDIDATES', [])
+    @patch('fruth_runtime.ollama_model_manager.OLLAMA_LIBRARY_DIR_CANDIDATES', [])
     def test_ollama_environment_removes_canonical_and_internal_operator_names(self):
         with patch.dict(
             os.environ,
@@ -156,30 +156,30 @@ class ChildProcessEnvironmentTests(unittest.TestCase):
             self.assert_operator_secrets_absent(env)
             self.assertEqual(env['SAFE_CHILD_VALUE'], 'preserved')
 
-    def test_ollmoctl_recovery_spawn_uses_sanitized_environment(self):
+    def test_fruthctl_recovery_spawn_uses_sanitized_environment(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            webserver_script = root / 'ollmo_webserver.py'
+            webserver_script = root / 'fruth_webserver.py'
             webserver_script.write_text('raise SystemExit(0)\n', encoding='utf-8')
-            webserver_log = root / 'logs' / 'ollmo_webserver.log'
+            webserver_log = root / 'logs' / 'fruth_webserver.log'
             with (
                 patch.dict(
                     os.environ,
                     {**SECRET_ENV, 'SAFE_CHILD_VALUE': 'preserved'},
                     clear=True,
                 ),
-                patch.object(ollmoctl, 'DEFAULT_LOCAL_WEBSERVER_SCRIPT', webserver_script),
-                patch.object(ollmoctl, 'DEFAULT_LOCAL_WEBSERVER_LOG', webserver_log),
-                patch.object(ollmoctl, '_is_default_local_control_plane', return_value=True),
+                patch.object(fruthctl, 'DEFAULT_LOCAL_WEBSERVER_SCRIPT', webserver_script),
+                patch.object(fruthctl, 'DEFAULT_LOCAL_WEBSERVER_LOG', webserver_log),
+                patch.object(fruthctl, '_is_default_local_control_plane', return_value=True),
                 patch.object(
-                    ollmoctl,
+                    fruthctl,
                     '_wait_for_local_control_plane',
                     side_effect=[False, True],
                 ),
-                patch.object(ollmoctl.subprocess, 'Popen', return_value=Mock()) as mock_popen,
+                patch.object(fruthctl.subprocess, 'Popen', return_value=Mock()) as mock_popen,
             ):
-                recovered = ollmoctl._attempt_local_control_plane_recovery(
-                    'http://127.0.0.1:5001'
+                recovered = fruthctl._attempt_local_control_plane_recovery(
+                    'http://127.0.0.1:5011'
                 )
 
         self.assertTrue(recovered)
@@ -205,11 +205,11 @@ class ChildProcessEnvironmentTests(unittest.TestCase):
             ) as mlx_run:
                 mlx_model_manager.port_in_use(11500)
             with patch.object(
-                ollmoctl.subprocess,
+                fruthctl.subprocess,
                 'run',
                 return_value=completed,
             ) as ctl_run:
-                ollmoctl._run_local_command(['true'])
+                fruthctl._run_local_command(['true'])
 
         for call in (
             ollama_run.call_args,
@@ -223,7 +223,7 @@ class ChildProcessEnvironmentTests(unittest.TestCase):
     def test_startup_capture_retains_values_but_unexports_all_operator_names(self):
         script = (REPO_ROOT / 'start_multi_models.sh').read_text(encoding='utf-8')
         prefix, separator, _rest = script.partition(
-            ': "${OLLMO_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS:=4}"'
+            ': "${FRUTH_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS:=4}"'
         )
         self.assertTrue(separator)
         probe = (
@@ -235,8 +235,8 @@ class ChildProcessEnvironmentTests(unittest.TestCase):
         child_env = os.environ.copy()
         child_env.update(
             {
-                'OLLMO_GRAPH_REBASE_OPERATOR_TOKEN': 'canonical-token',
-                'OLLMO_GRAPH_REBASE_OPERATOR_IDENTITY': 'canonical-identity',
+                'FRUTH_GRAPH_REBASE_OPERATOR_TOKEN': 'canonical-token',
+                'FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY': 'canonical-identity',
                 'GRAPH_REBASE_OPERATOR_TOKEN': 'preexported-token',
                 'GRAPH_REBASE_OPERATOR_IDENTITY': 'preexported-identity',
             }

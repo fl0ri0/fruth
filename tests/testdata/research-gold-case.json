@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "gc-test",
+  "title": "Synthetic evidence binding fixture",
+  "case_role": "positive_reference",
+  "expected_outcome": "invariant_preserved",
+  "historical_result": "correct",
+  "boundaries": [
+    "evidence_binding"
+  ],
+  "source": {
+    "population": "owner_probe",
+    "campaign_id": "synthetic-validator-test",
+    "response_ids": [],
+    "frame_ids": [],
+    "eval_case_ids": [],
+    "evidence_refs": [],
+    "binding_scope": "Temporary test evidence only."
+  },
+  "contract": {
+    "intent": "Verify a synthetic saved status.",
+    "desired_behavior": "Validate the exact digest-bound status field.",
+    "invariants": [
+      "Evidence must match the selected bytes."
+    ],
+    "requires_fulfillment": false,
+    "scope": "Validator mechanics only."
+  },
+  "historical_observation": {
+    "summary": "Synthetic passed field, created during the test."
+  },
+  "adjudication": {
+    "status": "verified",
+    "basis": "Test constructs and checks the exact temporary bytes.",
+    "evidence_refs": [],
+    "limitations": [
+      "No production request or model workload is represented."
+    ]
+  },
+  "reproducibility": "deterministic",
+  "evidence_quality": "bounded",
+  "semantic_dedup": {
+    "intent_shape": "synthetic-status",
+    "trajectory_role": "single-check"
+  },
+  "research": {
+    "system_behavior_category": "validator",
+    "authority_boundary": "evidence_binding",
+    "failure_origin": "none",
+    "outcome_expected": true,
+    "fix_exists": false,
+    "before_after_evidence": false,
+    "artifact_modalities": [
+      "text"
+    ],
+    "external_provider_contributed": false
+  },
+  "external_share_status": "internal_only",
+  "privacy_audit": {
+    "scope": "Synthetic fixture",
+    "concerns": [
+      "No production identities, prompts or evidence are included."
+    ],
+    "decision": "No production data."
+  },
+  "evidence_assertions": [],
+  "notes": [
+    "Required focused fixture; not a curated Gold case or accepted learning."
+  ]
+}

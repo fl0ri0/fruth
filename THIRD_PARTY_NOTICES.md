@@ -1,6 +1,6 @@
 # Third-Party Components
 
-Ollmo's own source code and project documentation are licensed under the
+Fruth's own source code and project documentation are licensed under the
 Apache License 2.0. Third-party components keep their own licenses.
 
 ## Bundled with the Source Distribution
@@ -21,17 +21,17 @@ Montserrat is not relicensed under Apache-2.0.
 ## Installed Separately
 
 Python packages installed through `requirements.txt`, local AI runtimes,
-model weights, and models are not bundled with Ollmo. They remain subject to
+model weights, and models are not bundled with Fruth. They remain subject to
 their respective upstream licenses and terms.
 
 ### Optional scanned-PDF rendering
 
-Ollmo can use PyMuPDF for multi-page scanned-PDF rendering, but PyMuPDF is not
-part of the default Ollmo installation. PyMuPDF is offered upstream under the
+Fruth can use PyMuPDF for multi-page scanned-PDF rendering, but PyMuPDF is not
+part of the default Fruth installation. PyMuPDF is offered upstream under the
 GNU Affero General Public License 3.0 or a commercial Artifex license. Review
 and accept the applicable upstream terms before installing it separately.
 
-Without PyMuPDF, Ollmo retains text-layer PDF extraction through `pypdf` and a
+Without PyMuPDF, Fruth retains text-layer PDF extraction through `pypdf` and a
 limited macOS first-page rendering fallback when available.
 
 ## Loaded at Runtime from External CDNs
@@ -39,7 +39,7 @@ limited macOS first-page rendering fallback when available.
 The current dashboard requests Google Fonts, Axios, and Font Awesome from
 their upstream CDNs when the dashboard is opened with network access. The
 architecture diagram requests JetBrains Mono from Google Fonts. These
-resources are not bundled in the Ollmo source archive and remain under their
+resources are not bundled in the Fruth source archive and remain under their
 respective upstream licenses and terms.
 
 The standalone repository landing page under `site/` does not make those

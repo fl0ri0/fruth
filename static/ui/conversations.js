@@ -873,7 +873,7 @@ function getConversationPreviewText(conversationId = '') {
         return preview;
     }
     return isResponsesWorkbenchConversationId(conversationId)
-        ? 'Saved Ollmo chat'
+        ? 'Saved Fruth chat'
         : 'Saved chat';
 }
 
@@ -1372,7 +1372,7 @@ function setInstanceConversationId(instanceId, conversationId, metadata = null) 
 
 function getConversationDisplayLabel(conversationId) {
     if (isResponsesWorkbenchConversationId(conversationId)) {
-        return 'Ollmo';
+        return 'Fruth';
     }
     const metadata = getConversationMetadata(conversationId);
     const instance = getConversationInstanceMeta(conversationId);
@@ -1423,7 +1423,7 @@ function getConversationHistoryMetadata(instanceId) {
 }
 
 function isResponsesWorkbenchAutoTargetId(value) {
-    return String(value || '') === RESPONSES_GHOST_AUTO_ID;
+    return String(value || '') === RESPONSES_INFERENCE_AUTO_ID;
 }
 
 function isResponsesWorkbenchAutoTarget() {
@@ -1435,8 +1435,8 @@ function getResponsesWorkbenchTargetInstance() {
     return getInstanceMeta(state.responsesWorkbench.targetInstanceId || '');
 }
 
-function getGhostResolvedTargetInstance() {
-    const resolved = state.responsesWorkbench.ghostResolvedTarget;
+function getInferenceResolvedTargetInstance() {
+    const resolved = state.responsesWorkbench.inferenceResolvedTarget;
     if (!resolved || typeof resolved !== 'object') return null;
     const instanceId = String(resolved.instance_id || '').trim();
     if (!instanceId) return null;
@@ -1444,24 +1444,24 @@ function getGhostResolvedTargetInstance() {
 }
 
 function getRequestExecutionInstance(instance) {
-    if (instance?.ghostAuto) {
-        return getGhostResolvedTargetInstance() || instance;
+    if (instance?.inferenceAuto) {
+        return getInferenceResolvedTargetInstance() || instance;
     }
     return instance;
 }
 
-function clearGhostResolvedTarget() {
-    state.responsesWorkbench.ghostResolvedTarget = null;
-    state.responsesWorkbench.ghostResolvedRoute = null;
-    state.responsesWorkbench.ghostResolvedRuntime = null;
+function clearInferenceResolvedTarget() {
+    state.responsesWorkbench.inferenceResolvedTarget = null;
+    state.responsesWorkbench.inferenceResolvedRoute = null;
+    state.responsesWorkbench.inferenceResolvedRuntime = null;
 }
 
 function resetResponsesWorkbenchAutoRoute() {
-    const previousOwner = getGhostResolvedTargetInstance();
+    const previousOwner = getInferenceResolvedTargetInstance();
     if (previousOwner) {
         persistSettingsForCurrentInstance();
     }
-    clearGhostResolvedTarget();
+    clearInferenceResolvedTarget();
     if (isResponsesWorkbenchActive() && isResponsesWorkbenchAutoTarget()) {
         loadSettingsForInstance(null);
         refreshTtsSettingOptions(null);
@@ -1473,31 +1473,31 @@ function resetResponsesWorkbenchAutoRoute() {
     }
 }
 
-function syncGhostResolvedTargetWithRunningInstances() {
-    const resolved = state.responsesWorkbench.ghostResolvedTarget;
+function syncInferenceResolvedTargetWithRunningInstances() {
+    const resolved = state.responsesWorkbench.inferenceResolvedTarget;
     if (!resolved || typeof resolved !== 'object') return;
     const live = getInstanceMeta(resolved.instance_id || '');
     if (!live) {
-        clearGhostResolvedTarget();
+        clearInferenceResolvedTarget();
         return;
     }
-    state.responsesWorkbench.ghostResolvedTarget = live;
+    state.responsesWorkbench.inferenceResolvedTarget = live;
 }
 
 function formatResponsesAutoLabel() {
-    const resolved = getGhostResolvedTargetInstance();
-    if (!resolved) return 'Ollmo';
+    const resolved = getInferenceResolvedTargetInstance();
+    if (!resolved) return 'Fruth';
     const modelLabel = isExternalConversationTarget(resolved)
         ? 'ChatGPT'
         : formatModelDisplayName(resolved.model || resolved.instance_id);
     const backendLabel = isExternalConversationTarget(resolved)
         ? 'external provider'
         : formatBackendLabel(resolved.backend || 'runtime');
-    return `Ollmo -> ${modelLabel} (${backendLabel})`;
+    return `Fruth -> ${modelLabel} (${backendLabel})`;
 }
 
-function buildGhostHelperStatusText() {
-    const runtime = state.responsesWorkbench.ghostResolvedRuntime;
+function buildInferenceHelperStatusText() {
+    const runtime = state.responsesWorkbench.inferenceResolvedRuntime;
     const helper = runtime && typeof runtime === 'object' ? runtime.embedding_helper : null;
     if (!helper || typeof helper !== 'object') return '';
     if (!helper.available) {
@@ -1516,13 +1516,13 @@ function buildGhostHelperStatusText() {
 }
 
 function buildResponsesAutoStatusText() {
-    const resolved = getGhostResolvedTargetInstance();
-    const route = state.responsesWorkbench.ghostResolvedRoute;
-    const helperText = buildGhostHelperStatusText();
+    const resolved = getInferenceResolvedTargetInstance();
+    const route = state.responsesWorkbench.inferenceResolvedRoute;
+    const helperText = buildInferenceHelperStatusText();
     if (!resolved) {
         return helperText
-            ? `Ollmo is ready. ${helperText}`
-            : 'Ollmo is ready.';
+            ? `Fruth is ready. ${helperText}`
+            : 'Fruth is ready.';
     }
     const modelLabel = isExternalConversationTarget(resolved)
         ? 'ChatGPT'
@@ -1539,7 +1539,7 @@ function buildResponsesAutoStatusText() {
     const reason = String(route?.reason || '').trim();
     const contextMode = String(route?.context_mode || '').trim().toLowerCase();
     const parts = [
-        `Ollmo is ready. Current route: ${modelLabel} (${backendLabel})`,
+        `Fruth is ready. Current route: ${modelLabel} (${backendLabel})`,
         routeLabel ? `via ${routeLabel}.` : '.',
         helperText,
         contextMode
@@ -1557,19 +1557,19 @@ function buildResponsesAutoStatusText() {
     return parts.join(' ').replace(/\s+\./g, '.');
 }
 
-function buildGhostAutoTargetInstance() {
+function buildInferenceAutoTargetInstance() {
     return {
-        instance_id: RESPONSES_GHOST_AUTO_ID,
-        model: 'Ollmo',
-        backend: 'ghost',
-        ghostAuto: true,
+        instance_id: RESPONSES_INFERENCE_AUTO_ID,
+        model: 'Fruth',
+        backend: 'inference',
+        inferenceAuto: true,
     };
 }
 
 function getCurrentSettingsOwnerInstance() {
     if (isResponsesWorkbenchActive()) {
         if (isResponsesWorkbenchAutoTarget()) {
-            return getGhostResolvedTargetInstance();
+            return getInferenceResolvedTargetInstance();
         }
         return getResponsesWorkbenchTargetInstance();
     }
@@ -1671,7 +1671,7 @@ function ensureResponsesWorkbenchTarget() {
         !isResponsesWorkbenchAutoTargetId(state.responsesWorkbench.targetInstanceId)
         && !options.some(inst => inst.instance_id === state.responsesWorkbench.targetInstanceId)
     ) {
-        state.responsesWorkbench.targetInstanceId = RESPONSES_GHOST_AUTO_ID;
+        state.responsesWorkbench.targetInstanceId = RESPONSES_INFERENCE_AUTO_ID;
     }
     return getResponsesWorkbenchTargetInstance();
 }
@@ -1683,7 +1683,7 @@ function renderResponsesWorkbenchTargetOptions() {
     elements.responsesTargetBar.hidden = !isResponsesWorkbenchActive() || state.arena.enabled;
     elements.responsesTargetSelect.innerHTML = '';
     const autoOption = document.createElement('option');
-    autoOption.value = RESPONSES_GHOST_AUTO_ID;
+    autoOption.value = RESPONSES_INFERENCE_AUTO_ID;
     autoOption.textContent = formatResponsesAutoLabel();
     autoOption.selected = isResponsesWorkbenchAutoTarget();
     elements.responsesTargetSelect.appendChild(autoOption);

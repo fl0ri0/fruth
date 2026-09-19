@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ollmo_server.responses_request_runtime import ResponsesRequestRuntimeOwner
-from ollmo_services.redraw_scope import (
+from fruth_server.responses_request_runtime import ResponsesRequestRuntimeOwner
+from fruth_services.redraw_scope import (
     REDRAW_SCOPE_REVIEW_KIND,
     build_redraw_scope_ladder_review,
     canonicalize_duplicate_artifact_refs,
@@ -27,7 +27,7 @@ class RedrawScopeLadderTests(unittest.TestCase):
 
     def _base_graph(self):
         return {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'response_id': 'resp-scope',
             'prompt_intent': {
                 'artifact_request': True,
@@ -90,7 +90,7 @@ class RedrawScopeLadderTests(unittest.TestCase):
 
     def _closure_review(self, *, repair_action='add_missing_branch'):
         return {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'repair_required',
             'intent_graph_adequacy': {
                 'status': 'pending',
@@ -256,7 +256,7 @@ class RedrawScopeLadderTests(unittest.TestCase):
             }
         )
         closure = {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'blocked',
             'checks': [
                 {
@@ -295,7 +295,7 @@ class RedrawScopeLadderTests(unittest.TestCase):
 
     def test_non_dependency_nested_recovery_does_not_become_binding_repair(self):
         closure = {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'blocked',
             'checks': [
                 {
@@ -329,7 +329,7 @@ class RedrawScopeLadderTests(unittest.TestCase):
             'evidence_refs': ['closure:structural-conflict'],
         }
         closure = {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'blocked',
             'checks': [
                 {
@@ -371,7 +371,7 @@ class RedrawScopeLadderTests(unittest.TestCase):
         for case in cases:
             with self.subTest(evidence=case['evidence']):
                 closure = {
-                    'kind': 'ollmo.graph_closure_review',
+                    'kind': 'fruth.graph_closure_review',
                     'status': 'repair_required',
                     'intent_graph_adequacy': {
                         'status': 'pending',
@@ -490,7 +490,7 @@ class RedrawScopeLadderTests(unittest.TestCase):
                     'evidence_refs': ['closure:structural-conflict'],
                 }
                 closure = {
-                    'kind': 'ollmo.graph_closure_review',
+                    'kind': 'fruth.graph_closure_review',
                     'status': 'repair_required',
                     'intent_graph_adequacy': {'status': 'pending', 'checks': [check]},
                 }
@@ -732,7 +732,7 @@ class RedrawScopeLadderTests(unittest.TestCase):
                  'source_response_id': 'resp-owner', 'provenance_id': 'saved-result'},
             ]
             original = copy.deepcopy(records)
-            with patch('ollmo_services.redraw_scope._ARTIFACT_PATH_ROOT', root, create=True):
+            with patch('fruth_services.redraw_scope._ARTIFACT_PATH_ROOT', root, create=True):
                 result = canonicalize_duplicate_artifact_refs(records)
                 repeated = canonicalize_duplicate_artifact_refs(result['artifacts'])
             self.assertFalse(result['final_projection_blocked'])
@@ -773,7 +773,7 @@ class RedrawScopeLadderTests(unittest.TestCase):
             previous_cwd = Path.cwd()
             try:
                 os.chdir(other.parent)
-                with patch('ollmo_services.redraw_scope._ARTIFACT_PATH_ROOT', root, create=True):
+                with patch('fruth_services.redraw_scope._ARTIFACT_PATH_ROOT', root, create=True):
                     for path, kind, blocked, label in cases:
                         with self.subTest(label=label):
                             records = [
@@ -1114,7 +1114,7 @@ class RedrawScopeLadderTests(unittest.TestCase):
         )
 
     def test_graph_repair_proposal_consumes_scope_as_orientation_only(self):
-        from ollmo_services.graph_repair import (
+        from fruth_services.graph_repair import (
             build_graph_repair_proposals_from_runtime_evidence,
             validate_graph_repair_proposal,
         )
@@ -1154,7 +1154,7 @@ class RedrawScopeLadderTests(unittest.TestCase):
         self.assertEqual(review['status'], 'accepted')
 
     def test_partial_rebase_scope_fields_survive_graph_rebase_proposal(self):
-        from ollmo_services.graph_rebase import build_graph_rebase_proposal
+        from fruth_services.graph_rebase import build_graph_rebase_proposal
 
         graph = self._base_graph()
         candidate = copy.deepcopy(graph)

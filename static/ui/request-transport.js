@@ -156,11 +156,11 @@ async function sendViaResponsesTransport(
     responseId = '',
     pendingRequestId = ''
 ) {
-    const isGhostAuto = Boolean(instance?.ghostAuto);
+    const isInferenceAuto = Boolean(instance?.inferenceAuto);
     const requestInstance = requestContext?.requestInstance || getRequestExecutionInstance(instance);
     const capability = normalizeCapability(requestInstance?.capability || 'chat');
     const isExternalTarget = requestTransportTargetIsExternal(requestInstance);
-    const usesExternalPluralInputs = isExternalTarget && !isGhostAuto;
+    const usesExternalPluralInputs = isExternalTarget && !isInferenceAuto;
     const externalAttachments = usesExternalPluralInputs
         ? getExternalResponseAttachments(requestContext, attachment)
         : [];
@@ -171,7 +171,7 @@ async function sendViaResponsesTransport(
     const hasFileContext = usesExternalPluralInputs
         ? hasExternalFileContext
         : Boolean(attachment || localPath);
-    const batchPrompts = !hasFileContext && (isGhostAuto || capability === 'image_generation')
+    const batchPrompts = !hasFileContext && (isInferenceAuto || capability === 'image_generation')
         ? parseExplicitBatchPrompts(message)
         : [];
     if (capability === 'chat' && !hasFileContext && !batchPrompts.length) {
@@ -198,23 +198,23 @@ async function sendViaResponsesTransport(
     );
     const timeoutSec = Math.max(30, Math.ceil(timeoutMs / 1000));
     const clientTimeoutMs = timeoutMs + 15_000;
-    const ghostMessages = isGhostAuto
-        ? buildGhostRoutingConversationSnapshot(conversationId)
+    const inferenceMessages = isInferenceAuto
+        ? buildInferenceRoutingConversationSnapshot(conversationId)
         : [];
-    const ghostPreview = isGhostAuto
-        ? (requestContext?.ghostPreview || buildGhostExecutionPreviewPayload(undefined, undefined, conversationId))
+    const inferencePreview = isInferenceAuto
+        ? (requestContext?.inferencePreview || buildInferenceExecutionPreviewPayload(undefined, undefined, conversationId))
         : null;
-    const ghostPreferences = isGhostAuto ? getResponsesGhostPreferencesPayload() : null;
-    const requestMeta = isGhostAuto ? getResponsesGhostRequestMetaPayload() : null;
+    const inferencePreferences = isInferenceAuto ? getResponsesInferencePreferencesPayload() : null;
+    const requestMeta = isInferenceAuto ? getResponsesInferenceRequestMetaPayload() : null;
     const selectedReferenceArtifact = buildSelectedReferenceArtifactPayload(conversationId);
     const sessionFields = requestContext?.requestControlFields || buildSessionControlRequestFields(requestInstance);
     const fields = {
-        ...(!isGhostAuto ? { instance_id: instanceId } : {}),
+        ...(!isInferenceAuto ? { instance_id: instanceId } : {}),
         ...(batchPrompts.length ? {} : (message ? { prompt: message } : {})),
-        ...(!isGhostAuto && requestInstance?.model ? { model: requestInstance.model } : {}),
-        ...(!isGhostAuto && requestInstance?.backend ? { backend: normalizeBackend(requestInstance.backend) } : {}),
-        ...(!isGhostAuto && requestInstance?.capability ? { capability: normalizeCapability(requestInstance.capability) } : {}),
-        ...(isGhostAuto ? { ghost_route: 'true', conversation_id: conversationId } : {}),
+        ...(!isInferenceAuto && requestInstance?.model ? { model: requestInstance.model } : {}),
+        ...(!isInferenceAuto && requestInstance?.backend ? { backend: normalizeBackend(requestInstance.backend) } : {}),
+        ...(!isInferenceAuto && requestInstance?.capability ? { capability: normalizeCapability(requestInstance.capability) } : {}),
+        ...(isInferenceAuto ? { inference_route: 'true', conversation_id: conversationId } : {}),
         ...(responseId ? { response_id: responseId } : {}),
         ...sessionFields,
         infer_timeout_sec: String(timeoutSec),
@@ -251,13 +251,13 @@ async function sendViaResponsesTransport(
                 formData.append(key, value);
             }
         });
-        if (isGhostAuto) {
-            formData.append('ghost_messages_json', JSON.stringify(ghostMessages));
-            if (ghostPreview) {
-                formData.append('ghost_preview', JSON.stringify(ghostPreview));
+        if (isInferenceAuto) {
+            formData.append('inference_messages_json', JSON.stringify(inferenceMessages));
+            if (inferencePreview) {
+                formData.append('inference_preview', JSON.stringify(inferencePreview));
             }
-            if (ghostPreferences) {
-                formData.append('ghost_preferences', JSON.stringify(ghostPreferences));
+            if (inferencePreferences) {
+                formData.append('inference_preferences', JSON.stringify(inferencePreferences));
             }
             if (requestMeta) {
                 formData.append('request_meta', JSON.stringify(requestMeta));
@@ -285,9 +285,9 @@ async function sendViaResponsesTransport(
         ...fields,
         ...(batchPrompts.length ? { batch_prompts: batchPrompts } : {}),
         ...(localPath ? { file_path: localPath } : {}),
-        ...(isGhostAuto ? { ghost_messages: ghostMessages } : {}),
-        ...(ghostPreview ? { ghost_preview: ghostPreview } : {}),
-        ...(ghostPreferences ? { ghost_preferences: ghostPreferences } : {}),
+        ...(isInferenceAuto ? { inference_messages: inferenceMessages } : {}),
+        ...(inferencePreview ? { inference_preview: inferencePreview } : {}),
+        ...(inferencePreferences ? { inference_preferences: inferencePreferences } : {}),
         ...(requestMeta ? { request_meta: requestMeta } : {}),
         ...(selectedReferenceArtifact ? { reference_artifacts: selectedReferenceArtifact } : {}),
     };

@@ -157,7 +157,7 @@ def test_external_transport_uses_plural_multipart_without_changing_local_fields(
         const context = {
           console,
           state: {
-            flaskServerUrl: 'http://127.0.0.1:5001',
+            flaskServerUrl: 'http://127.0.0.1:5011',
             inference: { inferTimeoutMs: 60000 },
           },
           FormData: CaptureFormData,
@@ -183,10 +183,10 @@ def test_external_transport_uses_plural_multipart_without_changing_local_fields(
           normalizeBackend = (value) => String(value || '').trim().toLowerCase();
           inferFileKindFromName = () => 'binary';
           parseExplicitBatchPrompts = () => [];
-          buildGhostRoutingConversationSnapshot = () => [];
-          buildGhostExecutionPreviewPayload = () => null;
-          getResponsesGhostPreferencesPayload = () => null;
-          getResponsesGhostRequestMetaPayload = () => null;
+          buildInferenceRoutingConversationSnapshot = () => [];
+          buildInferenceExecutionPreviewPayload = () => null;
+          getResponsesInferencePreferencesPayload = () => null;
+          getResponsesInferenceRequestMetaPayload = () => null;
           buildSelectedReferenceArtifactPayload = () => null;
           buildSessionControlRequestFields = () => ({});
           sendViaResponsesStream = async () => { throw new Error('file turns must not stream'); };
@@ -205,9 +205,9 @@ def test_external_transport_uses_plural_multipart_without_changing_local_fields(
             backend: 'ollama',
             capability: 'chat',
           };
-          const ghostAutoTarget = {
-            instance_id: '__responses_ghost_auto__',
-            ghostAuto: true,
+          const inferenceAutoTarget = {
+            instance_id: '__responses_inference_auto__',
+            inferenceAuto: true,
           };
           const imageFile = { name: 'diagram.png' };
           const notesFile = { name: 'notes.txt' };
@@ -268,10 +268,10 @@ def test_external_transport_uses_plural_multipart_without_changing_local_fields(
               'response-external-paths'
             );
             await sendViaResponsesTransport(
-              ghostAutoTarget,
-              ghostAutoTarget.instance_id,
-              'ghost-conversation',
-              'Inspect this through Ghost.',
+              inferenceAutoTarget,
+              inferenceAutoTarget.instance_id,
+              'inference-conversation',
+              'Inspect this through interpretive inference.',
               imageFile,
               '',
               '',
@@ -280,7 +280,7 @@ def test_external_transport_uses_plural_multipart_without_changing_local_fields(
                 requestControlFields: {},
                 externalAttachments: [imageFile, notesFile],
               },
-              'response-ghost'
+              'response-inference'
             );
             return posts;
           };
@@ -332,10 +332,10 @@ def test_external_transport_uses_plural_multipart_without_changing_local_fields(
     external_path_item = next(item for item in external_paths['body'] if item['key'] == 'file_paths_json')
     assert json.loads(external_path_item['value']) == ['/work/context.pdf', '/work/data.csv']
 
-    ghost_upload = result[4]
-    assert ghost_upload['isFormData'] is True
-    ghost_upload_keys = [item['key'] for item in ghost_upload['body']]
-    assert ghost_upload_keys.count('file') == 1
-    assert ghost_upload_keys.count('ghost_messages_json') == 1
-    assert 'files' not in ghost_upload_keys
-    assert 'file_paths_json' not in ghost_upload_keys
+    inference_upload = result[4]
+    assert inference_upload['isFormData'] is True
+    inference_upload_keys = [item['key'] for item in inference_upload['body']]
+    assert inference_upload_keys.count('file') == 1
+    assert inference_upload_keys.count('inference_messages_json') == 1
+    assert 'files' not in inference_upload_keys
+    assert 'file_paths_json' not in inference_upload_keys

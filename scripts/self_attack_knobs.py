@@ -6,11 +6,10 @@ from itertools import combinations, product
 from pathlib import Path
 import random
 
-from ollmo_g import request_meta
-from ollmo_g.ghost_mode_compat import SUPPORTED_LEGACY_MODES
-from ollmo_g.semantic_roles import build_semantic_role_catalog
-from ollmo_services import enforced_policy, graph_rebase, graph_repair
-from ollmo_server import multi_materialization_runtime as materialization
+from fruth_inference import request_meta
+from fruth_inference.semantic_roles import build_semantic_role_catalog
+from fruth_services import enforced_policy, graph_rebase, graph_repair
+from fruth_server import multi_materialization_runtime as materialization
 from scripts.run_graph_rebase_shadow_corpus import CorpusError, stable_digest
 
 
@@ -26,8 +25,12 @@ def discover_knobs(root: Path) -> dict:
         controls.append(dict(name=name, scope=scope, values=list(values),
                              default=default, source=source, disposition='sweep'))
 
-    add('ghost_mode', 'request', SUPPORTED_LEGACY_MODES,
-        'ollmo_g/ghost_mode_compat.py:SUPPORTED_LEGACY_MODES')
+    add('semantic_role_ids', 'request',
+        [['repairer', 'evidence_reasoner', 'doubt_challenger'],
+         ['materializer', 'quality_reviewer', 'transition_committer'],
+         ['possibility_expander', 'structural_planner', 'integrator'],
+         ['possibility_expander', 'materializer', 'quality_reviewer']],
+        'fruth_inference/semantic_roles/:build_semantic_role_catalog')
     for name, default in request_meta.DEFAULT_DEVELOPER_FLAGS.items():
         if isinstance(default, bool):
             values = [False, True]
@@ -37,31 +40,31 @@ def discover_knobs(root: Path) -> dict:
             values = sorted(request_meta.ACCEPTED_LEARNING_AUTHORITY_LEVELS)
         else:
             controls.append(dict(name=f'developer_flags.{name}', scope='request',
-                                 disposition='unbound', source='ollmo_g/request_meta.py'))
+                                 disposition='unbound', source='fruth_inference/request_meta.py'))
             continue
-        add(f'developer_flags.{name}', 'request', values, 'ollmo_g/request_meta.py', default)
+        add(f'developer_flags.{name}', 'request', values, 'fruth_inference/request_meta.py', default)
     for module, prefix in ((graph_repair, 'GRAPH_REPAIR'), (graph_rebase, 'GRAPH_REBASE')):
         add(getattr(module, f'{prefix}_AUTONOMY_ENV'), 'environment',
             sorted(getattr(module, f'_{prefix}_AUTONOMY_LEVELS')) + ['invalid_self_attack_value'],
             f'{module.__name__.replace(".", "/")}.py',
             getattr(module, f'{prefix}_AUTONOMY_PRODUCT_DEFAULT'))
-    add('OLLMO_APPLY_ENFORCED_POLICY', 'environment',
+    add('FRUTH_APPLY_ENFORCED_POLICY', 'environment',
         sorted(enforced_policy._ENFORCED_POLICY_MODES) + ['invalid_self_attack_value'],
-        'ollmo_services/enforced_policy.py')
-    add('OLLMO_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS', 'environment',
+        'fruth_services/enforced_policy.py')
+    add('FRUTH_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS', 'environment',
         [materialization.MIN_MAX_PARALLEL_WORKERS, materialization.DEFAULT_MAX_PARALLEL_WORKERS,
-         materialization.MAX_MAX_PARALLEL_WORKERS], 'ollmo_server/multi_materialization_runtime.py')
+         materialization.MAX_MAX_PARALLEL_WORKERS], 'fruth_server/multi_materialization_runtime.py')
     known = {item['name'] for item in controls}
     literals = {}
-    paths = [root / 'ollmo_webserver.py'] + [p
-        for directory in ('ollmo_g', 'ollmo_core', 'ollmo_services', 'ollmo_server', 'ollmo_runtime', 'helpers')
+    paths = [root / 'fruth_webserver.py'] + [p
+        for directory in ('fruth_inference', 'fruth_core', 'fruth_services', 'fruth_server', 'fruth_runtime', 'helpers')
         for p in sorted((root / directory).rglob('*.py'))]
     for path in paths:
         tree = ast.parse(path.read_text(encoding='utf-8'))
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 name = node.value
-                if name.startswith('OLLMO_') and name.replace('_', '').isalnum() and len(name) < 120:
+                if name.startswith('FRUTH_') and name.replace('_', '').isalnum() and len(name) < 120:
                     literals.setdefault(name, []).append(f'{path.relative_to(root)}:{node.lineno}')
     for name, sources in sorted(literals.items()):
         if name not in known:
@@ -69,7 +72,7 @@ def discover_knobs(root: Path) -> dict:
                                  disposition='inventory_only',
                                  reason='No reviewed finite diagnostic setter; not changed.'))
     diagnostic_sources = [root / 'scripts' / name for name in
-                          ('ollmo_self_attack.py', 'self_attack_checks.py', 'self_attack_knobs.py', 'run_graph_rebase_shadow_corpus.py')]
+                          ('fruth_self_attack.py', 'self_attack_checks.py', 'self_attack_knobs.py', 'run_graph_rebase_shadow_corpus.py')]
     diagnostic_sources += list((root / 'tests/fake_backends').glob('*.py'))
     files = {str(p.relative_to(root)): stable_digest(p.read_text(encoding='utf-8')) for p in paths + diagnostic_sources}
     return dict(controls=controls, semantic_roles=build_semantic_role_catalog(),

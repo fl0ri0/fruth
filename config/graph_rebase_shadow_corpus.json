@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "corpus_id": "graph-rebase-shadow-diagnostics-2026-07-19-wave-1",
-  "source": "custom_ollmo_diagnostic",
+  "source": "custom_fruth_diagnostic",
   "cases": [
     {
       "id": "D1",
@@ -9,7 +9,7 @@
       "category": "clean_negative_control",
       "workload_family": "image_generation_vision_analysis_clean_chain",
       "conversation_key": "graph-rebase-shadow-20260719-d1",
-      "source": "custom_ollmo_diagnostic",
+      "source": "custom_fruth_diagnostic",
       "prompt": "Erzeuge ein realistisches quadratisches Bild eines gelben Notizbuchs mit der gut lesbaren Aufschrift \u201ePlan A\u201c. Analysiere danach ausschlie\u00dflich sichtbare Details des tats\u00e4chlich erzeugten Bildes auf Deutsch und fasse sie in genau drei Stichpunkten zusammen.",
       "expected_capabilities": [
         "chat",
@@ -41,7 +41,7 @@
       "category": "smaller_scope_control",
       "workload_family": "linked_web_artifacts_two_images_html_css",
       "conversation_key": "graph-rebase-shadow-20260719-d2",
-      "source": "custom_ollmo_diagnostic",
+      "source": "custom_fruth_diagnostic",
       "prompt": "Erstelle f\u00fcr eine minimalistische Teemarke genau zwei unterschiedliche lokale Bilder, index.html und styles.css. Bild 1 ist eine Teekanne im Morgenlicht, Bild 2 ein Detail loser Teebl\u00e4tter. Jede Bilddatei darf nur in ihrer passenden Section stehen; index.html muss beide realen Bilder und styles.css relativ verlinken. Keine Platzhalter oder externen Medien. Materialisiere exakt vier Artefakte.",
       "expected_capabilities": [
         "chat",
@@ -77,7 +77,7 @@
       "category": "partial_scope_mapping_stress",
       "workload_family": "three_image_three_vision_identity_mapping",
       "conversation_key": "graph-rebase-shadow-20260719-d3",
-      "source": "custom_ollmo_diagnostic",
+      "source": "custom_fruth_diagnostic",
       "prompt": "Erzeuge genau drei unterschiedliche lokale Bilder: A \u2013 ein roter Leuchtturm im Schnee bei Tag; B \u2013 eine gr\u00fcne Bibliothek bei Nacht; C \u2013 ein blaues Gew\u00e4chshaus im Regen. Analysiere danach jedes tats\u00e4chlich erzeugte Bild separat. Gib abschlie\u00dfend im Chat genau eine JSON-Liste mit den Feldern label, artifact_ref und visible_evidence f\u00fcr A, B und C aus. Ordne jede visible_evidence ausschlie\u00dflich dem artifact_ref des gleich bezeichneten Bildes zu.",
       "expected_capabilities": [
         "chat",
@@ -114,7 +114,7 @@
       "category": "multimodal_dependency_join_stress",
       "workload_family": "parallel_image_audio_vision_stt_evidence_join",
       "conversation_key": "graph-rebase-shadow-20260719-d4",
-      "source": "custom_ollmo_diagnostic",
+      "source": "custom_fruth_diagnostic",
       "prompt": "Schreibe einen deutschen Szenentext mit genau zwanzig W\u00f6rtern \u00fcber einen Leuchtturm im Sturm. Erzeuge daraus parallel ein Bild und ein Audio. Analysiere danach das tats\u00e4chlich erzeugte Bild und transkribiere das tats\u00e4chlich erzeugte Audio. Vergleiche abschlie\u00dfend im Chat anhand genau dieser beiden realen Evidenzzweige, ob Leuchtturm, Sturm und Nacht in beiden vorkommen. Bildanalyse darf nur vom Bild, Transkription nur vom Audio, der Schluss nur von beiden Evidenzzweigen abh\u00e4ngen.",
       "expected_capabilities": [
         "chat",

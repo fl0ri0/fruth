@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 from flask import Response
 
-from ollmo_webserver import _chat_timeout_seconds, app
+from fruth_webserver import _chat_timeout_seconds, app
 
 
 class ChatApiTests(unittest.TestCase):
@@ -27,7 +27,7 @@ class ChatApiTests(unittest.TestCase):
         self.assertEqual(_chat_timeout_seconds("gemma-3-27b-it-q4", "llama_cpp", "chat"), 600)
         self.assertEqual(_chat_timeout_seconds("gemma-3-1b-it-q4", "llama_cpp", "chat"), 600)
 
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.load_running_instances")
     def test_chat_route_rejects_text_to_speech_capability(self, mock_running_instances):
         mock_running_instances.return_value = [
             {
@@ -50,7 +50,7 @@ class ChatApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("text_to_speech", response.get_json()["error"])
 
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.load_running_instances")
     def test_chat_route_rejects_embedding_capability(self, mock_running_instances):
         mock_running_instances.return_value = [
             {
@@ -73,9 +73,9 @@ class ChatApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("embedding", response.get_json()["error"])
 
-    @patch("ollmo_webserver.is_port_listening", return_value=True)
-    @patch("ollmo_webserver.requests.post")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.is_port_listening", return_value=True)
+    @patch("fruth_webserver.requests.post")
+    @patch("fruth_webserver.load_running_instances")
     def test_chat_route_uses_extended_timeout_for_heavy_model(
         self,
         mock_running_instances,
@@ -110,9 +110,9 @@ class ChatApiTests(unittest.TestCase):
         self.assertEqual(mock_post.call_args.kwargs["timeout"], 600)
         self.assertEqual(mock_post.call_args.kwargs["json"]["options"]["num_predict"], 321)
 
-    @patch("ollmo_webserver.is_port_listening", return_value=True)
-    @patch("ollmo_webserver.requests.post")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.is_port_listening", return_value=True)
+    @patch("fruth_webserver.requests.post")
+    @patch("fruth_webserver.load_running_instances")
     def test_mlx_chat_keeps_default_reasoning_private_when_content_empty(
         self,
         mock_running_instances,
@@ -163,9 +163,9 @@ class ChatApiTests(unittest.TestCase):
         self.assertEqual(mock_post.call_args.kwargs["json"]["max_tokens"], 654)
         self.assertEqual(mock_post.call_args.kwargs["timeout"], 900)
 
-    @patch("ollmo_webserver.is_port_listening", return_value=True)
-    @patch("ollmo_webserver.requests.post")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.is_port_listening", return_value=True)
+    @patch("fruth_webserver.requests.post")
+    @patch("fruth_webserver.load_running_instances")
     def test_mlx_chat_forwards_camel_case_reasoning_effort(
         self,
         mock_running_instances,
@@ -205,7 +205,7 @@ class ChatApiTests(unittest.TestCase):
         self.assertTrue(payload["enable_thinking"])
         self.assertEqual(payload["reasoning_effort"], "medium")
 
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.load_running_instances")
     def test_chat_rejects_reasoning_effort_when_model_does_not_advertise_it(
         self,
         mock_running_instances,
@@ -246,9 +246,9 @@ class ChatApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("reasoning_effort", response.get_json()["error"])
 
-    @patch("ollmo_webserver.is_port_listening", return_value=True)
-    @patch("ollmo_webserver.requests.post")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.is_port_listening", return_value=True)
+    @patch("fruth_webserver.requests.post")
+    @patch("fruth_webserver.load_running_instances")
     def test_llama_cpp_chat_uses_openai_compatible_transport(
         self,
         mock_running_instances,
@@ -291,9 +291,9 @@ class ChatApiTests(unittest.TestCase):
         self.assertIn("/v1/chat/completions", mock_post.call_args.args[0])
         self.assertEqual(mock_post.call_args.kwargs["json"]["model"], "gemma-3-1b-it-q4")
 
-    @patch("ollmo_webserver.is_port_listening", return_value=True)
-    @patch("ollmo_webserver.requests.post")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.is_port_listening", return_value=True)
+    @patch("fruth_webserver.requests.post")
+    @patch("fruth_webserver.load_running_instances")
     def test_llama_cpp_chat_normalizes_multimodal_content_parts(
         self,
         mock_running_instances,
@@ -348,8 +348,8 @@ class ChatApiTests(unittest.TestCase):
             {"type": "image_url", "image_url": {"url": "data:image/png;base64,ZmFrZQ=="}},
         )
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._execute_chat_backend_request")
     def test_local_provider_responses_adapter_returns_openai_shape(self, mock_execute, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "mlx-qwen-1",
@@ -375,8 +375,8 @@ class ChatApiTests(unittest.TestCase):
         self.assertEqual(payload["output_text"], "Hello from adapter.")
         self.assertEqual(payload["output"][0]["content"][0]["text"], "Hello from adapter.")
 
-    @patch("ollmo_webserver._lookup_instance")
-    @patch("ollmo_webserver._stream_chat_backend_as_responses")
+    @patch("fruth_webserver._lookup_instance")
+    @patch("fruth_webserver._stream_chat_backend_as_responses")
     def test_local_provider_responses_adapter_streams_sse_events(self, mock_stream, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "gpt-oss:20b-1",
@@ -408,7 +408,7 @@ class ChatApiTests(unittest.TestCase):
         self.assertIn("Hello streamed.", body)
         self.assertIn("event: response.completed", body)
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_local_provider_responses_adapter_rejects_traversal_shaped_instance_id(self, mock_lookup):
         response = self.client.post(
             "/api/local_provider/..%2Fsecret/v1/responses",
@@ -419,7 +419,7 @@ class ChatApiTests(unittest.TestCase):
         self.assertIn("invalid path segments", response.get_json()["error"])
         mock_lookup.assert_not_called()
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._execute_chat_backend_request")
     def test_chat_route_rejects_traversal_shaped_instance_id(self, mock_execute):
         response = self.client.post(
             "/api/chat",

@@ -1,11 +1,11 @@
 import unittest
 
-from ollmo_integrations.adapter_manifest import (
+from fruth_integrations.adapter_manifest import (
     build_adapter_manifest,
     get_adapter_manifest,
     list_adapter_manifests,
 )
-from ollmo_integrations.registry import integration_module, named_module
+from fruth_integrations.registry import integration_module, named_module
 
 
 class IntegrationAdapterManifestTests(unittest.TestCase):
@@ -17,7 +17,7 @@ class IntegrationAdapterManifestTests(unittest.TestCase):
     def test_build_adapter_manifest_is_serializable_and_scoped(self):
         manifest = build_adapter_manifest(['codex'])
 
-        self.assertEqual(manifest['kind'], 'ollmo.integration_adapter_manifest')
+        self.assertEqual(manifest['kind'], 'fruth.integration_adapter_manifest')
         self.assertEqual(len(manifest['adapters']), 1)
         adapter = manifest['adapters'][0]
         self.assertEqual(adapter['integration_id'], 'codex')

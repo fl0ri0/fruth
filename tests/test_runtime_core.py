@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from helpers.model_capabilities import infer_capability, normalize_backend
-from ollmo_core.lifecycle import (
+from fruth_core.lifecycle import (
     RuntimeRequestError,
     pull_model,
     remove_model,
@@ -38,12 +38,12 @@ class RuntimeCoreTests(unittest.TestCase):
             "embedding",
         )
 
-    @patch("ollmo_core.lifecycle.manager_get_available_models")
+    @patch("fruth_core.lifecycle.manager_get_available_models")
     def test_validate_ollama_model_name_resolves_namespace_and_latest(self, mock_get_available_models):
         mock_get_available_models.return_value = ["x/flux2-klein:latest"]
         self.assertEqual(validate_ollama_model_name("flux2-klein"), "x/flux2-klein:latest")
 
-    @patch("ollmo_core.lifecycle.manager_get_available_models")
+    @patch("fruth_core.lifecycle.manager_get_available_models")
     def test_validate_ollama_model_name_returns_400_for_unknown_model(self, mock_get_available_models):
         mock_get_available_models.return_value = ["qwen3-coder:latest"]
         with self.assertRaises(RuntimeRequestError) as ctx:
@@ -51,8 +51,8 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("ollama list", str(ctx.exception))
 
-    @patch("ollmo_core.lifecycle.stop_mlx_instance")
-    @patch("ollmo_core.lifecycle.read_registry_entries")
+    @patch("fruth_core.lifecycle.stop_mlx_instance")
+    @patch("fruth_core.lifecycle.read_registry_entries")
     def test_stop_instance_dispatches_to_mlx_backend(self, mock_read_registry_entries, mock_stop_mlx_instance):
         mock_read_registry_entries.return_value = [
             {
@@ -69,7 +69,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(instance["instance_id"], "mlx-1")
         mock_stop_mlx_instance.assert_called_once_with("mlx-1")
 
-    @patch("ollmo_core.lifecycle.mlx_pull_hf_model")
+    @patch("fruth_core.lifecycle.mlx_pull_hf_model")
     def test_pull_model_dispatches_to_mlx_hf_backend(self, mock_mlx_pull):
         mock_mlx_pull.return_value = (True, "downloaded")
 
@@ -79,7 +79,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(message, "downloaded")
         mock_mlx_pull.assert_called_once_with("mlx-community/Qwen3.5-27B-4bit")
 
-    @patch("ollmo_core.lifecycle.mlx_remove_hf_model")
+    @patch("fruth_core.lifecycle.mlx_remove_hf_model")
     def test_remove_model_dispatches_to_mlx_hf_backend(self, mock_mlx_remove):
         mock_mlx_remove.return_value = (True, "removed")
 
@@ -89,7 +89,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(message, "removed")
         mock_mlx_remove.assert_called_once_with("mlx-community/Qwen3.5-27B-4bit")
 
-    @patch("ollmo_core.lifecycle.pull_llama_cpp_model")
+    @patch("fruth_core.lifecycle.pull_llama_cpp_model")
     def test_pull_model_dispatches_to_llama_cpp_backend(self, mock_pull_llama_cpp_model):
         mock_pull_llama_cpp_model.return_value = (True, "downloaded")
 
@@ -99,7 +99,7 @@ class RuntimeCoreTests(unittest.TestCase):
         self.assertEqual(message, "downloaded")
         mock_pull_llama_cpp_model.assert_called_once_with('ggml-org/gemma-4-26B-A4B-it-GGUF')
 
-    @patch("ollmo_core.lifecycle.remove_llama_cpp_model")
+    @patch("fruth_core.lifecycle.remove_llama_cpp_model")
     def test_remove_model_dispatches_to_llama_cpp_backend(self, mock_remove_llama_cpp):
         mock_remove_llama_cpp.return_value = (True, "removed")
 
@@ -120,7 +120,7 @@ class RuntimeCoreTests(unittest.TestCase):
             hf_file=None,
         )
 
-    @patch("ollmo_core.lifecycle.start_mlx_model")
+    @patch("fruth_core.lifecycle.start_mlx_model")
     def test_start_instance_supports_mlx_text_to_speech(self, mock_start_mlx_model):
         mock_start_mlx_model.return_value = {
             "instance_id": "mlx-community__Qwen3-TTS-12Hz-0.6B-Base-bf16-mlx-11504",
@@ -151,7 +151,7 @@ class RuntimeCoreTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_core.lifecycle.start_mlx_model")
+    @patch("fruth_core.lifecycle.start_mlx_model")
     def test_start_instance_supports_mlx_launch_defaults(self, mock_start_mlx_model):
         mock_start_mlx_model.return_value = {
             "instance_id": "mlx-community__Qwen2.5-VL-3B-Instruct-4bit-mlx-11520",
@@ -181,8 +181,8 @@ class RuntimeCoreTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_core.lifecycle._start_ollama_instance")
-    @patch("ollmo_core.lifecycle.manager_get_available_models")
+    @patch("fruth_core.lifecycle._start_ollama_instance")
+    @patch("fruth_core.lifecycle.manager_get_available_models")
     def test_start_instance_uses_available_ollama_embedding_capability_when_not_explicit(
         self,
         mock_get_available_models,
@@ -208,7 +208,7 @@ class RuntimeCoreTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_core.lifecycle.start_llama_cpp_instance")
+    @patch("fruth_core.lifecycle.start_llama_cpp_instance")
     def test_start_instance_supports_llama_cpp_chat(self, mock_start_llama_cpp_instance):
         mock_start_llama_cpp_instance.return_value = {
             'instance_id': 'gemma-3-1b-it-q4-llama_cpp-11551',
@@ -240,7 +240,7 @@ class RuntimeCoreTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_core.lifecycle.start_llama_cpp_instance")
+    @patch("fruth_core.lifecycle.start_llama_cpp_instance")
     def test_start_instance_supports_llama_cpp_hf_file(self, mock_start_llama_cpp_instance):
         mock_start_llama_cpp_instance.return_value = {
             'instance_id': 'gemma-4-26b-a4b-llama_cpp-11551',
@@ -268,8 +268,8 @@ class RuntimeCoreTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_core.lifecycle.stop_llama_cpp_instance")
-    @patch("ollmo_core.lifecycle.read_registry_entries")
+    @patch("fruth_core.lifecycle.stop_llama_cpp_instance")
+    @patch("fruth_core.lifecycle.read_registry_entries")
     def test_stop_instance_dispatches_to_llama_cpp_backend(self, mock_read_registry_entries, mock_stop_llama_cpp):
         mock_read_registry_entries.return_value = [
             {
@@ -329,8 +329,8 @@ class RuntimeCoreTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             lock_path = Path(tmpdir) / "start-instance.lock"
-            with patch("ollmo_core.lifecycle.START_INSTANCE_LOCK_PATH", lock_path):
-                with patch("ollmo_core.lifecycle._start_ollama_instance", side_effect=fake_start):
+            with patch("fruth_core.lifecycle.START_INSTANCE_LOCK_PATH", lock_path):
+                with patch("fruth_core.lifecycle._start_ollama_instance", side_effect=fake_start):
                     threads = [threading.Thread(target=worker) for _ in range(2)]
                     for thread in threads:
                         thread.start()

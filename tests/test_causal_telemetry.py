@@ -7,13 +7,13 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_services import events
-from ollmo_g.decision_contracts import _semantic_review_lens_payload
-from ollmo_services.semantic_review_verdict import semantic_review_verdict_freeze_acceptance
-from ollmo_services import response_frames as frames
-from ollmo_server.multi_materialization_runtime import MultiMaterializationRuntimeOwner
-from ollmo_server.late_fill_runtime import LateFillRuntimeOwner
-from ollmo_server.backend_transport_runtime import BackendTransportRuntimeOwner
+from fruth_services import events
+from fruth_inference.decision_contracts import _semantic_review_lens_payload
+from fruth_services.semantic_review_verdict import semantic_review_verdict_freeze_acceptance
+from fruth_services import response_frames as frames
+from fruth_server.multi_materialization_runtime import MultiMaterializationRuntimeOwner
+from fruth_server.late_fill_runtime import LateFillRuntimeOwner
+from fruth_server.backend_transport_runtime import BackendTransportRuntimeOwner
 from scripts.self_attack_convergence import analyze_causal_records, causal_records, extract_capture
 
 
@@ -260,7 +260,7 @@ def test_availability_wait_keeps_identity_and_does_not_consume_attempts():
     error = {'code': 'INSTANCE_UNAVAILABLE', 'stage': 'prepare_branch_plan',
              'route_diagnostics': {'availability_wait': {
                  'reason': 'live_candidates_in_cooldown', 'candidate_instance_ids': ['one']}}}
-    with patch('ollmo_server.late_fill_runtime.time.time', return_value=100), events.causal_scope(sink, response_id='r'):
+    with patch('fruth_server.late_fill_runtime.time.time', return_value=100), events.causal_scope(sink, response_id='r'):
         waiting = LateFillRuntimeOwner.build_availability_wait_branch(branch, error=error)
         repeated = LateFillRuntimeOwner.build_availability_wait_branch(waiting, error=error)
     first, second = [r for r in records if r['record_kind'] == 'wait_started']

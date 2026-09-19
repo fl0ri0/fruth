@@ -6,10 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_services import response_frames as frames
+from fruth_services import response_frames as frames
 
 
-FRAME = {'kind': 'ollmo.response_frame', 'response_id': 'resp_serialization',
+FRAME = {'kind': 'fruth.response_frame', 'response_id': 'resp_serialization',
          'frame_id': 'resp_serialization:frame-1', 'frame_sequence': 1}
 
 
@@ -188,7 +188,7 @@ def test_media_file_is_rechecked_before_preparation_match(tmp_path):
         second = write(value)
         assert full.call_count == 1
     assert first['sha256'] != second['sha256']
-    assert frames._read_snapshot_ref_payload(second, frames_dir=tmp_path)['image']['kind'] == 'ollmo.snapshot_stripped_raw_media_payload'
+    assert frames._read_snapshot_ref_payload(second, frames_dir=tmp_path)['image']['kind'] == 'fruth.snapshot_stripped_raw_media_payload'
 
 
 def test_concurrent_distinct_responses_and_frames_do_not_share_preparation(tmp_path):

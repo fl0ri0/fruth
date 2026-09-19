@@ -2,11 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_integrations.codex.provider_unsync import unsync_codex_config
+from fruth_integrations.codex.provider_unsync import unsync_codex_config
 
 
 class ProviderUnsyncTests(unittest.TestCase):
-    def test_codex_unsync_removes_only_ollmo_local_provider_sections(self):
+    def test_codex_unsync_removes_only_fruth_local_provider_sections(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / 'config.toml'
             config_path.write_text(

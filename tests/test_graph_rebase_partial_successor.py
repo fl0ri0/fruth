@@ -3,8 +3,8 @@ import os
 import unittest
 from unittest.mock import patch
 
-from ollmo_server.responses_request_runtime import ResponsesRequestRuntimeOwner
-from ollmo_services.graph_rebase import build_graph_rebase_proposal
+from fruth_server.responses_request_runtime import ResponsesRequestRuntimeOwner
+from fruth_services.graph_rebase import build_graph_rebase_proposal
 from tests import test_graph_rebase_review as rebase_test_helpers
 
 
@@ -91,7 +91,7 @@ class PartialGraphRebaseSuccessorTests(unittest.TestCase):
             'scope_root_ids': ['obligation-root'],
         }
         graph['redraw_scope_ladder_review'] = {
-            'kind': 'ollmo.redraw_scope_ladder_review',
+            'kind': 'fruth.redraw_scope_ladder_review',
             'status': 'selected',
             'selected_scope': 'partial_subtree_rebase',
             'selected_candidate': {
@@ -187,7 +187,7 @@ class PartialGraphRebaseSuccessorTests(unittest.TestCase):
         payload = self._payload()
         proposal = payload['runtime']['request_phase_graph']['graph_rebase_proposals'][0]
 
-        with patch.dict(os.environ, {'OLLMO_GRAPH_REBASE_AUTONOMY': 'off'}, clear=True):
+        with patch.dict(os.environ, {'FRUTH_GRAPH_REBASE_AUTONOMY': 'off'}, clear=True):
             result = self.owner.prepare_terminal_partial_graph_rebase_successor(
                 payload,
                 proposal_id=proposal['proposal_id'],

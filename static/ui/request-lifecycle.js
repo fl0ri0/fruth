@@ -1308,7 +1308,7 @@ function buildResponsesInputForHistory(instanceId, limit = 10, pendingMessage = 
     return input;
 }
 
-function buildGhostRoutingConversationSnapshot(instanceId, limit = 14) {
+function buildInferenceRoutingConversationSnapshot(instanceId, limit = 14) {
     const history = buildHistoryForApi(instanceId, limit);
     return history.map((message) => {
         const requestSnapshot = sanitizeRequestSnapshot(
@@ -1338,26 +1338,26 @@ function buildGhostRoutingConversationSnapshot(instanceId, limit = 14) {
     });
 }
 
-function buildGhostRoutePreviewPayload(message = '', attachment = null, localPath = '', conversationId = '') {
+function buildInferenceRoutePreviewPayload(message = '', attachment = null, localPath = '', conversationId = '') {
     const selectedReferenceArtifact = buildSelectedReferenceArtifactPayload(conversationId);
-    const ghostPreferences = getResponsesGhostPreferencesPayload();
-    const requestMeta = getResponsesGhostRequestMetaPayload();
+    const inferencePreferences = getResponsesInferencePreferencesPayload();
+    const requestMeta = getResponsesInferenceRequestMetaPayload();
     return {
         ...(message ? { prompt: message } : {}),
         ...(attachment?.name ? { upload_filename: attachment.name } : {}),
         ...(localPath ? { file_path: localPath } : {}),
         compute_semantics: false,
         conversation_id: conversationId,
-        ghost_messages: buildGhostRoutingConversationSnapshot(conversationId),
-        ...(ghostPreferences ? { ghost_preferences: ghostPreferences } : {}),
+        inference_messages: buildInferenceRoutingConversationSnapshot(conversationId),
+        ...(inferencePreferences ? { inference_preferences: inferencePreferences } : {}),
         ...(requestMeta ? { request_meta: requestMeta } : {}),
         ...(selectedReferenceArtifact ? { reference_artifacts: selectedReferenceArtifact } : {}),
     };
 }
 
-function buildGhostExecutionPreviewPayload(
-    resolvedInstance = getGhostResolvedTargetInstance(),
-    route = state.responsesWorkbench.ghostResolvedRoute,
+function buildInferenceExecutionPreviewPayload(
+    resolvedInstance = getInferenceResolvedTargetInstance(),
+    route = state.responsesWorkbench.inferenceResolvedRoute,
     conversationId = ''
 ) {
     if (!resolvedInstance || !route) return null;
@@ -1368,7 +1368,7 @@ function buildGhostExecutionPreviewPayload(
         artifact_ref: String(route.artifact_ref || '').trim() || null,
         artifact_path: String(route.artifact_path || '').trim() || null,
         confidence: Number(route.confidence || 0) || 0,
-        reason: String(route.reason || '').trim() || 'ghost preview route',
+        reason: String(route.reason || '').trim() || 'inference preview route',
         route_source: String(route.source || '').trim() || 'router',
         route_router_instance_id: String(route.router_instance_id || '').trim() || null,
         route_router_model: String(route.router_model || '').trim() || null,
@@ -1379,7 +1379,7 @@ function buildGhostExecutionPreviewPayload(
 function buildRequestExecutionContext(
     requestInstance,
     {
-        ghostPreview = null,
+        inferencePreview = null,
         requestMeta = null,
         requestId = '',
         transport = 'auto',
@@ -1396,7 +1396,7 @@ function buildRequestExecutionContext(
     return {
         requestInstance: { ...requestInstance },
         requestControlFields,
-        ghostPreview: ghostPreview ? { ...ghostPreview } : null,
+        inferencePreview: inferencePreview ? { ...inferencePreview } : null,
         requestSnapshot: buildRequestSnapshot(
             requestInstance,
             {
@@ -1408,7 +1408,7 @@ function buildRequestExecutionContext(
                 conversationId,
                 responseId,
                 requestControlFields,
-                ghostPreview,
+                inferencePreview,
                 requestMeta,
                 batchPrompts,
             }
@@ -1416,13 +1416,13 @@ function buildRequestExecutionContext(
     };
 }
 
-async function ensureGhostAutoResolvedTarget(message = '', attachment = null, localPath = '', conversationId = '') {
+async function ensureInferenceAutoResolvedTarget(message = '', attachment = null, localPath = '', conversationId = '') {
     if (!isResponsesWorkbenchAutoTarget()) return null;
-    const previousOwner = getGhostResolvedTargetInstance();
+    const previousOwner = getInferenceResolvedTargetInstance();
     const previousKey = getInstanceSettingsKey(previousOwner);
     const response = await axios.post(
-        `${state.flaskServerUrl}/api/ghost_route_preview`,
-        buildGhostRoutePreviewPayload(message, attachment, localPath, conversationId)
+        `${state.flaskServerUrl}/api/inference_route_preview`,
+        buildInferenceRoutePreviewPayload(message, attachment, localPath, conversationId)
     );
     const payload = response.data || {};
     const resolvedInstance = payload.instance && typeof payload.instance === 'object'
@@ -1432,9 +1432,9 @@ async function ensureGhostAutoResolvedTarget(message = '', attachment = null, lo
     if (previousKey !== nextKey) {
         persistSettingsForCurrentInstance();
     }
-    state.responsesWorkbench.ghostResolvedTarget = resolvedInstance;
-    state.responsesWorkbench.ghostResolvedRoute = payload.route || null;
-    state.responsesWorkbench.ghostResolvedRuntime = payload.runtime || null;
+    state.responsesWorkbench.inferenceResolvedTarget = resolvedInstance;
+    state.responsesWorkbench.inferenceResolvedRoute = payload.route || null;
+    state.responsesWorkbench.inferenceResolvedRuntime = payload.runtime || null;
     if (previousKey !== nextKey) {
         loadSettingsForInstance(resolvedInstance);
     }
@@ -1565,11 +1565,11 @@ async function sendViaResponsesStream(
 ) {
     const requestInstance = requestContext?.requestInstance || getRequestExecutionInstance(currentInstance);
     const input = buildResponsesInputForHistory(conversationId, 10, pendingMessage);
-    const ghostMessages = currentInstance?.ghostAuto
-        ? buildGhostRoutingConversationSnapshot(conversationId)
+    const inferenceMessages = currentInstance?.inferenceAuto
+        ? buildInferenceRoutingConversationSnapshot(conversationId)
         : [];
-    const ghostPreferences = currentInstance?.ghostAuto ? getResponsesGhostPreferencesPayload() : null;
-    const requestMeta = currentInstance?.ghostAuto ? getResponsesGhostRequestMetaPayload() : null;
+    const inferencePreferences = currentInstance?.inferenceAuto ? getResponsesInferencePreferencesPayload() : null;
+    const requestMeta = currentInstance?.inferenceAuto ? getResponsesInferenceRequestMetaPayload() : null;
     const sessionFields = requestContext?.requestControlFields || buildSessionControlRequestFields(requestInstance);
     const selectedReferenceArtifact = buildSelectedReferenceArtifactPayload(conversationId);
     const payload = {
@@ -1580,19 +1580,19 @@ async function sendViaResponsesStream(
     };
     const resolvedResponseId = String(responseId || '').trim() || buildCanonicalResponseId();
     payload.response_id = resolvedResponseId;
-    if (currentInstance?.ghostAuto) {
-        payload.ghost_route = true;
+    if (currentInstance?.inferenceAuto) {
+        payload.inference_route = true;
         payload.conversation_id = conversationId;
-        payload.ghost_messages = ghostMessages;
-        if (ghostPreferences) {
-            payload.ghost_preferences = ghostPreferences;
+        payload.inference_messages = inferenceMessages;
+        if (inferencePreferences) {
+            payload.inference_preferences = inferencePreferences;
         }
         if (requestMeta) {
             payload.request_meta = requestMeta;
         }
-        const ghostPreview = requestContext?.ghostPreview || buildGhostExecutionPreviewPayload(undefined, undefined, conversationId);
-        if (ghostPreview) {
-            payload.ghost_preview = ghostPreview;
+        const inferencePreview = requestContext?.inferencePreview || buildInferenceExecutionPreviewPayload(undefined, undefined, conversationId);
+        if (inferencePreview) {
+            payload.inference_preview = inferencePreview;
         }
     } else {
         payload.instance_id = targetInstanceId;
@@ -1965,7 +1965,7 @@ function startRequestProgressMonitor(instanceId, instance, context = 'chat', slo
 }
 
 
-function buildGhostRoutingStatusMessage(payload = {}) {
+function buildInferenceRoutingStatusMessage(payload = {}) {
     const resolvedInstanceId = String(payload.instance_id || '').trim();
     if (!resolvedInstanceId) return '';
     const externalTarget = requestLifecycleTargetIsExternal({
@@ -2009,7 +2009,7 @@ function buildGhostRoutingStatusMessage(payload = {}) {
         }.`
         : '';
     const reasonText = reason ? ` Reason: ${reason}` : '';
-    return `Ollmo routed this ${capabilityLabel} request to ${modelLabel} (${backendLabel}) via ${routeLabel}.${helperText}${contextText}${reasonText}`;
+    return `Fruth routed this ${capabilityLabel} request to ${modelLabel} (${backendLabel}) via ${routeLabel}.${helperText}${contextText}${reasonText}`;
 }
 
 // Send a message via Flask backend
@@ -2061,12 +2061,12 @@ async function sendMessage() {
 
     const conversationId = getActiveConversationId();
     const useResponsesTransport = isResponsesWorkbenchActive();
-    const useGhostAuto = useResponsesTransport && isResponsesWorkbenchAutoTarget();
-    const explicitTarget = useGhostAuto ? null : getActivePromptTargetInstance();
-    if (!useGhostAuto && !explicitTarget) return;
+    const useInferenceAuto = useResponsesTransport && isResponsesWorkbenchAutoTarget();
+    const explicitTarget = useInferenceAuto ? null : getActivePromptTargetInstance();
+    if (!useInferenceAuto && !explicitTarget) return;
     if (!queuedItems.length) {
-        const target = useGhostAuto
-            ? buildGhostAutoTargetInstance()
+        const target = useInferenceAuto
+            ? buildInferenceAutoTargetInstance()
             : explicitTarget;
         await sendSingleMessage(target.instance_id, message, null, true, '', {
             conversationId,
@@ -2111,8 +2111,8 @@ async function sendMessage() {
         const localPath = item.source === 'path' ? item.localPath : '';
         const label = item.label || attachment?.name || basenameFromPath(localPath) || `item ${idx + 1}`;
         updateGlobalModelStatus(`Processing ${idx + 1}/${queuedItems.length}: ${label}`);
-        const target = useGhostAuto
-            ? buildGhostAutoTargetInstance()
+        const target = useInferenceAuto
+            ? buildInferenceAutoTargetInstance()
             : explicitTarget;
         await sendSingleMessage(target.instance_id, message, attachment, false, localPath, {
             conversationId,
@@ -2134,7 +2134,7 @@ function getRequestedImageCount(instance) {
     return Math.min(8, Math.max(1, parseInt(state.settings.imageCount, 10) || 1));
 }
 
-function getExplicitGhostAutoImageCount(message = '') {
+function getExplicitInferenceAutoImageCount(message = '') {
     const text = String(message || '').trim().toLowerCase();
     if (!text) return 1;
     const match = text.match(/\b([1-8])\s+(images?|variations?|versions?|renders?|pictures?|shots|bilder|varianten|versionen)\b/);
@@ -2215,7 +2215,7 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
     let requestRegistered = false;
 
     let previewMonitorStarted = false;
-    let shouldResetGhostAutoRoute = false;
+    let shouldResetInferenceAutoRoute = false;
     let autoRouteReleasedForNextPrompt = false;
     let loadingMessageId = '';
     let activeLoadingMessageId = '';
@@ -2231,9 +2231,9 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
         releaseActiveRequestUiState();
         requestRegistered = false;
     };
-    if (currentInstance.ghostAuto) {
+    if (currentInstance.inferenceAuto) {
         if (hasPendingConversationPreview(conversationId, { excludeRequestId: requestId })) {
-            updateGlobalModelStatus('Ollmo is already resolving another request.');
+            updateGlobalModelStatus('Fruth is already resolving another request.');
             return;
         }
         registerPendingRequest({
@@ -2245,13 +2245,13 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
         setInstanceRequestPending(requestKey, true);
         startRequestProgressMonitor(requestKey, currentInstance, 'chat');
         previewMonitorStarted = true;
-        updateGlobalModelStatus('Ollmo is resolving the route...');
+        updateGlobalModelStatus('Fruth is resolving the route...');
         try {
-            await ensureGhostAutoResolvedTarget(message, attachment, localPath, conversationId);
+            await ensureInferenceAutoResolvedTarget(message, attachment, localPath, conversationId);
         } catch (error) {
             releasePendingRequestState();
             resetResponsesWorkbenchAutoRoute();
-            const errorMsg = error.response?.data?.error || error.message || 'Ollmo preview failed.';
+            const errorMsg = error.response?.data?.error || error.message || 'Fruth preview failed.';
             updateGlobalModelStatus(errorMsg);
             addMessageToConversation(conversationId, 'assistant', `Sorry, error: ${errorMsg}`);
             return;
@@ -2263,7 +2263,7 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
         if (requestRegistered) {
             releasePendingRequestState();
         }
-        if (currentInstance.ghostAuto) {
+        if (currentInstance.inferenceAuto) {
             resetResponsesWorkbenchAutoRoute();
         }
         updateGlobalModelStatus('No resolved target instance is available for this request.');
@@ -2271,7 +2271,7 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
     }
     const capability = normalizeCapability(requestInstance?.capability || 'chat');
     const explicitBatchPrompts = !attachment && !localPath
-        && (currentInstance.ghostAuto || isImageGenerationInstance(requestInstance))
+        && (currentInstance.inferenceAuto || isImageGenerationInstance(requestInstance))
         ? parseExplicitBatchPrompts(message)
         : [];
     const usesResponsesStream = capability === 'chat'
@@ -2301,7 +2301,7 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
     }
     if (capability === 'chat' && hasPendingConversationChatRequest(conversationId, { excludeRequestId: requestId })) {
         releasePendingRequestState();
-        if (currentInstance.ghostAuto) {
+        if (currentInstance.inferenceAuto) {
             resetResponsesWorkbenchAutoRoute();
         }
         updateGlobalModelStatus('A chat request is already running in this conversation.');
@@ -2310,7 +2310,7 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
     if (capability !== 'chat' && hasPendingRequestForInstance(requestInstance.instance_id, { excludeRequestId: requestId })) {
         const displayModel = formatModelDisplayName(requestInstance.model || requestInstance.instance_id);
         releasePendingRequestState();
-        if (currentInstance.ghostAuto) {
+        if (currentInstance.inferenceAuto) {
             resetResponsesWorkbenchAutoRoute();
         }
         updateGlobalModelStatus(`A request is already running for ${displayModel}.`);
@@ -2337,10 +2337,10 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
     requestContext = buildRequestExecutionContext(
         requestInstance,
         {
-            ghostPreview: currentInstance.ghostAuto
-                ? buildGhostExecutionPreviewPayload(requestInstance, state.responsesWorkbench.ghostResolvedRoute, conversationId)
+            inferencePreview: currentInstance.inferenceAuto
+                ? buildInferenceExecutionPreviewPayload(requestInstance, state.responsesWorkbench.inferenceResolvedRoute, conversationId)
                 : null,
-            requestMeta: currentInstance.ghostAuto ? getResponsesGhostRequestMetaPayload() : null,
+            requestMeta: currentInstance.inferenceAuto ? getResponsesInferenceRequestMetaPayload() : null,
             requestId,
             transport: effectiveTransport,
             message,
@@ -2351,7 +2351,7 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
             batchPrompts: explicitBatchPrompts,
         }
     );
-    if (requestContext && !currentInstance.ghostAuto && requestLifecycleTargetIsExternal(requestInstance)) {
+    if (requestContext && !currentInstance.inferenceAuto && requestLifecycleTargetIsExternal(requestInstance)) {
         requestContext.externalAttachments = Array.isArray(options.externalAttachments)
             ? options.externalAttachments.filter(Boolean)
             : attachment
@@ -2363,7 +2363,7 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
                 ? [localPath]
                 : [];
     }
-    if (currentInstance.ghostAuto) {
+    if (currentInstance.inferenceAuto) {
         resetResponsesWorkbenchAutoRoute();
         autoRouteReleasedForNextPrompt = true;
     }
@@ -2433,15 +2433,15 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
         startRequestProgressMonitor(requestKey, requestInstance, 'chat');
     }
 
-    let ghostRoutingStatusMessage = '';
+    let inferenceRoutingStatusMessage = '';
     try {
         const imageBatchCount = explicitBatchPrompts.length
             ? 1
             : (
                 !attachment && !localPath
                     ? (
-                        currentInstance.ghostAuto && isImageGenerationInstance(requestInstance)
-                            ? getExplicitGhostAutoImageCount(message)
+                        currentInstance.inferenceAuto && isImageGenerationInstance(requestInstance)
+                            ? getExplicitInferenceAutoImageCount(message)
                             : getRequestedImageCount(requestInstance)
                     )
                     : 1
@@ -2516,9 +2516,9 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
         } else {
             applyResolvedRequestSnapshot(responsePayload, loadingMessageId);
         }
-        if (currentInstance.ghostAuto) {
-            ghostRoutingStatusMessage = buildGhostRoutingStatusMessage(responsePayload);
-            shouldResetGhostAutoRoute = !autoRouteReleasedForNextPrompt;
+        if (currentInstance.inferenceAuto) {
+            inferenceRoutingStatusMessage = buildInferenceRoutingStatusMessage(responsePayload);
+            shouldResetInferenceAutoRoute = !autoRouteReleasedForNextPrompt;
         }
         if ((attachment || localPath) && clearAttachmentOnSuccess) {
             clearPendingAttachment();
@@ -2526,19 +2526,19 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
     } catch (error) {
         console.error('Error sending message:', error);
         let missingSessionControls = error.response?.data?.missing_session_controls || null;
-        if (currentInstance.ghostAuto && missingSessionControls?.instance) {
-            let syncResult = syncGhostMissingSessionControlsState(missingSessionControls);
+        if (currentInstance.inferenceAuto && missingSessionControls?.instance) {
+            let syncResult = syncInferenceMissingSessionControlsState(missingSessionControls);
             if (!syncResult.validation) {
                 try {
                     requestContext = buildRequestExecutionContext(
                         missingSessionControls.instance,
                         {
-                            ghostPreview: buildGhostExecutionPreviewPayload(
+                            inferencePreview: buildInferenceExecutionPreviewPayload(
                                 missingSessionControls.instance,
-                                state.responsesWorkbench.ghostResolvedRoute,
+                                state.responsesWorkbench.inferenceResolvedRoute,
                                 conversationId
                             ),
-                            requestMeta: currentInstance.ghostAuto ? getResponsesGhostRequestMetaPayload() : null,
+                            requestMeta: currentInstance.inferenceAuto ? getResponsesInferenceRequestMetaPayload() : null,
                             requestId,
                             transport: effectiveTransport,
                             message,
@@ -2585,24 +2585,24 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
                         retryPayload,
                         resolvedRetrySnapshot || requestContext?.requestSnapshot || null
                     );
-                    if (currentInstance.ghostAuto) {
-                        ghostRoutingStatusMessage = buildGhostRoutingStatusMessage(retryPayload);
-                        shouldResetGhostAutoRoute = !autoRouteReleasedForNextPrompt;
+                    if (currentInstance.inferenceAuto) {
+                        inferenceRoutingStatusMessage = buildInferenceRoutingStatusMessage(retryPayload);
+                        shouldResetInferenceAutoRoute = !autoRouteReleasedForNextPrompt;
                     }
                     if ((attachment || localPath) && clearAttachmentOnSuccess) {
                         clearPendingAttachment();
                     }
                     return;
                 } catch (retryError) {
-                    console.error('Ghost auto-retry after inferred controls failed:', retryError);
+                    console.error('interpretive inference auto-retry after inferred controls failed:', retryError);
                     error = retryError;
                     missingSessionControls = retryError.response?.data?.missing_session_controls || null;
-                    if (currentInstance.ghostAuto && missingSessionControls?.instance) {
-                        syncResult = syncGhostMissingSessionControlsState(missingSessionControls);
+                    if (currentInstance.inferenceAuto && missingSessionControls?.instance) {
+                        syncResult = syncInferenceMissingSessionControlsState(missingSessionControls);
                     }
                 }
             }
-            if (currentInstance.ghostAuto && missingSessionControls?.instance) {
+            if (currentInstance.inferenceAuto && missingSessionControls?.instance) {
                 const validation = syncResult.validation;
                 const effectiveMissingFields = validation?.fieldKey
                     ? [{ field_key: validation.fieldKey, message: validation.message }]
@@ -2669,8 +2669,8 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
                 true
             );
         }
-        if (currentInstance.ghostAuto) {
-            shouldResetGhostAutoRoute = !autoRouteReleasedForNextPrompt;
+        if (currentInstance.inferenceAuto) {
+            shouldResetInferenceAutoRoute = !autoRouteReleasedForNextPrompt;
         }
     } finally {
         if (keepPendingRequestForRecovery) {
@@ -2678,10 +2678,10 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
         } else {
             releasePendingRequestState();
         }
-        if (ghostRoutingStatusMessage) {
-            updateGlobalModelStatus(ghostRoutingStatusMessage);
+        if (inferenceRoutingStatusMessage) {
+            updateGlobalModelStatus(inferenceRoutingStatusMessage);
         }
-        if (shouldResetGhostAutoRoute) {
+        if (shouldResetInferenceAutoRoute) {
             resetResponsesWorkbenchAutoRoute();
         }
     }

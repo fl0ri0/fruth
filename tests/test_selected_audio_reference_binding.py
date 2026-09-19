@@ -7,10 +7,10 @@ import wave
 from pathlib import Path
 from types import SimpleNamespace
 import pytest
-from ollmo_server.infer_runtime import InferRuntimeOwner
-from ollmo_services.artifact_registry import find_artifact_registry_record_by_artifact_ref
-from ollmo_core.transports import resolve_saved_artifact_path
-from ollmo_core.inference import InferArtifacts, _run_speech_to_text
+from fruth_server.infer_runtime import InferRuntimeOwner
+from fruth_services.artifact_registry import find_artifact_registry_record_by_artifact_ref
+from fruth_core.transports import resolve_saved_artifact_path
+from fruth_core.inference import InferArtifacts, _run_speech_to_text
 
 @pytest.fixture
 def binding(tmp_path):
@@ -22,7 +22,7 @@ def binding(tmp_path):
     a=dict(type='audio',artifact_id='audio_source',artifact_ref='artifact:audio_source',
            path=str(source),source_response_id='source',branch_id='producer',phase_id='phase-1')
     payload=dict(id='source',artifacts=[copy.deepcopy(a)],response_frame={'frame_id':'source:frame-2','frame_sequence':2},
-                 tts_audio_integrity_evidence=dict(kind='ollmo.tts_audio_integrity_evidence',authority='runtime_deterministic_audio_verification',artifact_path=str(source),artifact_sha256=digest,status='passed'))
+                 tts_audio_integrity_evidence=dict(kind='fruth.tts_audio_integrity_evidence',authority='runtime_deterministic_audio_verification',artifact_path=str(source),artifact_sha256=digest,status='passed'))
     registry=dict(artifact_ref=a['artifact_ref'],artifact_id=a['artifact_id'],artifact=copy.deepcopy(a),artifact_alias_refs=[a['artifact_ref']],provenance={'source':{'response_id':'source','branch_id':'producer','phase_id':'phase-1'}})
     ledger=root/'registry.jsonl'
     ledger.write_text(json.dumps(registry)+'\n')
@@ -101,7 +101,7 @@ def test_same_response_direct_stt_does_not_require_retained_lookup(binding):
 @pytest.mark.parametrize('corrupt', [False, True])
 @pytest.mark.parametrize('other_audio_count', [0, 4])
 def test_responses_preparation_and_infer_api_use_verified_copy(binding,monkeypatch,corrupt,other_audio_count):
-    import ollmo_webserver as web
+    import fruth_webserver as web
     b=binding
     web.app.config['TESTING']=True
     monkeypatch.setattr(web,'ARTIFACT_REGISTRY_LEDGER',b.ledger)

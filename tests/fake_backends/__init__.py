@@ -1,4 +1,4 @@
-"""Test-only fake backend harness for Ollmo response truth tests."""
+"""Test-only fake backend harness for Fruth response truth tests."""
 
 from .harness import FakeBackendHarness
 

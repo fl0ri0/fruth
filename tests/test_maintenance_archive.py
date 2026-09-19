@@ -12,7 +12,7 @@ from scripts import maintenance_archive as archive
 from test_clean_repo_state_policy import make_isolated_cleanup_repo, run_isolated_cleanup
 
 
-EVIDENCE_ROOTS = ('state/self_attack', 'state/benchmarks', 'state/diagnostics', 'ollmo_research')
+EVIDENCE_ROOTS = ('state/self_attack', 'state/benchmarks', 'state/diagnostics', 'fruth_research')
 
 
 def evidence_fixture(root: Path) -> dict[str, bytes]:
@@ -37,7 +37,7 @@ def evidence_fixture(root: Path) -> dict[str, bytes]:
             f'{relative}/unknown/fixture.bin': b'\x00\xffunknown',
             f'{relative}/loose-evidence.json': b'{}',
         })
-    for relative in ('scripts/reusable.py', 'tests/test_reusable.py', 'ollmo_services/owner.py', 'docs/guide.md', 'plans/note.md'):
+    for relative in ('scripts/reusable.py', 'tests/test_reusable.py', 'fruth_services/owner.py', 'docs/guide.md', 'plans/note.md'):
         files[relative] = b'active repository implementation\n'
     for relative, body in files.items():
         target = root / relative
@@ -47,11 +47,11 @@ def evidence_fixture(root: Path) -> dict[str, bytes]:
     return files
 
 
-@pytest.mark.parametrize('flags', [(), ('--full',), ('--empty-state',), ('--forget-ghost',), ('--archive',), ('--archive', '--full'), ('--archive', '--full', '--forget-ghost')])
+@pytest.mark.parametrize('flags', [(), ('--full',), ('--empty-state',), ('--forget-inference',), ('--archive',), ('--archive', '--full'), ('--archive', '--full', '--forget-inference')])
 def test_cleanup_preserves_all_evidence_and_reusable_code(tmp_path: Path, flags: tuple) -> None:
     root, env, _ = make_isolated_cleanup_repo(tmp_path)
     files = evidence_fixture(root)
-    old_cache = root / '.ollmo_archiv/old/state/self_attack/old/__pycache__/proof.pyc'
+    old_cache = root / '.fruth_archiv/old/state/self_attack/old/__pycache__/proof.pyc'
     old_cache.parent.mkdir(parents=True)
     old_cache.write_bytes(b'old archive evidence')
     ordinary_cache = root / 'scripts/__pycache__/generated.pyc'
@@ -66,7 +66,7 @@ def test_cleanup_preserves_all_evidence_and_reusable_code(tmp_path: Path, flags:
     assert not (root / 'artifacts/bundles/keep.html').exists()
     assert (root / 'artifacts/bundles').is_dir()
     if '--archive' in flags:
-        destination, = [p for p in (root / '.ollmo_archiv').iterdir() if p.name != 'old']
+        destination, = [p for p in (root / '.fruth_archiv').iterdir() if p.name != 'old']
         for relative, body in files.items():
             if relative.startswith(EVIDENCE_ROOTS):
                 assert (destination / relative).read_bytes() == body
@@ -86,14 +86,14 @@ def test_preview_lists_evidence_bytes_and_leaves_sources_unchanged(tmp_path: Pat
     result = run_isolated_cleanup(root, env, '--archive', '--dry-run')
     assert result.returncode == 0, result.stderr
     for relative in EVIDENCE_ROOTS:
-        if relative == 'ollmo_research':
-            assert 'snapshot protected path: ollmo_research' in result.stdout
+        if relative == 'fruth_research':
+            assert 'snapshot protected path: fruth_research' in result.stdout
             continue
         assert f'snapshot evidence (source stays active): {relative}/completed' in result.stdout
         assert f'snapshot evidence (source stays active): {relative}/active' in result.stdout
     assert 'selected_copy_bytes=' in result.stdout
     assert 'safety_margin_bytes=' in result.stdout
-    assert not (root / '.ollmo_archiv').exists()
+    assert not (root / '.fruth_archiv').exists()
     for relative, body in files.items():
         assert (root / relative).read_bytes() == body
 
@@ -130,7 +130,7 @@ def test_archive_failure_never_reaches_destructive_clean(tmp_path: Path, failure
     if failure == 'space':
         assert not args_file.exists()  # preflight precedes retention writes and listener stops
         assert '1. Stopping' not in result.stdout
-        assert not (root / '.ollmo_archiv').exists()
+        assert not (root / '.fruth_archiv').exists()
     if failure == 'move':
         assert (root / 'logs/runtime.log').read_bytes() == b'runtime log'
 
@@ -138,7 +138,7 @@ def test_archive_failure_never_reaches_destructive_clean(tmp_path: Path, failure
 def test_preflight_estimates_bytes_margin_and_rejects_collision(tmp_path: Path, monkeypatch, capsys) -> None:
     evidence_fixture(tmp_path)
     size = sum(archive.file_bytes(archive.inventory(tmp_path / path)) for path in EVIDENCE_ROOTS)
-    destination = tmp_path / '.ollmo_archiv/run'
+    destination = tmp_path / '.fruth_archiv/run'
     required = size + max(archive.MIN_FREE_MARGIN_BYTES, (size * archive.COPY_MARGIN_PERCENT + 99) // 100)
     monkeypatch.setattr(archive.shutil, 'disk_usage', lambda path: SimpleNamespace(free=required - 1))
     with pytest.raises(ValueError, match='Insufficient'):
@@ -192,10 +192,10 @@ def test_copy_scope_and_archive_base_symlinks_fail_safely(tmp_path: Path) -> Non
     (root / 'state').mkdir()
     (root / 'state/self_attack').symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError, match='symlink'):
-        archive.preflight(root, root / '.ollmo_archiv/run', ['state/self_attack'])
-    (root / '.ollmo_archiv').symlink_to(outside, target_is_directory=True)
+        archive.preflight(root, root / '.fruth_archiv/run', ['state/self_attack'])
+    (root / '.fruth_archiv').symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError, match='repo-local'):
-        archive.preflight(root, root / '.ollmo_archiv/run', [])
+        archive.preflight(root, root / '.fruth_archiv/run', [])
 
 
 def test_missing_artifact_buckets_recreated_without_entering_research(tmp_path: Path) -> None:

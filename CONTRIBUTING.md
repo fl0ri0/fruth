@@ -1,8 +1,9 @@
 # Project Participation
 
-Ollmo is published so people can inspect it, use it, study it, reproduce
-results, and make independent forks. It is not currently operated as a managed
-community project.
+Fruth is an experimental project. Its project repository is
+[fl0ri0/fruth](https://github.com/fl0ri0/fruth); the source is intended for
+inspection, use, study, reproduction and independent forks. Fruth is not
+currently operated as a managed community project.
 
 The project is maintained by one independent person with limited capacity.
 Public issues and pull requests are therefore not solicited, and
@@ -11,12 +12,12 @@ merged, or supported. There is no response-time or support commitment.
 
 ## Authorship and Maintenance
 
-Ollmo was conceived, designed, created, built, and developed by
-[@fl0ri0](https://github.com/fl0ri0). fl0ri0 currently maintains Ollmo and
+Fruth was conceived, designed, created, built, and developed by
+[@fl0ri0](https://github.com/fl0ri0). fl0ri0 currently maintains Fruth and
 decides release scope, project direction, and whether any external change is
 considered. This boundary may change only when real maintainer capacity exists.
 
-Ollmo is human-led and AI-enhanced. AI tools have helped explore, implement,
+Fruth is human-led and AI-enhanced. AI tools have helped explore, implement,
 test, and document the project; product direction and release decisions remain
 with fl0ri0. The project has no company, research-lab, or funded-team
 backing, and publication does not claim a formal security audit or support
@@ -32,13 +33,13 @@ is documented in [`docs/TESTING_PROTOCOL.md`](docs/TESTING_PROTOCOL.md).
 Forks, independent experiments, benchmark work, and research replications are
 welcome under the repository license. Preserve enough environment, model,
 prompt, configuration, and artifact information for others to understand what
-was tested, and cite Ollmo using [`CITATION.cff`](CITATION.cff) when its ideas,
+was tested, and cite Fruth using [`CITATION.cff`](CITATION.cff) when its ideas,
 software, or evaluation artifacts contribute to published work. Do not publish
 private prompts, credentials, or user data.
 
 ## Runtime Truth Is the Acceptance Boundary
 
-Ollmo does not accept model prose as proof that work happened. Changes in a
+Fruth does not accept model prose as proof that work happened. Changes in a
 fork that touch responses, artifacts, routing, or lifecycle state should
 preserve the authoritative runtime surfaces: outputs, artifacts, response
 frames, lifecycle state, closure review, and late-fill state.
@@ -58,7 +59,7 @@ The project is licensed under the Apache License 2.0. If someone nevertheless
 submits an intentional contribution for possible inclusion, they retain
 copyright in that contribution. Unless explicitly stated otherwise, the
 submission is provided under the Apache License 2.0, consistent with Section 5
-of that license. Submission still creates no review or merge commitment. Ollmo
+of that license. Submission still creates no review or merge commitment. Fruth
 does not currently require copyright assignment, a Contributor License
 Agreement, or a Developer Certificate of Origin.
 
@@ -67,7 +68,7 @@ submitting it for inclusion.
 
 ## Research, Talks, and Collaboration
 
-For research collaboration, talks, panels, or work around Ollmo, use the
+For research collaboration, talks, panels, or work around Fruth, use the
 public contact methods on [@fl0ri0's GitHub profile](https://github.com/fl0ri0).
 Contact is an invitation to make a respectful approach, not a promise of a
 response, technical support, or project management.

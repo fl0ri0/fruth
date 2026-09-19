@@ -4,11 +4,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_server.late_fill_runtime import LateFillRuntimeOwner
-from ollmo_server.responses_request_runtime import ResponsesRequestRuntimeOwner
-from ollmo_server.responses_runtime import late_fill_has_actionable_repair_work
-from ollmo_services.responses import build_canonical_response_artifacts
-from ollmo_webserver import _normalize_late_fill_branches
+from fruth_server.late_fill_runtime import LateFillRuntimeOwner
+from fruth_server.responses_request_runtime import ResponsesRequestRuntimeOwner
+from fruth_server.responses_runtime import late_fill_has_actionable_repair_work
+from fruth_services.responses import build_canonical_response_artifacts
+from fruth_webserver import _normalize_late_fill_branches
 
 
 class WebArtifactBindingGuardTests(unittest.TestCase):
@@ -85,7 +85,7 @@ class WebArtifactBindingGuardTests(unittest.TestCase):
 
     @staticmethod
     def _terminal_json_repair_state():
-        target_path = '/tmp/ollmo-tests/pricing.json'
+        target_path = '/tmp/fruth-tests/pricing.json'
         open_check = {
             'check_kind': 'web_runtime_binding',
             'status': 'pending',
@@ -465,7 +465,7 @@ class WebArtifactBindingGuardTests(unittest.TestCase):
         for index in range(9):
             branch_id = f'branch-pricing-{index}'
             phase_id = f'phase-pricing-{index}'
-            target_path = f'/tmp/ollmo-tests/pricing-{index}.json'
+            target_path = f'/tmp/fruth-tests/pricing-{index}.json'
             open_check = {
                 'check_kind': 'web_runtime_binding',
                 'status': 'pending',
@@ -533,7 +533,7 @@ class WebArtifactBindingGuardTests(unittest.TestCase):
         )
         self.assertEqual(
             [branch['text_artifact_target_path'] for branch in pending],
-            [f'/tmp/ollmo-tests/pricing-{index}.json' for index in range(9)],
+            [f'/tmp/fruth-tests/pricing-{index}.json' for index in range(9)],
         )
 
     def test_terminal_materialization_repair_stops_after_one_successor_generation(self):
@@ -591,9 +591,9 @@ class WebArtifactBindingGuardTests(unittest.TestCase):
 
     def test_graph_feedback_and_terminal_json_repair_are_merged_once(self):
         open_check, demoted_branch = self._terminal_json_repair_state()
-        css_target = '/tmp/ollmo-tests/styles.css'
+        css_target = '/tmp/fruth-tests/styles.css'
         css_contract = {
-            'kind': 'ollmo.repair_rebuild_contract',
+            'kind': 'fruth.repair_rebuild_contract',
             'contract_id': 'repair-contract-branch-css',
             'status': 'promoted',
             'promotion_source': 'graph_closure_review',
@@ -655,7 +655,7 @@ class WebArtifactBindingGuardTests(unittest.TestCase):
                 'graph_closure_review': {
                     'status': 'pending',
                     'checks': [css_item],
-                    'ghost_repair_feedback': feedback,
+                    'inference_repair_feedback': feedback,
                 },
                 'request_phase_graph': {
                     'downstream_branches': [],

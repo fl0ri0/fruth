@@ -1,33 +1,43 @@
 import unittest
 
-from ollmo_g.ghost_mode_compat import (
-    build_legacy_mode_catalog,
-    normalize_legacy_mode_hint,
-    semantic_roles_for_legacy_mode,
-)
-from ollmo_g.semantic_role_profile import (
+from fruth_inference.semantic_role_profile import (
     build_self_modification_contract,
     build_semantic_role_profile,
 )
-from ollmo_g.semantic_roles import build_semantic_role_catalog, semantic_role
+from fruth_inference.semantic_roles import build_semantic_role_catalog, normalize_semantic_role_ids, semantic_role
 
 
 class SemanticRoleTests(unittest.TestCase):
-    def test_profile_respects_explicit_request_alias_without_old_deliberation_layer(self):
+    def test_internal_intent_hint_synonyms_preserve_original_orientation(self):
+        expected = {
+            'worker': 'worker', 'build': 'worker', 'builder': 'worker', 'execute': 'worker',
+            'improviser': 'improviser', 'creative': 'improviser', 'improvise': 'improviser',
+            'repair': 'repair', 'fix': 'repair', 'healer': 'repair',
+            'explorer': 'explorer', 'investigate': 'explorer', 'research': 'explorer',
+        }
+        for hint, mode in expected.items():
+            for value in (hint, '  ' + hint.upper() + '  '):
+                with self.subTest(hint=value):
+                    profile = build_semantic_role_profile({'intent': {'temperament_hint': value}})
+                    self.assertEqual(profile['mode'], mode)
+                    self.assertEqual(profile['mode_source'], 'intent')
+                    self.assertEqual(profile['runtime_orientation']['runtime_effect'], 'none')
+
+    def test_profile_respects_explicit_role_ids_without_runtime_authority(self):
         profile = build_semantic_role_profile(
             {
                 'runtime': {
-                    'ghost_issues': [],
-                    'ghost_self_healing_hints': [],
+                    'inference_issues': [],
+                    'inference_self_healing_hints': [],
                 }
             },
             request_meta={
-                'ghost_mode': 'repair',
+                'semantic_role_ids': ['repairer', 'evidence_reasoner', 'doubt_challenger'],
             },
         )
 
-        self.assertEqual(profile['kind'], 'ollmo.semantic_role_profile')
-        self.assertEqual(profile['mode'], 'repair')
+        self.assertEqual(profile['kind'], 'fruth.semantic_role_profile')
+        self.assertEqual(profile['mode'], 'explicit_roles')
         self.assertEqual(profile['mode_source'], 'request')
         self.assertIn('repairer', profile['semantic_role_ids'])
         self.assertIn('evidence_reasoner', profile['semantic_role_ids'])
@@ -43,8 +53,8 @@ class SemanticRoleTests(unittest.TestCase):
             {
                 'prompt': 'Imagine a mystical village and write a lyrical story about it.',
                 'runtime': {
-                    'ghost_issues': [],
-                    'ghost_self_healing_hints': [],
+                    'inference_issues': [],
+                    'inference_self_healing_hints': [],
                 },
             },
         )
@@ -58,8 +68,8 @@ class SemanticRoleTests(unittest.TestCase):
         profile = build_semantic_role_profile(
             {
                 'runtime': {
-                    'ghost_issues': [],
-                    'ghost_self_healing_hints': [{'kind': 'avoid_degraded_runtime_paths'}],
+                    'inference_issues': [],
+                    'inference_self_healing_hints': [{'kind': 'avoid_degraded_runtime_paths'}],
                 }
             },
             retry_failure={
@@ -73,13 +83,10 @@ class SemanticRoleTests(unittest.TestCase):
         self.assertTrue(profile['signals']['retry_failure_active'])
         self.assertEqual(profile['runtime_orientation']['prioritize_recovery'], 'advisory_orientation_only')
 
-    def test_catalogs_expose_roles_and_legacy_modes_as_aliases(self):
-        mode_catalog = build_legacy_mode_catalog()
+    def test_catalog_exposes_canonical_roles_and_self_modification_boundary(self):
         role_catalog = build_semantic_role_catalog()
         contract = build_self_modification_contract()
 
-        self.assertEqual([item['mode'] for item in mode_catalog], ['repair', 'worker', 'explorer', 'improviser'])
-        self.assertTrue(all(item['compatibility_only'] for item in mode_catalog))
         self.assertIn('possibility_expander', {item['role_id'] for item in role_catalog})
         self.assertIn('doubt_challenger', {item['role_id'] for item in role_catalog})
         self.assertIn('transition_committer', {item['role_id'] for item in role_catalog})
@@ -87,12 +94,11 @@ class SemanticRoleTests(unittest.TestCase):
         self.assertIn('artifact_plans', contract['allowed_surfaces'])
 
     def test_old_role_names_normalize_to_global_semantic_roles(self):
-        self.assertEqual(normalize_legacy_mode_hint('creative'), 'improviser')
         self.assertEqual(semantic_role('coder')['role_id'], 'materializer')
         self.assertEqual(semantic_role('risk-analyst')['role_id'], 'risk_sentinel')
         self.assertEqual(semantic_role('Sokratischer Interviewer')['role_id'], 'doubt_challenger')
         self.assertEqual(
-            [item['role_id'] for item in semantic_roles_for_legacy_mode('explorer')],
+            normalize_semantic_role_ids(['possibility_expander', 'structural_planner', 'integrator']),
             ['possibility_expander', 'structural_planner', 'integrator'],
         )
 
@@ -139,7 +145,7 @@ class SemanticRoleTests(unittest.TestCase):
             any('every requested artifact kind' in question for question in quality_reviewer['focus_questions'])
         )
 
-    def test_legacy_role_aliases_do_not_gain_runtime_authority(self):
+    def test_explicit_roles_do_not_gain_runtime_authority(self):
         expected_boundary = {
             'planner_timeout': 'explicit_developer_flags_only',
             'branch_topology': 'runtime_contracts_only',
@@ -151,9 +157,9 @@ class SemanticRoleTests(unittest.TestCase):
             'freeze': 'closure_truth_only',
             'runtime_effect': 'none',
         }
-        for ghost_mode in ('repair', 'worker', 'explorer', 'improviser'):
-            with self.subTest(ghost_mode=ghost_mode):
-                profile = build_semantic_role_profile({}, request_meta={'ghost_mode': ghost_mode})
+        for semantic_role_ids in ([role['role_id']] for role in build_semantic_role_catalog()):
+            with self.subTest(semantic_role_ids=semantic_role_ids):
+                profile = build_semantic_role_profile({}, request_meta={'semantic_role_ids': semantic_role_ids})
 
                 self.assertEqual(profile['runtime_orientation']['planner_timeout_bonus_sec'], 0)
                 self.assertFalse(profile['runtime_orientation']['allow_branching'])

@@ -1441,7 +1441,7 @@ function sanitizeRequestSnapshotAttachment(value) {
     return Object.values(payload).some((item) => item !== null && item !== '') ? payload : null;
 }
 
-function sanitizeRequestSnapshotGhostPreview(value) {
+function sanitizeRequestSnapshotInferencePreview(value) {
     if (!value || typeof value !== 'object') return null;
     const payload = {
         instance_id: String(value.instance_id || value.instanceId || '').trim() || null,
@@ -1461,7 +1461,7 @@ function sanitizeRequestSnapshotGhostPreview(value) {
 function sanitizeRequestSnapshotRequestMeta(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const payload = {
-        ghost_mode: String(value.ghost_mode || value.ghostMode || '').trim().toLowerCase() || null,
+        semantic_role_ids: Array.isArray(value.semantic_role_ids) ? value.semantic_role_ids.filter((item) => typeof item === 'string') : [],
         capability_hint: String(value.capability_hint || value.capabilityHint || '').trim().toLowerCase() || null,
         language_hint: String(value.language_hint || value.languageHint || '').trim().toLowerCase() || null,
         developer_flags: sanitizeSnapshotScalarMap(
@@ -1523,7 +1523,7 @@ function sanitizeRequestSnapshot(value) {
             value.developer_diagnostics
             || value.developerDiagnostics
         ),
-        ghost_preview: sanitizeRequestSnapshotGhostPreview(value.ghost_preview || value.ghostPreview),
+        inference_preview: sanitizeRequestSnapshotInferencePreview(value.inference_preview || value.inferencePreview),
     };
     if (batchPrompts.length) {
         payload.batch_prompts = batchPrompts;
@@ -1545,7 +1545,7 @@ function buildRequestSnapshot(requestInstance, {
     conversationId = '',
     responseId = '',
     requestControlFields = null,
-    ghostPreview = null,
+    inferencePreview = null,
     requestMeta = null,
     batchPrompts = [],
 } = {}) {
@@ -1585,7 +1585,7 @@ function buildRequestSnapshot(requestInstance, {
         settings: sanitizeSettingsObject(state.settings),
         request_meta: requestMeta,
         reference_artifacts: selectedReferenceArtifacts,
-        ghost_preview: ghostPreview,
+        inference_preview: inferencePreview,
         batch_prompts: batchPrompts,
     });
 }
@@ -2192,7 +2192,7 @@ function sanitizeMessageLateFill(value) {
     const normalizeWorkspacePath = (pathValue) => {
         const normalized = String(pathValue || '').trim().replace(/\\/g, '/');
         if (!normalized) return null;
-        const marker = '/ollmo/';
+        const marker = '/fruth/';
         const markerIndex = normalized.lastIndexOf(marker);
         if (markerIndex >= 0) {
             return normalized.slice(markerIndex + marker.length);
@@ -2464,16 +2464,16 @@ function assistantOutputTextHasSemanticReviewProtocol(value = '') {
     const normalized = String(value || '').trim().toLowerCase().replace(/\r\n?/g, '\n');
     if (!normalized) return false;
     const hasReviewOpener = normalized.includes(
-        'run a whole-turn semantic closure review for the current ollmo response.'
+        'run a whole-turn semantic closure review for the current fruth response.'
     ) || normalized.includes(
-        'run a branch-local semantic review for the current ollmo response graph.'
+        'run a branch-local semantic review for the current fruth response graph.'
     );
     if (!hasReviewOpener) return false;
     const protocolMarkers = [
         'authority boundary:',
         'you are a semantic reviewer',
         'return exactly one json object',
-        '"kind": "ollmo.semantic_review_verdict"',
+        '"kind": "fruth.semantic_review_verdict"',
     ];
     return protocolMarkers.filter((marker) => normalized.includes(marker)).length >= 3;
 }
@@ -2773,7 +2773,7 @@ function formatAssistantProvenanceText(message = {}, conversationId = '') {
     const externalChatGPT = isExternalChatGPTProvenance(provenance);
     const parts = [];
     if (externalChatGPT) {
-        parts.push('Answered by ChatGPT through Ollmo (via Codex)');
+        parts.push('Answered by ChatGPT through Fruth (via Codex)');
         parts.push('· automatic model');
     } else {
         if (provenance.model) {
@@ -2788,26 +2788,26 @@ function formatAssistantProvenanceText(message = {}, conversationId = '') {
     if (provenance.routeSource && !externalChatGPT) {
         if (provenance.routeSource === 'heuristic') {
             if (provenance.routeRouterModel) {
-                parts.push(`via heuristic after Ollmo attempt (${formatModelDisplayName(provenance.routeRouterModel)})`);
+                parts.push(`via heuristic after Fruth attempt (${formatModelDisplayName(provenance.routeRouterModel)})`);
             } else {
                 parts.push('via heuristic');
             }
         } else if (provenance.routeSource === 'self_heal') {
             if (provenance.routeRouterModel) {
-                parts.push(`via self-heal after Ollmo attempt (${formatModelDisplayName(provenance.routeRouterModel)})`);
+                parts.push(`via self-heal after Fruth attempt (${formatModelDisplayName(provenance.routeRouterModel)})`);
             } else {
                 parts.push('via self-heal');
             }
         } else if (provenance.routeSource === 'embedding_tiebreak') {
             if (provenance.routeRouterModel) {
-                parts.push(`via embedding tie-break after Ollmo attempt (${formatModelDisplayName(provenance.routeRouterModel)})`);
+                parts.push(`via embedding tie-break after Fruth attempt (${formatModelDisplayName(provenance.routeRouterModel)})`);
             } else {
                 parts.push('via embedding tie-break');
             }
         } else if (provenance.routeRouterModel) {
-            parts.push(`via Ollmo route (${formatModelDisplayName(provenance.routeRouterModel)})`);
+            parts.push(`via Fruth route (${formatModelDisplayName(provenance.routeRouterModel)})`);
         } else {
-            parts.push('via Ollmo route');
+            parts.push('via Fruth route');
         }
     }
     if (provenance.contextMode) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and verify deterministic Ollmo source release archives."""
+"""Build and verify deterministic Fruth source release archives."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from typing import Iterable, Sequence
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-VERSION_FILE = Path('ollmo_core/version.py')
+VERSION_FILE = Path('fruth_core/version.py')
 MANIFEST_NAME = 'MANIFEST.sha256'
 
 # Explicit transport-safety bounds. They are intentionally far above the
@@ -34,17 +34,17 @@ REQUIRED_ROOT_FILES = frozenset(
         'CHANGELOG.md',
         'CITATION.cff',
         'CONTRIBUTING.md',
-        'GHOST.md',
+        'FRUTH_INFERENCE.md',
         'LICENSE',
         'NOTICE',
-        'OLLMO_FOR_AGENTS.md',
+        'FRUTH_FOR_AGENTS.md',
         'README.md',
         'SECURITY.md',
         'THIRD_PARTY_NOTICES.md',
         'clean_repo_state.sh',
-        'ollmo',
-        'ollmo_webUI.html',
-        'ollmo_webserver.py',
+        'fruth',
+        'fruth_webUI.html',
+        'fruth_webserver.py',
         'pytest.ini',
         'requirements.txt',
         'restart.sh',
@@ -62,17 +62,16 @@ PUBLIC_DOCS = frozenset(
         'CAUSAL_TELEMETRY.md',
         'CONTROL_KNOBS.md',
         'CORE_CONTRACTS.md',
-        'GHOST_ROUTER.md',
-        'GHOST_SELF_ALIGNMENT.md',
+        'INFERENCE_ROUTING.md',
+        'SELF_ALIGNMENT.md',
         'KNOWN_LIMITATIONS.md',
         'KNOBS_CHEATSHEET.md',
         'PATTERNS.md',
         'PRINCIPLES.md',
         'RELEASE_SCOPE.md',
-        'RELEASE_NOTES_0.1.1.md',
         'RESPONSES_CONTRACT.md',
         'SELF_ATTACK.md',
-        'SELF_ATTACK_STATUS_2026-09-14.md',
+        'SELF_ATTACK_STATUS_2026-09-19.md',
         'STATE_FLOW_DIAGNOSTICS.md',
         'TESTING_PROTOCOL.md',
         'TRUTH_SOURCES.md',
@@ -81,7 +80,7 @@ PUBLIC_DOCS = frozenset(
 )
 CURRENT_DIAGRAMS = frozenset(
     {
-        'ollmo-state-substrate-architecture.html',
+        'fruth-state-substrate-architecture.html',
     }
 )
 CURRENT_DIAGRAM_PATHS = frozenset(
@@ -89,7 +88,7 @@ CURRENT_DIAGRAM_PATHS = frozenset(
 )
 PUBLIC_DOC_ASSET_PATHS = frozenset(
     {
-        Path('docs/ollmo-icon.svg'),
+        Path('docs/fruth-icon.svg'),
     }
 )
 PUBLIC_DOC_PATHS = frozenset(
@@ -105,70 +104,70 @@ PUBLIC_CONFIG_PATHS = frozenset(
 )
 RELEASE_SKILL_FILES = frozenset(
     {
-        Path('skills/ollmo/SKILL.md'),
-        Path('skills/ollmo/NOTICE'),
-        Path('skills/ollmo/agents/openai.yaml'),
-        Path('skills/ollmo/references/ollmo-contract.md'),
+        Path('skills/fruth/SKILL.md'),
+        Path('skills/fruth/NOTICE'),
+        Path('skills/fruth/agents/openai.yaml'),
+        Path('skills/fruth/references/fruth-contract.md'),
     }
 )
 RELEASE_SKILL_DIRECTORIES = frozenset(
     {
         Path('skills'),
-        Path('skills/ollmo'),
-        Path('skills/ollmo/agents'),
-        Path('skills/ollmo/references'),
+        Path('skills/fruth'),
+        Path('skills/fruth/agents'),
+        Path('skills/fruth/references'),
     }
 )
 RELEASE_REFERENCE_EXAMPLE_FILES = frozenset(
     {
         Path('examples/README.md'),
-        Path('examples/reference-runs/2026-09-07-saved-json-read-html-verified/README.md'),
-        Path('examples/reference-runs/2026-09-07-saved-json-read-html-verified/artifacts/documents/document-01.json'),
-        Path('examples/reference-runs/2026-09-07-saved-json-read-html-verified/artifacts/documents/index.html'),
-        Path('examples/reference-runs/2026-09-07-saved-json-read-html-verified/bundle/assets/files/file-01.json'),
-        Path('examples/reference-runs/2026-09-07-saved-json-read-html-verified/bundle/index.html'),
-        Path('examples/reference-runs/2026-09-07-saved-json-read-html-verified/bundle/manifest.json'),
-        Path('examples/reference-runs/2026-09-07-saved-json-read-html-verified/manifest.json'),
-        Path('examples/reference-runs/2026-09-07-saved-json-read-html-verified/monitor-report.json'),
-        Path('examples/reference-runs/2026-09-07-saved-json-read-html-verified/prompt.txt'),
-        Path('examples/reference-runs/2026-09-07-saved-json-read-html-verified/response.json'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/README.md'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/artifacts/audio/narration.wav'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/artifacts/documents/index.html'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/artifacts/documents/styles.css'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/artifacts/images/image-01.png'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/artifacts/images/image-02.png'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/bundle/assets/audio/narration.wav'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/bundle/assets/css/styles.css'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/bundle/assets/images/image-01.png'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/bundle/assets/images/image-02.png'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/bundle/index.html'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/bundle/manifest.json'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/manifest.json'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/monitor-report.json'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/prompt.txt'),
-        Path('examples/reference-runs/2026-08-31-echoes-of-the-pass/response.json'),
-        Path('examples/reference-runs/2026-08-31-evening-rain/README.md'),
-        Path('examples/reference-runs/2026-08-31-evening-rain/artifacts/audio/narration.wav'),
-        Path('examples/reference-runs/2026-08-31-evening-rain/manifest.json'),
-        Path('examples/reference-runs/2026-08-31-evening-rain/monitor-report.json'),
-        Path('examples/reference-runs/2026-08-31-evening-rain/prompt.txt'),
-        Path('examples/reference-runs/2026-08-31-evening-rain/response.json'),
-        Path('examples/reference-runs/2026-08-31-lighthouse-audio-roundtrip/README.md'),
-        Path('examples/reference-runs/2026-08-31-lighthouse-audio-roundtrip/artifacts/audio/narration.wav'),
-        Path('examples/reference-runs/2026-08-31-lighthouse-audio-roundtrip/artifacts/transcripts/transcript.md'),
-        Path('examples/reference-runs/2026-08-31-lighthouse-audio-roundtrip/manifest.json'),
-        Path('examples/reference-runs/2026-08-31-lighthouse-audio-roundtrip/monitor-report.json'),
-        Path('examples/reference-runs/2026-08-31-lighthouse-audio-roundtrip/prompt.txt'),
-        Path('examples/reference-runs/2026-08-31-lighthouse-audio-roundtrip/response.json'),
-        Path('examples/reference-runs/2026-09-02-funny-animal-selfies/README.md'),
-        Path('examples/reference-runs/2026-09-02-funny-animal-selfies/artifacts/images/image-01.png'),
-        Path('examples/reference-runs/2026-09-02-funny-animal-selfies/artifacts/images/image-02.png'),
-        Path('examples/reference-runs/2026-09-02-funny-animal-selfies/artifacts/images/image-03.png'),
-        Path('examples/reference-runs/2026-09-02-funny-animal-selfies/manifest.json'),
-        Path('examples/reference-runs/2026-09-02-funny-animal-selfies/monitor-report.json'),
-        Path('examples/reference-runs/2026-09-02-funny-animal-selfies/prompt.txt'),
-        Path('examples/reference-runs/2026-09-02-funny-animal-selfies/response.json'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/README.md'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/artifacts/audio/narration.wav'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/artifacts/documents/index.html'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/artifacts/documents/styles.css'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/artifacts/images/image-01.png'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/artifacts/images/image-02.png'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/assets/audio/narration.wav'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/assets/css/styles.css'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/assets/images/image-01.png'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/assets/images/image-02.png'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/index.html'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/manifest.json'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/manifest.json'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/monitor-report.json'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/prompt.txt'),
+        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/response.json'),
+        Path('examples/reference-runs/2026-09-18-evening-rain/README.md'),
+        Path('examples/reference-runs/2026-09-18-evening-rain/artifacts/audio/narration.wav'),
+        Path('examples/reference-runs/2026-09-18-evening-rain/manifest.json'),
+        Path('examples/reference-runs/2026-09-18-evening-rain/monitor-report.json'),
+        Path('examples/reference-runs/2026-09-18-evening-rain/prompt.txt'),
+        Path('examples/reference-runs/2026-09-18-evening-rain/response.json'),
+        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/README.md'),
+        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/artifacts/images/image-01.png'),
+        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/artifacts/images/image-02.png'),
+        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/artifacts/images/image-03.png'),
+        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/manifest.json'),
+        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/monitor-report.json'),
+        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/prompt.txt'),
+        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/response.json'),
+        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/README.md'),
+        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/artifacts/audio/narration.wav'),
+        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/artifacts/transcripts/transcript.md'),
+        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/manifest.json'),
+        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/monitor-report.json'),
+        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/prompt.txt'),
+        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/response.json'),
+        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/README.md'),
+        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/artifacts/documents/document-01.json'),
+        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/artifacts/documents/index.html'),
+        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/bundle/assets/files/file-01.json'),
+        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/bundle/index.html'),
+        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/bundle/manifest.json'),
+        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/manifest.json'),
+        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/monitor-report.json'),
+        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/prompt.txt'),
+        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/response.json'),
     }
 )
 RELEASE_REFERENCE_EXAMPLE_DIRECTORIES = frozenset(
@@ -177,15 +176,28 @@ RELEASE_REFERENCE_EXAMPLE_DIRECTORIES = frozenset(
     for parent in path.parents
     if parent != Path('.') and parent.parts[0] == 'examples'
 )
+RESEARCH_SOURCE_FILES = frozenset({
+    Path('fruth_research/__init__.py'),
+    Path('fruth_research/README.md'),
+    Path('fruth_research/candidates/README.md'),
+    Path('fruth_research/candidates/sync.py'),
+    Path('fruth_research/gold-core/README.md'),
+    Path('fruth_research/gold-core/schema.json'),
+    Path('fruth_research/gold-core/validate.py'),
+    Path('fruth_research/gold-core/evidence.py'),
+    Path('fruth_research/gold-core/test_validate.py'),
+})
+RESEARCH_SOURCE_DIRECTORIES = frozenset(parent for path in RESEARCH_SOURCE_FILES for parent in path.parents if parent != Path("."))
+
 TREE_SUFFIXES = {
     'helpers': frozenset({'.py'}),
-    'ollmo_core': frozenset({'.py'}),
-    'ollmo_g': frozenset({'.md', '.py'}),
-    'ollmo_integrations': frozenset({'.py'}),
-    'ollmo_orchestration': frozenset({'.py'}),
-    'ollmo_runtime': frozenset({'.py'}),
-    'ollmo_server': frozenset({'.py'}),
-    'ollmo_services': frozenset({'.py'}),
+    'fruth_core': frozenset({'.py'}),
+    'fruth_inference': frozenset({'.md', '.py'}),
+    'fruth_integrations': frozenset({'.py'}),
+    'fruth_orchestration': frozenset({'.py'}),
+    'fruth_runtime': frozenset({'.py'}),
+    'fruth_server': frozenset({'.py'}),
+    'fruth_services': frozenset({'.py'}),
     'scripts': frozenset({'.py'}),
     'site': frozenset(
         {
@@ -257,13 +269,13 @@ REQUIRED_RELEASE_PATHS = frozenset(
         Path('docs/RELEASE_SCOPE.md'),
         Path('docs/CAUSAL_TELEMETRY.md'),
         Path('docs/SELF_ATTACK.md'),
-        Path('docs/SELF_ATTACK_STATUS_2026-09-14.md'),
+        Path('docs/SELF_ATTACK_STATUS_2026-09-19.md'),
         Path('docs/STATE_FLOW_DIAGNOSTICS.md'),
         Path('docs/VISION_ALIGNMENT.md'),
-        Path('ollmo'),
-        Path('ollmo_core/version.py'),
-        Path('ollmo_webUI.html'),
-        Path('ollmo_webserver.py'),
+        Path('fruth'),
+        Path('fruth_core/version.py'),
+        Path('fruth_webUI.html'),
+        Path('fruth_webserver.py'),
         Path('config/self_attack_corpus.json'),
         Path('requirements.txt'),
         Path('scripts/build_release_archive.py'),
@@ -276,12 +288,14 @@ REQUIRED_RELEASE_PATHS = frozenset(
         Path('start_multi_models.sh'),
         Path('stop_multi_models.sh'),
     }
-) | CURRENT_DIAGRAM_PATHS | PUBLIC_DOC_ASSET_PATHS | PUBLIC_CONFIG_PATHS | RELEASE_SKILL_FILES | RELEASE_REFERENCE_EXAMPLE_FILES
+) | CURRENT_DIAGRAM_PATHS | PUBLIC_DOC_ASSET_PATHS | PUBLIC_CONFIG_PATHS | RELEASE_SKILL_FILES | RELEASE_REFERENCE_EXAMPLE_FILES | RESEARCH_SOURCE_FILES
 
 FORBIDDEN_ROOT_COMPONENTS = frozenset(
     {
+        '00_backup',
+        'fruth-upload',
         '.git',
-        '.ollmo_archiv',
+        '.fruth_archiv',
         '.pytest_cache',
         '.venv',
         '__pycache__',
@@ -339,8 +353,8 @@ SECRET_PATTERNS = (
 )
 PERSONAL_PATTERNS = (
     ('personal_home', re.compile(r'/Users/' + r'dev(?:/|\b)')),
-    ('saved_build_reference', re.compile(r'ollmo_' + r'saved_builts')),
-    ('personal_checkout', re.compile(r'Desktop/' + r'ollmo(?:/|\b)')),
+    ('saved_build_reference', re.compile(r'fruth_' + r'saved_builts')),
+    ('personal_checkout', re.compile(r'Desktop/' + r'fruth(?:/|\b)')),
 )
 VERSION_PATTERN = re.compile(
     r"^__version__\s*=\s*['\"](?P<version>[0-9]+\.[0-9]+\.[0-9]+)['\"]\s*$",
@@ -480,7 +494,7 @@ def discover_release_files(source_root: Path) -> dict[Path, Path]:
         selected[relative_path] = source_path
 
     for relative_path in sorted(
-        RELEASE_REFERENCE_EXAMPLE_FILES,
+        RELEASE_REFERENCE_EXAMPLE_FILES | RESEARCH_SOURCE_FILES,
         key=lambda item: item.as_posix(),
     ):
         source_path = source_root / relative_path
@@ -563,7 +577,7 @@ def _is_text_path(path: Path) -> bool:
     return path.suffix.lower() in TEXT_SUFFIXES or path.name in {
         'LICENSE',
         'NOTICE',
-        'ollmo',
+        'fruth',
     }
 
 
@@ -640,6 +654,10 @@ def validate_release_tree(
         )
         if path.is_symlink():
             raise ReleaseArchiveError(f'Symlinks are not allowed: {relative_path}')
+        if relative_path.parts[0] == 'fruth_research':
+            allowed = RESEARCH_SOURCE_DIRECTORIES if path.is_dir() else RESEARCH_SOURCE_FILES
+            if relative_path not in allowed:
+                raise ReleaseArchiveError(f'Research runtime data is excluded: {relative_path}')
         if relative_path.parts[0] == 'skills':
             allowed_paths = (
                 RELEASE_SKILL_DIRECTORIES if path.is_dir() else RELEASE_SKILL_FILES
@@ -891,10 +909,10 @@ def _verify_manifest(release_root: Path) -> None:
 
 
 def _version_from_release_name(root_name: str) -> str:
-    prefix = 'ollmo-'
+    prefix = 'fruth-'
     if not root_name.startswith(prefix):
         raise ReleaseArchiveError(
-            f'Archive root must be named ollmo-<version>, got {root_name!r}.'
+            f'Archive root must be named fruth-<version>, got {root_name!r}.'
         )
     version = root_name[len(prefix):]
     if not VERSION_VALUE_PATTERN.fullmatch(version):
@@ -921,7 +939,7 @@ def verify_archive(
             'compressed safety limit.'
         )
 
-    with tempfile.TemporaryDirectory(prefix='ollmo-release-verify-') as temp_dir:
+    with tempfile.TemporaryDirectory(prefix='fruth-release-verify-') as temp_dir:
         extraction_root = Path(temp_dir)
         try:
             with tarfile.open(archive_path, mode='r:gz') as archive:
@@ -1041,7 +1059,7 @@ def build_release_archive(
         )
 
     selected = discover_release_files(source_root)
-    release_name = f'ollmo-{requested_version}'
+    release_name = f'fruth-{requested_version}'
     archive_name = f'{release_name}.tar.gz'
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1103,13 +1121,13 @@ def build_release_archive(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description='Build or verify a deterministic Ollmo source archive.'
+        description='Build or verify a deterministic Fruth source archive.'
     )
     parser.add_argument(
         '--source-root',
         type=Path,
         default=REPO_ROOT,
-        help='Ollmo source root (default: the parent of this script).',
+        help='Fruth source root (default: the parent of this script).',
     )
     parser.add_argument(
         '--output-dir',

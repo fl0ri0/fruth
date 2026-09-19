@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export and verify self-contained, sanitized Ollmo reference runs."""
+"""Export and verify self-contained, sanitized Fruth reference runs."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ollmo_services.response_frames import (  # noqa: E402
+from fruth_services.response_frames import (  # noqa: E402
     load_latest_response_observation_state,
     load_latest_response_wire_state,
     load_response_frame_index,
@@ -31,14 +31,14 @@ from ollmo_services.response_frames import (  # noqa: E402
 
 DEFAULT_FRAMES_DIR = REPO_ROOT / 'state' / 'response_frames'
 DEFAULT_MONITOR_REPORTS = (
-    REPO_ROOT / 'state' / 'ollmo_run_monitor' / 'reports.jsonl'
+    REPO_ROOT / 'state' / 'fruth_run_monitor' / 'reports.jsonl'
 )
 DEFAULT_ARTIFACT_ROOT = REPO_ROOT / 'artifacts'
 
-EXPORT_SCHEMA = 'ollmo.public_reference_run.v1'
-MONITOR_SCHEMA = 'ollmo.public_monitor_snapshot.v1'
-MANIFEST_SCHEMA = 'ollmo.reference_run_manifest.v1'
-BUNDLE_SCHEMA = 'ollmo.public_bundle_manifest.v1'
+EXPORT_SCHEMA = 'fruth.public_reference_run.v1'
+MONITOR_SCHEMA = 'fruth.public_monitor_snapshot.v1'
+MANIFEST_SCHEMA = 'fruth.reference_run_manifest.v1'
+BUNDLE_SCHEMA = 'fruth.public_bundle_manifest.v1'
 
 LOCAL_PATH_PATTERNS = (
     re.compile(r'/Users/[^/\s]+/'),

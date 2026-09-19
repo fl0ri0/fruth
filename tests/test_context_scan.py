@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_services.chat_history import write_chat_history
-from ollmo_services.context_scan import build_history_scan_context_candidates
+from fruth_services.chat_history import write_chat_history
+from fruth_services.context_scan import build_history_scan_context_candidates
 
 
 class ContextScanTests(unittest.TestCase):
@@ -43,7 +43,7 @@ class ContextScanTests(unittest.TestCase):
             artifact_ledger.write_text(
                 json.dumps(
                     {
-                        'kind': 'ollmo.artifact_registry_record',
+                        'kind': 'fruth.artifact_registry_record',
                         'artifact_ref': 'artifact:image_castle',
                         'artifact': {
                             'type': 'image',

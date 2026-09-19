@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_core.inference import detect_text_artifact_requests
-from ollmo_g.request_phase_graph import build_request_phase_graph
+from fruth_core.inference import detect_text_artifact_requests
+from fruth_inference.request_phase_graph import build_request_phase_graph
 
 PROMPT = (
     'Create exactly two small local files. note.txt must contain exactly "Ready." '
@@ -31,15 +31,15 @@ def obligation_identities(graph):
 
 def replay_file_contract(root, *, files=('note.txt',), reduced_detector=True):
     """Real graph, writer, Closure, terminal and frame owners in temporary roots."""
-    import ollmo_webserver as web
+    import fruth_webserver as web
     from tests.fake_backends import FakeBackendHarness
 
-    request = {'prompt': PROMPT, 'ghost_route': True, 'response_id': 'explicit-files-fixture'}
+    request = {'prompt': PROMPT, 'inference_route': True, 'response_id': 'explicit-files-fixture'}
     original = build_request_phase_graph(PROMPT, request_payload=request)
     original_copy = copy.deepcopy(original)
     route = {'capability': 'chat', 'route_runtime': {'request_phase_graph': original}}
     derived = EXPLICIT_FILES[:1] if reduced_detector else EXPLICIT_FILES
-    with patch('ollmo_g.request_phase_graph.detect_text_artifact_requests', return_value=copy.deepcopy(derived)):
+    with patch('fruth_inference.request_phase_graph.detect_text_artifact_requests', return_value=copy.deepcopy(derived)):
         graph = build_request_phase_graph(PROMPT, request_payload=request, route_payload=route,
                                          response_payload={'output_text': PROMISE})
     assert original == original_copy
@@ -140,7 +140,7 @@ def test_model_prose_and_reduced_planner_cannot_replace_accepted_identity():
         response = kwargs.setdefault('response_payload', {})
         response['output_text'] = PROMISE
         response.setdefault('runtime', {})['execution_planner'] = {'deferred_branches':branches[:1]}
-        with patch('ollmo_g.request_phase_graph.detect_text_artifact_requests', return_value=EXPLICIT_FILES[:1]):
+        with patch('fruth_inference.request_phase_graph.detect_text_artifact_requests', return_value=EXPLICIT_FILES[:1]):
             rebuilt = build_request_phase_graph(PROMPT, **kwargs)
         assert obligation_identities(rebuilt) == {('note','txt'),('status','json')}
         actual = {b['branch_id']:b for b in rebuilt['downstream_branches']}
@@ -159,7 +159,7 @@ def test_unrelated_turn_does_not_inherit_file_obligations():
 
 def test_smaller_response_graph_does_not_release_route_contract():
     original = build_request_phase_graph(PROMPT)
-    with patch('ollmo_g.request_phase_graph.detect_text_artifact_requests', return_value=EXPLICIT_FILES[:1]):
+    with patch('fruth_inference.request_phase_graph.detect_text_artifact_requests', return_value=EXPLICIT_FILES[:1]):
         smaller = build_request_phase_graph(PROMPT)
         rebuilt = build_request_phase_graph(PROMPT,
             route_payload={'route_runtime':{'request_phase_graph':original}},
@@ -187,7 +187,7 @@ def test_derived_plan_cannot_repurpose_accepted_branch_identity():
 def test_extra_derived_request_keeps_original_owners_and_existing_extra_behavior():
     original = build_request_phase_graph(PROMPT)
     extra = {'source_name':'appendix', 'extension':'md', 'source':'explicit_extension'}
-    with patch('ollmo_g.request_phase_graph.detect_text_artifact_requests', return_value=[*EXPLICIT_FILES,extra]):
+    with patch('fruth_inference.request_phase_graph.detect_text_artifact_requests', return_value=[*EXPLICIT_FILES,extra]):
         graph = build_request_phase_graph(PROMPT, route_payload={'route_runtime':{'request_phase_graph':original}})
     assert obligation_identities(graph) == {('note','txt'),('status','json'),('appendix','md')}
     branches = graph['downstream_branches']
@@ -204,7 +204,7 @@ def test_newer_authoritative_branch_release_remains_visible(status):
     newer = copy.deepcopy(original)
     newer['downstream_branches'][1]['status'] = status
     newer['intent_obligations'][1]['status'] = status
-    with patch('ollmo_g.request_phase_graph.detect_text_artifact_requests', return_value=EXPLICIT_FILES[:1]):
+    with patch('fruth_inference.request_phase_graph.detect_text_artifact_requests', return_value=EXPLICIT_FILES[:1]):
         graph = build_request_phase_graph(PROMPT,
             route_payload={'route_runtime':{'request_phase_graph':original}},
             response_payload={'runtime':{'request_phase_graph':newer}})

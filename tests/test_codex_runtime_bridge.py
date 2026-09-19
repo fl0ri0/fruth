@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_integrations.codex.execution import (
+from fruth_integrations.codex.execution import (
     CodexAccessState,
     CodexAccessStatus,
     CodexDiscovery,
@@ -15,19 +15,19 @@ from ollmo_integrations.codex.execution import (
     CodexExecutionState,
     CodexInputHandoff,
 )
-from ollmo_webserver import (
+from fruth_webserver import (
     _LATE_FILL_RUNTIME,
     _complete_response_late_fill,
     _prepare_late_fill_branch_plan,
     _RESPONSE_LATE_FILL_IN_FLIGHT,
     _RESPONSE_LOOKUP,
-    _resolve_ghost_auto_route,
+    _resolve_inference_auto_route,
     app,
 )
-from ollmo_services.chat_history import read_chat_history
+from fruth_services.chat_history import read_chat_history
 
 
-_OLLMO_DOWNSTREAM_EXECUTION_MARKER = '[OLLMO_DOWNSTREAM_EXECUTION_V1]'
+_FRUTH_DOWNSTREAM_EXECUTION_MARKER = '[FRUTH_DOWNSTREAM_EXECUTION_V1]'
 
 
 def _discovery():
@@ -58,7 +58,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         self.runtime_status_path = self.root / 'runtime_status.json'
         self.response_frames_dir = self.root / 'response_frames'
         self.chat_history_dir = self.root / 'chat_history'
-        self.preferences_path = self.root / 'ghost_preferences.json'
+        self.preferences_path = self.root / 'inference_preferences.json'
         self.runtime_registry_path.write_text('[]\n', encoding='utf-8')
         self.runtime_status_path.write_text(
             json.dumps({'schema_version': 1, 'updated_at': 'test', 'instances': {}}),
@@ -73,18 +73,18 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
             return read_chat_history(instance_id, *args, **kwargs)
 
         self.runtime_patchers = [
-            patch('ollmo_webserver.CONFIG_FILE_NAME', str(self.runtime_registry_path)),
-            patch('ollmo_webserver.RUNTIME_STATUS_PATH', self.runtime_status_path),
-            patch('ollmo_webserver.RESPONSE_FRAMES_DIR', self.response_frames_dir),
-            patch('ollmo_webserver.CHAT_HISTORY_DIR', self.chat_history_dir),
-            patch('ollmo_webserver.GHOST_PREFERENCES_PATH', self.preferences_path),
-            patch('ollmo_g.router.read_chat_history', side_effect=read_isolated_chat_history),
+            patch('fruth_webserver.CONFIG_FILE_NAME', str(self.runtime_registry_path)),
+            patch('fruth_webserver.RUNTIME_STATUS_PATH', self.runtime_status_path),
+            patch('fruth_webserver.RESPONSE_FRAMES_DIR', self.response_frames_dir),
+            patch('fruth_webserver.CHAT_HISTORY_DIR', self.chat_history_dir),
+            patch('fruth_webserver.INFERENCE_PREFERENCES_PATH', self.preferences_path),
+            patch('fruth_inference.router.read_chat_history', side_effect=read_isolated_chat_history),
             patch(
-                'ollmo_server.ghost_route_runtime.read_chat_history',
+                'fruth_server.inference_route_runtime.read_chat_history',
                 side_effect=read_isolated_chat_history,
             ),
-            patch('ollmo_core.registry.DEFAULT_REGISTRY_PATH', self.runtime_registry_path),
-            patch('ollmo_core.status.DEFAULT_RUNTIME_STATUS_PATH', self.runtime_status_path),
+            patch('fruth_core.registry.DEFAULT_REGISTRY_PATH', self.runtime_registry_path),
+            patch('fruth_core.status.DEFAULT_RUNTIME_STATUS_PATH', self.runtime_status_path),
         ]
         for patcher in self.runtime_patchers:
             patcher.start()
@@ -103,7 +103,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         if files:
             codex_preferences['data_scope'] = 'selected_files_v1'
         response = self.client.post(
-            '/api/ghost_preferences',
+            '/api/inference_preferences',
             json={
                 'preferences': {
                     'externalTargets': {
@@ -115,38 +115,38 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def _assert_downstream_prompt(self, prompt, task):
-        self.assertTrue(prompt.startswith(_OLLMO_DOWNSTREAM_EXECUTION_MARKER))
-        self.assertEqual(prompt.count(_OLLMO_DOWNSTREAM_EXECUTION_MARKER), 1)
+        self.assertTrue(prompt.startswith(_FRUTH_DOWNSTREAM_EXECUTION_MARKER))
+        self.assertEqual(prompt.count(_FRUTH_DOWNSTREAM_EXECUTION_MARKER), 1)
         self.assertIn(
-            'this request is already being executed by Ollmo through ChatGPT/Codex',
+            'this request is already being executed by Fruth through ChatGPT/Codex',
             prompt,
         )
-        self.assertIn('Do not invoke, route to, or use Ollmo again', prompt)
+        self.assertIn('Do not invoke, route to, or use Fruth again', prompt)
         self.assertIn('begin the response with "BLOCKED:"', prompt)
-        self.assertEqual(prompt.count('<ollmo_bounded_task>'), 1)
-        self.assertEqual(prompt.count('</ollmo_bounded_task>'), 1)
+        self.assertEqual(prompt.count('<fruth_bounded_task>'), 1)
+        self.assertEqual(prompt.count('</fruth_bounded_task>'), 1)
         self.assertIn(
-            f'<ollmo_bounded_task>\nCurrent user request:\n{task}\n'
-            '</ollmo_bounded_task>',
+            f'<fruth_bounded_task>\nCurrent user request:\n{task}\n'
+            '</fruth_bounded_task>',
             prompt,
         )
 
     def _bounded_task(self, prompt):
-        start = prompt.index('<ollmo_bounded_task>') + len('<ollmo_bounded_task>')
-        end = prompt.index('</ollmo_bounded_task>', start)
+        start = prompt.index('<fruth_bounded_task>') + len('<fruth_bounded_task>')
+        end = prompt.index('</fruth_bounded_task>', start)
         return prompt[start:end].strip()
 
     def _assert_prepare_only_downstream_prompt(self, forwarded_prompt, root_prompt):
         bounded_task = self._bounded_task(forwarded_prompt)
-        self.assertEqual(forwarded_prompt.count(_OLLMO_DOWNSTREAM_EXECUTION_MARKER), 1)
-        self.assertEqual(forwarded_prompt.count('<ollmo_bounded_task>'), 1)
-        self.assertIn('<ollmo_promoted_context>', forwarded_prompt)
+        self.assertEqual(forwarded_prompt.count(_FRUTH_DOWNSTREAM_EXECUTION_MARKER), 1)
+        self.assertEqual(forwarded_prompt.count('<fruth_bounded_task>'), 1)
+        self.assertIn('<fruth_promoted_context>', forwarded_prompt)
         self.assertIn(root_prompt, forwarded_prompt)
         self.assertNotIn(root_prompt, bounded_task)
-        self.assertIn('Ollmo phase contract: prepare-only.', bounded_task)
+        self.assertIn('Fruth phase contract: prepare-only.', bounded_task)
         self.assertIn('only the current text-preparation phase', bounded_task)
         self.assertIn('Do not perform filesystem writes', bounded_task)
-        self.assertIn('Ollmo retains authority for downstream execution', bounded_task)
+        self.assertIn('Fruth retains authority for downstream execution', bounded_task)
         self.assertNotIn('Correct errors directly in the files.', bounded_task)
 
     def _completed_stream_response(self, body):
@@ -173,11 +173,11 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         )
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver.build_backend_fabric_snapshot', return_value={'summary': {}, 'backends': []})
-    @patch('ollmo_webserver.load_running_instances', return_value=[])
+    @patch('fruth_webserver.build_backend_fabric_snapshot', return_value={'summary': {}, 'backends': []})
+    @patch('fruth_webserver.load_running_instances', return_value=[])
     def test_status_and_manifest_expose_disabled_external_target_without_local_lifecycle(
         self,
         _load_running,
@@ -220,10 +220,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         )
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_explicit_codex_target_requires_persisted_consent(
         self,
         execute_codex,
@@ -243,10 +243,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         execute_codex.assert_not_called()
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_explicit_codex_success_uses_canonical_response_truth(
         self,
         execute_codex,
@@ -256,7 +256,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         execute_codex.return_value = CodexExecutionResult(
             status=CodexExecutionState.COMPLETED,
             discovery=_discovery(),
-            output_text='OLLMO_CODEX_OK',
+            output_text='FRUTH_CODEX_OK',
             exit_code=0,
             duration_seconds=0.25,
         )
@@ -265,7 +265,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
             '/api/responses',
             json={
                 'instance_id': 'external:codex',
-                'prompt': 'Return OLLMO_CODEX_OK.',
+                'prompt': 'Return FRUTH_CODEX_OK.',
                 'stream': False,
                 'response_id': 'resp_codex_success',
             },
@@ -276,8 +276,8 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(payload['instance_id'], 'external:codex')
         self.assertEqual(payload['backend'], 'codex_cli')
         self.assertEqual(payload['model'], 'codex:auto')
-        self.assertEqual(payload['output_text'], 'OLLMO_CODEX_OK')
-        self.assertEqual(payload['outputs'][0]['value'], 'OLLMO_CODEX_OK')
+        self.assertEqual(payload['output_text'], 'FRUTH_CODEX_OK')
+        self.assertEqual(payload['outputs'][0]['value'], 'FRUTH_CODEX_OK')
         self.assertEqual(payload['lifecycle_state'], 'completed')
         self.assertEqual(payload['artifacts'], [])
         self.assertEqual(
@@ -295,14 +295,14 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         execute_codex.assert_called_once()
         self._assert_downstream_prompt(
             execute_codex.call_args.args[0],
-            'Return OLLMO_CODEX_OK.',
+            'Return FRUTH_CODEX_OK.',
         )
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_explicit_codex_artifact_requests_use_prepare_only_bounded_task(
         self,
         execute_codex,
@@ -331,7 +331,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
             ),
         ]
 
-        with patch('ollmo_webserver._schedule_response_late_fill') as late_fill:
+        with patch('fruth_webserver._schedule_response_late_fill') as late_fill:
             for label, prompt, output_text, downstream_clause, pending_count in cases:
                 with self.subTest(label=label):
                     execute_codex.reset_mock()
@@ -379,10 +379,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
                     )
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_codex_explicit_block_is_canonical_and_never_materialized(
         self,
         execute_codex,
@@ -390,11 +390,11 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
     ):
         self._enable_codex()
         blocked_text = (
-            'bLoCkEd: $OLLMO_HOME is unavailable in this downstream session.\n'
+            'bLoCkEd: $FRUTH_HOME is unavailable in this downstream session.\n'
             'The bounded task cannot be completed safely.'
         )
         blocked_reason = (
-            '$OLLMO_HOME is unavailable in this downstream session.\n'
+            '$FRUTH_HOME is unavailable in this downstream session.\n'
             'The bounded task cannot be completed safely.'
         )
         execute_codex.return_value = CodexExecutionResult(
@@ -406,23 +406,23 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
 
         with (
             patch(
-                'ollmo_server.responses_request_runtime.phase_output_is_graph_preparation'
+                'fruth_server.responses_request_runtime.phase_output_is_graph_preparation'
             ) as phase_acceptance,
             patch(
-                'ollmo_server.responses_request_runtime.ResponsesRequestRuntimeOwner.'
+                'fruth_server.responses_request_runtime.ResponsesRequestRuntimeOwner.'
                 'attach_pre_freeze_closure_review'
             ) as pre_freeze,
             patch(
-                'ollmo_server.responses_request_runtime.ResponsesRequestRuntimeOwner.'
+                'fruth_server.responses_request_runtime.ResponsesRequestRuntimeOwner.'
                 'apply_direct_artifact_materialization_closure'
             ) as direct_closure,
-            patch('ollmo_webserver._schedule_response_late_fill') as late_fill,
+            patch('fruth_webserver._schedule_response_late_fill') as late_fill,
         ):
             response = self.client.post(
                 '/api/responses',
                 json={
                     'instance_id': 'external:codex',
-                    'prompt': 'Read $OLLMO_HOME and create an artifact.',
+                    'prompt': 'Read $FRUTH_HOME and create an artifact.',
                     'stream': False,
                     'response_id': 'resp_codex_blocked',
                 },
@@ -459,11 +459,11 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         late_fill.assert_not_called()
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
-    def test_codex_receives_ollmo_bounded_referential_context(
+    @patch('fruth_webserver._execute_codex_external_text')
+    def test_codex_receives_fruth_bounded_referential_context(
         self,
         execute_codex,
         _probe,
@@ -507,7 +507,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
             forwarded_prompt,
             'Continue from that answer.',
         )
-        self.assertIn('Prior conversation context promoted by Ollmo', forwarded_prompt)
+        self.assertIn('Prior conversation context promoted by Fruth', forwarded_prompt)
         self.assertIn('[user]\nName this plan Atlas.', forwarded_prompt)
         self.assertIn('[assistant]\nThe plan is Atlas.', forwarded_prompt)
         self.assertIn('Current user request:\nContinue from that answer.', forwarded_prompt)
@@ -518,10 +518,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         )
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_codex_marker_precedes_selected_message_reference_context(
         self,
         execute_codex,
@@ -554,26 +554,26 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         execute_codex.assert_called_once()
         forwarded_prompt = execute_codex.call_args.args[0]
-        self.assertTrue(forwarded_prompt.startswith(_OLLMO_DOWNSTREAM_EXECUTION_MARKER))
-        self.assertIn('<ollmo_bounded_task>', forwarded_prompt)
+        self.assertTrue(forwarded_prompt.startswith(_FRUTH_DOWNSTREAM_EXECUTION_MARKER))
+        self.assertIn('<fruth_bounded_task>', forwarded_prompt)
         self.assertIn('Selected prior assistant reply reference', forwarded_prompt)
         self.assertIn('[assistant]\nThe bounded reference reply.', forwarded_prompt)
         self.assertIn(
             'Current user request:\nUse the selected reply as a reference.',
             forwarded_prompt,
         )
-        self.assertIn('<ollmo_promoted_context>', forwarded_prompt)
+        self.assertIn('<fruth_promoted_context>', forwarded_prompt)
         self.assertNotIn(
             'The bounded reference reply.',
             self._bounded_task(forwarded_prompt),
         )
-        self.assertTrue(forwarded_prompt.endswith('</ollmo_bounded_task>'))
+        self.assertTrue(forwarded_prompt.endswith('</fruth_bounded_task>'))
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_codex_stream_projects_the_canonical_terminal_response(
         self,
         execute_codex,
@@ -619,10 +619,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         )
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_codex_stream_preserves_explicit_block_without_late_fill(
         self,
         execute_codex,
@@ -630,7 +630,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
     ):
         self._enable_codex()
         blocked_text = (
-            'BLOCKED: $OLLMO_HOME cannot be inspected by the downstream provider.'
+            'BLOCKED: $FRUTH_HOME cannot be inspected by the downstream provider.'
         )
         execute_codex.return_value = CodexExecutionResult(
             status=CodexExecutionState.COMPLETED,
@@ -641,23 +641,23 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
 
         with (
             patch(
-                'ollmo_server.responses_request_runtime.phase_output_is_graph_preparation'
+                'fruth_server.responses_request_runtime.phase_output_is_graph_preparation'
             ) as phase_acceptance,
             patch(
-                'ollmo_server.responses_request_runtime.ResponsesRequestRuntimeOwner.'
+                'fruth_server.responses_request_runtime.ResponsesRequestRuntimeOwner.'
                 'attach_pre_freeze_closure_review'
             ) as pre_freeze,
             patch(
-                'ollmo_server.responses_request_runtime.ResponsesRequestRuntimeOwner.'
+                'fruth_server.responses_request_runtime.ResponsesRequestRuntimeOwner.'
                 'apply_direct_artifact_materialization_closure'
             ) as direct_closure,
-            patch('ollmo_webserver._schedule_response_late_fill') as late_fill,
+            patch('fruth_webserver._schedule_response_late_fill') as late_fill,
         ):
             response = self.client.post(
                 '/api/responses',
                 json={
                     'instance_id': 'external:codex',
-                    'prompt': 'Inspect $OLLMO_HOME.',
+                    'prompt': 'Inspect $FRUTH_HOME.',
                     'stream': True,
                 },
             )
@@ -679,10 +679,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         late_fill.assert_not_called()
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_codex_timeout_is_failed_canonical_response(
         self,
         execute_codex,
@@ -715,10 +715,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         self.assertIn('response_frame', payload)
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_legacy_text_consent_blocks_file_before_execution(
         self,
         execute_codex,
@@ -746,10 +746,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         execute_codex.assert_not_called()
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_versioned_file_consent_allows_responses_file_handoff(
         self,
         execute_codex,
@@ -775,7 +775,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
             input_handoff=(handoff,),
         )
 
-        persisted = self.client.get('/api/ghost_preferences').get_json()
+        persisted = self.client.get('/api/inference_preferences').get_json()
         persisted_codex = persisted['preferences']['external_targets']['codex']
         self.assertTrue(persisted_codex['enabled'])
         self.assertTrue(persisted_codex['files_enabled'])
@@ -824,10 +824,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         )
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_codex_accepts_multiple_explicit_local_paths_as_one_turn(
         self,
         execute_codex,
@@ -878,13 +878,13 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         )
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.load_running_instances', return_value=[])
-    @patch('ollmo_webserver.merge_instances_with_runtime_status', return_value=[])
-    def test_ghost_can_select_enabled_codex_without_inventing_local_instance(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.load_running_instances', return_value=[])
+    @patch('fruth_webserver.merge_instances_with_runtime_status', return_value=[])
+    def test_inference_can_select_enabled_codex_without_inventing_local_instance(
         self,
         _merge,
         _load,
@@ -894,8 +894,8 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         self._enable_codex()
         payload = {
             'prompt': 'Explain this in one sentence.',
-            'ghost_route': True,
-            'ghost_preferences': {
+            'inference_route': True,
+            'inference_preferences': {
                 'primary_mode': 'lock',
                 'primary_target': {
                     'model': 'codex:auto',
@@ -906,11 +906,11 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         }
 
         with app.test_request_context(
-            '/api/ghost_route_preview',
+            '/api/inference_route_preview',
             method='POST',
             json=payload,
         ):
-            route_info, error = _resolve_ghost_auto_route(payload)
+            route_info, error = _resolve_inference_auto_route(payload)
 
         self.assertIsNone(error)
         self.assertEqual(route_info['instance_id'], 'external:codex')
@@ -918,14 +918,14 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         self.assertFalse(route_info['instance']['lifecycle_managed'])
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.load_running_instances', return_value=[])
-    @patch('ollmo_webserver.merge_instances_with_runtime_status', return_value=[])
-    def test_ghost_executes_enabled_codex_through_canonical_responses(
+    @patch('fruth_webserver._execute_codex_external_text')
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.load_running_instances', return_value=[])
+    @patch('fruth_webserver.merge_instances_with_runtime_status', return_value=[])
+    def test_inference_executes_enabled_codex_through_canonical_responses(
         self,
         _merge,
         _load,
@@ -937,17 +937,17 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         execute_codex.return_value = CodexExecutionResult(
             status=CodexExecutionState.COMPLETED,
             discovery=_discovery(),
-            output_text='GHOST_CODEX_OK',
+            output_text='INFERENCE_CODEX_OK',
             exit_code=0,
         )
 
         response = self.client.post(
             '/api/responses',
             json={
-                'prompt': 'Return GHOST_CODEX_OK.',
-                'ghost_route': True,
+                'prompt': 'Return INFERENCE_CODEX_OK.',
+                'inference_route': True,
                 'stream': False,
-                'ghost_preferences': {
+                'inference_preferences': {
                     'primary_mode': 'lock',
                     'primary_target': {
                         'model': 'codex:auto',
@@ -961,11 +961,11 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload['instance_id'], 'external:codex')
-        self.assertEqual(payload['output_text'], 'GHOST_CODEX_OK')
-        self.assertEqual(payload['route_source'], 'ghost_carried')
+        self.assertEqual(payload['output_text'], 'INFERENCE_CODEX_OK')
+        self.assertEqual(payload['route_source'], 'inference_carried')
         self.assertEqual(payload['lifecycle_state'], 'completed')
 
-    @patch('ollmo_webserver._execute_codex_external_text')
+    @patch('fruth_webserver._execute_codex_external_text')
     def test_graph_owned_external_chat_phase_is_bounded_and_preserves_block_truth(
         self,
         execute_codex,
@@ -975,7 +975,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
             'configurator.html, and styles.css.'
         )
         execution_contract = {
-            'kind': 'ollmo.execution_contract',
+            'kind': 'fruth.execution_contract',
             'branch_id': 'branch-chat-file-1',
             'phase_id': 'phase-2',
             'capability': 'chat',
@@ -998,7 +998,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         }
         with (
             patch(
-                'ollmo_webserver._external_targets_payload',
+                'fruth_webserver._external_targets_payload',
                 return_value=[target],
             ),
             app.test_request_context('/api/responses', method='POST'),
@@ -1042,14 +1042,14 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
                 },
                 current_payload={},
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': root_prompt,
                 },
                 assistant_message='The preparation phase is complete.',
                 source_route_payload={
                     'instance_id': 'external:codex',
                     'instance': target,
-                    'route_source': 'ghost_carried',
+                    'route_source': 'inference_carried',
                     'route_runtime': {
                         'external_execution': {'status': 'completed'},
                     },
@@ -1078,7 +1078,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         }
         with (
             patch(
-                'ollmo_webserver._external_targets_payload',
+                'fruth_webserver._external_targets_payload',
                 return_value=[target],
             ),
             app.test_request_context('/api/responses', method='POST'),
@@ -1109,14 +1109,14 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
                 },
                 current_payload={},
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': revision_root_prompt,
                 },
                 assistant_message='The edit delta is prepared.',
                 source_route_payload={
                     'instance_id': 'external:codex',
                     'instance': target,
-                    'route_source': 'ghost_carried',
+                    'route_source': 'inference_carried',
                     'route_runtime': {
                         'external_execution': {'status': 'completed'},
                     },
@@ -1127,7 +1127,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
             'bounded_task_prompt'
         ]
         self.assertNotIn(revision_root_prompt, revision_task)
-        self.assertIn('Ollmo promoted context', revision_task)
+        self.assertIn('Fruth promoted context', revision_task)
         self.assertIn(revision_source, revision_task)
 
         cases = (
@@ -1161,10 +1161,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
                     execute_codex.assert_called_once()
                     forwarded_prompt = execute_codex.call_args.args[0]
                     self.assertEqual(
-                        forwarded_prompt.count(_OLLMO_DOWNSTREAM_EXECUTION_MARKER),
+                        forwarded_prompt.count(_FRUTH_DOWNSTREAM_EXECUTION_MARKER),
                         1,
                     )
-                    self.assertIn('<ollmo_promoted_context>', forwarded_prompt)
+                    self.assertIn('<fruth_promoted_context>', forwarded_prompt)
                     self.assertIn(root_prompt, forwarded_prompt)
                     self.assertEqual(
                         self._bounded_task(forwarded_prompt),
@@ -1262,14 +1262,14 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
                     )
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.load_running_instances', return_value=[])
-    @patch('ollmo_webserver.merge_instances_with_runtime_status', return_value=[])
-    def test_ghost_codex_executes_only_graph_owned_preparation_phase(
+    @patch('fruth_webserver._execute_codex_external_text')
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.load_running_instances', return_value=[])
+    @patch('fruth_webserver.merge_instances_with_runtime_status', return_value=[])
+    def test_inference_codex_executes_only_graph_owned_preparation_phase(
         self,
         _merge,
         _load,
@@ -1290,15 +1290,15 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
             exit_code=0,
         )
 
-        with patch('ollmo_webserver._schedule_response_late_fill') as late_fill:
+        with patch('fruth_webserver._schedule_response_late_fill') as late_fill:
             response = self.client.post(
                 '/api/responses',
                 json={
                     'prompt': prompt,
-                    'ghost_route': True,
+                    'inference_route': True,
                     'stream': False,
                     'response_id': 'resp_codex_prepare_only',
-                    'ghost_preferences': {
+                    'inference_preferences': {
                         'primary_mode': 'lock',
                         'primary_target': {
                             'model': 'codex:auto',
@@ -1333,13 +1333,13 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         )
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.load_running_instances', return_value=[])
-    @patch('ollmo_webserver.merge_instances_with_runtime_status', return_value=[])
+    @patch('fruth_webserver._execute_codex_external_text')
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.load_running_instances', return_value=[])
+    @patch('fruth_webserver.merge_instances_with_runtime_status', return_value=[])
     def test_pre_freeze_codex_materializes_three_text_artifacts_in_one_wave(
         self,
         _merge,
@@ -1394,7 +1394,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
             ),
         ]
 
-        with patch('ollmo_webserver._schedule_response_late_fill') as schedule:
+        with patch('fruth_webserver._schedule_response_late_fill') as schedule:
             response = self.client.post(
                 '/api/responses',
                 json={
@@ -1475,7 +1475,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
 
         with (
             patch(
-                'ollmo_server.late_fill_runtime.ARTIFACT_OUTPUTS_DOCUMENTS_DIR',
+                'fruth_server.late_fill_runtime.ARTIFACT_OUTPUTS_DOCUMENTS_DIR',
                 documents_dir,
             ),
             patch.object(
@@ -1552,7 +1552,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(execute_codex.call_count, 3)
         materialization_prompt = execute_codex.call_args_list[2].args[0]
         self.assertEqual(
-            materialization_prompt.count(_OLLMO_DOWNSTREAM_EXECUTION_MARKER),
+            materialization_prompt.count(_FRUTH_DOWNSTREAM_EXECUTION_MARKER),
             1,
         )
         bounded_task = self._bounded_task(materialization_prompt)
@@ -1700,7 +1700,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
             )
         }
         with patch(
-            'ollmo_server.late_fill_runtime.ARTIFACT_OUTPUTS_DOCUMENTS_DIR',
+            'fruth_server.late_fill_runtime.ARTIFACT_OUTPUTS_DOCUMENTS_DIR',
             documents_dir,
         ):
             with self.assertRaisesRegex(
@@ -1714,14 +1714,14 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         self.assertFalse(documents_dir.exists())
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.load_running_instances', return_value=[])
-    @patch('ollmo_webserver.merge_instances_with_runtime_status', return_value=[])
-    def test_ghost_codex_prepare_block_remains_canonical_without_downstream_work(
+    @patch('fruth_webserver._execute_codex_external_text')
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.load_running_instances', return_value=[])
+    @patch('fruth_webserver.merge_instances_with_runtime_status', return_value=[])
+    def test_inference_codex_prepare_block_remains_canonical_without_downstream_work(
         self,
         _merge,
         _load,
@@ -1740,9 +1740,9 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         )
 
         with (
-            patch('ollmo_webserver._schedule_response_late_fill') as late_fill,
+            patch('fruth_webserver._schedule_response_late_fill') as late_fill,
             patch(
-                'ollmo_server.responses_request_runtime.ResponsesRequestRuntimeOwner.'
+                'fruth_server.responses_request_runtime.ResponsesRequestRuntimeOwner.'
                 'apply_direct_artifact_materialization_closure'
             ) as direct_closure,
         ):
@@ -1750,10 +1750,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
                 '/api/responses',
                 json={
                     'prompt': prompt,
-                    'ghost_route': True,
+                    'inference_route': True,
                     'stream': False,
                     'response_id': 'resp_codex_prepare_blocked',
-                    'ghost_preferences': {
+                    'inference_preferences': {
                         'primary_mode': 'lock',
                         'primary_target': {
                             'model': 'codex:auto',
@@ -1766,7 +1766,7 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         bounded_task = self._bounded_task(execute_codex.call_args.args[0])
-        self.assertIn('Ollmo phase contract: prepare-only.', bounded_task)
+        self.assertIn('Fruth phase contract: prepare-only.', bounded_task)
         payload = response.get_json()
         self.assertEqual(payload['lifecycle_state'], 'blocked')
         self.assertEqual(payload['surface_state']['status'], 'blocked')
@@ -1779,14 +1779,14 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         direct_closure.assert_not_called()
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver._execute_codex_external_text')
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.load_running_instances', return_value=[])
-    @patch('ollmo_webserver.merge_instances_with_runtime_status', return_value=[])
-    def test_ghost_executes_versioned_file_turn_through_codex(
+    @patch('fruth_webserver._execute_codex_external_text')
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.load_running_instances', return_value=[])
+    @patch('fruth_webserver.merge_instances_with_runtime_status', return_value=[])
+    def test_inference_executes_versioned_file_turn_through_codex(
         self,
         _merge,
         _load,
@@ -1795,12 +1795,12 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         _probe,
     ):
         self._enable_codex(files=True)
-        selected_file = self.root / 'ghost-selected.txt'
-        selected_file.write_text('ghost file context', encoding='utf-8')
+        selected_file = self.root / 'inference-selected.txt'
+        selected_file.write_text('inference file context', encoding='utf-8')
         execute_codex.return_value = CodexExecutionResult(
             status=CodexExecutionState.COMPLETED,
             discovery=_discovery(),
-            output_text='GHOST_FILE_OK',
+            output_text='INFERENCE_FILE_OK',
             exit_code=0,
             input_handoff=(
                 CodexInputHandoff(
@@ -1820,9 +1820,9 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
                 'file_path': str(selected_file),
                 'file_name': selected_file.name,
                 'file_kind': 'text',
-                'ghost_route': True,
+                'inference_route': True,
                 'stream': False,
-                'ghost_preferences': {
+                'inference_preferences': {
                     'primary_mode': 'lock',
                     'primary_target': {
                         'model': 'codex:auto',
@@ -1836,8 +1836,8 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload['instance_id'], 'external:codex')
-        self.assertEqual(payload['output_text'], 'GHOST_FILE_OK')
-        self.assertEqual(payload['route_source'], 'ghost_carried')
+        self.assertEqual(payload['output_text'], 'INFERENCE_FILE_OK')
+        self.assertEqual(payload['route_source'], 'inference_carried')
         self.assertEqual(payload['lifecycle_state'], 'completed')
         execute_codex.assert_called_once()
         self._assert_downstream_prompt(
@@ -1857,12 +1857,12 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         )
 
     @patch(
-        'ollmo_integrations.codex.runtime_target.probe_codex_access',
+        'fruth_integrations.codex.runtime_target.probe_codex_access',
         return_value=_access(),
     )
-    @patch('ollmo_webserver.load_running_instances', return_value=[])
-    @patch('ollmo_webserver.merge_instances_with_runtime_status', return_value=[])
-    def test_ghost_does_not_offer_codex_for_file_input_without_file_consent(
+    @patch('fruth_webserver.load_running_instances', return_value=[])
+    @patch('fruth_webserver.merge_instances_with_runtime_status', return_value=[])
+    def test_inference_does_not_offer_codex_for_file_input_without_file_consent(
         self,
         _merge,
         _load,
@@ -1872,15 +1872,15 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
         payload = {
             'prompt': 'Describe this file.',
             'file_path': '/tmp/private.txt',
-            'ghost_route': True,
+            'inference_route': True,
         }
 
         with app.test_request_context(
-            '/api/ghost_route_preview',
+            '/api/inference_route_preview',
             method='POST',
             json=payload,
         ):
-            route_info, error = _resolve_ghost_auto_route(payload)
+            route_info, error = _resolve_inference_auto_route(payload)
 
         self.assertIsNone(route_info)
         self.assertIn('No running instances', error)

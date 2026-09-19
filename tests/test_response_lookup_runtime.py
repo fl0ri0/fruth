@@ -5,9 +5,9 @@ import threading
 import unittest
 from pathlib import Path
 
-from ollmo_server.response_lookup_runtime import ResponseLookupRuntimeOwner
-from ollmo_server.responses_runtime import ResponsesRuntimeOwner
-from ollmo_services.response_frames import inspect_response_frame_recovery_cache
+from fruth_server.response_lookup_runtime import ResponseLookupRuntimeOwner
+from fruth_server.responses_runtime import ResponsesRuntimeOwner
+from fruth_services.response_frames import inspect_response_frame_recovery_cache
 
 
 class ResponseLookupRuntimeOwnerTests(unittest.TestCase):

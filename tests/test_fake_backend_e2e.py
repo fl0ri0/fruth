@@ -6,8 +6,8 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-import ollmo_webserver
-from ollmo_services.graph_repair import (
+import fruth_webserver
+from fruth_services.graph_repair import (
     build_graph_repair_proposal_from_repair_gap,
     validate_graph_repair_proposal,
 )
@@ -419,7 +419,7 @@ def test_fake_e2e_exposes_intent_obligation_and_adequacy_truth_for_local_web_pla
         assert status == 200
         truth_payload = _truth_response(harness, "resp_fake_intent_obligation_web")
         graph = _runtime_graph(truth_payload)
-        assert graph["kind"] == "ollmo.request_phase_graph"
+        assert graph["kind"] == "fruth.request_phase_graph"
         assert graph["prompt_intent"]["requested_visual_output_count"] == 2
         assert graph["prompt_intent"]["intent_obligation_count"] == len(_intent_obligations(truth_payload))
         assert set(graph["prompt_intent"]["intent_obligation_kinds"]) >= {
@@ -473,7 +473,7 @@ def test_fake_e2e_exposes_intent_obligation_and_adequacy_truth_for_local_web_pla
 
 def test_fake_e2e_accepted_learning_hint_stays_soft_and_non_executable():
     accepted_learning_hints = {
-        "kind": "ollmo.accepted_learning_runtime_hints",
+        "kind": "fruth.accepted_learning_runtime_hints",
         "status": "active",
         "enabled": True,
         "authority": "soft_hint",
@@ -481,7 +481,7 @@ def test_fake_e2e_accepted_learning_hint_stays_soft_and_non_executable():
         "hint_count": 1,
         "hints": [
             {
-                "kind": "ollmo.accepted_learning_runtime_hint",
+                "kind": "fruth.accepted_learning_runtime_hint",
                 "learning_id": "accepted-policy-e2e-graph-repair",
                 "target_area": "graph_repair_policy",
                 "allowed_use": "soft_hint_only",
@@ -522,7 +522,7 @@ def test_fake_e2e_accepted_learning_hint_stays_soft_and_non_executable():
 
 def test_fake_e2e_applied_graph_patch_branch_executes_in_same_response_turn():
     phase_graph = {
-        "kind": "ollmo.request_phase_graph",
+        "kind": "fruth.request_phase_graph",
         "graph_id": "graph-fake-same-turn-reseed",
         "current_phase_id": "phase-1",
         "current_phase_capability": "chat",
@@ -559,8 +559,8 @@ def test_fake_e2e_applied_graph_patch_branch_executes_in_same_response_turn():
     proposal = build_graph_repair_proposal_from_repair_gap(
         request_phase_graph=phase_graph,
         repair_gap={
-            "trigger": "ghost_repair_feedback",
-            "ghost_repair_feedback": {"status": "repair_required"},
+            "trigger": "inference_repair_feedback",
+            "inference_repair_feedback": {"status": "repair_required"},
             "repair_loop": {"status": "promoted"},
             "pending_branches": [
                 {
@@ -579,7 +579,7 @@ def test_fake_e2e_applied_graph_patch_branch_executes_in_same_response_turn():
         request_phase_graph=phase_graph,
         closure_review={
             "status": "repair_required",
-            "ghost_repair_feedback": {"status": "repair_required"},
+            "inference_repair_feedback": {"status": "repair_required"},
         },
         promotion_review={"status": "promoted"},
     )
@@ -595,7 +595,7 @@ def test_fake_e2e_applied_graph_patch_branch_executes_in_same_response_turn():
                     "instance_id": chat_instance["instance_id"],
                     "instance": dict(chat_instance),
                     "capability": "chat",
-                    "route_source": "ghost_carried",
+                    "route_source": "inference_carried",
                     "route_reason": "runtime-owned same-turn graph repair regression",
                     "route_confidence": 1.0,
                     "route_runtime": {"request_phase_graph": phase_graph},
@@ -604,7 +604,7 @@ def test_fake_e2e_applied_graph_patch_branch_executes_in_same_response_turn():
             )
 
         def complete_inline(**kwargs):
-            ollmo_webserver._complete_response_late_fill(**kwargs)
+            fruth_webserver._complete_response_late_fill(**kwargs)
             return True
 
         def resolve_fake_late_fill(request_payload, *, expected_capability, **kwargs):
@@ -618,15 +618,15 @@ def test_fake_e2e_applied_graph_patch_branch_executes_in_same_response_turn():
             )
 
         with (
-            patch.dict(os.environ, {"OLLMO_GRAPH_REPAIR_AUTONOMY": "apply_safe"}, clear=False),
-            patch.object(ollmo_webserver, "_resolve_ghost_auto_route", side_effect=resolve_with_repair_graph),
-            patch.object(ollmo_webserver, "_resolve_late_fill_route", side_effect=resolve_fake_late_fill),
-            patch.object(ollmo_webserver, "_schedule_response_late_fill", side_effect=complete_inline),
+            patch.dict(os.environ, {"FRUTH_GRAPH_REPAIR_AUTONOMY": "apply_safe"}, clear=False),
+            patch.object(fruth_webserver, "_resolve_inference_auto_route", side_effect=resolve_with_repair_graph),
+            patch.object(fruth_webserver, "_resolve_late_fill_route", side_effect=resolve_fake_late_fill),
+            patch.object(fruth_webserver, "_schedule_response_late_fill", side_effect=complete_inline),
         ):
             initial, status = harness.post_response(
                 {
                     "response_id": "resp_fake_graph_patch_same_turn_execute",
-                    "ghost_route": True,
+                    "inference_route": True,
                     "capability": "chat",
                     "prompt": "Return a concise current response.",
                 }
@@ -665,7 +665,7 @@ def test_fake_e2e_terminal_safe_graph_patch_successor_executes_exact_branch_once
     response_id = "resp_fake_terminal_graph_patch_successor"
     branch_prompt = "A deterministic image created only by the bounded successor branch."
     phase_graph = {
-        "kind": "ollmo.request_phase_graph",
+        "kind": "fruth.request_phase_graph",
         "graph_id": "graph-fake-terminal-successor",
         "current_phase_id": "phase-1",
         "current_phase_capability": "chat",
@@ -684,7 +684,7 @@ def test_fake_e2e_terminal_safe_graph_patch_successor_executes_exact_branch_once
         "output_obligations": [],
     }
     closure_review = {
-        "kind": "ollmo.graph_closure_review",
+        "kind": "fruth.graph_closure_review",
         "status": "repair_required",
         "checks": [
             {
@@ -734,7 +734,7 @@ def test_fake_e2e_terminal_safe_graph_patch_successor_executes_exact_branch_once
             },
             request_payload=request_payload,
         )
-        ollmo_webserver._register_response_lookup(
+        fruth_webserver._register_response_lookup(
             response_id=response_id,
             message_id="",
             instance_id=harness.instances["chat"]["instance_id"],
@@ -744,7 +744,7 @@ def test_fake_e2e_terminal_safe_graph_patch_successor_executes_exact_branch_once
             mode="chat",
             route_payload=None,
         )
-        ollmo_webserver._touch_response_lookup(
+        fruth_webserver._touch_response_lookup(
             response_id,
             status="completed",
             output_text=parent["output_text"],
@@ -756,13 +756,13 @@ def test_fake_e2e_terminal_safe_graph_patch_successor_executes_exact_branch_once
         with patch.dict(
             os.environ,
             {
-                "OLLMO_GRAPH_REPAIR_AUTONOMY": "apply_enforced",
-                "OLLMO_APPLY_ENFORCED_POLICY": "safe_v1",
+                "FRUTH_GRAPH_REPAIR_AUTONOMY": "apply_enforced",
+                "FRUTH_APPLY_ENFORCED_POLICY": "safe_v1",
             },
             clear=False,
         ):
             prepared = (
-                ollmo_webserver._RESPONSES_REQUEST_RUNTIME
+                fruth_webserver._RESPONSES_REQUEST_RUNTIME
                 .prepare_terminal_graph_patch_successor(parent)
             )
 
@@ -770,12 +770,12 @@ def test_fake_e2e_terminal_safe_graph_patch_successor_executes_exact_branch_once
         assert [
             item["branch_id"] for item in prepared["artifact_gap"]["pending_branches"]
         ] == ["repair-image"]
-        queued_successor = ollmo_webserver._finalize_response_frame_payload(
+        queued_successor = fruth_webserver._finalize_response_frame_payload(
             prepared["response_payload"],
             request_payload=request_payload,
             persist=True,
         )
-        ollmo_webserver._touch_response_lookup(
+        fruth_webserver._touch_response_lookup(
             response_id,
             status="completed",
             output_text=queued_successor["output_text"],
@@ -796,18 +796,18 @@ def test_fake_e2e_terminal_safe_graph_patch_successor_executes_exact_branch_once
             patch.dict(
                 os.environ,
                 {
-                    "OLLMO_GRAPH_REPAIR_AUTONOMY": "apply_enforced",
-                    "OLLMO_APPLY_ENFORCED_POLICY": "safe_v1",
+                    "FRUTH_GRAPH_REPAIR_AUTONOMY": "apply_enforced",
+                    "FRUTH_APPLY_ENFORCED_POLICY": "safe_v1",
                 },
                 clear=False,
             ),
             patch.object(
-                ollmo_webserver,
+                fruth_webserver,
                 "_resolve_late_fill_route",
                 side_effect=resolve_fake_late_fill,
             ),
         ):
-            ollmo_webserver._complete_response_late_fill(
+            fruth_webserver._complete_response_late_fill(
                 response_payload=queued_successor,
                 request_payload=request_payload,
                 assistant_message=queued_successor["output_text"],
@@ -817,7 +817,7 @@ def test_fake_e2e_terminal_safe_graph_patch_successor_executes_exact_branch_once
 
         # Force truth recovery from the append-only frame ledger rather than
         # accepting the same-process lookup cache as persistence evidence.
-        ollmo_webserver._RESPONSE_LOOKUP.pop(response_id, None)
+        fruth_webserver._RESPONSE_LOOKUP.pop(response_id, None)
         recovered, recovered_status = harness.get_response(response_id, view="truth")
         assert recovered_status == 200
         assert harness.calls["image_generation"] == 1
@@ -852,7 +852,7 @@ def test_fake_e2e_terminal_safe_graph_patch_successor_executes_exact_branch_once
 
 def test_fake_e2e_terminal_late_fill_reviews_rebase_in_shadow_without_executing_candidate():
     phase_graph = {
-        "kind": "ollmo.request_phase_graph",
+        "kind": "fruth.request_phase_graph",
         "graph_version": 3,
         "graph_id": "graph-fake-terminal-rebase-shadow",
         "current_phase_id": "phase-1",
@@ -943,7 +943,7 @@ def test_fake_e2e_terminal_late_fill_reviews_rebase_in_shadow_without_executing_
         }
     )
     closure_review = {
-        "kind": "ollmo.graph_closure_review",
+        "kind": "fruth.graph_closure_review",
         "status": "repair_required",
         "checks": [
             {
@@ -960,7 +960,7 @@ def test_fake_e2e_terminal_late_fill_reviews_rebase_in_shadow_without_executing_
         terminal_callback_inputs = []
         terminal_callback_outputs = []
         original_terminal_review = (
-            ollmo_webserver._RESPONSES_REQUEST_RUNTIME.review_terminal_graph_rebase_after_late_fill
+            fruth_webserver._RESPONSES_REQUEST_RUNTIME.review_terminal_graph_rebase_after_late_fill
         )
 
         def resolve_with_phase_graph(*args, **kwargs):
@@ -969,7 +969,7 @@ def test_fake_e2e_terminal_late_fill_reviews_rebase_in_shadow_without_executing_
                     "instance_id": chat_instance["instance_id"],
                     "instance": dict(chat_instance),
                     "capability": "chat",
-                    "route_source": "ghost_carried",
+                    "route_source": "inference_carried",
                     "route_reason": "runtime-owned terminal graph rebase shadow regression",
                     "route_confidence": 1.0,
                     "route_runtime": {"request_phase_graph": phase_graph},
@@ -988,7 +988,7 @@ def test_fake_e2e_terminal_late_fill_reviews_rebase_in_shadow_without_executing_
             )
 
         def complete_inline(**kwargs):
-            ollmo_webserver._complete_response_late_fill(**kwargs)
+            fruth_webserver._complete_response_late_fill(**kwargs)
             return True
 
         def capture_terminal_review(payload, **kwargs):
@@ -1000,35 +1000,35 @@ def test_fake_e2e_terminal_late_fill_reviews_rebase_in_shadow_without_executing_
         with (
             patch.dict(
                 os.environ,
-                {"OLLMO_GRAPH_REBASE_AUTONOMY": "shadow"},
+                {"FRUTH_GRAPH_REBASE_AUTONOMY": "shadow"},
                 clear=False,
             ),
             patch.object(
-                ollmo_webserver,
-                "_resolve_ghost_auto_route",
+                fruth_webserver,
+                "_resolve_inference_auto_route",
                 side_effect=resolve_with_phase_graph,
             ),
             patch.object(
-                ollmo_webserver,
+                fruth_webserver,
                 "_resolve_late_fill_route",
                 side_effect=resolve_fake_late_fill,
             ),
             patch.object(
-                ollmo_webserver,
+                fruth_webserver,
                 "_build_graph_closure_review",
                 return_value=closure_review,
             ),
             patch(
-                "ollmo_server.responses_request_runtime.build_request_phase_graph",
+                "fruth_server.responses_request_runtime.build_request_phase_graph",
                 return_value=candidate_graph,
             ),
             patch.object(
-                ollmo_webserver._RESPONSES_REQUEST_RUNTIME,
+                fruth_webserver._RESPONSES_REQUEST_RUNTIME,
                 "review_terminal_graph_rebase_after_late_fill",
                 side_effect=capture_terminal_review,
             ),
             patch.object(
-                ollmo_webserver,
+                fruth_webserver,
                 "_schedule_response_late_fill",
                 side_effect=complete_inline,
             ),
@@ -1036,7 +1036,7 @@ def test_fake_e2e_terminal_late_fill_reviews_rebase_in_shadow_without_executing_
             initial, status = harness.post_response(
                 {
                     "response_id": "resp_fake_terminal_rebase_shadow",
-                    "ghost_route": True,
+                    "inference_route": True,
                     "capability": "chat",
                     "prompt": "Generate one image and then finish the response.",
                 }
@@ -1139,7 +1139,7 @@ def test_restart_recovery_reconstructs_from_durable_response_frame_after_lookup_
         response_payload["runtime"] = {
             **response_payload.get("runtime", {}),
             "graph_closure_review": {
-                "kind": "ollmo.graph_closure_review",
+                "kind": "fruth.graph_closure_review",
                 "status": "pending",
                 "surface_state": {"state": "open", "reason": "fake audio branch pending"},
             },
@@ -1186,9 +1186,9 @@ def test_observer_cached_paths_do_not_call_backends_or_write_truth_state():
         assert "artifacts" not in compact
 
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS", None)
-            os.environ.pop("OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE", None)
-            preview, preview_status = harness.ghost_preview(
+            os.environ.pop("FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS", None)
+            os.environ.pop("FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE", None)
+            preview, preview_status = harness.inference_preview(
                 {
                     "prompt": "Which fake capability would handle this?",
                     "capability_hint": "chat",
@@ -1202,7 +1202,7 @@ def test_observer_cached_paths_do_not_call_backends_or_write_truth_state():
         assert preview["runtime_truth"]["semantic_compute_performed"] is False
         assert after_cached == before
 
-        computed, computed_status = harness.ghost_preview(
+        computed, computed_status = harness.inference_preview(
             {
                 "prompt": "Compute a fake semantic preview.",
                 "capability_hint": "chat",

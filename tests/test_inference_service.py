@@ -7,7 +7,7 @@ import wave
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_core.inference import (
+from fruth_core.inference import (
     InferArtifacts,
     InferContext,
     build_qwen3_tts_chunk_plan,
@@ -21,9 +21,9 @@ from ollmo_core.inference import (
     generated_text_is_artifact_self_claim,
     text_artifact_request_is_ungrounded_reference,
 )
-import ollmo_core.inference as inference_service
-import ollmo_core.transports as transports
-from ollmo_core.transports import persist_text_artifact_locally
+import fruth_core.inference as inference_service
+import fruth_core.transports as transports
+from fruth_core.transports import persist_text_artifact_locally
 
 
 def _pcm_wav_bytes(duration_seconds: float, *, sample_rate: int = 8000) -> bytes:
@@ -285,7 +285,7 @@ class InferenceServiceTests(unittest.TestCase):
 
     def test_detect_text_artifact_requests_from_german_plural_artifacts(self):
         requests = detect_text_artifact_requests(
-            'Erstelle ein HTML und ein CSS als getrennte Artefakte für eine kleine Ollmo-Landingpage.'
+            'Erstelle ein HTML und ein CSS als getrennte Artefakte für eine kleine Fruth-Landingpage.'
         )
 
         self.assertEqual([item['extension'] for item in requests], ['html', 'css'])
@@ -868,7 +868,7 @@ class InferenceServiceTests(unittest.TestCase):
                 )
 
     def test_explicit_svg_subject_does_not_request_a_binary_photo(self):
-        from ollmo_g.intent import analyze_prompt_intent
+        from fruth_inference.intent import analyze_prompt_intent
 
         prompt = 'Create an SVG illustration of a photo on a wall.'
         self.assertEqual(
@@ -1846,8 +1846,8 @@ class InferenceServiceTests(unittest.TestCase):
             capability='text_to_speech',
             model_name='mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16',
             port=11504,
-            prompt='Guten Tag aus Ollmo.',
-            user_prompt='Guten Tag aus Ollmo.',
+            prompt='Guten Tag aus Fruth.',
+            user_prompt='Guten Tag aus Fruth.',
             infer_timeout_sec=1200,
             pdf_page_timeout_sec=240,
             pdf_max_image_side=2400,
@@ -1862,7 +1862,7 @@ class InferenceServiceTests(unittest.TestCase):
         artifacts = InferArtifacts()
 
         def mlx_audio_speech(_port, _model_name, prompt, **kwargs):
-            self.assertEqual(prompt, 'Guten Tag aus Ollmo.')
+            self.assertEqual(prompt, 'Guten Tag aus Fruth.')
             self.assertEqual(kwargs['voice'], 'Chelsie')
             self.assertEqual(kwargs['instruct'], 'Warm, calm, elegant German narration.')
             self.assertEqual(kwargs['response_format'], 'wav')
@@ -1912,7 +1912,7 @@ class InferenceServiceTests(unittest.TestCase):
         self.assertEqual(
             payload['tts_sampling_profile'],
             {
-                'kind': 'ollmo.tts_sampling_profile',
+                'kind': 'fruth.tts_sampling_profile',
                 'version': 1,
                 'policy_id': 'qwen3_tts_model_native_sampling_v1',
                 'model_family': 'qwen3_tts',
@@ -1931,8 +1931,8 @@ class InferenceServiceTests(unittest.TestCase):
             capability='text_to_speech',
             model_name='mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16',
             port=11504,
-            prompt='Guten Tag aus Ollmo.',
-            user_prompt='Guten Tag aus Ollmo.',
+            prompt='Guten Tag aus Fruth.',
+            user_prompt='Guten Tag aus Fruth.',
             infer_timeout_sec=1200,
             pdf_page_timeout_sec=240,
             pdf_max_image_side=2400,
@@ -1941,7 +1941,7 @@ class InferenceServiceTests(unittest.TestCase):
         call_order = []
         backend_audio_bytes = b'RIFFbackend-bytes'
         integrity_evidence = {
-            'kind': 'ollmo.tts_audio_integrity_evidence',
+            'kind': 'fruth.tts_audio_integrity_evidence',
             'status': 'passed',
             'materialization_eligible': True,
         }
@@ -1971,7 +1971,7 @@ class InferenceServiceTests(unittest.TestCase):
         ):
             self.assertEqual(call_order, ['backend', 'persist'])
             self.assertEqual(saved_audio_path, '/tmp/artifacts/audio/ordered.wav')
-            self.assertEqual(spoken_text, 'Guten Tag aus Ollmo.')
+            self.assertEqual(spoken_text, 'Guten Tag aus Fruth.')
             self.assertEqual(
                 source_sha256,
                 hashlib.sha256(spoken_text.encode('utf-8')).hexdigest(),
@@ -1984,7 +1984,7 @@ class InferenceServiceTests(unittest.TestCase):
             return integrity_evidence
 
         with patch(
-            'ollmo_core.inference.build_tts_audio_integrity_evidence',
+            'fruth_core.inference.build_tts_audio_integrity_evidence',
             side_effect=build_integrity_evidence,
         ):
             payload, status = dispatch_infer_request(
@@ -2001,7 +2001,7 @@ class InferenceServiceTests(unittest.TestCase):
         self.assertIs(payload['tts_audio_integrity_evidence'], integrity_evidence)
         self.assertEqual(
             payload['tts_semantic_source']['tts_source_text'],
-            'Guten Tag aus Ollmo.',
+            'Guten Tag aus Fruth.',
         )
 
     def test_moderate_qwen_designed_voice_uses_one_backend_call(self):
@@ -2810,7 +2810,7 @@ class InferenceServiceTests(unittest.TestCase):
             capability='text_to_speech',
             model_name='mlx-community/kitten-tts-mini-0.8-bf16',
             port=11504,
-            prompt='Hello from Ollmo.',
+            prompt='Hello from Fruth.',
             user_prompt='',
             infer_timeout_sec=1200,
             pdf_page_timeout_sec=240,
@@ -3180,8 +3180,8 @@ class InferenceServiceTests(unittest.TestCase):
             capability='text_to_speech',
             model_name='mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16',
             port=11504,
-            prompt='Hello from Ollmo.',
-            user_prompt='Hello from Ollmo.',
+            prompt='Hello from Fruth.',
+            user_prompt='Hello from Fruth.',
             infer_timeout_sec=1200,
             pdf_page_timeout_sec=240,
             pdf_max_image_side=2400,
@@ -3190,7 +3190,7 @@ class InferenceServiceTests(unittest.TestCase):
         )
 
         def mlx_audio_speech(_port, _model_name, prompt, **kwargs):
-            self.assertEqual(prompt, 'Hello from Ollmo.')
+            self.assertEqual(prompt, 'Hello from Fruth.')
             self.assertEqual(kwargs['response_format'], None)
             return {
                 'audio_bytes': b'RIFFfakewav',
@@ -3341,8 +3341,8 @@ class InferenceServiceTests(unittest.TestCase):
             capability='text_to_speech',
             model_name='mlx-community/kitten-tts-mini-0.8-bf16',
             port=11504,
-            prompt='Hello from Ollmo.',
-            user_prompt='Hello from Ollmo.',
+            prompt='Hello from Fruth.',
+            user_prompt='Hello from Fruth.',
             infer_timeout_sec=1200,
             pdf_page_timeout_sec=240,
             pdf_max_image_side=2400,
@@ -3353,7 +3353,7 @@ class InferenceServiceTests(unittest.TestCase):
         )
 
         def mlx_audio_speech(_port, _model_name, prompt, **kwargs):
-            self.assertEqual(prompt, 'Hello from Ollmo.')
+            self.assertEqual(prompt, 'Hello from Fruth.')
             self.assertEqual(kwargs['voice'], 'Bella')
             self.assertIsNone(kwargs['lang_code'])
             self.assertNotIn('max_tokens', kwargs)
@@ -3388,8 +3388,8 @@ class InferenceServiceTests(unittest.TestCase):
             capability='text_to_speech',
             model_name='mlx-community/kitten-tts-mini-0.8-bf16',
             port=11504,
-            prompt='Hello from Ollmo.',
-            user_prompt='Hello from Ollmo.',
+            prompt='Hello from Fruth.',
+            user_prompt='Hello from Fruth.',
             infer_timeout_sec=1200,
             pdf_page_timeout_sec=240,
             pdf_max_image_side=2400,
@@ -3705,7 +3705,7 @@ class InferenceServiceTests(unittest.TestCase):
 
     def test_chat_fallback_sends_phase_system_prompt_separately_with_text_attachment(self):
         phase_system_prompt = (
-            'Ollmo phase contract: prepare-only.\n'
+            'Fruth phase contract: prepare-only.\n'
             'Return exactly four numbered image prompts before the web files.'
         )
         ctx = InferContext(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import tarfile
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -23,19 +24,19 @@ def _make_release_source(tmp_path: Path) -> Path:
 
     root_content = {
         'CHANGELOG.md': '# Changelog\n\n## [0.1.0] - Unreleased\n',
-        'CITATION.cff': 'cff-version: 1.2.0\ntitle: Ollmo\n',
+        'CITATION.cff': 'cff-version: 1.2.0\ntitle: Fruth\n',
         'CONTRIBUTING.md': '# Contributing\n',
-        'GHOST.md': '# Ghost\n',
+        'FRUTH_INFERENCE.md': '# interpretive inference\n',
         'LICENSE': 'Fixture Apache License 2.0 text.\n',
-        'NOTICE': 'Ollmo\nCopyright 2025-2026 fl0ri0\n',
-        'OLLMO_FOR_AGENTS.md': '# Ollmo for agents\n',
-        'README.md': '# Ollmo\n\nRelease candidate.\n',
+        'NOTICE': 'Fruth\nCopyright 2025-2026 fl0ri0\n',
+        'FRUTH_FOR_AGENTS.md': '# Fruth for agents\n',
+        'README.md': '# Fruth\n\nRelease candidate.\n',
         'SECURITY.md': '# Security\n',
         'THIRD_PARTY_NOTICES.md': '# Third-party components\n',
         'clean_repo_state.sh': '#!/usr/bin/env bash\nexit 0\n',
-        'ollmo': '#!/usr/bin/env bash\nexit 0\n',
-        'ollmo_webUI.html': '<!doctype html><title>Ollmo</title>\n',
-        'ollmo_webserver.py': '"""Fixture webserver."""\n',
+        'fruth': '#!/usr/bin/env bash\nexit 0\n',
+        'fruth_webUI.html': '<!doctype html><title>Fruth</title>\n',
+        'fruth_webserver.py': '"""Fixture webserver."""\n',
         'pytest.ini': '[pytest]\ntestpaths = tests\n',
         'requirements.txt': 'Flask\npytest\n',
         'restart.sh': '#!/usr/bin/env bash\nexit 0\n',
@@ -44,7 +45,7 @@ def _make_release_source(tmp_path: Path) -> Path:
     }
     executable_names = {
         'clean_repo_state.sh',
-        'ollmo',
+        'fruth',
         'restart.sh',
         'start_multi_models.sh',
         'stop_multi_models.sh',
@@ -65,15 +66,19 @@ def _make_release_source(tmp_path: Path) -> Path:
         '# Self-Attack\n',
     )
     _write(
-        source / 'docs' / 'SELF_ATTACK_STATUS_2026-09-14.md',
-        '# Self-Attack status: failure and subsequent fixes\n',
+        source / 'docs' / 'SELF_ATTACK_STATUS_2026-09-06.md',
+        '# Self-Attack status\n',
+    )
+    _write(
+        source / 'docs' / 'SELF_ATTACK_STATUS_2026-09-19.md',
+        '# Fruth Self-Attack status\n',
     )
     _write(
         source / 'docs' / 'STATE_FLOW_DIAGNOSTICS.md',
         '# State-flow diagnostics\n',
     )
     _write(
-        source / 'docs' / 'ollmo-icon.svg',
+        source / 'docs' / 'fruth-icon.svg',
         '<svg xmlns="http://www.w3.org/2000/svg"></svg>\n',
     )
     _write(
@@ -102,7 +107,7 @@ def _make_release_source(tmp_path: Path) -> Path:
         source
         / 'docs'
         / 'diagrams'
-        / 'ollmo-state-substrate-architecture 2.html',
+        / 'fruth-state-substrate-architecture 2.html',
         'Historical diagram: excluded\n',
     )
     _write(source / 'docs' / 'IDEAS.md', '# Internal ideas: excluded\n')
@@ -115,7 +120,7 @@ def _make_release_source(tmp_path: Path) -> Path:
         '# Vision alignment\n\nPublic conceptual architecture.\n',
     )
     _write(
-        source / 'ollmo_core' / 'version.py',
+        source / 'fruth_core' / 'version.py',
         '"""Version."""\n\n__version__ = \'0.1.0\'\n',
     )
     _write(
@@ -133,13 +138,13 @@ def _make_release_source(tmp_path: Path) -> Path:
 
     for directory in (
         'helpers',
-        'ollmo_core',
-        'ollmo_g',
-        'ollmo_integrations',
-        'ollmo_orchestration',
-        'ollmo_runtime',
-        'ollmo_server',
-        'ollmo_services',
+        'fruth_core',
+        'fruth_inference',
+        'fruth_integrations',
+        'fruth_orchestration',
+        'fruth_runtime',
+        'fruth_server',
+        'fruth_services',
     ):
         _write(source / directory / '__init__.py', '"""Fixture package."""\n')
 
@@ -149,57 +154,57 @@ def _make_release_source(tmp_path: Path) -> Path:
     )
     _write(source / 'scripts' / 'helper.py', 'VALUE = 1\n')
     _write(
-        source / 'skills' / 'ollmo' / 'SKILL.md',
+        source / 'skills' / 'fruth' / 'SKILL.md',
         (
             '---\n'
-            'name: ollmo\n'
-            'description: Use Ollmo runtime truth.\n'
+            'name: fruth\n'
+            'description: Use Fruth runtime truth.\n'
             '---\n\n'
-            '# Ollmo\n'
+            '# Fruth\n'
         ),
     )
     _write(
-        source / 'skills' / 'ollmo' / 'NOTICE',
-        'Ollmo Companion Skill\nCopyright 2026 fl0ri0\n',
+        source / 'skills' / 'fruth' / 'NOTICE',
+        'Fruth Companion Skill\nCopyright 2026 fl0ri0\n',
     )
     _write(
-        source / 'skills' / 'ollmo' / 'agents' / 'openai.yaml',
+        source / 'skills' / 'fruth' / 'agents' / 'openai.yaml',
         (
             'interface:\n'
-            '  display_name: "Ollmo"\n'
-            '  short_description: "Use Ollmo runtime truth"\n'
-            '  default_prompt: "Use $ollmo for local runtime work."\n'
+            '  display_name: "Fruth"\n'
+            '  short_description: "Use Fruth runtime truth"\n'
+            '  default_prompt: "Use $fruth for local runtime work."\n'
         ),
     )
     _write(
-        source / 'skills' / 'ollmo' / 'references' / 'ollmo-contract.md',
-        '# Ollmo contract\n',
+        source / 'skills' / 'fruth' / 'references' / 'fruth-contract.md',
+        '# Fruth contract\n',
     )
     _write(
-        source / 'skills' / 'ollmo' / 'private-note.md',
+        source / 'skills' / 'fruth' / 'private-note.md',
         '# Unreviewed skill note: excluded\n',
     )
     _write(
-        source / 'skills' / 'ollmo-run-monitor' / 'SKILL.md',
+        source / 'skills' / 'fruth-run-monitor' / 'SKILL.md',
         (
             '---\n'
-            'name: ollmo-run-monitor\n'
+            'name: fruth-run-monitor\n'
             'description: Internal monitor skill.\n'
             '---\n'
         ),
     )
     _write(
-        source / 'skills' / 'ollmo-run-monitor' / 'agents' / 'openai.yaml',
-        'interface:\n  display_name: "Ollmo Run Monitor"\n',
+        source / 'skills' / 'fruth-run-monitor' / 'agents' / 'openai.yaml',
+        'interface:\n  display_name: "Fruth Run Monitor"\n',
     )
-    _write(source / 'static' / 'ui' / 'app.js', 'window.ollmo = true;\n')
+    _write(source / 'static' / 'ui' / 'app.js', 'window.fruth = true;\n')
     _write(
         source / 'site' / 'index.html',
         (
             '<!doctype html>\n'
             '<link rel="stylesheet" href="./landing.css">\n'
             '<script defer src="./landing.js"></script>\n'
-            '<title>Ollmo project page</title>\n'
+            '<title>Fruth project page</title>\n'
         ),
     )
     _write(
@@ -208,7 +213,7 @@ def _make_release_source(tmp_path: Path) -> Path:
     )
     _write(
         source / 'site' / 'landing.js',
-        'window.ollmoLanding = true;\n',
+        'window.fruthLanding = true;\n',
     )
     _write(
         source / 'site' / 'fonts' / 'Montserrat-Black-latin.woff2',
@@ -242,7 +247,7 @@ def _make_release_source(tmp_path: Path) -> Path:
         source
         / 'tests'
         / 'testdata'
-        / 'ghost_diagnostics'
+        / 'inference_diagnostics'
         / 'tts_capability_hint_summary_read_aloud.json',
         '{"case_id":"tts_capability_hint_summary_read_aloud"}\n',
     )
@@ -259,8 +264,12 @@ def _make_release_source(tmp_path: Path) -> Path:
     _write(source / 'logs' / 'runtime.log', 'private log\n')
     _write(source / 'artifacts' / 'images' / 'private.txt', 'private artifact\n')
     _write(source / 'plans' / 'private-plan.md', '# Private plan\n')
-    _write(source / 'ollmo_research/candidates/candidates.jsonl', '{"internal_only": true}\n')
-    _write(source / 'ollmo_research/retained-evidence/gold-core-v0/files/private.bin', 'private retained bytes\n')
+    _write(source / 'fruth-upload' / 'fruth.py', '# Previous staging copy\n')
+    _write(source / 'fruth-upload' / 'state' / 'runtime_status.json', '{"private": true}\n')
+    for research_path in release.RESEARCH_SOURCE_FILES:
+        _write(source / research_path, '{}\n' if research_path.suffix == '.json' else '# Research source fixture\n')
+    _write(source / 'fruth_research/candidates/candidates.jsonl', '{"internal_only": true}\n')
+    _write(source / 'fruth_research/retained-evidence/gold-core-v0/files/private.bin', 'private retained bytes\n')
     _write(source / '.env', 'SHOULD_NOT_ENTER_ARCHIVE=1\n')
     _write(source / 'Readme_current_building_state.md', '# Private build note\n')
     return source
@@ -284,7 +293,9 @@ def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> No
     assert staged_root.is_dir()
     assert (staged_root / 'model_ports.json').read_text(encoding='utf-8') == '[]\n'
     assert not (staged_root / 'state').exists()
-    assert not (staged_root / 'ollmo_research').exists()
+    assert all((staged_root / path).is_file() for path in release.RESEARCH_SOURCE_FILES)
+    assert not (staged_root / 'fruth_research/candidates/candidates.jsonl').exists()
+    assert not (staged_root / 'fruth_research/retained-evidence').exists()
     assert not (staged_root / 'logs').exists()
     assert {
         path.relative_to(staged_root)
@@ -295,10 +306,11 @@ def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> No
     assert not (staged_root / 'plans').exists()
     assert not (staged_root / '.env').exists()
     assert (staged_root / 'docs' / 'SELF_ATTACK.md').is_file()
-    assert (staged_root / 'docs' / 'SELF_ATTACK_STATUS_2026-09-14.md').is_file()
+    assert (staged_root / 'docs' / 'SELF_ATTACK_STATUS_2026-09-19.md').is_file()
+    assert not (staged_root / 'docs' / 'SELF_ATTACK_STATUS_2026-09-06.md').exists()
     assert (staged_root / 'docs' / 'CAUSAL_TELEMETRY.md').is_file()
     assert (staged_root / 'docs' / 'STATE_FLOW_DIAGNOSTICS.md').is_file()
-    assert (staged_root / 'docs' / 'ollmo-icon.svg').is_file()
+    assert (staged_root / 'docs' / 'fruth-icon.svg').is_file()
     assert (staged_root / 'config' / 'self_attack_corpus.json').is_file()
     assert (staged_root / 'config' / 'graph_rebase_shadow_corpus.json').is_file()
     assert not (staged_root / 'config' / 'unreviewed_local_config.json').exists()
@@ -318,7 +330,7 @@ def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> No
     assert staged_diagrams == set(release.CURRENT_DIAGRAM_PATHS)
     assert not (staged_root / '.github').exists()
     assert (staged_root / 'tests' / 'test_smoke.py').is_file()
-    assert not (staged_root / 'ollmo_landing.html').exists()
+    assert not (staged_root / 'fruth_landing.html').exists()
     assert (staged_root / 'site' / 'index.html').is_file()
     assert (staged_root / 'site' / 'landing.css').is_file()
     assert (staged_root / 'site' / 'landing.js').is_file()
@@ -342,7 +354,7 @@ def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> No
         staged_root
         / 'tests'
         / 'testdata'
-        / 'ghost_diagnostics'
+        / 'inference_diagnostics'
         / 'tts_capability_hint_summary_read_aloud.json'
     ).is_file()
     staged_skill_files = {
@@ -351,8 +363,9 @@ def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> No
         if path.is_file()
     }
     assert staged_skill_files == set(release.RELEASE_SKILL_FILES)
-    assert not (staged_root / 'skills' / 'ollmo' / 'private-note.md').exists()
-    assert not (staged_root / 'skills' / 'ollmo-run-monitor').exists()
+    assert not (staged_root / 'skills' / 'fruth' / 'private-note.md').exists()
+    assert not (staged_root / 'skills' / 'fruth-run-monitor').exists()
+    assert not (staged_root / 'fruth-upload').exists()
     staged_example_files = {
         path.relative_to(staged_root)
         for path in (staged_root / 'examples').rglob('*')
@@ -411,7 +424,7 @@ def test_public_reference_allowlist_matches_repository_files() -> None:
     sorted(release.RELEASE_SKILL_FILES, key=lambda item: item.as_posix()),
     ids=lambda item: item.as_posix(),
 )
-def test_each_release_ollmo_skill_file_is_required(
+def test_each_release_fruth_skill_file_is_required(
     tmp_path: Path,
     relative_path: Path,
 ) -> None:
@@ -428,7 +441,7 @@ def test_each_release_ollmo_skill_file_is_required(
 def test_missing_required_reference_example_is_rejected(tmp_path: Path) -> None:
     source = _make_release_source(tmp_path)
     missing = Path(
-        'examples/reference-runs/2026-08-31-evening-rain/response.json'
+        'examples/reference-runs/2026-09-18-evening-rain/response.json'
     )
     (source / missing).unlink()
 
@@ -439,9 +452,12 @@ def test_missing_required_reference_example_is_rejected(tmp_path: Path) -> None:
         )
 
 
-def test_vision_alignment_is_required(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    'document', ['VISION_ALIGNMENT.md', 'SELF_ATTACK_STATUS_2026-09-19.md']
+)
+def test_required_public_document_is_required(tmp_path: Path, document: str) -> None:
     source = _make_release_source(tmp_path)
-    (source / 'docs' / 'VISION_ALIGNMENT.md').unlink()
+    (source / 'docs' / document).unlink()
 
     with pytest.raises(release.ReleaseArchiveError, match='missing'):
         release.build_release_archive(
@@ -506,7 +522,7 @@ def test_verify_only_rejects_non_current_diagram(tmp_path: Path) -> None:
         staged_root
         / 'docs'
         / 'diagrams'
-        / 'ollmo-state-substrate-architecture 2.html',
+        / 'fruth-state-substrate-architecture 2.html',
         'Historical diagram: forbidden in release\n',
     )
     release.write_manifest(staged_root)
@@ -602,10 +618,10 @@ def test_verify_only_rejects_non_public_skill_path(
     staged_root = Path(str(result['staging_root']))
     (staged_root / release.MANIFEST_NAME).unlink()
     _write(
-        staged_root / 'skills' / 'ollmo-run-monitor' / 'SKILL.md',
+        staged_root / 'skills' / 'fruth-run-monitor' / 'SKILL.md',
         (
             '---\n'
-            'name: ollmo-run-monitor\n'
+            'name: fruth-run-monitor\n'
             'description: Internal monitor skill.\n'
             '---\n'
         ),
@@ -646,7 +662,7 @@ def test_verify_only_rejects_non_public_reference_example_path(
         release.verify_archive(archive_path)
 
 
-def test_verify_only_rejects_missing_required_ollmo_skill(
+def test_verify_only_rejects_missing_required_fruth_skill(
     tmp_path: Path,
 ) -> None:
     source = _make_release_source(tmp_path)
@@ -656,7 +672,7 @@ def test_verify_only_rejects_missing_required_ollmo_skill(
     )
     staged_root = Path(str(result['staging_root']))
     (staged_root / release.MANIFEST_NAME).unlink()
-    (staged_root / 'skills' / 'ollmo' / 'SKILL.md').unlink()
+    (staged_root / 'skills' / 'fruth' / 'SKILL.md').unlink()
     release.write_manifest(staged_root)
     archive_path = tmp_path / 'missing-skill.tar.gz'
     release.write_deterministic_archive(staged_root, archive_path)
@@ -734,7 +750,7 @@ def test_verify_only_rejects_path_traversal_without_extracting_it(
     archive_path = tmp_path / 'unsafe.tar.gz'
     with tarfile.open(archive_path, mode='w:gz') as archive:
         data = b'escape'
-        member = tarfile.TarInfo('ollmo-0.1.0/../../escape.txt')
+        member = tarfile.TarInfo('fruth-0.1.0/../../escape.txt')
         member.size = len(data)
         archive.addfile(member, io.BytesIO(data))
 
@@ -796,7 +812,7 @@ def test_publish_mode_requires_target_and_final_changelog_date(
 def test_public_personal_path_reference_blocks_build(tmp_path: Path) -> None:
     source = _make_release_source(tmp_path)
     personal_path = '/Users/' + 'dev/private'
-    _write(source / 'README.md', f'# Ollmo\n\nPath: {personal_path}\n')
+    _write(source / 'README.md', f'# Fruth\n\nPath: {personal_path}\n')
 
     with pytest.raises(release.ReleaseArchiveError, match='personal_home'):
         release.build_release_archive(
@@ -824,11 +840,11 @@ def test_personal_path_in_release_skill_blocks_build(tmp_path: Path) -> None:
     source = _make_release_source(tmp_path)
     personal_path = '/Users/' + 'dev/private'
     _write(
-        source / 'skills' / 'ollmo' / 'SKILL.md',
+        source / 'skills' / 'fruth' / 'SKILL.md',
         (
             '---\n'
-            'name: ollmo\n'
-            'description: Use Ollmo runtime truth.\n'
+            'name: fruth\n'
+            'description: Use Fruth runtime truth.\n'
             '---\n\n'
             f'Private checkout: {personal_path}\n'
         ),
@@ -874,32 +890,32 @@ def test_output_directory_cannot_contain_source_root(tmp_path: Path) -> None:
         )
 
 
-def test_current_release_metadata_and_notes_match_public_selection() -> None:
+def test_current_release_metadata_and_docs_match_public_selection() -> None:
     repository_root = Path(__file__).resolve().parent.parent
     version = release.read_source_version(repository_root)
     citation = yaml.safe_load((repository_root / 'CITATION.cff').read_text())
     assert citation['cff-version'] == '1.2.0'
     assert citation['type'] == 'software'
     assert citation['version'] == version
-    assert citation['title'] == 'Ollmo'
+    assert citation['title'] == 'Fruth'
     assert citation['authors'] == [{'name': 'fl0ri0'}]
-    assert citation['repository-code'] == 'https://github.com/fl0ri0/ollmo'
+    assert f'Fruth {version} derives' in citation['message']
+    assert 'https://github.com/fl0ri0/ollmo' in citation['message']
+    assert 'local snapshot' in citation['message']
+    assert citation['repository-code'] == 'https://github.com/fl0ri0/fruth'
+    release_date = date.fromisoformat(citation['date-released']).isoformat()
     assert citation['license'] == 'Apache-2.0'
     changelog = (repository_root / 'CHANGELOG.md').read_text()
-    assert f'## [{version}] - ' in changelog
-    release_label = 'release'
-    if f'## [{version}] - Unreleased' in changelog:
-        release_label = 'release candidate'
-        assert 'date-released' not in citation
-    else:
-        from datetime import date
-        released = date.fromisoformat(str(citation['date-released']))
-        assert f'## [{version}] - {released.isoformat()}' in changelog
+    assert f'## [{version}] - {release_date}' in changelog
     selected = release.discover_release_files(repository_root)
-    notes = Path('docs') / f'RELEASE_NOTES_{version}.md'
-    assert notes in selected
-    assert f'# Ollmo {version}' in selected[notes].read_text()
-    assert f'`{version}` {release_label} —' in (repository_root / 'README.md').read_text()
-    assert f'Ollmo {version} is an experimental {release_label},' in (
+    assert Path('docs/RELEASE_SCOPE.md') in selected
+    assert Path('docs/SELF_ATTACK_STATUS_2026-09-19.md') in selected
+    for name in ['FRUTH_MIGRATION.md', 'PROJECT_HISTORY.md',
+                 'RELEASE_CHECK_0.1.0.md', f'RELEASE_NOTES_{version}.md',
+                 'SELF_ATTACK_STATUS_2026-09-06.md', 'SELF_ATTACK_STATUS_2026-09-14.md',
+                 'CAUSAL_TELEMETRY_IMPLEMENTATION_REPORT.md']:
+        assert Path('docs') / name not in selected
+    assert f'**Status:** Fruth `{version}`' in (repository_root / 'README.md').read_text()
+    assert 'Fruth is experimental,' in (
         repository_root / 'site' / 'index.html'
     ).read_text()

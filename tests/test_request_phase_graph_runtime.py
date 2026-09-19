@@ -3,11 +3,11 @@ import unittest
 from copy import deepcopy
 from pathlib import Path
 
-from ollmo_g.request_phase_graph import (
+from fruth_inference.request_phase_graph import (
     _structured_final_join_selected_phase_ids,
     build_request_phase_graph,
 )
-from ollmo_server.late_fill_runtime import LateFillRuntimeOwner
+from fruth_server.late_fill_runtime import LateFillRuntimeOwner
 
 
 class RequestPhaseGraphRuntimeTests(unittest.TestCase):
@@ -92,8 +92,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         branches = graph.get('downstream_branches') or []
@@ -116,10 +116,10 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             route_payload={
                 'capability': 'vision_analysis',
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
             },
         )
 
@@ -163,8 +163,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
                 self.assertTrue(
                     graph['prompt_intent']['explicit_visual_defer_materialization']
@@ -191,10 +191,10 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     route_payload={
                         'capability': 'vision_analysis',
-                        'route_source': 'ghost_carried',
+                        'route_source': 'inference_carried',
                     },
                 )
 
@@ -220,8 +220,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertFalse(graph['prompt_intent']['explicit_defer_materialization'])
@@ -241,8 +241,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         branches = graph.get('downstream_branches') or []
@@ -259,8 +259,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         branches = graph.get('downstream_branches') or []
@@ -272,7 +272,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
     def test_spoken_version_is_audio_and_does_not_create_image_work(self):
         prompt = (
-            'Write a short original poem in English inspired by Ollmo – by open possibilities, '
+            'Write a short original poem in English inspired by Fruth – by open possibilities, '
             'intentions taking form, unfinished work remaining visible, and truth resting in what '
             'was actually made. Let it feel reflective and lyrical rather than technical.\n\n'
             'Save the poem as a Markdown file and generate a spoken version using local '
@@ -281,8 +281,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertFalse(graph['prompt_intent']['requests_visual_output'])
@@ -301,7 +301,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
     def test_explicit_no_image_keeps_poem_markdown_and_audio_without_image_promotion(self):
         prompt = (
-            'Write a short original poem in English inspired by Ollmo – by open possibilities, '
+            'Write a short original poem in English inspired by Fruth – by open possibilities, '
             'intentions taking form, unfinished work remaining visible, and truth resting in what '
             'was actually made. Let it feel reflective and lyrical rather than technical.\n\n'
             'Save the poem as a Markdown file and generate a spoken version using local '
@@ -310,8 +310,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertTrue(graph['prompt_intent']['explicit_visual_defer_materialization'])
@@ -402,8 +402,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             with self.subTest(has_defensive_image_clause='Do not' in prompt):
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 intent = graph['prompt_intent']
@@ -457,8 +457,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 self.assertFalse(graph['prompt_intent']['requests_visual_output'])
@@ -475,8 +475,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertTrue(graph['prompt_intent']['requests_visual_output'])
@@ -503,8 +503,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
                 branches = graph.get('downstream_branches') or []
                 self.assertEqual(
@@ -558,8 +558,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
                 self.assertTrue(
                     graph['prompt_intent']['text_preparation_before_audio_output']
@@ -584,8 +584,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         intent = graph['prompt_intent']
@@ -610,8 +610,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         intent = graph['prompt_intent']
@@ -635,8 +635,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         intent = graph['prompt_intent']
@@ -663,8 +663,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         intent = graph['prompt_intent']
@@ -685,8 +685,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertTrue(graph['prompt_intent']['requests_visual_output'])
@@ -707,7 +707,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
         )
 
         self.assertFalse(graph['prompt_intent']['input_audio_artifact_promoted_to_stt'])
@@ -739,8 +739,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         branches = graph.get('downstream_branches') or []
@@ -763,8 +763,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         branches = graph.get('downstream_branches') or []
@@ -813,10 +813,10 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'input': [{'role': 'user', 'content': [{'type': 'input_text', 'text': prompt}]}],
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         branches = graph.get('downstream_branches') or []
@@ -857,8 +857,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -912,7 +912,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 graph = build_request_phase_graph(
                     prompt,
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'input': [
                             {
                                 'role': 'user',
@@ -920,7 +920,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                             }
                         ],
                     },
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 text_obligations = self._intent_obligations(graph, 'text_artifact')
@@ -958,8 +958,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -985,8 +985,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertEqual(
@@ -1019,8 +1019,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1065,8 +1065,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         json_only_prompt = 'Create exactly one local file:\n1. pricing.json'
         json_only_graph = build_request_phase_graph(
             json_only_prompt,
-            request_payload={'ghost_route': True, 'prompt': json_only_prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': json_only_prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         self.assertEqual(self._executable_image_branches(json_only_graph), [])
 
@@ -1080,8 +1080,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         )
         data_bundle_graph = build_request_phase_graph(
             data_bundle_prompt,
-            request_payload={'ghost_route': True, 'prompt': data_bundle_prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': data_bundle_prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         data_bundle_dependencies = [
             obligation for obligation in self._intent_obligations(data_bundle_graph, 'dependency')
@@ -1189,7 +1189,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 graph = build_request_phase_graph(
                     prompt,
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': prompt,
                         'current_predecessor_context': {
                             'status': 'authorized',
@@ -1202,7 +1202,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                             ],
                         },
                     },
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
                 image_branches = self._executable_image_branches(graph)
                 refinements = [
@@ -1263,7 +1263,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'reference_artifacts': [
                     {
@@ -1278,7 +1278,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                     'batch_prompts': [stale_prompt, stale_prompt, stale_prompt],
                 },
             },
-            route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
         )
         image_branches = self._executable_image_branches(graph)
         expected_prompts = [
@@ -1326,8 +1326,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
         )
         image_branches = self._executable_image_branches(graph)
 
@@ -1351,8 +1351,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         image_branches = self._executable_image_branches(graph)
 
@@ -1386,8 +1386,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1428,8 +1428,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1480,8 +1480,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertEqual(
@@ -1497,15 +1497,15 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
     def test_natural_german_landingpage_with_images_promotes_bound_html_obligation(self):
         prompt = (
-            'Ollmo, entwirf mir eine kleine Landingpage für ein Café namens "Morgenrot". '
+            'Fruth, entwirf mir eine kleine Landingpage für ein Café namens "Morgenrot". '
             'Ich hätte gerne drei stimmungsvolle Bilder: eins von der Kaffeemaschine im Einsatz, '
             'eins von einem frischen Croissant und eins von der gemütlichen Fensterbank mit Blick nach draußen.'
         )
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1539,8 +1539,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1576,7 +1576,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             graph = build_request_phase_graph(
                 prompt,
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': prompt,
                     'reference_artifacts': [
                         {
@@ -1606,7 +1606,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 },
                 route_payload={
                     'capability': 'image_generation',
-                    'route_source': 'ghost_carried',
+                    'route_source': 'inference_carried',
                 },
             )
 
@@ -1637,8 +1637,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1674,8 +1674,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1712,8 +1712,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1752,8 +1752,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1802,8 +1802,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         text_obligations = self._intent_obligations(graph, 'text_artifact')
@@ -1848,8 +1848,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         evidence_obligations = self._intent_obligations(graph, 'evidence_branch')
@@ -1870,8 +1870,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1889,8 +1889,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1912,7 +1912,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'reference_artifacts': [
                     {
@@ -1925,7 +1925,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                     }
                 ],
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -1959,7 +1959,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             graph = build_request_phase_graph(
                 prompt,
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': prompt,
                     'selected_reference_artifacts': [
                         {
@@ -1970,7 +1970,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                         }
                     ],
                 },
-                route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             )
 
             text_artifact_branches = self._text_artifact_branches(graph)
@@ -2010,7 +2010,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             graph = build_request_phase_graph(
                 prompt,
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': prompt,
                     'selected_reference_artifacts': [
                         {
@@ -2025,7 +2025,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                         },
                     ],
                 },
-                route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             )
 
             branches = {
@@ -2108,11 +2108,11 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             graph = build_request_phase_graph(
                 prompt,
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': prompt,
                     'selected_reference_artifacts': selected_references,
                 },
-                route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             )
 
             image_branches = self._executable_image_branches(graph)
@@ -2220,14 +2220,14 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             graph = build_request_phase_graph(
                 prompt,
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': prompt,
                     'selected_reference_artifacts': [
                         {'type': 'text', 'path': str(index_path)},
                         {'type': 'text', 'path': str(configurator_path)},
                     ],
                 },
-                route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             )
 
             html_branches = {
@@ -2258,7 +2258,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             graph = build_request_phase_graph(
                 prompt,
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': prompt,
                     'selected_reference_artifacts': [
                         {'type': 'text', 'path': str(index_path)},
@@ -2270,7 +2270,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                         '<h1>Hello</h1>\n```'
                     ),
                 },
-                route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             )
 
             branches = self._text_artifact_branches(graph)
@@ -2295,13 +2295,13 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             graph = build_request_phase_graph(
                 prompt,
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': prompt,
                     'selected_reference_artifacts': [
                         {'type': 'text', 'path': str(index_path)},
                     ],
                 },
-                route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             )
 
             branches = self._text_artifact_branches(graph)
@@ -2333,14 +2333,14 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             graph = build_request_phase_graph(
                 prompt,
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': prompt,
                     'selected_reference_artifacts': [
                         {'type': 'text', 'path': str(first_path)},
                         {'type': 'text', 'path': str(second_path)},
                     ],
                 },
-                route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             )
 
             branches = self._text_artifact_branches(graph)
@@ -2367,7 +2367,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'downstream_branches': [
                     {
@@ -2381,7 +2381,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                     },
                 ],
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -2402,8 +2402,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertFalse(graph['prompt_intent']['counted_visual_output_obligation'])
@@ -2418,8 +2418,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = self._executable_image_branches(graph)
@@ -2433,8 +2433,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         image_branches = [
@@ -2466,8 +2466,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         branches = graph.get('downstream_branches') or []
@@ -2489,8 +2489,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         prompt_intent = graph['prompt_intent']
@@ -2538,8 +2538,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         branches = graph.get('downstream_branches') or []
@@ -2634,8 +2634,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 prompt = root + ending
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
                 branches = graph.get('downstream_branches') or []
                 stt_branch = next(
@@ -2859,8 +2859,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
                 branches = graph.get('downstream_branches') or []
                 images = [
@@ -2906,8 +2906,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         branches = graph.get('downstream_branches') or []
         image = next(
@@ -2948,8 +2948,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         branches = graph.get('downstream_branches') or []
         stt_branch = next(
@@ -2975,8 +2975,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         branches = graph.get('downstream_branches') or []
         final_branches = [
@@ -3023,8 +3023,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         branches = graph.get('downstream_branches') or []
         final_branch = next(
@@ -3083,11 +3083,11 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'reference_artifacts': reference_artifacts,
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         prompt_intent = graph['prompt_intent']
@@ -3310,11 +3310,11 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 graph = build_request_phase_graph(
                     prompt,
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': prompt,
                         'reference_artifacts': reference_artifacts,
                     },
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
                 branches = graph.get('downstream_branches') or []
                 final_branch = branches[-1]
@@ -3579,11 +3579,11 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'downstream_branches': explicit_branches,
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             response_payload={
                 'output_text': 'Audio wird in den nachgelagerten Zweigen erzeugt.',
                 'status': 'completed',
@@ -3646,9 +3646,9 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         predecessor_response_id = 'resp_r5_root'
         predecessor_message_id = 'msg_r5_root'
         request_payload = {
-            'ghost_route': True,
+            'inference_route': True,
             'prompt': prompt,
-            'ghost_messages': [
+            'inference_messages': [
                 {
                     'role': 'assistant',
                     'message_id': predecessor_message_id,
@@ -3709,7 +3709,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             request_payload=request_payload,
             route_payload={
                 'capability': 'text_to_speech',
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_reason': 'text-to-speech cue',
                 'route_reuse_last_artifact': True,
                 'route_artifact_ref': 'artifact:text_r5_root',
@@ -3781,7 +3781,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'input_artifacts': [
                     {
@@ -3794,7 +3794,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             },
             route_payload={
                 'capability': 'speech_to_text',
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_reuse_last_artifact': False,
             },
         )
@@ -3824,7 +3824,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 graph = build_request_phase_graph(
                     prompt,
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': prompt,
                         'reference_artifacts': [
                             {
@@ -3835,7 +3835,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                             }
                         ],
                     },
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 self.assertFalse(graph['prompt_intent']['requests_text_artifact_output'])
@@ -3869,7 +3869,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 graph = build_request_phase_graph(
                     prompt,
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': prompt,
                         'reference_artifacts': [
                             {
@@ -3880,7 +3880,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                             }
                         ],
                     },
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 branches = graph.get('downstream_branches') or []
@@ -3911,7 +3911,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 graph = build_request_phase_graph(
                     prompt,
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': prompt,
                         'input_artifacts': [
                             {
@@ -3922,7 +3922,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                             }
                         ],
                     },
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 self.assertEqual(graph['current_phase_capability'], 'speech_to_text')
@@ -3947,7 +3947,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 graph = build_request_phase_graph(
                     prompt,
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': prompt,
                         'input_artifacts': [
                             {
@@ -3958,7 +3958,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                             }
                         ],
                     },
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 branches = graph.get('downstream_branches') or []
@@ -4011,7 +4011,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 graph = build_request_phase_graph(
                     prompt,
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': prompt,
                         'input_artifacts': [
                             {
@@ -4022,7 +4022,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                             }
                         ],
                     },
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 branches = graph.get('downstream_branches') or []
@@ -4059,7 +4059,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 graph = build_request_phase_graph(
                     prompt,
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': prompt,
                         'input_artifacts': [
                             {
@@ -4070,7 +4070,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                             }
                         ],
                     },
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 branches = graph.get('downstream_branches') or []
@@ -4110,7 +4110,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 graph = build_request_phase_graph(
                     prompt,
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': prompt,
                         'input_artifacts': [
                             {
@@ -4121,7 +4121,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                             }
                         ],
                     },
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 branches = graph.get('downstream_branches') or []
@@ -4170,7 +4170,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                 graph = build_request_phase_graph(
                     prompt,
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': prompt,
                         'input_artifacts': [
                             {
@@ -4189,7 +4189,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                             }
                         ],
                     },
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 branches = graph.get('downstream_branches') or []
@@ -4211,7 +4211,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'selected_reference_artifacts': [
                     {
@@ -4222,7 +4222,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                     }
                 ],
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         json_branches = [
@@ -4246,7 +4246,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'input_artifacts': [
                     {
@@ -4258,7 +4258,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                     }
                 ],
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         text_branches = [
@@ -4291,10 +4291,10 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         for carrier in ('file_path', 'route_artifact_path'):
             with self.subTest(carrier=carrier):
-                request_payload = {'ghost_route': True, 'prompt': prompt}
+                request_payload = {'inference_route': True, 'prompt': prompt}
                 route_payload = {
                     'capability': 'chat',
-                    'route_source': 'ghost_carried',
+                    'route_source': 'inference_carried',
                 }
                 if carrier == 'file_path':
                     request_payload[carrier] = source_path
@@ -4323,8 +4323,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             response_payload={
                 'file_path': '/outputs/response-output.json',
                 'route_artifact_path': '/outputs/response-output.json',
@@ -4346,14 +4346,14 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'input_artifacts': [
                     {'type': 'text', 'kind': 'text', 'name': 'east.json', 'path': '/uploads/east.json'},
                     {'type': 'text', 'kind': 'text', 'name': 'west.json', 'path': '/uploads/west.json'},
                 ],
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         retained = [
@@ -4373,7 +4373,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'input_artifacts': [
                     {
@@ -4384,7 +4384,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                     }
                 ],
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertFalse(
@@ -4400,8 +4400,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             response_payload={'saved_text_path': '/generated/old.json'},
         )
 
@@ -4426,14 +4426,14 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'input_artifacts': [
                     {'type': 'text', 'name': 'alpha.json', 'path': '/uploads/alpha.json'},
                     {'type': 'text', 'name': 'beta.json', 'path': '/uploads/beta.json'},
                 ],
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         retained = [
@@ -4458,7 +4458,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'input_artifacts': [
                     {
@@ -4468,7 +4468,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                     }
                 ],
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         retained = [
@@ -4492,8 +4492,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertFalse(graph['prompt_intent']['visual_artifact_preservation_without_regeneration'])
@@ -4506,8 +4506,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertFalse(graph['prompt_intent']['requests_audio_output'])
@@ -4523,8 +4523,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         tts_branches = [
@@ -4572,8 +4572,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         tts_branches = [
@@ -4596,8 +4596,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertEqual(graph['prompt_intent']['requested_audio_output_count'], 0)
@@ -4636,11 +4636,11 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'downstream_branches': explicit_branches,
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertEqual(graph['prompt_intent']['requested_audio_output_count'], 2)
@@ -4658,8 +4658,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         branches = graph['downstream_branches']
@@ -4698,8 +4698,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         intent = graph['prompt_intent']
@@ -4742,8 +4742,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 intent = graph['prompt_intent']
@@ -4781,8 +4781,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         intent = graph['prompt_intent']
@@ -4807,8 +4807,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         intent = graph['prompt_intent']
@@ -4834,8 +4834,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         intent = graph['prompt_intent']
@@ -4862,8 +4862,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
 
                 images = [
@@ -4887,7 +4887,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'input_artifacts': [
                     {
@@ -4897,7 +4897,7 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
                     }
                 ],
             },
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         intent = graph['prompt_intent']
@@ -4918,8 +4918,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         intent = graph['prompt_intent']
@@ -4942,8 +4942,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
                 tts_branches = [
                     branch for branch in graph['downstream_branches']
@@ -4966,8 +4966,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                 )
                 self.assertEqual(graph['prompt_intent']['requested_audio_output_count'], 0)
                 self.assertEqual(graph['prompt_intent']['requested_audio_output_count_raw'], 7)
@@ -4984,8 +4984,8 @@ class RequestPhaseGraphRuntimeTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         tts_branches = [
@@ -5005,8 +5005,8 @@ if __name__ == '__main__':
 
 
 def test_reserved_website_cannot_borrow_action_from_promoted_image_sentence():
-    from ollmo_g.request_phase_graph import build_request_phase_graph
-    from ollmo_core.inference import detect_text_artifact_requests
+    from fruth_inference.request_phase_graph import build_request_phase_graph
+    from fruth_core.inference import detect_text_artifact_requests
 
     reserved = ('Now explicitly create one image of a lighthouse. '
                 'A prompt is not the requested image artifact. '
@@ -5021,13 +5021,18 @@ def test_reserved_website_cannot_borrow_action_from_promoted_image_sentence():
 
 
 def test_reserved_website_clause_has_no_promotion_authority():
-    from ollmo_core.inference import detect_text_artifact_requests
-    from ollmo_g.request_phase_graph import build_request_phase_graph
+    from fruth_core.inference import detect_text_artifact_requests
+    from fruth_inference.request_phase_graph import build_request_phase_graph
 
     for separator in ['; ', ', ', '. ', '\n', ' and ']:
         prompt = f'Create an image{separator}keep website reserved.'
-        for mode in ['repair', 'worker', 'explorer', 'improviser']:
-            graph = build_request_phase_graph(prompt, request_payload={'prompt': prompt, 'ghost_mode': mode},
+        for role_ids in [
+            ['repairer', 'evidence_reasoner', 'doubt_challenger'],
+            ['materializer', 'quality_reviewer', 'transition_committer'],
+            ['possibility_expander', 'structural_planner', 'integrator'],
+            ['possibility_expander', 'materializer', 'quality_reviewer'],
+        ]:
+            graph = build_request_phase_graph(prompt, request_payload={'prompt': prompt, 'semantic_role_ids': role_ids},
                                               route_payload={'capability': 'image_generation'})
             assert detect_text_artifact_requests(prompt) == []
             assert not any(o.get('text_artifact_extension') == 'html' for o in graph['output_obligations'])

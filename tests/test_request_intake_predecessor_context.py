@@ -1,9 +1,9 @@
 import unittest
 from pathlib import Path
 
-from ollmo_server.request_intake_runtime import RequestIntakeRuntimeOwner
-from ollmo_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
-from ollmo_services.artifact_contracts import sanitize_artifact_record
+from fruth_server.request_intake_runtime import RequestIntakeRuntimeOwner
+from fruth_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
+from fruth_services.artifact_contracts import sanitize_artifact_record
 
 
 class RequestIntakePredecessorContextTests(unittest.TestCase):
@@ -57,7 +57,7 @@ class RequestIntakePredecessorContextTests(unittest.TestCase):
                 ),
                 'sanitize_artifact_record': sanitize_artifact_record,
                 'get_cached_generated_image_state': lambda path: None,
-                'sanitize_ghost_messages': lambda messages: messages,
+                'sanitize_inference_messages': lambda messages: messages,
             }
         )
 
@@ -153,7 +153,7 @@ class RequestIntakePredecessorContextTests(unittest.TestCase):
             'Artifact generated.',
         )
         self.assertEqual(
-            promoted['ghost_messages'][0]['message_id'],
+            promoted['inference_messages'][0]['message_id'],
             'canonical-msg-site-root',
         )
 
@@ -240,7 +240,7 @@ class RequestIntakePredecessorContextTests(unittest.TestCase):
                 'carried_public_dependency'
             ]
         )
-        self.assertEqual(len(promoted['ghost_messages'][0]['artifacts']), 2)
+        self.assertEqual(len(promoted['inference_messages'][0]['artifacts']), 2)
 
         sanitized = owner._extract_selected_reference_artifacts(promoted)
         self.assertEqual(len(sanitized), 3)
@@ -444,7 +444,7 @@ class RequestIntakePredecessorContextTests(unittest.TestCase):
 
         self.assertEqual(promoted, request_payload)
         self.assertNotIn('current_predecessor_context', promoted)
-        self.assertNotIn('ghost_messages', promoted)
+        self.assertNotIn('inference_messages', promoted)
 
     def test_selected_message_without_explicit_named_edit_does_not_promote_predecessor(self):
         request_payload = {

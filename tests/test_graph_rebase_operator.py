@@ -5,14 +5,14 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from ollmo_services.graph_rebase import (
+from fruth_services.graph_rebase import (
     apply_validated_graph_rebase,
     build_graph_rebase_lifecycle,
     build_graph_rebase_proposal,
     stable_graph_digest,
     validate_graph_rebase_proposal,
 )
-from ollmo_services.graph_rebase_operator import (
+from fruth_services.graph_rebase_operator import (
     GraphRebaseOperatorRegistryError,
     find_trusted_graph_rebase_authorization,
     load_graph_rebase_operator_records,
@@ -32,7 +32,7 @@ class GraphRebaseOperatorRegistryTests(unittest.TestCase):
 
     def _base_graph(self):
         return {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'graph_version': 3,
             'response_id': 'resp-operator-review',
             'frame_id': 'frame-graph-base',
@@ -143,7 +143,7 @@ class GraphRebaseOperatorRegistryTests(unittest.TestCase):
     ):
         graph = self._base_graph()
         graph['redraw_scope_ladder_review'] = {
-            'kind': 'ollmo.redraw_scope_ladder_review',
+            'kind': 'fruth.redraw_scope_ladder_review',
             'status': 'selected',
             'selected_scope': requested_rebase_class,
         }
@@ -168,7 +168,7 @@ class GraphRebaseOperatorRegistryTests(unittest.TestCase):
             **proposal_kwargs,
         )
         closure_review = {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'repair_required',
         }
         review = validate_graph_rebase_proposal(
@@ -208,7 +208,7 @@ class GraphRebaseOperatorRegistryTests(unittest.TestCase):
                 'prompt': 'Create the operator-review graph from the original request.',
             },
             'response_frame': {
-                'kind': 'ollmo.response_frame',
+                'kind': 'fruth.response_frame',
                 'response_id': 'resp-operator-review',
                 'frame_id': frame_id,
                 'frame_sequence': frame_sequence,
@@ -247,7 +247,7 @@ class GraphRebaseOperatorRegistryTests(unittest.TestCase):
         graph.pop('graph_rebase_reviews', None)
         payload['runtime']['developer_diagnostics'] = {
             'runtime_graph_rebase_candidate_review': {
-                'kind': 'ollmo.runtime_graph_rebase_candidate_review',
+                'kind': 'fruth.runtime_graph_rebase_candidate_review',
                 'status': 'not_proposed',
                 'reason': 'current_structural_closure_evidence_missing',
                 'base_graph_digest': stable_graph_digest(graph),
@@ -310,7 +310,7 @@ class GraphRebaseOperatorRegistryTests(unittest.TestCase):
 
     def _promotion_gate(self, **updates):
         gate = {
-            'kind': 'ollmo.graph_rebase_promotion_gate',
+            'kind': 'fruth.graph_rebase_promotion_gate',
             'gate_id': 'partial-gate-2026-07-19',
             'gate': 'partial_stage_to_apply_reviewed',
             'status': 'ready',
@@ -563,7 +563,7 @@ class GraphRebaseOperatorRegistryTests(unittest.TestCase):
         graph.pop('graph_rebase_proposals', None)
         payload['runtime']['developer_diagnostics'] = {
             'runtime_graph_rebase_candidate_review': {
-                'kind': 'ollmo.runtime_graph_rebase_candidate_review',
+                'kind': 'fruth.runtime_graph_rebase_candidate_review',
                 'status': 'not_proposed',
                 'reason': 'producer_missed_candidate',
                 'base_graph_digest': stable_graph_digest(graph),
@@ -779,7 +779,7 @@ class GraphRebaseOperatorRegistryTests(unittest.TestCase):
         )
 
         authorization = authorization_record['authorization']
-        self.assertEqual(authorization['kind'], 'ollmo.graph_rebase_authorization')
+        self.assertEqual(authorization['kind'], 'fruth.graph_rebase_authorization')
         self.assertEqual(authorization['status'], 'accepted')
         self.assertEqual(authorization['authority'], 'operator_review')
         self.assertEqual(authorization['source'], 'runtime_operator_registry')

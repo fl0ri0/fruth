@@ -1,6 +1,6 @@
 import unittest
 
-from ollmo_integrations.codex import provider_cleanup as cleanup_model_providers
+from fruth_integrations.codex import provider_cleanup as cleanup_model_providers
 
 
 class ProviderCleanupTests(unittest.TestCase):

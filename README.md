@@ -1,32 +1,37 @@
 <p align="center">
-  <img src="docs/ollmo-icon.svg" width="160" height="160" alt="Ollmo ghost icon">
+  <img src="docs/fruth-icon.svg" width="160" height="160" alt="Fruth icon">
 </p>
 
-# Ollmo
+# Fruth - Durable Semantic State Inference Engine
 
-Ollmo is a local-first AI runtime substrate that turns requests into truthful,
-continuable work state instead of treating model prose as proof of success.
+Intent opens a possibility space. Fruth records candidates and uses relevance and
+validated promotion to determine which work is owed. Its interpretive inference
+layer can infer meaning from evidence and propose interpretations, work and
+reviews; runtime contracts, validation and evidence govern accepted transitions.
 
-**Status:** `0.1.1` release — experimental, usable, and still
-evolving within the `0.x` series.
+Recorded frames and artifact evidence support inspection and continuation of work.
+Mutable work, frozen frames and append-only successors remain distinct. Durable
+means supported persistence and continuation of recorded state; it does not mean
+infallible conclusions or guaranteed survival of every in-flight operation.
 
-See the [0.1.1 release notes](docs/RELEASE_NOTES_0.1.1.md) for changes since
-August 1, upgrade guidance and the limits of the validation evidence.
+**Status:** Fruth `0.1.2` —
+experimental, usable, and still evolving within the `0.x` series.
 
 **Conceived, designed, created, built, and developed by
 [@fl0ri0](https://github.com/fl0ri0).**
 
-**Independent project.** Ollmo is built and maintained by one person, not a
+**Independent project.** Fruth is built and maintained by one person, not a
 company, research lab, or funded team. It is human-led and AI-enhanced — a
 vibe-coded project in the literal, accountable sense. Product direction and
 release decisions remain human; AI tools helped explore, implement, test, and
-document the system. It has grown for more than a year from an early prototype
-whose small changes were still copied by hand into the current runtime
-substrate. This release does not imply institutional backing, a formal security
-audit, or a support organization.
+document the system. The project began with ideas developed over time before
+taking shape in early terminal scripts. It grew from a prototype whose small
+changes were still copied by hand into the current runtime substrate. Previously
+released as Ollmo, it continues as Fruth. This release does not imply institutional
+backing, a formal security audit, or a support organization.
 
-Ollmo combines a local browser interface and control plane with local model
-backends, Ghost routing, durable response frames, history, and materialized
+Fruth combines a local browser interface and control plane with local model
+backends, interpretive inference routing, durable response frames, history, and materialized
 artifacts. Its core loop is:
 
 ```text
@@ -37,21 +42,21 @@ A response is a frozen truthful moment of work: what was requested, what
 became owed work, what runtime evidence exists, what remains pending or
 blocked, and which outputs or artifacts can be referenced later.
 
-Run `./ollmo self-attack` for adversarial conformance across discovered Ghost
+Run `./fruth self-attack` for adversarial conformance across discovered interpretive inference
 and runtime control profiles. It writes a human-readable report and JSON results;
 see [self-attack conformance](docs/SELF_ATTACK.md) for coverage, live execution,
 budgets and regression replay.
 
+The [September 19 Fruth conformance report](docs/SELF_ATTACK_STATUS_2026-09-19.md)
+records a full pass across 380 deterministic/fake and 170 live cases, with source
+identity, coverage limits, and retained-evidence hashes.
+
 ## Project, Citation, and Collaboration
 
-If Ollmo, its state-substrate architecture, possibility space and selective
-promotion into obligations, work-graph model, recorded pre-freeze working
-state, intent-preserving block-resolution principle, cross-instance Late Fill
-and branch-local output binding within one canonical response, evidence-gated
-closure review, durable response-frame design, or evaluation artifacts
-contribute to research or a published system, cite the software and repository using
-[`CITATION.cff`](CITATION.cff). Include the version and commit used for a
-reproduction; historical reference runs retain their original recorded identities.
+If you use Fruth, its software design, or its evaluation artifacts in research
+or a published system, cite the software using [`CITATION.cff`](CITATION.cff).
+Identify the exact version and commit or local snapshot used. Reference runs
+preserve their exact recorded execution identities and artifact evidence.
 
 The intent-preserving block-resolution principle means that a block is not
 permission to rewrite the request. Its solution is its own verified
@@ -60,16 +65,16 @@ the obligation visible, record the runtime evidence, choose the right-sized
 state transition, and freeze truthful state rather than the desired story.
 See [Principle 10](docs/PRINCIPLES.md#10-resolve-blocks-by-preserving-intent).
 
-Within one canonical response, Ollmo can route different promoted branches
+Within one canonical response, Fruth can route different promoted branches
 independently to compatible model instances and capabilities, materialize
 their distinct outputs through Late Fill, and bind each evidenced result back
 into the same response state. This is capability- and availability-dependent;
 it does not imply that every response uses more than one instance.
 
-For research collaboration, replications, talks, panels, or work around Ollmo,
+For research collaboration, replications, talks, panels, or work around Fruth,
 use the public contact methods on
 [@fl0ri0's GitHub profile](https://github.com/fl0ri0), with no guaranteed
-response time. Ollmo is published for inspection, use, research, and
+response time. The source is provided for inspection, use, research, and
 independent forks. Public issues and pull requests are not currently solicited
 or promised review; [`CONTRIBUTING.md`](CONTRIBUTING.md) records that capacity
 boundary.
@@ -77,7 +82,7 @@ boundary.
 Useful public context:
 
 - [Vision Alignment](docs/VISION_ALIGNMENT.md)
-- [State Substrate Architecture](docs/diagrams/ollmo-state-substrate-architecture.html)
+- [State Substrate Architecture](docs/diagrams/fruth-state-substrate-architecture.html)
 - [Verified Reference Runs](examples/README.md)
 - [Project Participation and Capacity](CONTRIBUTING.md)
 
@@ -86,31 +91,51 @@ Useful public context:
 The primary tested environment is a recent macOS release on Apple Silicon with
 Python 3.11 or newer. Local capabilities require their corresponding Ollama,
 MLX, or llama.cpp backend and model. Windows, Linux, Intel Mac, remote hosting,
-and multi-user operation are outside the 0.1.1 support promise.
+and multi-user operation are outside the 0.1.2 support promise.
 
 ## Install and Start
 
-Extract the release archive, enter its root, and run:
+Enter the Fruth checkout (or a locally built Fruth archive) and run:
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-./ollmo start
+./fruth start
 ```
 
-`./ollmo start` can create the virtual environment and install requirements
-itself, but the explicit steps above make installation failures easier to
-diagnose.
+Fruth startup initializes missing Research stores automatically and preserves
+existing candidates, reviews and Gold data. No separate Research startup command
+is needed. See the [Research guide](fruth_research/README.md) for candidate review,
+Gold curation and evidence retention.
+
+`./fruth start` runs model selection and can create the
+environment itself. Press Enter at model selection to continue without starting
+a model. Startup starts the Flask webserver in the background, or reuses the
+listener on port 5011, and prints the dashboard URL. Use `./fruth status` to
+inspect the stack and `./fruth restart` to run stop followed by start.
+Refresh an open browser tab after restarting.
+Fruth's default backend ports are 11434 (Ollama), 11435–11500
+(dedicated Ollama), 11501–11550 (MLX), and 11551–11600 (llama.cpp).
+The model registry remains local to the Fruth checkout.
+The webserver log is `logs/flask_webserver.log`.
+
+`./fruth stop` (also `shutdown` or `down`) runs the shutdown sequence:
+stop the Flask webserver, collect registered PIDs and listeners in the backend
+port ranges, stop those processes and the default Ollama server, then finalize
+runtime status and archive session logs. It prints the process/port diagnostics
+in the terminal. An already-stopped stack is a successful stop, so `restart`
+continues into startup normally. External provider projections are refreshed
+only by an explicit `./fruth sync`.
 
 Open the local interface:
 
 ```bash
-./ollmo dashboard
+./fruth dashboard
 ```
 
-The dashboard is served directly at `http://127.0.0.1:5001/`; `/dashboard`
+The dashboard is served directly at `http://127.0.0.1:5011/`; `/dashboard`
 remains a compatibility alias. The separate static project page is available
-at `http://127.0.0.1:5001/site/` while Ollmo is running, or by opening
+at `http://127.0.0.1:5011/site/` while Fruth is running, or by opening
 `site/index.html` directly from the checkout. The self-contained `site/`
 directory is also the GitHub Pages publication artifact. It uses only
 relative, bundled assets and is not the live control surface.
@@ -118,61 +143,61 @@ relative, bundled assets and is not the live control surface.
 Useful lifecycle commands:
 
 ```bash
-./ollmo status
-./ollmo shutdown
+./fruth status
+./fruth shutdown
 ```
 
 To inspect locally runnable models and start one chat model explicitly:
 
 ```bash
-./ollmo ctl models list --json --runnable-only
-./ollmo ctl start --model "<model-id>" --backend "<backend>" --capability chat --json
+./fruth ctl models list --json --runnable-only
+./fruth ctl start --model "<model-id>" --backend "<backend>" --capability chat --json
 ```
 
-Use an identifier and backend reported by the first command. Ollmo does not
+Use an identifier and backend reported by the first command. Fruth does not
 bundle model weights.
 
-## Optional: Use Ollmo from Codex
+## Optional: Use Fruth from Codex
 
 The release includes a dedicated Codex skill that teaches Codex how to inspect
-Ollmo runtime truth, use Ghost routing safely, and work with canonical
+Fruth runtime truth, use interpretive inference routing safely, and work with canonical
 responses and artifacts. During broader Codex work, the skill also makes
 already-running local text, image, vision/OCR, speech, embedding, and
 multimodal capabilities available as optional bounded tools while Codex
 remains the supervisor.
 
-From the extracted Ollmo directory:
+From the extracted Fruth directory:
 
 ```bash
-OLLMO_CODEX_SKILLS_DIR="${CODEX_HOME:-$HOME/.codex}/skills"
-mkdir -p "$OLLMO_CODEX_SKILLS_DIR"
+FRUTH_CODEX_SKILLS_DIR="${CODEX_HOME:-$HOME/.codex}/skills"
+mkdir -p "$FRUTH_CODEX_SKILLS_DIR"
 
-if [ -e "$OLLMO_CODEX_SKILLS_DIR/ollmo" ]; then
-  printf 'Ollmo skill already exists at %s\n' "$OLLMO_CODEX_SKILLS_DIR/ollmo"
+if [ -e "$FRUTH_CODEX_SKILLS_DIR/fruth" ]; then
+  printf 'Fruth skill already exists at %s\n' "$FRUTH_CODEX_SKILLS_DIR/fruth"
 else
-  cp -R skills/ollmo "$OLLMO_CODEX_SKILLS_DIR/ollmo"
+  cp -R skills/fruth "$FRUTH_CODEX_SKILLS_DIR/fruth"
 fi
 ```
 
-Restart Codex, open the extracted Ollmo directory as the active workspace, and
-then mention Ollmo normally or invoke `$ollmo` explicitly. When working from a
-different workspace, set `OLLMO_HOME` to the extracted Ollmo root or provide
+Restart Codex, open the extracted Fruth directory as the active workspace, and
+then mention Fruth normally or invoke `$fruth` explicitly. When working from a
+different workspace, set `FRUTH_HOME` to the extracted Fruth root or provide
 the checkout path when the skill asks.
 
-Installing the skill does not start Ollmo, change Codex model-provider
+Installing the skill does not start Fruth, change Codex model-provider
 settings, or enable cloud routing.
 
-The maintained source is `skills/ollmo/`; an installed copy is a distribution,
+The maintained source is `skills/fruth/`; an installed copy is a distribution,
 not a second authority. For an explicitly requested update, compare source and
 installed files, preserve any local changes in a protected recovery location,
-then copy the package contents into the existing installed `ollmo/` directory
+then copy the package contents into the existing installed `fruth/` directory
 using the same copy-based installation process. Compare every shipped file after
 copying, including `NOTICE`, `agents/openai.yaml` and references. Do not silently
 overwrite divergent local customizations or switch discovery directories.
 
-The entrypoint retains essential guardrails; `references/ollmo-contract.md` is
+The entrypoint retains essential guardrails; `references/fruth-contract.md` is
 loaded for the relevant request/result recipe. Detailed contracts are resolved
-from the selected checkout via `OLLMO_HOME` or the documented discovery process,
+from the selected checkout via `FRUTH_HOME` or the documented discovery process,
 so starting Codex in another directory does not break those references.
 Repository contributors should begin with [CONTRIBUTING.md](CONTRIBUTING.md)
 and the architecture/contract reading map below; the operator skill remains
@@ -182,17 +207,17 @@ fresh load.
 
 ## Optional ChatGPT Cloud Input
 
-Ollmo runs locally by default. It can optionally use ChatGPT as an external
+Fruth runs locally by default. It can optionally use ChatGPT as an external
 target through Codex after the user reviews the cloud disclosure and explicitly
-enables the connection. Ollmo first looks for the Codex executable bundled with
+enables the connection. Fruth first looks for the Codex executable bundled with
 the ChatGPT app and then falls back to a separately installed `codex`
-executable. The integration reuses the login owned by that executable; Ollmo
+executable. The integration reuses the login owned by that executable; Fruth
 does not read, copy, or store the credentials and does not set a fixed model.
 
 Once enabled, ChatGPT appears as a clearly marked cloud tab, as an explicit
-Ollmo target, and as a primary or fallback preference. It can be turned off
-again at any time. Only the prompt, context Ollmo promotes for the current
-turn, and local files or Ollmo artifacts explicitly selected for that turn are
+Fruth target, and as a primary or fallback preference. It can be turned off
+again at any time. Only the prompt, context Fruth promotes for the current
+turn, and local files or Fruth artifacts explicitly selected for that turn are
 handed to ChatGPT. That text and those selected bytes leave the machine and
 are processed by OpenAI.
 
@@ -200,33 +225,32 @@ Recognized images use Codex's native image-input path. Other selected regular
 files are copied into a temporary working directory configured read-only for
 the Codex run. One request can include at most 5 files, no more than 100 MiB per
 file and 250 MiB in total. URLs, folders, and symbolic links are rejected.
-ChatGPT returns text through this route; Ollmo does not guarantee that every
+ChatGPT returns text through this route; Fruth does not guarantee that every
 regular-file format can be interpreted semantically by the selected model and
 its available tools.
 
 The ChatGPT target never appears as a running local instance and has no Start,
 Stop, Pull, or Delete actions. Direct tab turns are ephemeral and independent;
-Ollmo can promote bounded relevant context for a referential turn, but does not
+Fruth can promote bounded relevant context for a referential turn, but does not
 create a persistent provider session. Model selection is automatic,
-and the exact GPT variant is not exposed to Ollmo; model self-descriptions are
+and the exact GPT variant is not exposed to Fruth; model self-descriptions are
 not runtime proof. Direct API-key management and other external providers are
-outside the 0.1.1 contract.
+outside the 0.1.2 contract.
 
 ## Release and Safety Notes
 
 - [Release Scope](docs/RELEASE_SCOPE.md)
 - [Known Limitations](docs/KNOWN_LIMITATIONS.md)
-- [Self-Attack status: September 14 failure and subsequent fixes](docs/SELF_ATTACK_STATUS_2026-09-14.md)
 - [Security Policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 - [Third-Party Components](THIRD_PARTY_NOTICES.md)
 
-Ollmo's own source code and project documentation are licensed under the
+Fruth's own source code and project documentation are licensed under the
 [Apache License 2.0](LICENSE), unless a file says otherwise. Bundled and
 optional third-party components retain their own licenses; see
 [`NOTICE`](NOTICE) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
-The public repository is <https://github.com/fl0ri0/ollmo>. Release tooling
+Project repository: [GitHub](https://github.com/fl0ri0/fruth). Release tooling
 builds and verifies local archives; it does not publish or upload them.
 
 Canonical artifact storage lives under `artifacts/`: generated files are
@@ -235,7 +259,7 @@ audit/report-style outputs to `artifacts/audits/`.
 
 ## Runtime Architecture
 
-Ollmo separates model proposals from runtime authority. Ghost anchors current
+Fruth separates model proposals from runtime authority. Its interpretive inference layer anchors current
 intent and derives candidate work. Promotion turns selected candidates into
 explicit obligations. The resolver and Late Fill materialize those obligations
 through compatible runtimes, and Closure Review compares the result with
@@ -251,18 +275,18 @@ truth views restore the exact referenced state.
 
 Current code ownership is split across:
 
-- `ollmo_webserver.py` for the Flask API/UI composition root;
-- `ollmo_server/` for request, routing, execution, transport, and Late Fill
+- `fruth_webserver.py` for the Flask API/UI composition root;
+- `fruth_server/` for request, routing, execution, transport, and Late Fill
   runtime owners;
-- `ollmo_services/` for response frames, artifacts, history, inference, and
+- `fruth_services/` for response frames, artifacts, history, inference, and
   related product services;
-- `ollmo_g/` for Ghost's current-turn semantic and graph layer;
-- `ollmo_orchestration/` for mutable pre-freeze working state;
-- `ollmo_runtime/` and `ollmo_core/` for backend lifecycle and shared runtime
+- `fruth_inference/` for current-turn semantic interpretation and graph derivation;
+- `fruth_orchestration/` for mutable pre-freeze working state;
+- `fruth_runtime/` and `fruth_core/` for backend lifecycle and shared runtime
   truth;
-- `ollmo_integrations/` for external-client adapter infrastructure and the
+- `fruth_integrations/` for external-client adapter infrastructure and the
   current Codex integration boundary; and
-- `static/ui/` plus `ollmo_webUI.html` for the browser control surface.
+- `static/ui/` plus `fruth_webUI.html` for the browser control surface.
 
 Reference docs:
 
@@ -273,13 +297,13 @@ Reference docs:
 - [Vision Alignment](docs/VISION_ALIGNMENT.md)
 - [Patterns](docs/PATTERNS.md)
 - [Architecture Map](docs/ARCHITECTURE_MAP.md)
-- [Ghost Runtime Policy](GHOST.md)
-- [Ghost Self-Alignment](docs/GHOST_SELF_ALIGNMENT.md)
-- [State Substrate Architecture](docs/diagrams/ollmo-state-substrate-architecture.html)
+- [Interpretive inference runtime policy](FRUTH_INFERENCE.md)
+- [Interpretive inference self-alignment](docs/SELF_ALIGNMENT.md)
+- [State Substrate Architecture](docs/diagrams/fruth-state-substrate-architecture.html)
 
-## `ollmoctl`
+## `fruthctl`
 
-`ollmoctl` is the common CLI adapter layer over the current Ollmo Flask control plane.
+`fruthctl` is the common CLI adapter layer over the current Fruth Flask control plane.
 
 Use it when you want external or user-built wrappers, shells, and scripts to
 call one stable command surface instead of reaching into startup scripts or
@@ -287,50 +311,50 @@ raw ports. The bundled Codex skill is the validated 0.1 agent integration.
 
 Entry point:
 
-- `python3 scripts/ollmoctl.py ...`
+- `python3 scripts/fruthctl.py ...`
 
 Base URL resolution:
 
-- `--base-url http://127.0.0.1:5001`
-- or environment variable `OLLMOCTL_BASE`
-- fallback: `OLLMO_WEB_BASE`
-- default: `http://127.0.0.1:5001`
+- `--base-url http://127.0.0.1:5011`
+- or environment variable `FRUTHCTL_BASE`
+- fallback: `FRUTH_WEB_BASE`
+- default: `http://127.0.0.1:5011`
 
 Local runtime recovery order:
 
-- `ollmoctl` talks to the current Ollmo Flask control plane on `127.0.0.1:5001`.
-- First dependency: if local runtime commands hit `connection refused` on `5001`, the control plane is down.
-- Read-like `ollmoctl` commands such as `instances list`, `models list`, `ghost`, and `responses get` do not recover/start the control plane by default. Pass `--recover-control-plane` only when that recovery behavior is intentional.
-- Mutating or lifecycle-oriented `ollmoctl` commands may auto-attempt a one-shot local recovery by starting `ollmo_webserver.py` and retrying once for the default local base URL.
-- If `5001` is up but `instances list --json` is empty, start the required model with `ollmoctl start ...`.
+- `fruthctl` talks to the current Fruth Flask control plane on `127.0.0.1:5011`.
+- First dependency: if local runtime commands hit `connection refused` on `5011`, the control plane is down.
+- Read-like `fruthctl` commands such as `instances list`, `models list`, `inference`, and `responses get` do not recover/start the control plane by default. Pass `--recover-control-plane` only when that recovery behavior is intentional.
+- Mutating or lifecycle-oriented `fruthctl` commands may auto-attempt a one-shot local recovery by starting `fruth_webserver.py` and retrying once for the default local base URL.
+- If `5011` is up but `instances list --json` is empty, start the required model with `fruthctl start ...`.
 - `doctor runtime` stays diagnostic and reports the broken state instead of auto-starting anything.
-- If the one-shot recovery still fails, run `./ollmo start` for the full local stack and inspect `logs/flask_webserver_auto.log`.
+- If the one-shot recovery still fails, run `./fruth start` for the full local stack and inspect `logs/flask_webserver_auto.log`.
 
 Core examples:
 
 ```bash
-python3 scripts/ollmoctl.py models list --json
-python3 scripts/ollmoctl.py instances list --json
-python3 scripts/ollmoctl.py ghost --json
-python3 scripts/ollmoctl.py doctor runtime --json
-python3 scripts/ollmoctl.py start --model mlx-community/Qwen3.5-27B-4bit --backend mlx --capability chat --json
-python3 scripts/ollmoctl.py send mlx-community__Qwen3.5-27B-4bit-mlx-11502 "hello"
-python3 scripts/ollmoctl.py send mlx-community__whisper-large-v3-mlx-mlx-11501 --file "/absolute/path/to/audio.mp3" --json
-python3 scripts/ollmoctl.py send mlx-community__Qwen3.5-27B-4bit-mlx-11502 "hello" --truth-json
-python3 scripts/ollmoctl.py responses get resp_abc123
-python3 scripts/ollmoctl.py responses get resp_abc123 --json
-python3 scripts/ollmoctl.py responses get resp_abc123 --truth-json
-python3 scripts/ollmoctl.py events list --category infer --status started --json
-python3 scripts/ollmoctl.py events tail --category infer --instance-id mlx-community__whisper-large-v3-mlx-mlx-11506
-python3 scripts/ollmoctl.py wait mlx-community__whisper-large-v3-mlx-mlx-11506 --json
-python3 scripts/ollmoctl.py history infer --limit 20 --json
+python3 scripts/fruthctl.py models list --json
+python3 scripts/fruthctl.py instances list --json
+python3 scripts/fruthctl.py inference --json
+python3 scripts/fruthctl.py doctor runtime --json
+python3 scripts/fruthctl.py start --model mlx-community/Qwen3.5-27B-4bit --backend mlx --capability chat --json
+python3 scripts/fruthctl.py send mlx-community__Qwen3.5-27B-4bit-mlx-11502 "hello"
+python3 scripts/fruthctl.py send mlx-community__whisper-large-v3-mlx-mlx-11501 --file "/absolute/path/to/audio.mp3" --json
+python3 scripts/fruthctl.py send mlx-community__Qwen3.5-27B-4bit-mlx-11502 "hello" --truth-json
+python3 scripts/fruthctl.py responses get resp_abc123
+python3 scripts/fruthctl.py responses get resp_abc123 --json
+python3 scripts/fruthctl.py responses get resp_abc123 --truth-json
+python3 scripts/fruthctl.py events list --category infer --status started --json
+python3 scripts/fruthctl.py events tail --category infer --instance-id mlx-community__whisper-large-v3-mlx-mlx-11506
+python3 scripts/fruthctl.py wait mlx-community__whisper-large-v3-mlx-mlx-11506 --json
+python3 scripts/fruthctl.py history infer --limit 20 --json
 ```
 
 Most important command:
 
 - `send`
   - targets the canonical `/api/responses` endpoint
-  - lets Ollmo decide internally whether the request becomes chat or infer/capability dispatch
+  - lets Fruth decide internally whether the request becomes chat or infer/capability dispatch
   - defaults to a long timeout suitable for STT/TTS and other long-running infer requests
   - `--json` performs one bounded POST and prints its public wire envelope
   - `--truth-json` performs that POST, fetches the same id through exact `view=truth`, and prints a normalized canonical summary
@@ -340,15 +364,15 @@ Most important command:
   - `--json` preserves the raw canonical truth-view payload, while `--truth-json` emits only the normalized response-truth summary for scripts
   - `--json` and `--truth-json` are mutually exclusive on both `send` and `responses get`
 - `wait`
-  - polls Ollmo event history until the latest matching request for an instance reaches a terminal state
+  - polls Fruth event history until the latest matching request for an instance reaches a terminal state
 - `events tail`
   - polls and prints new matching event log entries as they appear
-- `ghost`
-  - reads Ollmo's runtime-intelligence summary with recommended defaults, current issues, and recovery hints
+- `inference`
+  - reads Fruth's runtime-intelligence summary with recommended defaults, current issues, and recovery hints
 
-## `ollmo_g`
+## `fruth_inference`
 
-`ollmo_g` is the package boundary for the self-describing runtime-intelligence layer inside Ollmo. Its runtime identity remains `ollmo-ghost`.
+`fruth_inference` is the package boundary for the self-describing runtime-intelligence layer inside Fruth. Its runtime identity remains `fruth-inference`.
 
 It does not orchestrate agents. It explains and uses the runtime:
 
@@ -358,16 +382,16 @@ It does not orchestrate agents. It explains and uses the runtime:
 - which recovery commands should be tried next
 - which live capability/instance best fits an Auto request according to merged runtime truth rather than a hardcoded provider preference
 
-Current Ghost/Auto behavior:
+Current Auto routing behavior:
 
 - `Auto` routes from merged control-plane truth, not a fixed provider table
-- Ghost, resolver transformation, control-hint filling, and late fill are separate responsibilities:
-  - Ghost chooses the next truthful phase and compatible runtime target
-  - Ollmo can then fill truthful request fields such as language, speaker, format, style, or image aspect controls for that chosen target
+- The interpretive inference layer, resolver transformation, control-hint filling, and late fill are separate responsibilities:
+  - the interpretive inference layer chooses the next truthful phase and compatible runtime target
+  - Fruth can then fill truthful request fields such as language, speaker, format, style, or image aspect controls for that chosen target
   - downstream phases can continue through the resolver + late fill under the same request/response identity
   - local backend model calls materialize selected phases or branches; runtime code decides fulfillment from graph, slot, output, artifact, and status truth
-- the request phase graph is now the shared substrate for Ghost-owned requests:
-  - every Ghost-owned request freezes into a request phase graph
+- the request phase graph is now the shared substrate for interpretive inference-owned requests:
+  - every interpretive inference-owned request freezes into a request phase graph
   - `candidate_graph` records possible outputs, workload tasks, context, references, evidence, repairs, continuations, and learning hints
   - `promotion_review` decides what becomes executable owed work and what remains reserved, waived, rejected, stale, or merely possible state
   - branch-local workload tasks carry focused payloads, prompts, dependencies, artifact refs, evidence, output contracts, visibility, review criteria, and freeze state
@@ -381,42 +405,42 @@ Current Ghost/Auto behavior:
   - the review is exposed as `runtime.graph_closure_review` plus developer diagnostics where applicable
   - it should continue resolver/late fill work for still-missing frozen obligations
   - it must not reinterpret the user request or invent new semantic goals
-- live Ghost route context is intentionally short and direct:
+- live interpretive inference route context is intentionally short and direct:
   - current turn stays dominant
   - fresh turns normally use `current_turn_only` context strategy
   - recent thread context is injected only for clearly referential or continuation-like turns
-  - when that thread context is needed, Ghost sees one answered prior user turn plus its direct assistant reply window
+  - when that thread context is needed, the interpretive inference layer sees one answered prior user turn plus its direct assistant reply window
   - artifact continuity is output-centered: all artifacts from the last relevant assistant artifact message, then latest-by-type fallback
   - old tool calls and old artifacts do not become new intent just because they happened earlier
   - explicit stable preferences are explicit-only; live routing does not carry a separate derived `memory` block
 - Auto preview and final execution share the same resolver/control-hint/runtime path so the UI sees the same required-field truth the backend will execute
-- Auto/Ghost preview and route selection are read-only planning surfaces. They must not start models, load providers, or turn route choice into runtime load feedback. Model lifecycle starts require an explicit lifecycle source such as a frontend play/start action.
-- embedding helpers remain internal Ghost tools; they can attach routing-context hints and narrow tie-break signals for anchored follow-ups, and those audits remain visible in runtime metadata
-- explicit low-level direct contracts such as direct `instance_id` requests or `batch_prompts` remain explicit exceptions; they are not the normal Ghost path
-- Ghost now exposes file-backed semantic roles as advisory decision lenses. Any valid `ollmo_g/semantic_roles/*.md` role definition becomes part of the role catalog.
-- `ghost_mode` remains only a bounded API-edge compatibility hint (`repair`, `worker`, `explorer`, `improviser`) and is immediately projected into `semantic_role_profile`; it is not the internal thinking model.
+- Auto route preview and selection are read-only planning surfaces. They must not start models, load providers, or turn route choice into runtime load feedback. Model lifecycle starts require an explicit lifecycle source such as a frontend play/start action.
+- embedding helpers remain internal interpretive inference tools; they can attach routing-context hints and narrow tie-break signals for anchored follow-ups, and those audits remain visible in runtime metadata
+- explicit low-level direct contracts such as direct `instance_id` requests or `batch_prompts` remain explicit exceptions; they are not the normal interpretive inference path
+- The interpretive inference layer now exposes file-backed semantic roles as advisory decision lenses. Any valid `fruth_inference/semantic_roles/*.md` role definition becomes part of the role catalog.
+- `semantic_role_ids` accepts canonical role IDs, such as `["repairer", "evidence_reasoner"]`, as advisory orientation only.
 - `semantic_role_profile` can travel through request meta, route preview, working frames, and canonical Responses runtime payloads as advisory orientation only.
-- `GHOST.md` is the primary runtime-policy anchor Ghost uses for current-turn interpretation; the backend now injects it into both Ghost routing decisions and Ghost-owned user-facing chat turns, while `OLLMO_FOR_AGENTS.md` remains the operator/client guide
+- `FRUTH_INFERENCE.md` is the primary runtime-policy anchor the interpretive inference layer uses for current-turn interpretation; the backend now injects it into both interpretive inference routing decisions and interpretive inference-owned user-facing chat turns, while `FRUTH_FOR_AGENTS.md` remains the operator/client guide
 - visible assistant text must not claim `saved locally`, `artifact created`, or similar file/artifact success unless runtime truth actually contains that saved output
 
 Surfaces:
 
-- `GET /api/ghost`
+- `GET /api/inference`
 - `GET /api/agent_contract`
-- `python3 scripts/ollmoctl.py ghost`
-- [GHOST.md](GHOST.md)
-- [OLLMO_FOR_AGENTS.md](OLLMO_FOR_AGENTS.md)
+- `python3 scripts/fruthctl.py inference`
+- [FRUTH_INFERENCE.md](FRUTH_INFERENCE.md)
+- [FRUTH_FOR_AGENTS.md](FRUTH_FOR_AGENTS.md)
 
 Frontend note:
 
 - the Responses workbench can now use `Auto` to route prompts and file-backed requests by capability instead of forcing one fixed target instance
-- the UI label is `Auto`, while the backend currently keeps the internal `ghost_route` / `ghost_preview` names for this routing path
-- Ghost `primary_target` / `fallback_target` preferences remain Ghost and chat-routing hints; they do not override non-chat execution when the request resolves to image, TTS, or another incompatible capability
-- Explicit frontend play/start is the user lifecycle path for starting an additional instance. The frontend sends `start_source: "frontend_button"` and sends `force_start: true` only when deliberately starting another same-model instance; Ghost, route preview, late fill, and backend automatic paths must not use `force_start`.
+- the UI label is `Auto`, while the backend currently keeps the internal `inference_route` / `inference_preview` names for this routing path
+- Interpretive inference `primary_target` / `fallback_target` preferences remain interpretive inference and chat-routing hints; they do not override non-chat execution when the request resolves to image, TTS, or another incompatible capability
+- Explicit frontend play/start is the user lifecycle path for starting an additional instance. The frontend sends `start_source: "frontend_button"` and sends `force_start: true` only when deliberately starting another same-model instance; the interpretive inference layer, route preview, late fill, and backend automatic paths must not use `force_start`.
 
 ## Canonical Responses API
 
-Ollmo now exposes one canonical execution endpoint on top of the existing route split:
+Fruth now exposes one canonical execution endpoint on top of the existing route split:
 
 - `POST /api/responses`
 - `POST /v1/responses`
@@ -434,14 +458,14 @@ Prefer `responses` even for file-backed, OCR, image, STT, and TTS work. `/api/re
 
 Reviewed redraw remains part of the same intent-aligned scope ladder. The lower bounded additive repair rungs stay autonomously active under the default-deny graph-repair policy; partial-subtree and full-successor rebase are the higher-risk rungs, with non-mutating `shadow` as their product default rather than a separate shadow layer. Read their canonical evidence gates at `GET /api/graph_rebase/readiness`. The report is observer-only and does not promote work.
 
-An operator advances one exact proposal through `POST /api/responses/<response_id>/graph_rebase/operator` in strict order: `adjudicate`, then durable audit-only `stage`, then gate-controlled `authorize_partial`. The last action is compare-and-swap bound to the finalized response/frame/proposal/base/candidate/class identities and joins authority only from Ollmo's trusted operator registry. Full durable state and bounded observation truth must identify the same latest frame, and current root truth is rechecked at replay, apply, persistence, and Late Fill. A successful partial authorization appends one branch-local successor frame under the same response id before scheduling its exact Late Fill work; it never rewrites the parent or replays the root prompt through another prompt carrier. Explicit `OLLMO_GRAPH_REBASE_AUTONOMY=off` blocks the `stage` and `authorize_partial` transitions; evidence-only `adjudicate` remains available because it grants no rebase authority. The product stays in `shadow` while evidence gates are not green, and full successor rebase remains non-executable under safe partial v1.
+An operator advances one exact proposal through `POST /api/responses/<response_id>/graph_rebase/operator` in strict order: `adjudicate`, then durable audit-only `stage`, then gate-controlled `authorize_partial`. The last action is compare-and-swap bound to the finalized response/frame/proposal/base/candidate/class identities and joins authority only from Fruth's trusted operator registry. Full durable state and bounded observation truth must identify the same latest frame, and current root truth is rechecked at replay, apply, persistence, and Late Fill. A successful partial authorization appends one branch-local successor frame under the same response id before scheduling its exact Late Fill work; it never rewrites the parent or replays the root prompt through another prompt carrier. Explicit `FRUTH_GRAPH_REBASE_AUTONOMY=off` blocks the `stage` and `authorize_partial` transitions; evidence-only `adjudicate` remains available because it grants no rebase authority. The product stays in `shadow` while evidence gates are not green, and full successor rebase remains non-executable under safe partial v1.
 
-The mutating endpoint is dormant unless startup explicitly supplies both a 32-or-more-character `OLLMO_GRAPH_REBASE_OPERATOR_TOKEN` and an exact `OLLMO_GRAPH_REBASE_OPERATOR_IDENTITY`. Calls must present the token as a Bearer token or `X-Ollmo-Graph-Rebase-Operator-Token` and the configured identity as `X-Ollmo-Graph-Rebase-Operator`; neither value is persisted or inherited by model subprocesses. Runtime itself produces replay confirmation by deterministically revalidating the frozen proposal. Trusted-only or runtime-only stage halves do not count toward promotion. A no-proposal `false_negative` adjudication is evidence-only and uses the exact sentinel `expected_proposal_id=no_formal_proposal`; it cannot become stage or execution authority. It remains historical truth, but a later exact replay-verified `useful_proposal` adjudication may append `resolves_record_id=<false-negative-record-id>` so only unresolved false negatives block promotion.
+The mutating endpoint is dormant unless startup explicitly supplies both a 32-or-more-character `FRUTH_GRAPH_REBASE_OPERATOR_TOKEN` and an exact `FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY`. Calls must present the token as a Bearer token or `X-Fruth-Graph-Rebase-Operator-Token` and the configured identity as `X-Fruth-Graph-Rebase-Operator`; neither value is persisted or inherited by model subprocesses. Runtime itself produces replay confirmation by deterministically revalidating the frozen proposal. Trusted-only or runtime-only stage halves do not count toward promotion. A no-proposal `false_negative` adjudication is evidence-only and uses the exact sentinel `expected_proposal_id=no_formal_proposal`; it cannot become stage or execution authority. It remains historical truth, but a later exact replay-verified `useful_proposal` adjudication may append `resolves_record_id=<false-negative-record-id>` so only unresolved false negatives block promotion.
 
 Current scope:
 
 - supports direct targeting with a running `instance_id`
-- also supports routed/default targeting layers such as Auto/`ghost_route`, wrapper alias/profile, or canonical `capability` when the caller or backend chooses the target
+- also supports routed/default targeting layers such as Auto/`inference_route`, wrapper alias/profile, or canonical `capability` when the caller or backend chooses the target
 - accepts one normalized request body with `input`, optional `instructions`, and optional file context (`file_path` or multipart `file`)
 - keeps explicit `input_artifacts` separate from explicit `reference_artifacts`
 - supports `stream=true` with Responses-style `text/event-stream` events
@@ -479,7 +503,7 @@ Streaming note:
 
 ## Token Limits
 
-Ollmo should not invent token limits on behalf of models.
+Fruth should not invent token limits on behalf of models.
 
 - app-side guessed token limits have been removed from the active model-manager/UI path
 - available model payloads should only expose token limits when a runtime or provider actually reports them
@@ -487,7 +511,7 @@ Ollmo should not invent token limits on behalf of models.
 
 ## Startup Policy
 
-Use `./ollmo start` as the operator-facing entrypoint. It delegates to `./start_multi_models.sh` and starts the canonical runtime/UI stack.
+Use `./fruth start` as the operator-facing entrypoint. It delegates to `./start_multi_models.sh` and starts the canonical runtime/UI stack.
 
 - Starts model management and the current Flask UI/API.
 - Starts MLX support when available.
@@ -500,7 +524,7 @@ The active startup flow is the runtime/UI stack only. External provider projecti
 When you want a local green-field reset without touching anything outside this repo, use:
 
 ```bash
-./ollmo clean
+./fruth clean
 ```
 
 This is a repo-local maintenance helper implemented by `./clean_repo_state.sh`. It does not edit `~/.codex` or any other external config.
@@ -525,62 +549,62 @@ Default cleanup preserves:
 
 - `model_ports.json`
 - `state/llama_cpp_catalog.json`
-- `state/ghost_preferences.json`
-- `state/ghost_compiled_memory.json`
-- `state/ghost_compiled_memory.md`
+- `state/inference_preferences.json`
+- `state/inference_compiled_memory.json`
+- `state/inference_compiled_memory.md`
 - `state/self_learning/`
-- `state/self_attack/`, `state/benchmarks/`, `state/diagnostics/`, and `.ollmo_archiv/`, including retained cache files
+- `state/self_attack/`, `state/benchmarks/`, `state/diagnostics/`, and `.fruth_archiv/`, including retained cache files
 
 If you want a true empty repo-local state, combine:
 
 ```bash
-./ollmo clean --forget-ghost --reset-registry --reset-llama-catalog
+./fruth clean --forget-inference --reset-registry --reset-llama-catalog
 ```
 
 The shorter equivalent is:
 
 ```bash
-./ollmo clean --full
+./fruth clean --full
 ```
 
 For the current recommended archive-first rotation into a clean live state, use:
 
 ```bash
-./ollmo archive --full
+./fruth archive --full
 ```
 
-`archive --full` snapshots protected Ghost state when present, but preserves the active checkout copies. Protected Ghost state includes `state/ghost_preferences.json`, `state/ghost_compiled_memory.json`, `state/ghost_compiled_memory.md`, `state/self_learning/`, and the accepted-learning policy snapshot under `state/self_learning/accepted_policy_snapshot.json`.
+`archive --full` snapshots protected interpretive inference state when present, but preserves the active checkout copies. Protected interpretive inference state includes `state/inference_preferences.json`, `state/inference_compiled_memory.json`, `state/inference_compiled_memory.md`, `state/self_learning/`, and the accepted-learning policy snapshot under `state/self_learning/accepted_policy_snapshot.json`.
 
 Preview it first with:
 
 ```bash
-./ollmo archive --full --dry-run
+./fruth archive --full --dry-run
 ```
 
 Optional deeper reset flags:
 
-- `./ollmo clean --full`
-  - equivalent to `--forget-ghost --reset-registry --reset-llama-catalog`
-- `./ollmo archive --full`
-  - archive-first cleanup plus registry/catalog reset, while preserving protected Ghost state in the active checkout
-- `./ollmo clean --reset-registry`
+- `./fruth clean --full`
+  - equivalent to `--forget-inference --reset-registry --reset-llama-catalog`
+- `./fruth archive --full`
+  - archive-first cleanup plus registry/catalog reset, while preserving protected interpretive inference state in the active checkout
+- `./fruth clean --reset-registry`
   - rewrite `model_ports.json` to `[]`
-- `./ollmo clean --forget-ghost`
-  - remove Ghost preferences and any retired Ghost archive residue
+- `./fruth clean --forget-inference`
+  - remove interpretive inference preferences and any retired interpretive inference archive residue
 
-If you want to reset Ghost's local event/log state without wiping the durable frame ledger, use:
+If you want to reset the interpretive inference layer's local event/log state without wiping the durable frame ledger, use:
 
 ```bash
-python3 scripts/ollmoctl.py ghost --reset-learning-state --json
+python3 scripts/fruthctl.py inference --reset-learning-state --json
 ```
 
-This archives the prior Ghost event/log state plus `logs/flask_webserver.log` under `state/ghost_learning_archives/<timestamp>/`, recreates fresh `state/events.jsonl`, removes any retired learned-policy or compiled-memory residue if it still exists, and intentionally preserves `state/response_frames/responses.jsonl`.
+This archives the prior interpretive inference event/log state plus `logs/flask_webserver.log` under `state/inference_learning_archives/<timestamp>/`, recreates fresh `state/events.jsonl`, removes any retired learned-policy or compiled-memory residue if it still exists, and intentionally preserves `state/response_frames/responses.jsonl`.
 
-Ghost learning reset is deliberately separate from `archive --full` and `clean --forget-ghost`. If the reset-learning command removes `state/self_learning/`, it archives that directory first.
+Interpretive inference learning reset is deliberately separate from `archive --full` and `clean --forget-inference`. If the reset-learning command removes `state/self_learning/`, it archives that directory first.
 
-- `./ollmo clean --reset-llama-catalog`
+- `./fruth clean --reset-llama-catalog`
   - remove `state/llama_cpp_catalog.json`
-- `./ollmo clean --dry-run`
+- `./fruth clean --dry-run`
   - preview the cleanup without deleting anything
 
 Use this when the repo has accumulated logs, artifacts, history, or cache ballast and you want a predictable local reset before starting again.
@@ -594,7 +618,7 @@ tccutil reset SystemPolicyDesktopFolder com.google.Chrome
 To make macOS ask again on the next Chrome `file://` bundle access, include the opt-in cleanup flag:
 
 ```bash
-./ollmo archive --full --reset-chrome-file-access-prompt
+./fruth archive --full --reset-chrome-file-access-prompt
 ```
 
 Live generated/operator file buckets now belong under `artifacts/`, especially:
@@ -607,12 +631,12 @@ Live generated/operator file buckets now belong under `artifacts/`, especially:
 If you want the same live cleanup, but do not want to lose the cleaned runtime/generated data immediately, use:
 
 ```bash
-./ollmo archiv
+./fruth archiv
 ```
 
 `archiv` and `archive` both point to the same archive-first cleanup mode. It copies the `artifacts/` tree into the archive, archives the other useful cleaned ballast, and stores it under:
 
-- `.ollmo_archiv/<timestamp>/`
+- `.fruth_archiv/<timestamp>/`
 
 and then applies the same live cleanup to `logs/` and the volatile `state/` paths. For `artifacts/`, live cleanup removes generated contents while preserving the standard bucket directories, including `artifacts/bundles/`. Missing standard directories are created only as a fallback if they were manually deleted or do not exist yet.
 
@@ -641,21 +665,21 @@ the existing archive scopes, with no dependency crawling or historical link rewr
 
 Important distinction:
 
-- `./ollmo clean`
+- `./fruth clean`
   - hard cleanup, no archive
-- `./ollmo archiv`
+- `./fruth archiv`
   - archive-first cleanup for temporary retention
-- `./ollmo archive`
+- `./fruth archive`
   - archive-first cleanup for temporary retention
 
 Notes:
 
-- `archiv` / `archive` can also be combined with `--forget-ghost`, `--reset-registry`, or `--reset-llama-catalog`; if explicit removal/reset flags are used, the affected files are archived or snapshotted first and only then cleaned/reset.
-- `archiv` / `archive --full` is the concise archive-first rotation for runtime/generated ballast plus registry/catalog reset. It is not a Ghost-forget or self-learning reset shortcut.
+- `archiv` / `archive` can also be combined with `--forget-inference`, `--reset-registry`, or `--reset-llama-catalog`; if explicit removal/reset flags are used, the affected files are archived or snapshotted first and only then cleaned/reset.
+- `archiv` / `archive --full` is the concise archive-first rotation for runtime/generated ballast plus registry/catalog reset. It does not replace `--forget-inference` or a self-learning reset.
 
 ## Research retention and learning candidates
 
-`ollmo_research/` survives every clean/full/forget/reset mode unchanged, including
+`fruth_research/` survives every clean/full/forget/reset mode unchanged, including
 nested caches, candidate reviews, Gold metadata and retained evidence. Archive
 includes one byte-verified copy of the whole tree in its existing space preflight;
 the active Research tree remains. A verification failure prevents cleanup.
@@ -665,21 +689,19 @@ candidate queue. Source labels stay historical; Gold promotion requires explicit
 curation. Secondary sync failure logs a warning without rolling back learning.
 Before a fresh reset, validate the current retained Gold store; after reset, validate
 Gold again and refresh candidate availability. Candidates can retain review metadata
-while losing uncurated raw provenance. In a development checkout with a local
-Research tree, see `ollmo_research/README.md` for its lifecycle and
-`ollmo_research/candidates/README.md` for candidate recovery commands. The Research
-tree and its retained evidence are excluded from this public upload. Retention is
+while losing uncurated raw provenance. See [Research lifecycle](fruth_research/README.md)
+and [candidate recovery commands](fruth_research/candidates/README.md). Retention is
 internal only and does not authorize export or execution of a reset.
 
 ## Ollama Lifecycle Ownership
 
 Use exactly one owner for `ollama serve` at a time.
 
-- If Ollmo manages your model lifecycle, stop the Homebrew background service first:
+- If Fruth manages your model lifecycle, stop the Homebrew background service first:
   - `brew services stop ollama`
-- Then start Ollmo normally and let Ollmo launch the `ollama serve` processes it needs.
-- Do not keep both Homebrew `ollama` service and Ollmo-managed `ollama serve` processes active in parallel.
-- `./start_multi_models.sh` now checks this and stops early with a clear fix message unless you explicitly override it via `OLLMO_ALLOW_BREW_OLLAMA_SERVICE=1`.
+- Then start Fruth normally and let Fruth launch the `ollama serve` processes it needs.
+- Do not keep both Homebrew `ollama` service and Fruth-managed `ollama serve` processes active in parallel.
+- `./start_multi_models.sh` now checks this and stops early with a clear fix message unless you explicitly override it via `FRUTH_ALLOW_BREW_OLLAMA_SERVICE=1`.
 
 Why this matters:
 
@@ -709,10 +731,10 @@ MLX runtime note:
 
 - `MLX_PYTHON` controls the shared MLX LM/VLM/Whisper interpreter path.
 - `MLX_AUDIO_PYTHON` can point to a separate interpreter for `mlx_audio.server`.
-- If unset, Ollmo also checks `/opt/mlx-audio/venv/bin/python` automatically for TTS.
+- If unset, Fruth also checks `/opt/mlx-audio/venv/bin/python` automatically for TTS.
 - Use a separate TTS venv when `mlx-audio` pins package versions that conflict with the LM/VLM stack in `/opt/mlx/venv`.
 - Whisper discovery safely preflights its Numba dependency without importing MLX or initializing Metal. An incompatible NumPy/Numba pair is reported as degraded and is not startable.
-- Run `python scripts/ollmoctl.py doctor runtime --json` to distinguish a package/dependency incompatibility from a stale degraded instance that only needs a bounded restart.
+- Run `python scripts/fruthctl.py doctor runtime --json` to distinguish a package/dependency incompatibility from a stale degraded instance that only needs a bounded restart.
 
 ## Model Capability Routing
 
@@ -726,17 +748,17 @@ Supported capabilities:
 - `text_to_speech`: speech synthesis models (for example Qwen3-TTS on MLX Audio).
 
 Capability-specific runtime behavior:
-- `chat` (MLX LM): starts `mlx_lm.server`; registry metadata now records `backend_package=mlx_lm`, `backend_contract=mlx_lm.server`, and the LM-specific runtime knobs surfaced by Ollmo (`prefill_step_size`, `prompt_cache_size`, `prompt_cache_bytes`).
+- `chat` (MLX LM): starts `mlx_lm.server`; registry metadata now records `backend_package=mlx_lm`, `backend_contract=mlx_lm.server`, and the LM-specific runtime knobs surfaced by Fruth (`prefill_step_size`, `prompt_cache_size`, `prompt_cache_bytes`).
 - `image_generation` (Ollama): starts a dedicated Ollama instance without chat preload.
 - `speech_to_text` (MLX): starts the local `mlx_whisper` HTTP shim (`backend_package=mlx_whisper_shim`), not native `mlx-audio`; the shim exposes `/healthz`, `/v1/audio/transcriptions`, and `/api/transcribe`.
-- `text_to_speech` (MLX): starts `mlx_audio.server` and serves OpenAI-style speech synthesis through `/v1/audio/speech`; Ollmo records that the upstream package is broader than the current instance contract and also covers STT/STS upstream.
-- `vision_analysis` (MLX VLM): starts `mlx_vlm.server` and uses its OpenAI-style multimodal routes; Ollmo records the richer upstream contract including `/v1/chat/completions`, `/v1/responses`, `/v1/models`, `/health`, and `/unload`, plus the one-model-at-a-time / lazy-load semantics. This is also the generic path for MLX multimodal snapshots whose metadata resolves to `image-to-text` or `image-text-to-text`.
+- `text_to_speech` (MLX): starts `mlx_audio.server` and serves OpenAI-style speech synthesis through `/v1/audio/speech`; Fruth records that the upstream package is broader than the current instance contract and also covers STT/STS upstream.
+- `vision_analysis` (MLX VLM): starts `mlx_vlm.server` and uses its OpenAI-style multimodal routes; Fruth records the richer upstream contract including `/v1/chat/completions`, `/v1/responses`, `/v1/models`, `/health`, and `/unload`, plus the one-model-at-a-time / lazy-load semantics. This is also the generic path for MLX multimodal snapshots whose metadata resolves to `image-to-text` or `image-text-to-text`.
 
 Unsupported backend/capability combinations return `400` with a clear message instead of generic `500`.
 
 Available-model discovery is intentionally broader than startup eligibility:
 
-- `/api/available_models` and `ollmoctl models list` can show cached source entries that are present locally but not yet startable through the current backend contract.
+- `/api/available_models` and `fruthctl models list` can show cached source entries that are present locally but not yet startable through the current backend contract.
 - Those entries carry `discovery_state`, `runnable`, `runnable_checks`, and `disabled_reason` so callers can distinguish "seen in cache/catalog" from "can be launched now."
 - Interactive startup surfaces should only offer runnable entries as start choices.
 
@@ -758,7 +780,7 @@ Keep `/api/infer` only for lower-level debugging, narrow compatibility cases, or
 
 Current direct UI/internal behavior:
 - Direct backend chat route `/api/chat` still exists only as a compatibility wrapper for specialized or older callers.
-- First-party UI execution flows, voice input, `ollmoctl send`, and the Responses workbench use `/api/responses` as the canonical execution surface.
+- First-party UI execution flows, voice input, `fruthctl send`, and the Responses workbench use `/api/responses` as the canonical execution surface.
 - Session Controls are derived from the actual target model. MLX models that advertise `reasoning_effort` use their declared non-Off default on first use; an explicit user choice, including Off, persists per model/backend.
 - General vision-language capability does not imply OCR/PDF controls. Document controls are shown only for recognized OCR-specialist families such as DeepSeek-OCR and GLM-OCR; other VLMs keep independently advertised controls such as reasoning.
 - `/api/responses` now rejects plain chat text that claims image/audio generation for a non-chat routed turn when no real image/audio artifact was produced.
@@ -791,7 +813,7 @@ Current direct UI/internal behavior:
   - DeepSeek-OCR requests are sent with conservative runner options (`num_ctx=4096`, `num_keep=0`) to avoid sequence errors on some Ollama builds.
   - Prompt-echo responses (where the model repeats user instructions instead of OCR text) are treated as invalid page OCR output and trigger fallback automatically.
   - Optional request params:
-    - `pdf_max_pages` (blank by default; only set when you want to cap how many pages Ollmo renders and OCRs for this request, max `500`)
+    - `pdf_max_pages` (blank by default; only set when you want to cap how many pages Fruth renders and OCRs for this request, max `500`)
     - `pdf_dpi` (default `260` for `vision_analysis`, max `600`)
     - `pdf_page_timeout_sec` (default `240`; timeout per OCR page call)
     - `pdf_page_retry_dpi` (default auto; retries failed pages with lower DPI)
@@ -809,7 +831,7 @@ Current direct UI/internal behavior:
   - Multi-page scanned-PDF rendering can optionally use `PyMuPDF`. It is not a
     default dependency because its upstream license is AGPL-3.0 or commercial.
     Review the applicable upstream terms before installing it separately with
-    `python -m pip install PyMuPDF`. Without it, Ollmo retains a limited macOS
+    `python -m pip install PyMuPDF`. Without it, Fruth retains a limited macOS
     first-page rendering fallback when available.
 
 ## Registry Schema
@@ -837,9 +859,9 @@ It is now fed by canonical start/stop plus successful or failed work through cha
 That split is intentional:
 - `model_ports.json` is the stable registry plus doc-backed `/api/show` facts.
 - `state/runtime_status.json` is the live status layer plus backend-specific runtime facts (`/api/ps` for Ollama, native-route/runtime binding facts for MLX).
-- `ollmoctl instances list --json` and `GET /api/running_instances` merge both views so callers do not have to guess from model names alone.
+- `fruthctl instances list --json` and `GET /api/running_instances` merge both views so callers do not have to guess from model names alone.
 
-For external wrappers, Ollmo now exposes a discovery manifest:
+For external wrappers, Fruth now exposes a discovery manifest:
 - `GET /api/runtime_manifest`
 - alias: `GET /api/routing_table`
 
@@ -849,7 +871,7 @@ The manifest advertises:
 - running instance metadata (`instance_id`, `model`, `backend`, `capability`, `features`, `feature_sources`, `inputs`, `outputs`, `backend_metadata`, `backend_runtime`, readiness/activity)
 - capability aliases such as `chat`, `image`, `ocr`, `stt`, `tts`
 
-This is intended for external wrappers that need to self-dock against Ollmo
+This is intended for external wrappers that need to self-dock against Fruth
 without hard-coding ports or internal route knowledge.
 
 Canonical `/api/responses` can now be targeted in three ways:
@@ -866,9 +888,9 @@ Wrapper code should not need `/api/infer` or `/api/chat` unless it is intentiona
 Feature-contract note:
 - `capability` is the coarse top-level mode.
 - `features` / `inputs` / `outputs` are the finer-grained routing contract for downstream clients.
-- Tool/function/computer-use flags stay conservative unless Ollmo has explicit evidence, while modality flags and known local template evidence are projected directly when available.
+- Tool/function/computer-use flags stay conservative unless Fruth has explicit evidence, while modality flags and known local template evidence are projected directly when available.
 
-Active UI chat history persists under `state/chat_history/`, including the synthetic Responses workbench conversation. This is the canonical backend chat-history store for the active Ollmo chat UI.
+Active UI chat history persists under `state/chat_history/`, including the synthetic Responses workbench conversation. This is the canonical backend chat-history store for the active Fruth chat UI.
 
 Frontend/history shape note:
 
@@ -892,7 +914,7 @@ The model maintenance panel is backend-aware:
 1. Pull/install the model locally first.
 2. Confirm the exact model ID:
    - Ollama: `ollama list`
-   - MLX / llama.cpp catalog-backed entries: check `./ollmo ctl models list --json` or `/api/available_models`
+   - MLX / llama.cpp catalog-backed entries: check `./fruth ctl models list --json` or `/api/available_models`
 3. Pick the correct capability:
    - chat -> `chat`
    - OCR/vision -> `vision_analysis`
@@ -902,7 +924,7 @@ The model maintenance panel is backend-aware:
 4. Start via API/UI using matching backend + capability.
 5. If startup fails:
    - Check the API error text for model-name suggestions or unsupported capability/backend guidance.
-   - Re-run `./ollmo ctl models list --json` and inspect `runnable` plus `disabled_reason` for the model before retrying.
+   - Re-run `./fruth ctl models list --json` and inspect `runnable` plus `disabled_reason` for the model before retrying.
    - Verify model naming (for example `x/flux2-klein` vs `flux2-klein:latest`).
 
 ## API Start Example
@@ -933,7 +955,7 @@ POST /v1/audio/transcriptions
 POST /api/responses
 {
   "instance_id": "mlx-community__Qwen3-TTS-12Hz-0.6B-Base-bf16-mlx-11504",
-  "input": "Guten Tag aus Ollmo.",
+  "input": "Guten Tag aus Fruth.",
   "voice": "Chelsie",
   "instruct": "Warm, calm, elegant German narration with a slight smile.",
   "speed": 0.95,
@@ -943,4 +965,4 @@ POST /api/responses
 }
 ```
 
-This single-phase example materializes one audio artifact. When a request also asks Ollmo to confirm the exact spoken text, use the canonical TTS-to-STT dependency chain and read its Closure plus `tts_semantic_source` / `tts_stt_semantic_evidence`; a non-empty WAV or transcript alone is not semantic fulfillment. The expected source text is verification truth and is never inserted into the STT request.
+This single-phase example materializes one audio artifact. When a request also asks Fruth to confirm the exact spoken text, use the canonical TTS-to-STT dependency chain and read its Closure plus `tts_semantic_source` / `tts_stt_semantic_evidence`; a non-empty WAV or transcript alone is not semantic fulfillment. The expected source text is verification truth and is never inserted into the STT request.

@@ -8,10 +8,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from ollmo_services import response_frames as frames
+from fruth_services import response_frames as frames
 
 
-FRAME={'kind':'ollmo.response_frame','response_id':'size-response',
+FRAME={'kind':'fruth.response_frame','response_id':'size-response',
        'frame_id':'size-response:1','frame_sequence':1}
 
 
@@ -160,7 +160,7 @@ def test_media_provenance_and_changed_saved_bytes_are_rechecked(tmp_path):
     other.write_bytes(b'changed artifact bytes');third=save()
     a=frames._read_snapshot_ref_payload(first,frames_dir=root);b=frames._read_snapshot_ref_payload(second,frames_dir=root);c=frames._read_snapshot_ref_payload(third,frames_dir=root)
     assert a['image']['artifact_ref']=='artifact:one' and b['image']['artifact_ref']=='artifact:two'
-    assert c['image']['kind']=='ollmo.snapshot_stripped_raw_media_payload'
+    assert c['image']['kind']=='fruth.snapshot_stripped_raw_media_payload'
     assert len({first['sha256'],second['sha256'],third['sha256']})==3
 
 

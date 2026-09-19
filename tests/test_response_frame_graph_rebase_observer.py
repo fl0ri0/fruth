@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_services.response_frames import (
+from fruth_services.response_frames import (
     load_latest_response_observation_state,
     load_response_frame_index,
     persist_response_frame,
@@ -23,7 +23,7 @@ class GraphRebaseResponseFrameObserverTests(unittest.TestCase):
     ) -> dict:
         frame = {
             'frame_version': 9,
-            'kind': 'ollmo.response_frame',
+            'kind': 'fruth.response_frame',
             'response_id': response_id,
             'status': 'completed',
             'object': 'response',
@@ -97,7 +97,7 @@ class GraphRebaseResponseFrameObserverTests(unittest.TestCase):
                     'resp_proposal',
                     runtime={
                         'request_phase_graph': {
-                            'kind': 'ollmo.request_phase_graph',
+                            'kind': 'fruth.request_phase_graph',
                             'graph_rebase_proposals': [
                                 {
                                     'proposal_id': 'graph-rebase-proposal-1',
@@ -142,7 +142,7 @@ class GraphRebaseResponseFrameObserverTests(unittest.TestCase):
                     'resp_prompt_snapshot',
                     request={'request_meta': {'conversation_id': 'conv-observer'}},
                     working_frame={
-                        'kind': 'ollmo.working_frame',
+                        'kind': 'fruth.working_frame',
                         'status': 'frozen',
                         'request': {
                             'prompt': prompt,
@@ -154,7 +154,7 @@ class GraphRebaseResponseFrameObserverTests(unittest.TestCase):
                     },
                     runtime={
                         'request_phase_graph': {
-                            'kind': 'ollmo.request_phase_graph',
+                            'kind': 'fruth.request_phase_graph',
                             'graph_rebase_proposals': [
                                 {
                                     'proposal_id': 'graph-rebase-proposal-prompt',

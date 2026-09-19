@@ -3,10 +3,10 @@ import copy
 import json
 from pathlib import Path
 import pytest
-from ollmo_core.transports import resolve_saved_artifact_path
-from ollmo_server.request_intake_runtime import RequestIntakeRuntimeOwner
-from ollmo_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
-from ollmo_services.artifact_contracts import sanitize_artifact_record
+from fruth_core.transports import resolve_saved_artifact_path
+from fruth_server.request_intake_runtime import RequestIntakeRuntimeOwner
+from fruth_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
+from fruth_services.artifact_contracts import sanitize_artifact_record
 
 @pytest.fixture
 def owners(tmp_path):
@@ -90,19 +90,19 @@ def test_repeated_normalization_preserves_named_predecessor_and_other_files(owne
     assert [r['artifact_ref'] for r in kept]==[r['artifact_ref'] for r in refs]
 
 def test_all_file_references_reach_model_visible_context(owners,tmp_path):
-    from ollmo_g.router import sanitize_ghost_messages, _merge_ghost_messages
+    from fruth_inference.router import sanitize_inference_messages, _merge_inference_messages
     intake,_=owners
-    intake.hooks['sanitize_ghost_messages']=sanitize_ghost_messages
+    intake.hooks['sanitize_inference_messages']=sanitize_inference_messages
     refs=[artifact(tmp_path,i,['audio','text','image'][i%3]) for i in range(9)]
     messages=intake._inject_selected_reference_message([],refs)
-    merged=_merge_ghost_messages(messages)
+    merged=_merge_inference_messages(messages)
     carried=[a['path'] for m in merged for a in m.get('artifacts',[])]
     assert carried==[r['path'] for r in refs]
-    # Ghost has a path/type view; canonical runtime references remain separate.
+    # interpretive inference has a path/type view; canonical runtime references remain separate.
     assert len(intake._sanitize_selected_reference_artifacts(refs))==len(refs)
 
 def test_late_fill_n_selected_consumers_bind_their_own_reference(owners,tmp_path,monkeypatch):
-    import ollmo_webserver as web
+    import fruth_webserver as web
     intake,_=owners
     monkeypatch.setattr(web,'_resolve_saved_downloadable_artifact_path',intake.hooks['resolve_saved_downloadable_artifact_path'])
     refs=[artifact(tmp_path,i) for i in range(3)]
@@ -116,10 +116,10 @@ def test_late_fill_n_selected_consumers_bind_their_own_reference(owners,tmp_path
         assert len(prepared['reference_artifacts'])==3
 
 def test_history_merge_cannot_replace_current_collection_with_old_attachment(owners,tmp_path):
-    from ollmo_g.router import sanitize_ghost_messages, _merge_ghost_messages
-    intake,_=owners;intake.hooks['sanitize_ghost_messages']=sanitize_ghost_messages
+    from fruth_inference.router import sanitize_inference_messages, _merge_inference_messages
+    intake,_=owners;intake.hooks['sanitize_inference_messages']=sanitize_inference_messages
     refs=[artifact(tmp_path,i) for i in range(4)]
     old=intake._inject_selected_reference_message([],refs[:1])
     current=intake._inject_selected_reference_message([],refs)
-    merged=_merge_ghost_messages(old,current)
+    merged=_merge_inference_messages(old,current)
     assert any([a['path'] for a in m.get('artifacts',[])]==[r['path'] for r in refs] for m in merged)

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ollmo_runtime.registry import (
+from fruth_runtime.registry import (
     read_registry_entries,
     write_registry_entries,
     is_port_listening as registry_is_port_listening,

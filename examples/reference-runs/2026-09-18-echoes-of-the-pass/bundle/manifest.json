@@ -1,0 +1,72 @@
+{
+  "entrypoint": "index.html",
+  "files": [
+    {
+      "artifact_ref": "artifact:audio_9d8308b9499c12c8b0843846",
+      "relative_path": "assets/audio/narration.wav",
+      "sha256": "2ad66481ba1d0f62b822529a6bcb1f583b8354872146d115790abb8fb908386c",
+      "size_bytes": 241964,
+      "source_sha256": "2ad66481ba1d0f62b822529a6bcb1f583b8354872146d115790abb8fb908386c",
+      "type": "audio"
+    },
+    {
+      "artifact_ref": "artifact:text_896a4bb22887d021d08d0918",
+      "relative_path": "assets/css/styles.css",
+      "sha256": "be447ec4a9ce36c81f8025e524a89cf92074bb9b2e7b1fe6da4625d3d02ee5e8",
+      "size_bytes": 2131,
+      "source_sha256": "be447ec4a9ce36c81f8025e524a89cf92074bb9b2e7b1fe6da4625d3d02ee5e8",
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:image_a1f73d47e2780698faad82ef",
+      "relative_path": "assets/images/image-01.png",
+      "sha256": "6f959ce42e5e34c0a55f0b2e23eece5d80f626c2385c7955f81627ac7fbdec72",
+      "size_bytes": 877660,
+      "source_sha256": "6f959ce42e5e34c0a55f0b2e23eece5d80f626c2385c7955f81627ac7fbdec72",
+      "type": "image"
+    },
+    {
+      "artifact_ref": "artifact:image_c6fe6a35e9967bf84722121a",
+      "relative_path": "assets/images/image-02.png",
+      "sha256": "cf0a95c52c2fbec910594ffed242ee1f09c021926c70f797ba93bb291490069b",
+      "size_bytes": 1613632,
+      "source_sha256": "cf0a95c52c2fbec910594ffed242ee1f09c021926c70f797ba93bb291490069b",
+      "type": "image"
+    },
+    {
+      "artifact_ref": "artifact:text_e58bb3daa0203231e6ae33a7",
+      "relative_path": "index.html",
+      "sha256": "8623fdc7df7080d52f41e2467d79590a97f0e3d775eaf9a151575fb68a37542b",
+      "size_bytes": 2216,
+      "source_sha256": "a9ca9a1f5244783ac56adfc0bacb2a36263180643b2fd96e4453963f07913f6b",
+      "type": "text"
+    }
+  ],
+  "link_check": {
+    "status": "passed"
+  },
+  "raw_runtime_manifest_published": false,
+  "resolved_links": [
+    {
+      "kind": "html_href",
+      "target": "assets/css/styles.css"
+    },
+    {
+      "kind": "html_src",
+      "target": "assets/images/image-01.png"
+    },
+    {
+      "kind": "html_src",
+      "target": "assets/images/image-02.png"
+    },
+    {
+      "kind": "html_src",
+      "target": "assets/audio/narration.wav"
+    }
+  ],
+  "schema": "fruth.public_bundle_manifest.v1",
+  "source_bundle_id": "bundle:66c55875de2358fd723b03bb",
+  "source_response_id": "resp_1789748468875_a6b4f80ba9e8d8",
+  "status": "bundled",
+  "version": 1
+}

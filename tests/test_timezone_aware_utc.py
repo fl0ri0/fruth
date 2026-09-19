@@ -3,23 +3,23 @@ import re
 import unittest
 from pathlib import Path
 
-from ollmo_core.transports import _timestamp_prefix
-from ollmo_services.events import make_event
-from ollmo_services.settings_artifacts import build_settings_artifact
+from fruth_core.transports import _timestamp_prefix
+from fruth_services.events import make_event
+from fruth_services.settings_artifacts import build_settings_artifact
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ACTIVE_SOURCE_ROOTS = (
     REPO_ROOT / 'helpers',
-    REPO_ROOT / 'ollmo_core',
-    REPO_ROOT / 'ollmo_g',
-    REPO_ROOT / 'ollmo_integrations',
-    REPO_ROOT / 'ollmo_orchestration',
-    REPO_ROOT / 'ollmo_runtime',
-    REPO_ROOT / 'ollmo_server',
-    REPO_ROOT / 'ollmo_services',
+    REPO_ROOT / 'fruth_core',
+    REPO_ROOT / 'fruth_inference',
+    REPO_ROOT / 'fruth_integrations',
+    REPO_ROOT / 'fruth_orchestration',
+    REPO_ROOT / 'fruth_runtime',
+    REPO_ROOT / 'fruth_server',
+    REPO_ROOT / 'fruth_services',
     REPO_ROOT / 'scripts',
-    REPO_ROOT / 'state' / 'ollmo_run_monitor',
+    REPO_ROOT / 'state' / 'fruth_run_monitor',
     REPO_ROOT / 'tests',
 )
 
@@ -57,7 +57,7 @@ class TimezoneAwareUtcTests(unittest.TestCase):
         event = make_event(category='test', action='timestamp', status='ok')
         settings = build_settings_artifact(
             {
-                'kind': 'ollmo.control_snapshot',
+                'kind': 'fruth.control_snapshot',
                 'values': {'generation': {'temperature': 0.2}},
             }
         )

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from ollmo_server.backend_transport_runtime import BackendTransportRuntimeOwner
+from fruth_server.backend_transport_runtime import BackendTransportRuntimeOwner
 
 
 class BackendTransportRuntimeTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class BackendTransportRuntimeTests(unittest.TestCase):
 
         messages = [{'role': 'user', 'content': 'hello'}]
         with patch(
-            'ollmo_server.backend_transport_runtime.ollama_chat_with_options',
+            'fruth_server.backend_transport_runtime.ollama_chat_with_options',
             side_effect=fake_ollama_chat_with_options,
         ):
             result = owner.ollama_chat(11434, 'gemma4:26b', messages)
@@ -41,7 +41,7 @@ class BackendTransportRuntimeTests(unittest.TestCase):
         owner = self._owner()
         messages = [{'role': 'system', 'content': 'Prepare only.'},
                     {'role': 'user', 'content': 'Build the site.'}]
-        with patch('ollmo_server.backend_transport_runtime.ollama_chat_with_options',
+        with patch('fruth_server.backend_transport_runtime.ollama_chat_with_options',
                    return_value={'content': 'ok'}) as transport:
             owner.ollama_chat(11434, 'test-model', messages, timeout_sec=600)
         self.assertEqual(transport.call_args.kwargs['timeout_sec'], 600)
@@ -52,7 +52,7 @@ class BackendTransportRuntimeTests(unittest.TestCase):
         owner = self._owner()
 
         with patch(
-            'ollmo_server.backend_transport_runtime.mlx_audio_speech',
+            'fruth_server.backend_transport_runtime.mlx_audio_speech',
             return_value={'audio_bytes': b'RIFFfakewav'},
         ) as mock_speech:
             result = owner.mlx_audio_speech(

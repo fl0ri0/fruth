@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ollmo_services.self_learning import (
+from fruth_services.self_learning import (
     DEFAULT_ACCEPTED_POLICY_SNAPSHOT,
     DEFAULT_EVAL_CASE_LEDGER,
     DEFAULT_RESPONSE_FRAME_LEDGER,
@@ -25,7 +25,7 @@ from ollmo_services.self_learning import (
     persist_self_learning_outputs,
     self_learning_output_update_lock,
 )
-from ollmo_services.self_learning_retention import (
+from fruth_services.self_learning_retention import (
     DEFAULT_RETAINED_SIDECARS_DIR,
     DEFAULT_RETENTION_MANIFEST,
 )
@@ -87,10 +87,10 @@ def _validate_merge_output_paths(
             REPO_ROOT / DEFAULT_RESPONSE_FRAMES_DIR / 'current_index.json'
         ).resolve(strict=False),
         'default monitor report ledger': Path(
-            'state/ollmo_run_monitor/reports.jsonl'
+            'state/fruth_run_monitor/reports.jsonl'
         ).resolve(strict=False),
         'repository monitor report ledger': (
-            REPO_ROOT / 'state/ollmo_run_monitor/reports.jsonl'
+            REPO_ROOT / 'state/fruth_run_monitor/reports.jsonl'
         ).resolve(strict=False),
     }
     for index, frame_path in enumerate(frame_paths):
@@ -148,7 +148,7 @@ def _validate_merge_output_paths(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description='Build Ollmo self-learning eval cases from frozen response-frame truth traces.',
+        description='Build Fruth self-learning eval cases from frozen response-frame truth traces.',
     )
     parser.add_argument(
         '--frames',

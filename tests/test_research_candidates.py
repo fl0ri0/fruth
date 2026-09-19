@@ -2,12 +2,12 @@
 import json
 from pathlib import Path
 import pytest
-from ollmo_services import research_candidates as research
-from ollmo_services.self_learning import persist_eval_cases, persist_self_learning_outputs
+from fruth_services import research_candidates as research
+from fruth_services.self_learning import persist_eval_cases, persist_self_learning_outputs
 
 
 def paths(root):
-    return root / 'state/self_learning/eval_cases.jsonl', root / 'ollmo_research/candidates'
+    return root / 'state/self_learning/eval_cases.jsonl', root / 'fruth_research/candidates'
 
 
 def generation(path, cases):
@@ -26,7 +26,7 @@ def indexed(queue):
 
 def test_cross_generation_keeps_reviews_and_gold_exact(tmp_path):
     source, queue = paths(tmp_path)
-    gold = tmp_path / 'ollmo_research/gold-core/cases/curated.json'
+    gold = tmp_path / 'fruth_research/gold-core/cases/curated.json'
     gold.parent.mkdir(parents=True)
     gold.write_bytes(b'{"expected_outcome":"curated defect"}')
     generation(source, [case('A'), case('B'), case('C')])

@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ollmo_runtime.ollama_model_manager import (
+from fruth_runtime.ollama_model_manager import (
     CONFIG_FILE as OLLAMA_CONFIG_FILE,
     DEFAULT_SERVER_PORT,
     LOG_DIR as OLLAMA_LOG_DIR,
@@ -26,7 +26,7 @@ from ollmo_runtime.ollama_model_manager import (
     list_local_model_entries,
     start_model,
 )
-from ollmo_runtime.mlx_model_manager import (
+from fruth_runtime.mlx_model_manager import (
     PORT_MAX as MLX_PORT_MAX,
     START_PORT as MLX_START_PORT,
     find_mlx_snapshots,
@@ -35,15 +35,15 @@ from ollmo_runtime.mlx_model_manager import (
     resolve_mlx_python,
     start_mlx_model,
 )
-from ollmo_runtime.llama_cpp_model_manager import (
+from fruth_runtime.llama_cpp_model_manager import (
     LLAMA_CPP_PORT_MAX,
     LLAMA_CPP_START_PORT,
     describe_llama_cpp_runtime_probe,
     list_available_llama_cpp_models,
     start_llama_cpp_instance,
 )
-from ollmo_runtime.runtime_hygiene import cleanup_runtime_hygiene
-from ollmo_core.registry import (
+from fruth_runtime.runtime_hygiene import cleanup_runtime_hygiene
+from fruth_core.registry import (
     filter_active_registry_entries,
     read_registry_entries,
     write_registry_entries,
@@ -356,7 +356,7 @@ def _prompt_selection(catalog: List[CatalogEntry]) -> List[CatalogEntry]:
     print('\nWhich models should be started as their own instance?')
     print("Allowed: '1 2', '1,2', '1-5', '1 3-5', 'a' for all.")
     print("You can choose a model more than once (for example: '1 1 2').")
-    print('Enter = cancel.\n')
+    print('Enter = continue without starting a model.\n')
 
     index_width = max(2, len(str(len(catalog))))
     label_width = min(34, max(len(entry.display_label) for entry in catalog) + 3)
@@ -463,14 +463,14 @@ def main() -> int:
 
     catalog = _discover_catalog()
     if not catalog:
-        print('⚠️  No models are available to start. Continuing with the Ollmo control plane only.')
+        print('⚠️  No models are available to start. Continuing with the Fruth control plane only.')
         if pruned_changed:
             _write_registry_once(current_instances)
         return 0
 
     selected_entries = _prompt_selection(catalog)
     if not selected_entries:
-        print('ℹ️  No models were selected.')
+        print('ℹ️  No models were selected. Continuing with the Fruth web interface.')
         if pruned_changed:
             _write_registry_once(current_instances)
         return 0

@@ -1,18 +1,18 @@
 #!/bin/bash
-# Repo-local reset helper for Ollmo.
+# Repo-local reset helper for Fruth.
 # `clean` removes generated/runtime ballast.
-# `archiv` / `archive` first archives the same useful ballast into .ollmo_archiv/<timestamp>/
+# `archiv` / `archive` first archives the same useful ballast into .fruth_archiv/<timestamp>/
 # and then cleans the live runtime paths. The artifacts tree is copied before live cleanup so
 # standard artifact bucket directories can stay in place.
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ARCHIVE_BASE_REL=".ollmo_archiv"
+ARCHIVE_BASE_REL=".fruth_archiv"
 ARCHIVE_HELPER="$ROOT_DIR/scripts/maintenance_archive.py"
 
 RESET_REGISTRY=0
-FORGET_GHOST=0
+FORGET_INFERENCE=0
 RESET_LLAMA_CATALOG=0
 DRY_RUN=0
 ARCHIVE_MODE=0
@@ -44,15 +44,15 @@ usage() {
 Usage: clean_repo_state.sh [options]
 
 Options:
-  --archiv, --archive   Archive useful cleanup ballast into .ollmo_archiv/<timestamp>/ before cleaning.
+  --archiv, --archive   Archive useful cleanup ballast into .fruth_archiv/<timestamp>/ before cleaning.
                          The artifacts tree is copied first; live cleanup then removes contents
                          while preserving standard artifact bucket dirs; missing ones are
                          created only as fallback.
-  --full, --empty-state  Full reset shortcut. In clean mode, also forget Ghost preferences/memory.
-                         In archive mode, reset registry/catalog but preserve protected Ghost state.
+  --full, --empty-state  Full reset shortcut. In clean mode, also forget interpretive inference preferences/memory.
+                         In archive mode, reset registry/catalog but preserve protected interpretive inference state.
   --dry-run             Show what would happen without deleting or moving anything.
   --reset-registry      Reset repo-local model_ports.json to [] after optional archiving.
-  --forget-ghost        Remove Ghost preferences and compiled-memory residue after optional archiving.
+  --forget-inference        Remove interpretive inference preferences and compiled-memory residue after optional archiving.
   --reset-llama-catalog Remove state/llama_cpp_catalog.json after optional archiving.
   --reset-chrome-file-access-prompt
                         macOS only: reset Chrome's Desktop Folder permission so the next
@@ -80,28 +80,28 @@ Default cleanup removes repo-local generated/runtime ballast:
 Default cleanup preserves:
   - model_ports.json
   - state/llama_cpp_catalog.json
-  - state/ghost_preferences.json
-  - state/ghost_compiled_memory.json
-  - state/ghost_compiled_memory.md
+  - state/inference_preferences.json
+  - state/inference_compiled_memory.json
+  - state/inference_compiled_memory.md
   - state/self_learning/
   - state/self_learning/retained_sidecars/ generated from active learning refs
   - state/graph_rebase/readiness_observations.jsonl
   - state/self_attack/, state/benchmarks/, state/diagnostics/ (including cache files)
-  - ollmo_research/ in every mode, including nested caches and retained Gold evidence
-  - .ollmo_archiv/ (excluded from recursive cache sweeps)
+  - fruth_research/ in every mode, including nested caches and retained Gold evidence
+  - .fruth_archiv/, 00_backup/ and fruth-upload/ (excluded from recursive cache sweeps)
 
 In clean mode, `--full` / `--empty-state` is equivalent to:
-  - --forget-ghost --reset-registry --reset-llama-catalog
+  - --forget-inference --reset-registry --reset-llama-catalog
 
-In archive mode, `--full` / `--empty-state` snapshots protected Ghost state when present,
-but does not remove active protected Ghost files. Use `--forget-ghost` explicitly to remove
-Ghost preferences/compiled-memory residue after archiving. Use
-`python3 scripts/ollmoctl.py ghost --reset-learning-state --json` for self-learning reset.
+In archive mode, `--full` / `--empty-state` snapshots protected interpretive inference state when present,
+but does not remove active protected interpretive inference files. Use `--forget-inference` explicitly to remove
+interpretive inference preferences/compiled-memory residue after archiving. Use
+`python3 scripts/fruthctl.py inference --reset-learning-state --json` for self-learning reset.
 
 `--archiv` / `--archive` keeps the same live cleanup end state, but stores archived data under:
-  - .ollmo_archiv/<timestamp>/
+  - .fruth_archiv/<timestamp>/
 
-Archive snapshots all three evidence trees and ollmo_research/ once in full and preserves their live sources.
+Archive snapshots all three evidence trees and fruth_research/ once in full and preserves their live sources.
 This includes completed campaigns without guessing completion for unknown/active runs.
 Reusable repository scripts remain active. Copies are space-checked and byte-verified;
 failure aborts before cleanup. Active evidence copies are not atomic final snapshots.
@@ -257,20 +257,20 @@ stop_listener_on_port() {
 remove_cache_dirs() {
     local pattern="$1"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "[dry-run] remove directories named $pattern recursively (excluding evidence trees, ollmo_research and .ollmo_archiv)"
+        log "[dry-run] remove directories named $pattern recursively (excluding evidence trees, fruth_research, .fruth_archiv, 00_backup and fruth-upload)"
         return 0
     fi
-    find "$ROOT_DIR" \( -path "$ROOT_DIR/.ollmo_archiv" -o -path "$ROOT_DIR/ollmo_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" \) -prune -o -type d -name "$pattern" -prune -exec rm -rf {} +
+    find "$ROOT_DIR" \( -path "$ROOT_DIR/.fruth_archiv" -o -path "$ROOT_DIR/00_backup" -o -path "$ROOT_DIR/fruth-upload" -o -path "$ROOT_DIR/fruth_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" \) -prune -o -type d -name "$pattern" -prune -exec rm -rf {} +
 }
 
 remove_cache_files() {
     local pattern="$1"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "[dry-run] remove files named $pattern recursively (excluding evidence trees, ollmo_research and .ollmo_archiv)"
+        log "[dry-run] remove files named $pattern recursively (excluding evidence trees, fruth_research, .fruth_archiv, 00_backup and fruth-upload)"
         return 0
     fi
     # Do not use -delete: it implies depth-first traversal and defeats -prune.
-    find "$ROOT_DIR" \( -path "$ROOT_DIR/.ollmo_archiv" -o -path "$ROOT_DIR/ollmo_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" \) -prune -o -type f -name "$pattern" -exec rm -f {} +
+    find "$ROOT_DIR" \( -path "$ROOT_DIR/.fruth_archiv" -o -path "$ROOT_DIR/00_backup" -o -path "$ROOT_DIR/fruth-upload" -o -path "$ROOT_DIR/fruth_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" \) -prune -o -type f -name "$pattern" -exec rm -f {} +
 }
 
 archive_dir_contents() {
@@ -396,10 +396,10 @@ write_archive_manifest() {
         printf 'repo_root=%s\n' "$ROOT_DIR"
         printf 'archive_root=%s\n' "$ARCHIVE_RUN_REL"
         printf 'live_cleanup_targets=artifact bucket contents(preserving standard artifact dirs including bundles),logs,state/chat_history,state/events.jsonl,state/infer_history.jsonl,state/artifact_registry.jsonl,state/generated_image_provenance.jsonl,state/response_frames(compact_ledger,current_index,sidecar_snapshots),state/runtime_status.json,caches\n'
-        printf 'protected_ghost_snapshot_paths=state/ghost_preferences.json,state/ghost_compiled_memory.json,state/ghost_compiled_memory.md,state/self_learning\n'
+        printf 'protected_inference_snapshot_paths=state/inference_preferences.json,state/inference_compiled_memory.json,state/inference_compiled_memory.md,state/self_learning\n'
         printf 'protected_graph_rebase_registry_snapshot_path=state/graph_rebase/readiness_observations.jsonl\n'
         printf 'evidence_snapshot_paths=state/self_attack,state/benchmarks,state/diagnostics\n'
-        printf 'research_snapshot_path=ollmo_research (copy; active tree preserved in every mode)\n'
+        printf 'research_snapshot_path=fruth_research (copy; active tree preserved in every mode)\n'
         printf 'evidence_policy=whole_tree_verified_copy; live_sources_preserved; no_completion_inference; no_pruning\n'
         printf 'learning_retention_status=%s\n' "$LEARNING_RETENTION_STATUS"
         printf 'learning_retained_response_frame_sidecars=%s\n' "$LEARNING_RETAINED_SIDECAR_COUNT"
@@ -416,7 +416,7 @@ write_archive_manifest() {
         printf 'graph_rebase_readiness_registry_errors=%s\n' "$READINESS_REGISTRY_ERROR_COUNT"
         printf 'graph_rebase_readiness_errors=%s\n' "$READINESS_ERROR_COUNT"
         printf 'graph_rebase_readiness_appended_records=%s\n' "$READINESS_APPENDED_RECORD_COUNT"
-        printf 'optional_flags=full_reset:%s reset_registry:%s forget_ghost:%s reset_llama_catalog:%s\n' "$FULL_RESET" "$RESET_REGISTRY" "$FORGET_GHOST" "$RESET_LLAMA_CATALOG"
+        printf 'optional_flags=full_reset:%s reset_registry:%s forget_inference:%s reset_llama_catalog:%s\n' "$FULL_RESET" "$RESET_REGISTRY" "$FORGET_INFERENCE" "$RESET_LLAMA_CATALOG"
     } > "$ARCHIVE_RUN_DIR/manifest.txt"
 }
 
@@ -648,8 +648,8 @@ while [[ $# -gt 0 ]]; do
         --reset-registry)
             RESET_REGISTRY=1
             ;;
-        --forget-ghost)
-            FORGET_GHOST=1
+        --forget-inference)
+            FORGET_INFERENCE=1
             ;;
         --reset-llama-catalog)
             RESET_LLAMA_CATALOG=1
@@ -674,7 +674,7 @@ if [[ "$FULL_RESET" -eq 1 ]]; then
     RESET_REGISTRY=1
     RESET_LLAMA_CATALOG=1
     if [[ "$ARCHIVE_MODE" -eq 0 ]]; then
-        FORGET_GHOST=1
+        FORGET_INFERENCE=1
     fi
 fi
 
@@ -683,7 +683,7 @@ if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     ARCHIVE_RUN_DIR="$ROOT_DIR/$ARCHIVE_RUN_REL"
 fi
 
-log "=== Ollmo Repo Reset ==="
+log "=== Fruth Repo Reset ==="
 log "repo: $ROOT_DIR"
 if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     log "mode: archive"
@@ -702,14 +702,14 @@ log
 if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     # Run before listener stops, retention writes, copies, moves or cleanup.
     python3 "$ARCHIVE_HELPER" preflight "$ROOT_DIR" "$ARCHIVE_RUN_DIR" \
-        artifacts state/ghost_preferences.json state/ghost_compiled_memory.json \
-        state/ghost_compiled_memory.md state/self_learning \
+        artifacts state/inference_preferences.json state/inference_compiled_memory.json \
+        state/inference_compiled_memory.md state/self_learning \
         state/graph_rebase/readiness_observations.jsonl \
-        state/self_attack state/benchmarks state/diagnostics ollmo_research
+        state/self_attack state/benchmarks state/diagnostics fruth_research
 fi
 
-log "1. Stopping repo-local listeners on standard Ollmo ports..."
-stop_listener_on_port 5001
+log "1. Stopping repo-local listeners on standard Fruth ports..."
+stop_listener_on_port 5011
 stop_listener_on_port 11434
 for port in $(seq 11435 11550); do
     stop_listener_on_port "$port"
@@ -726,7 +726,7 @@ prepare_graph_rebase_readiness_retention || true
 if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     log
     log "2. Archiving useful runtime/generated ballast into $ARCHIVE_RUN_REL ..."
-    snapshot_path "ollmo_research"
+    snapshot_path "fruth_research"
     snapshot_path "state/self_attack"
     snapshot_path "state/benchmarks"
     snapshot_path "state/diagnostics"
@@ -744,9 +744,9 @@ if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     fi
     archive_path "state/runtime_status.json"
 
-    snapshot_path "state/ghost_preferences.json"
-    snapshot_path "state/ghost_compiled_memory.json"
-    snapshot_path "state/ghost_compiled_memory.md"
+    snapshot_path "state/inference_preferences.json"
+    snapshot_path "state/inference_compiled_memory.json"
+    snapshot_path "state/inference_compiled_memory.md"
     snapshot_path "state/self_learning"
     snapshot_path "state/graph_rebase/readiness_observations.jsonl"
 
@@ -793,12 +793,12 @@ remove_cache_files "*.pyc"
 remove_cache_files "*.pyo"
 remove_cache_files ".DS_Store"
 
-if [[ "$FORGET_GHOST" -eq 1 ]]; then
+if [[ "$FORGET_INFERENCE" -eq 1 ]]; then
     log
-    log "Removing Ghost preference state and compiled-memory residue..."
-    remove_path "state/ghost_preferences.json"
-    remove_path "state/ghost_compiled_memory.json"
-    remove_path "state/ghost_compiled_memory.md"
+    log "Removing interpretive inference preference state and compiled-memory residue..."
+    remove_path "state/inference_preferences.json"
+    remove_path "state/inference_compiled_memory.json"
+    remove_path "state/inference_compiled_memory.md"
 fi
 
 if [[ "$RESET_LLAMA_CATALOG" -eq 1 ]]; then
@@ -840,13 +840,13 @@ if [[ "$RESET_LLAMA_CATALOG" -eq 1 ]]; then
 else
     log "- state/llama_cpp_catalog.json preserved"
 fi
-if [[ "$FORGET_GHOST" -eq 1 ]]; then
-    log "- state/ghost_preferences.json removed"
+if [[ "$FORGET_INFERENCE" -eq 1 ]]; then
+    log "- state/inference_preferences.json removed"
 else
-    log "- state/ghost_preferences.json preserved"
+    log "- state/inference_preferences.json preserved"
 fi
 if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
-    log "- protected Ghost state snapshotted when present; preferences/compiled memory preserved unless --forget-ghost was explicit"
+    log "- protected interpretive inference state snapshotted when present; preferences/compiled memory preserved unless --forget-inference was explicit"
 fi
 if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     log "- archived runtime/generated ballast under $ARCHIVE_RUN_REL"
@@ -862,7 +862,7 @@ reset_chrome_file_access_prompt
 if [[ "$DRY_RUN" -eq 0 ]]; then
     log
     log "Post-reset status:"
-    "$ROOT_DIR/ollmo" status || true
+    "$ROOT_DIR/fruth" status || true
     log
     log "Repo-local reset complete."
 fi

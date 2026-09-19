@@ -10,14 +10,14 @@ from types import SimpleNamespace
 import pytest
 
 from tests.fake_backends.self_attack import SelfAttackBackend
-from ollmo_services.artifact_contracts import bind_direct_audio_dependency
-from ollmo_services.tts_audio_integrity import build_tts_audio_integrity_evidence
+from fruth_services.artifact_contracts import bind_direct_audio_dependency
+from fruth_services.tts_audio_integrity import build_tts_audio_integrity_evidence
 
 SOURCE = 'The lighthouse is quiet.'
 
 
 def test_fake_same_response_tts_stt_exercises_exact_source_binding(tmp_path):
-    from scripts.ollmo_self_attack import run_profile
+    from scripts.fruth_self_attack import run_profile
     corpus = json.loads((Path(__file__).parents[1] / 'config/self_attack_corpus.json').read_text())
     corpus['cases'] = [c for c in corpus['cases'] if c['case_id'] == 'evidence-root']
     run = run_profile(corpus, {'id': 'baseline', 'request': {}, 'environment': {}, 'settings': {}},
@@ -44,7 +44,7 @@ def test_fake_same_response_tts_stt_exercises_exact_source_binding(tmp_path):
 
 @pytest.fixture
 def prepared(tmp_path):
-    import ollmo_webserver as web
+    import fruth_webserver as web
     with SelfAttackBackend(root=tmp_path / 'fake') as backend:
         raw, status = backend._invoke_internal_api_json_route(payload={
             'capability': 'text_to_speech', 'prompt': SOURCE})

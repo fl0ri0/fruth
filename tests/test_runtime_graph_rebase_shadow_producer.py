@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from ollmo_server.responses_request_runtime import ResponsesRequestRuntimeOwner
+from fruth_server.responses_request_runtime import ResponsesRequestRuntimeOwner
 
 
 class RuntimeGraphRebaseShadowProducerTests(unittest.TestCase):
@@ -24,7 +24,7 @@ class RuntimeGraphRebaseShadowProducerTests(unittest.TestCase):
 
     def _base_graph(self):
         return {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'graph_version': 3,
             'response_id': 'resp-shadow-producer',
             'frame_id': 'frame-current',
@@ -144,7 +144,7 @@ class RuntimeGraphRebaseShadowProducerTests(unittest.TestCase):
                 }
             )
         return {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'repair_required',
             'checks': checks,
         }
@@ -167,7 +167,7 @@ class RuntimeGraphRebaseShadowProducerTests(unittest.TestCase):
                 ),
                 'developer_diagnostics': {
                     'response_time_graph_rebase_candidate': {
-                        'kind': 'ollmo.runtime_graph_rebase_candidate',
+                        'kind': 'fruth.runtime_graph_rebase_candidate',
                         'candidate_origin': 'response_time_request_phase_graph',
                         'candidate_graph': copy.deepcopy(candidate),
                     }
@@ -179,7 +179,7 @@ class RuntimeGraphRebaseShadowProducerTests(unittest.TestCase):
         owner = self._owner()
         route_payload = {'route_runtime': {'request_phase_graph': self._base_graph()}}
         with patch(
-            'ollmo_server.responses_request_runtime.build_request_phase_graph',
+            'fruth_server.responses_request_runtime.build_request_phase_graph',
             return_value=self._structured_candidate(),
         ):
             updated, selected = owner._attach_fluid_request_phase_graph(
@@ -198,7 +198,7 @@ class RuntimeGraphRebaseShadowProducerTests(unittest.TestCase):
         status_only = copy.deepcopy(self._base_graph())
         status_only['phases'][1]['status'] = 'completed'
         with patch(
-            'ollmo_server.responses_request_runtime.build_request_phase_graph',
+            'fruth_server.responses_request_runtime.build_request_phase_graph',
             return_value=status_only,
         ):
             status_updated, _ = owner._attach_fluid_request_phase_graph(
@@ -277,7 +277,7 @@ class RuntimeGraphRebaseShadowProducerTests(unittest.TestCase):
             'pending_branches': [],
         }
         with patch(
-            'ollmo_server.responses_request_runtime.build_request_phase_graph',
+            'fruth_server.responses_request_runtime.build_request_phase_graph',
             return_value=self._structured_candidate(),
         ), patch.dict(os.environ, {}, clear=True):
             terminal = owner.review_terminal_graph_rebase_after_late_fill(
@@ -310,7 +310,7 @@ class RuntimeGraphRebaseShadowProducerTests(unittest.TestCase):
         }
 
         with patch(
-            'ollmo_server.responses_request_runtime.build_request_phase_graph',
+            'fruth_server.responses_request_runtime.build_request_phase_graph',
             return_value=self._base_graph(),
         ), patch.dict(os.environ, {}, clear=True):
             terminal = owner.review_terminal_graph_rebase_after_late_fill(
@@ -343,7 +343,7 @@ class RuntimeGraphRebaseShadowProducerTests(unittest.TestCase):
         }
 
         with patch(
-            'ollmo_server.responses_request_runtime.build_request_phase_graph',
+            'fruth_server.responses_request_runtime.build_request_phase_graph',
             return_value=self._structured_candidate(),
         ), patch.dict(os.environ, {}, clear=True):
             terminal = owner.review_terminal_graph_rebase_after_late_fill(
@@ -398,14 +398,14 @@ class RuntimeGraphRebaseShadowProducerTests(unittest.TestCase):
             'candidate_change_is_additive_repair_only',
         )
 
-    def test_advisory_ghost_action_is_not_runtime_rebase_authority(self):
+    def test_advisory_inference_action_is_not_runtime_rebase_authority(self):
         owner = self._owner()
         payload = self._payload(self._structured_candidate())
         payload['runtime']['graph_closure_review'] = {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'repair_required',
-            'ghost_repair_feedback': {
-                'kind': 'ollmo.ghost_repair_feedback',
+            'inference_repair_feedback': {
+                'kind': 'fruth.inference_repair_feedback',
                 'status': 'repair_required',
                 'items': [
                     {

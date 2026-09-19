@@ -6,14 +6,14 @@ is `unknown`, never an inferred model call, unnecessary retry or false wait.
 
 ## Existing owners and new observations
 
-`scripts/ollmo_run_monitor.py` is the canonical monitor. A development checkout
-may also retain `state/ollmo_run_monitor/monitor_once.py` as a compatibility
+`scripts/fruth_run_monitor.py` is the canonical monitor. A development checkout
+may also retain `state/fruth_run_monitor/monitor_once.py` as a compatibility
 entry point; the mutable `state/` tree is not shipped or required. The monitor is an observer, not execution
 authority. There is no new profiler, scheduler, log store or dependency.
 
-`ollmo_services/events.py` extends the existing unified event path. A scoped
+`fruth_services/events.py` extends the existing unified event path. A scoped
 response request or Late Fill worker records `action=causal_observation` in the
-existing event log. Its `causal_event.schema` is `ollmo.causal_event.v1`.
+existing event log. Its `causal_event.schema` is `fruth.causal_event.v1`.
 The outer unified event ID identifies the transport record; the inner
 `event_id` identifies the causal witness. Joins use the latter. A completed
 invocation retains its `invocation_id`, `start_event_id`, parent invocation,
@@ -30,7 +30,7 @@ this does not change worker counts, scheduling or lock policy.
 
 | Owner | Additions | Meaning / limitations |
 | --- | --- | --- |
-| Responses request handler, Ghost route owner | actual request/routing spans and lineage | A routing invocation does not establish a model call. |
+| Responses request handler, interpretive inference route owner | actual request/routing spans and lineage | A routing invocation does not establish a model call. |
 | Decision-contract builders | rebuild spans for aspiration, commitment, attention, doubt/quality, decisions; per-target frame and lens selection witnesses | `read_model_invocation` is a deterministic rebuild. It is never counted as model execution. Selected lens/transition and exact candidate/obligation/branch/phase references come from the owner. |
 | Candidate promotion review | selected candidate/contract/policy input digests and exact per-candidate cause, outcome, contract reference and authority source | Records the existing promotion review. Aspiration and lenses grant no authority. |
 | Backend chat transport | actual non-streaming model-call span and input-field digests | Provider arguments are hashed, not copied. Hidden timeout/normalization inputs mean coverage is partial. |
@@ -42,9 +42,9 @@ this does not change worker counts, scheduling or lock policy.
 
 ## Late Fill instrumentation ownership
 
-`ollmo_server/late_fill_runtime.py` retains semantic decisions and the exact
+`fruth_server/late_fill_runtime.py` retains semantic decisions and the exact
 start-check, worker/submission, lookup, callback, publication, branch-settlement,
-retry and availability anchors. `ollmo_services/late_fill_telemetry.py` supplies
+retry and availability anchors. `fruth_services/late_fill_telemetry.py` supplies
 an explicitly bound `LateFillTrace` for event metadata, wait identities,
 callback targets and post-wave timing schemas. It returns diagnostic values;
 Late Fill still attaches them and owns every runtime mutation and publication.

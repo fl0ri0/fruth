@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_services import response_frames as frames
-from ollmo_services import graph_rebase_readiness_registry as registry
-from ollmo_services import events
-from ollmo_services.graph_rebase_readiness_registry import (
+from fruth_services import response_frames as frames
+from fruth_services import graph_rebase_readiness_registry as registry
+from fruth_services import events
+from fruth_services.graph_rebase_readiness_registry import (
     GraphRebaseReadinessRegistryError,
     append_graph_rebase_readiness_observation,
 )
@@ -16,7 +16,7 @@ from ollmo_services.graph_rebase_readiness_registry import (
 
 def _frame(response_id='epoch-response'):
     return {
-        'kind': 'ollmo.response_frame',
+        'kind': 'fruth.response_frame',
         'frame_version': 9,
         'response_id': response_id,
         'status': 'completed',

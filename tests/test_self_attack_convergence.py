@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from scripts import self_attack_convergence as audit
-from scripts.ollmo_self_attack import main
+from scripts.fruth_self_attack import main
 from scripts.run_graph_rebase_shadow_corpus import CorpusError
 
 
@@ -132,8 +132,8 @@ def test_complete_offline_run_and_source_preservation(tmp_path):
 
 def test_cli_offline_branch_never_dispatches(tmp_path):
     with patch('scripts.self_attack_convergence.run_audit',return_value=0) as run, \
-         patch('scripts.ollmo_self_attack.execute_sweep',side_effect=AssertionError('dispatch')), \
-         patch('scripts.ollmo_self_attack.discover_knobs',side_effect=AssertionError('inventory runtime')):
+         patch('scripts.fruth_self_attack.execute_sweep',side_effect=AssertionError('dispatch')), \
+         patch('scripts.fruth_self_attack.discover_knobs',side_effect=AssertionError('inventory runtime')):
         assert main(['--audit-convergence',str(tmp_path),'--output',str(tmp_path/'out')])==0
         run.assert_called_once()
     with pytest.raises(SystemExit):

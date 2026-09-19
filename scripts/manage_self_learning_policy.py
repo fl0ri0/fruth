@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ollmo_services.self_learning import (
+from fruth_services.self_learning import (
     DEFAULT_ACCEPTED_POLICY_SNAPSHOT,
     DEFAULT_SELF_LEARNING_DIR,
     build_default_accepted_learning_policy_snapshot,
@@ -37,7 +37,7 @@ def _load_json_object(path: Path) -> dict:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description='Manage Ollmo accepted-learning policy snapshots without opening them by default.',
+        description='Manage Fruth accepted-learning policy snapshots without opening them by default.',
     )
     parser.add_argument(
         '--snapshot',

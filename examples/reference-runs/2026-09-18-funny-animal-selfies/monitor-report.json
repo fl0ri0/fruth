@@ -1,0 +1,68 @@
+{
+  "artifact_summary": {
+    "artifact_bytes": 4555148,
+    "artifact_count": 3,
+    "css_issue_count": 0,
+    "file_count_by_suffix": {
+      "png": 3
+    },
+    "html_issue_count": 0,
+    "kind_counts": {
+      "image": 3
+    },
+    "missing_file_count": 0,
+    "sha_mismatch_count": 0
+  },
+  "authority": "independent_observer_evidence",
+  "branch_summary": {
+    "capability_counts": {
+      "chat": 1,
+      "image_generation": 3,
+      "vision_analysis": 3
+    },
+    "counts": {
+      "active": 0,
+      "completed": 7,
+      "failed": 0,
+      "pending": 0
+    },
+    "image_branch_count": 3,
+    "output_obligation_counts": {
+      "image": 3,
+      "text": 5
+    },
+    "role_counts": {
+      "image": 3,
+      "text": 4
+    },
+    "text_artifact_branch_count": 4
+  },
+  "frame_id": "resp_1789747143885_0bfdac3579e688:frame-2",
+  "frame_sequence": 2,
+  "provenance": {
+    "raw_record_published": false,
+    "record_sha256": "c0f2351a149fbad7f5d8f66c8c709e637da21522aa366bcc714c56ba0a67e528",
+    "record_size_bytes": 49498,
+    "source": "exact reports.jsonl record"
+  },
+  "reported_at": "2026-09-18T16:09:35.973739Z",
+  "response_id": "resp_1789747143885_0bfdac3579e688",
+  "runtime_summary": {
+    "failed_branch_count": 0,
+    "final_materialization_contract_status": "fulfilled",
+    "late_fill_status": "completed",
+    "lifecycle_state": "completed",
+    "materialization_contract_unmet": false
+  },
+  "schema": "fruth.public_monitor_snapshot.v1",
+  "timing_seconds": {
+    "coalesced_text_seconds": 36.610968,
+    "hygiene_seconds": 571.261332,
+    "image_wave_seconds": 217.0674,
+    "initial_chat_seconds": 95.83912,
+    "post_image_chat_seconds": 36.613685,
+    "terminal_seconds": 525.75238
+  },
+  "verdict": "clean",
+  "version": 1
+}

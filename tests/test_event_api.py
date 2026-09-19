@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from ollmo_webserver import app
+from fruth_webserver import app
 
 
 class EventApiTests(unittest.TestCase):
@@ -9,7 +9,7 @@ class EventApiTests(unittest.TestCase):
         app.config['TESTING'] = True
         self.client = app.test_client()
 
-    @patch('ollmo_webserver.read_events')
+    @patch('fruth_webserver.read_events')
     def test_event_history_route_uses_event_log_reader(self, mock_read_events):
         mock_read_events.return_value = [
             {'id': 'event-1', 'category': 'chat', 'action': 'request', 'status': 'ok'}

@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from ollmo_services.graph_rebase_rollout import (
+from fruth_services.graph_rebase_rollout import (
     build_partial_graph_rebase_promotion_gate,
     build_graph_rebase_readiness_report,
 )
@@ -25,7 +25,7 @@ def current_shadow_baseline_payloads():
     payloads = []
     for index, (reason, smaller_scope, prompt_family) in enumerate(reasons, start=1):
         candidate_review = {
-            'kind': 'ollmo.runtime_graph_rebase_candidate_review',
+            'kind': 'fruth.runtime_graph_rebase_candidate_review',
             'status': 'not_proposed',
             'reason': reason,
             'base_graph_digest': f'base-{index}',
@@ -46,7 +46,7 @@ def current_shadow_baseline_payloads():
                 'request_meta': {'prompt_family': prompt_family},
                 'runtime': {
                     'request_phase_graph': {
-                        'kind': 'ollmo.request_phase_graph',
+                        'kind': 'fruth.request_phase_graph',
                         'response_id': f'resp-baseline-{index}',
                         'frame_id': f'frame-baseline-{index}',
                         'graph_rebase_proposals': [],
@@ -63,7 +63,7 @@ def current_shadow_baseline_payloads():
 
 def _accepted_partial_payload(response_id='resp-partial', proposal_id='proposal-partial'):
     proposal = {
-        'kind': 'ollmo.graph_rebase_proposal',
+        'kind': 'fruth.graph_rebase_proposal',
         'proposal_id': proposal_id,
         'requested_rebase_class': 'partial_subtree_rebase',
         'base_graph_digest': f'base-{proposal_id}',
@@ -71,14 +71,14 @@ def _accepted_partial_payload(response_id='resp-partial', proposal_id='proposal-
         'scope_root_ids': ['phase-review'],
     }
     proof = {
-        'kind': 'ollmo.graph_rebase_preservation_proof',
+        'kind': 'fruth.graph_rebase_preservation_proof',
         'status': 'passed',
         'base_graph_digest': proposal['base_graph_digest'],
         'candidate_graph_digest': proposal['candidate_graph_digest'],
         'blocked_reasons': [],
     }
     review = {
-        'kind': 'ollmo.graph_rebase_review',
+        'kind': 'fruth.graph_rebase_review',
         'review_id': f'review-{proposal_id}',
         'proposal_id': proposal_id,
         'status': 'accepted',
@@ -88,7 +88,7 @@ def _accepted_partial_payload(response_id='resp-partial', proposal_id='proposal-
         'blocked_reasons': [],
     }
     lifecycle = {
-        'kind': 'ollmo.graph_rebase_lifecycle',
+        'kind': 'fruth.graph_rebase_lifecycle',
         'rebase_id': f'rebase-{proposal_id}',
         'proposal_id': proposal_id,
         'review_id': review['review_id'],
@@ -107,7 +107,7 @@ def _accepted_partial_payload(response_id='resp-partial', proposal_id='proposal-
         'late_fill': {'status': 'completed', 'active_count': 0, 'pending_count': 0},
         'runtime': {
             'request_phase_graph': {
-                'kind': 'ollmo.request_phase_graph',
+                'kind': 'fruth.request_phase_graph',
                 'response_id': response_id,
                 'frame_id': f'frame-{response_id}',
                 'redraw_scope_ladder_review': {
@@ -119,7 +119,7 @@ def _accepted_partial_payload(response_id='resp-partial', proposal_id='proposal-
             },
             'developer_diagnostics': {
                 'runtime_graph_rebase_candidate_review': {
-                    'kind': 'ollmo.runtime_graph_rebase_candidate_review',
+                    'kind': 'fruth.runtime_graph_rebase_candidate_review',
                     'status': 'validated_by_runtime_review',
                     'proposal_id': proposal_id,
                     'requested_rebase_class': 'partial_subtree_rebase',
@@ -209,7 +209,7 @@ def _trusted_partial_stage_record(payload, staged):
     proposal = graph['graph_rebase_proposals'][0]
     review = graph['graph_rebase_reviews'][0]
     return {
-        'kind': 'ollmo.graph_rebase_operator_record',
+        'kind': 'fruth.graph_rebase_operator_record',
         'record_id': f'trusted-stage-{proposal["proposal_id"]}',
         'action': 'stage',
         'status': 'staged',
@@ -232,7 +232,7 @@ def test_current_baseline_is_six_settled_not_proposed_and_zero_qualifying(
     report = build_graph_rebase_readiness_report(
         current_shadow_baseline_payloads,
         source_ledger_identity={
-            'kind': 'ollmo.response_frame_ledger',
+            'kind': 'fruth.response_frame_ledger',
             'record_count': 685,
             'response_count': 263,
         },
@@ -295,7 +295,7 @@ def test_active_late_fill_candidate_is_visible_but_excluded_from_settled_denomin
     diagnostics['runtime_graph_rebase_reviews'] = []
     diagnostics['graph_rebase_lifecycle'] = []
     diagnostics['runtime_graph_rebase_candidate_review'] = {
-        'kind': 'ollmo.runtime_graph_rebase_candidate_review',
+        'kind': 'fruth.runtime_graph_rebase_candidate_review',
         'status': 'not_proposed',
         'reason': 'active_late_fill_must_settle',
         'late_fill_status': 'running',
@@ -315,7 +315,7 @@ def test_unresolved_critical_finding_is_zero_tolerance_even_when_volume_gates_ar
     payload = _accepted_partial_payload()
     trusted_records = [
         {
-            'kind': 'ollmo.graph_rebase_operator_review',
+            'kind': 'fruth.graph_rebase_operator_review',
             'record_id': 'operator-review-scope-escape',
             'action': 'adjudicate',
             'status': 'accepted',
@@ -347,7 +347,7 @@ def test_unresolved_critical_finding_is_zero_tolerance_even_when_volume_gates_ar
 def test_exact_duplicate_trusted_review_records_are_deduplicated():
     payload = _accepted_partial_payload()
     record = {
-        'kind': 'ollmo.graph_rebase_operator_review',
+        'kind': 'fruth.graph_rebase_operator_review',
         'record_id': 'operator-review-useful',
         'action': 'adjudicate',
         'status': 'accepted',
@@ -371,7 +371,7 @@ def test_exact_duplicate_trusted_review_records_are_deduplicated():
 def test_false_negative_blocks_until_later_bound_replay_verified_proposal_resolves_it():
     payload = _accepted_partial_payload(response_id='resp-remediated')
     false_negative = {
-        'kind': 'ollmo.graph_rebase_operator_record',
+        'kind': 'fruth.graph_rebase_operator_record',
         'record_id': 'operator-false-negative',
         'action': 'adjudicate',
         'status': 'recorded',
@@ -398,7 +398,7 @@ def test_false_negative_blocks_until_later_bound_replay_verified_proposal_resolv
     assert false_negative_requirement['met'] is False
 
     resolution = {
-        'kind': 'ollmo.graph_rebase_operator_record',
+        'kind': 'fruth.graph_rebase_operator_record',
         'record_id': 'operator-false-negative-resolution',
         'action': 'adjudicate',
         'status': 'recorded',
@@ -473,7 +473,7 @@ def test_false_negative_resolution_without_replay_or_exact_binding_does_not_clea
 def test_hydrated_response_frame_mapping_is_accepted_without_filesystem_resolution():
     payload = _accepted_partial_payload(response_id='resp-frame-mapping')
     frame = {
-        'kind': 'ollmo.response_frame',
+        'kind': 'fruth.response_frame',
         'response_id': 'resp-frame-mapping',
         'status': 'completed',
         'current_state': {'lifecycle_state': 'completed'},
@@ -495,7 +495,7 @@ def test_stage_successor_outcome_authorization_and_local_proof_are_separate_evid
     graph = payload['runtime']['request_phase_graph']
     review = graph['graph_rebase_reviews'][0]
     review['local_execution_contract_proof'] = {
-        'kind': 'ollmo.graph_rebase_local_execution_contract_proof',
+        'kind': 'fruth.graph_rebase_local_execution_contract_proof',
         'status': 'passed',
     }
     lifecycle = graph['graph_rebase_lifecycle'][0]
@@ -503,7 +503,7 @@ def test_stage_successor_outcome_authorization_and_local_proof_are_separate_evid
     staged = _add_durable_partial_stage(payload)
     graph['successor_rebase_requests'] = [
         {
-            'kind': 'ollmo.graph_rebase_successor_request',
+            'kind': 'fruth.graph_rebase_successor_request',
             'status': 'completed',
             'proposal_id': 'proposal-partial',
             'rebase_id': 'rebase-proposal-partial',
@@ -513,7 +513,7 @@ def test_stage_successor_outcome_authorization_and_local_proof_are_separate_evid
     ]
     graph['applied_graph_rebases'] = [
         {
-            'kind': 'ollmo.graph_rebase_lifecycle',
+            'kind': 'fruth.graph_rebase_lifecycle',
             'status': 'applied',
             'proposal_id': 'proposal-partial',
             'rebase_id': 'rebase-proposal-partial',
@@ -524,7 +524,7 @@ def test_stage_successor_outcome_authorization_and_local_proof_are_separate_evid
     trusted_records = [
         _trusted_partial_stage_record(payload, staged),
         {
-            'kind': 'ollmo.graph_rebase_operator_review',
+            'kind': 'fruth.graph_rebase_operator_review',
             'record_id': 'adjudicate-partial',
             'action': 'adjudicate',
             'status': 'accepted',
@@ -534,7 +534,7 @@ def test_stage_successor_outcome_authorization_and_local_proof_are_separate_evid
             'replay_verified': True,
         },
         {
-            'kind': 'ollmo.graph_rebase_operator_review',
+            'kind': 'fruth.graph_rebase_operator_review',
             'record_id': 'authorize-partial',
             'action': 'authorize_partial',
             'status': 'authorized',
@@ -657,7 +657,7 @@ def test_partial_promotion_gate_is_blocked_for_current_shadow_baseline(
 
     gate = build_partial_graph_rebase_promotion_gate(report)
 
-    assert gate['kind'] == 'ollmo.graph_rebase_promotion_gate'
+    assert gate['kind'] == 'fruth.graph_rebase_promotion_gate'
     assert gate['status'] == 'blocked'
     assert gate['decision'] == 'keep_partial_non_executable'
     assert gate['readiness_report_digest'] == report['report_digest']
@@ -666,7 +666,7 @@ def test_partial_promotion_gate_is_blocked_for_current_shadow_baseline(
 
 def test_partial_promotion_gate_binds_one_green_readiness_report():
     report = {
-        'kind': 'ollmo.graph_rebase_rollout_readiness',
+        'kind': 'fruth.graph_rebase_rollout_readiness',
         'report_digest': 'graph-rebase-readiness-green',
         'corpus': {'corpus_digest': 'graph-rebase-corpus-green'},
         'policy': {'policy_id': 'safe-partial-v1'},

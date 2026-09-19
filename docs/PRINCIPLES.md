@@ -5,7 +5,7 @@ See also `docs/VISION_ALIGNMENT.md` for the conceptual north star and
 
 ## 1. Runtime owns truth
 
-Ollmo does not treat model output as truth.
+Fruth does not treat model output as truth.
 
 Truth is what exists in the runtime substrate:
 
@@ -16,7 +16,7 @@ Truth is what exists in the runtime substrate:
 - artifacts
 - replayable state
 
-For live model availability, process, port, backend runtime, and control-plane truth win over stale projections. Degraded, busy, timeout, or cooldown markers are advisory unless live process/port/backend truth proves the instance unusable. Backend events, Ghost payloads, frontend labels, and self-learning/self-healing hints must preserve that boundary; a weak `degraded` projection must not become `failed`, `offline`, a provider ban, or graph/route mutation evidence by itself.
+For live model availability, process, port, backend runtime, and control-plane truth win over stale projections. Degraded, busy, timeout, or cooldown markers are advisory unless live process/port/backend truth proves the instance unusable. Backend events, interpretive inference payloads, frontend labels, and self-learning/self-healing hints must preserve that boundary; a weak `degraded` projection must not become `failed`, `offline`, a provider ban, or graph/route mutation evidence by itself.
 
 ---
 
@@ -32,13 +32,13 @@ The runtime decides what is accepted as real.
 
 ## 3. Planning and execution are separate
 
-- Ghost -> intent, candidate space, and graph structure
+- Interpretive inference -> intent, candidate space, and graph structure
 - Promotion review -> what becomes owed work
 - Resolver/runtime -> branch-local execution and materialization
 
-Ghost anchors and proposes. Runtime review promotes. Resolver acts.
+Fruth's interpretive inference layer anchors and proposes. Runtime review promotes. Resolver acts.
 
-Graph repair follows the same split. Ghost, Closure, decision contracts, and accepted learning may orient or propose a bounded repair, but Runtime applies only validated additive patches to the request phase graph. Advisory movement surfaces such as `controlled_attention_review`, `aspiration_review`, and `commitment_review` can focus attention, but they do not become graph-repair evidence without current runtime/Closure/Monitor actionability.
+Graph repair follows the same split. The interpretive inference layer, Closure, decision contracts, and accepted learning may orient or propose a bounded repair, but Runtime applies only validated additive patches to the request phase graph. Advisory movement surfaces such as `controlled_attention_review`, `aspiration_review`, and `commitment_review` can focus attention, but they do not become graph-repair evidence without current runtime/Closure/Monitor actionability.
 
 Every validated graph patch must carry lifecycle truth: proposal id, validation review, repair class, autonomy level, risk level, evidence refs, idempotency key, graph digests, and outcome. Shadow and staged patches are diagnostic truth only; applied safe patches become normal graph state that late fill and Closure must judge. If safe additive repair is needed after a terminal/frozen frame, the old frame remains frozen and the movement is recorded as successor/reopen truth with parent lineage and owed work, not as a silent mutation.
 
@@ -48,7 +48,7 @@ Reviewed graph rebase occupies the higher-risk partial-subtree and full-successo
 
 ## 4. Intent is anchored, state is fluid
 
-Ghost anchors the current user intent.
+The interpretive inference layer anchors the current user intent.
 
 The request phase graph is frozen in intent, but runtime evidence can update branch state:
 
@@ -69,7 +69,7 @@ The same rule applies to context. A remembered fact, old chat turn, or prior art
 
 ## 5. Closure before freeze
 
-Before final response freeze, Ollmo checks graph requirements against runtime truth.
+Before final response freeze, Fruth checks graph requirements against runtime truth.
 
 The closure review can continue existing obligations through resolver or late fill, but it cannot invent a new request.
 
@@ -100,7 +100,7 @@ For linked artifact sets, public output is not closed until surviving generated 
 
 ## 7. Work, not conversation
 
-Ollmo is not a chat system.
+Fruth is not a chat system.
 
 It is a system where work persists, evolves, and continues.
 
@@ -122,7 +122,7 @@ No mutation outside the substrate.
 
 There must be a single place where truth is decided.
 
-Ollmo runtime is that authority.
+Fruth runtime is that authority.
 
 ---
 
@@ -130,7 +130,7 @@ Ollmo runtime is that authority.
 
 A block is not permission to rewrite the request.
 
-When an obligation cannot be fulfilled yet, Ollmo keeps it visible and resolves the block by the right-sized verified state transition:
+When an obligation cannot be fulfilled yet, Fruth keeps it visible and resolves the block by the right-sized verified state transition:
 
 - keep the anchored intent
 - keep the obligation open
@@ -156,7 +156,7 @@ Intent Lens review is the same principle applied before freeze to current intent
 
 The semantic execution gate is the same principle applied before and during materialization. A branch that was valid a moment ago may become cancelled, waived, or superseded before its backend call starts or before its result returns. Runtime must preserve that new truth, skip queued work, and ignore stale results instead of letting already-started work force the graph to accept the wrong output.
 
-Controlled attention is the same principle applied to model focus. Between visible outputs, Ghost/Reviewer should not receive the whole request as an undifferentiated prompt again. They should receive scoped attention frames: what target is in question, what evidence anchors it, which transitions are allowed, and where authority stops. This is the "space between the tones": filter, reconsider, reserve, promote for review, repair, waive, supersede, stop, or freeze only through the right-sized verified transition.
+Controlled attention is the same principle applied to model focus. Between visible outputs, the interpretive inference layer or a reviewer should not receive the whole request as an undifferentiated prompt again. They should receive scoped attention frames: what target is in question, what evidence anchors it, which transitions are allowed, and where authority stops. This is the "space between the tones": filter, reconsider, reserve, promote for review, repair, waive, supersede, stop, or freeze only through the right-sized verified transition.
 
 ---
 
@@ -164,7 +164,7 @@ Controlled attention is the same principle applied to model focus. Between visib
 
 A possible output is not automatically owed.
 
-Ollmo may keep candidate or reserved outputs in the graph as meaningful vacancies. Those candidates become contractual work only through relevance and explicit promotion:
+Fruth may keep candidate or reserved outputs in the graph as meaningful vacancies. Those candidates become contractual work only through relevance and explicit promotion:
 
 - candidate / reserved possibility
 - promoted contract
@@ -183,7 +183,7 @@ Not every context candidate becomes a duty.
 
 Not every old artifact becomes input.
 
-Ollmo may preserve History, Memory, and Reference candidates as available orientation, but they become active context only through explicit promotion:
+Fruth may preserve History, Memory, and Reference candidates as available orientation, but they become active context only through explicit promotion:
 
 - history / memory / reference candidate
 - history scan candidate
@@ -221,7 +221,7 @@ An artifact is not only a path.
 
 Durable artifact truth includes identity, provenance, metadata, enrichments, linked response/message ids, and availability. `artifact_dossiers` are the read-side shape for that truth.
 
-When artifact evidence already exists, Ollmo should reuse it as evidence before rerunning expensive or noisy analysis. If the evidence is missing, stale, or insufficient for the current branch contract, a new evidence branch may be promoted.
+When artifact evidence already exists, Fruth should reuse it as evidence before rerunning expensive or noisy analysis. If the evidence is missing, stale, or insufficient for the current branch contract, a new evidence branch may be promoted.
 
 Durability optimizations may reuse private prepared representations within their
 validated owner scope. They must preserve exact recoverable state, fresh source
@@ -240,7 +240,7 @@ If a bound is required for safety or transport, it must be explicit, named, just
 
 ## 16. Learning is reviewed trace improvement
 
-Ollmo may learn from its frozen response frames, but learning is not hidden live mutation.
+Fruth may learn from its frozen response frames, but learning is not hidden live mutation.
 
 The allowed path is:
 
@@ -250,7 +250,7 @@ The allowed path is:
 - reviewed accepted learnings
 - explicit policy snapshot activation
 
-Until a learning is reviewed and explicitly enabled, it is evidence only. It may appear in Ghost diagnostics and offline reports, but it must not silently alter Intake, Graph, Context Gate, Closure Review, routing, or output behavior.
+Until a learning is reviewed and explicitly enabled, it is evidence only. It may appear in interpretive inference diagnostics and offline reports, but it must not silently alter Intake, Graph, Context Gate, Closure Review, routing, or output behavior.
 
 The accepted-policy snapshot is a bridge, not authority. New or reset snapshots are disabled by default; this checkout may enable the snapshot as readable soft policy input after review. The bridge gives reviewed learnings a clear place to land without bypassing runtime truth.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Submit a prompt batch to running Flux instances via the local Ollmo API.
+"""Submit a prompt batch to running Flux instances via the local Fruth API.
 
 This script auto-discovers ready image_generation instances from model_ports.json,
 then distributes prompts across them with one sequential worker per instance.
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ollmo_core.transports import ARTIFACT_OUTPUTS_MANIFESTS_DIR
+from fruth_core.transports import ARTIFACT_OUTPUTS_MANIFESTS_DIR
 
 DEFAULT_MODEL_PORTS_PATH = ROOT / "model_ports.json"
 DEFAULT_OUTPUT_DIR = ROOT / ARTIFACT_OUTPUTS_MANIFESTS_DIR
@@ -154,8 +154,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--base-url",
-        default=os.environ.get("OLLMO_BASE_URL", "http://127.0.0.1:5001"),
-        help="Local Ollmo base URL (default: http://127.0.0.1:5001).",
+        default=os.environ.get("FRUTH_BASE_URL", "http://127.0.0.1:5011"),
+        help="Local Fruth base URL (default: http://127.0.0.1:5011).",
     )
     parser.add_argument(
         "--prompts",

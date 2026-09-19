@@ -4,11 +4,11 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from ollmo_g.request_phase_graph import build_request_phase_graph
-from ollmo_g.request_meta import extract_request_meta
+from fruth_inference.request_phase_graph import build_request_phase_graph
+from fruth_inference.request_meta import extract_request_meta
 from helpers.model_capabilities import normalize_capability
-from ollmo_server.late_fill_runtime import LateFillRuntimeOwner
-from ollmo_server.response_semantics_runtime import (
+from fruth_server.late_fill_runtime import LateFillRuntimeOwner
+from fruth_server.response_semantics_runtime import (
     ResponseSemanticsRuntimeOwner,
     _inline_labeled_image_prompt_body,
     _request_requires_current_source_for_transform,
@@ -16,8 +16,8 @@ from ollmo_server.response_semantics_runtime import (
     classify_phase_output_text,
     phase_output_acceptance_metadata,
 )
-from ollmo_services.responses import build_canonical_response_artifacts
-from ollmo_services.tts_audio_integrity import (
+from fruth_services.responses import build_canonical_response_artifacts
+from fruth_services.tts_audio_integrity import (
     TTS_AUDIO_INTEGRITY_POLICY_ID,
     build_tts_semantic_source,
 )
@@ -63,8 +63,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         error = {'code': 'INSTANCE_UNAVAILABLE', 'stage': 'prepare_branch_plan',
                  'route_diagnostics': {'availability_wait': {
                      'reason': 'live_candidates_in_cooldown', 'candidate_instance_ids': ['live-model']}}}
-        with patch('ollmo_server.late_fill_runtime.time.time', return_value=100), \
-             patch.dict('os.environ', {'OLLMO_LATE_FILL_AVAILABILITY_POLL_SEC': '5'}):
+        with patch('fruth_server.late_fill_runtime.time.time', return_value=100), \
+             patch.dict('os.environ', {'FRUTH_LATE_FILL_AVAILABILITY_POLL_SEC': '5'}):
             waiting = self.late_fill_owner.build_availability_wait_branch(branch, error=error)
             self.assertEqual(self.late_fill_owner.availability_wait_delay(waiting), 5)
             repeated = self.late_fill_owner.build_availability_wait_branch(waiting, error=error)
@@ -72,7 +72,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             self.assertEqual(repeated['auto_executable_repair_retry_count'], 5)
             self.assertEqual(repeated['excluded_instance_ids'], ['prior-failure'])
             self.assertEqual(repeated['text_artifact_target_path'], branch['text_artifact_target_path'])
-        with patch('ollmo_server.late_fill_runtime.time.time', return_value=105):
+        with patch('fruth_server.late_fill_runtime.time.time', return_value=105):
             self.assertEqual(self.late_fill_owner.availability_wait_delay(waiting), 0)
         self.assertNotIn('availability_wait', branch)
         self.assertIsNone(self.late_fill_owner.build_availability_wait_branch(
@@ -345,7 +345,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
     def _passing_global_semantic_verdict(criterion):
         return json.dumps(
             {
-                'kind': 'ollmo.semantic_review_verdict',
+                'kind': 'fruth.semantic_review_verdict',
                 'verdict': 'passed',
                 'overall_status': 'fulfilled',
                 'whole_intent_fit': 'Current runtime evidence fulfills the whole intent.',
@@ -387,7 +387,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'C': '/tmp/structured-join-c.png',
         }
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'prompt': prompt,
             'current_phase_id': 'phase-1',
@@ -548,7 +548,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         image_path = '/tmp/mixed-structured-join-a.png'
         audio_path = '/tmp/mixed-structured-join-b.wav'
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'prompt': prompt,
             'current_phase_id': 'phase-1',
@@ -771,13 +771,13 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         ]
         request = {
             'prompt': prompt,
-            'ghost_route': True,
+            'inference_route': True,
             'reference_artifacts': references,
         }
         graph = build_request_phase_graph(
             prompt,
             request_payload=request,
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         branches = graph.get('downstream_branches') or []
         tts = [branch for branch in branches if branch.get('capability') == 'text_to_speech']
@@ -888,7 +888,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         updated = self.late_fill_owner._review_terminal_graph_rebase_if_available(
             payload,
             request_payload={'prompt': 'review final graph'},
-            route_payload={'route_source': 'ghost_carried'},
+            route_payload={'route_source': 'inference_carried'},
         )
 
         self.assertTrue(updated['terminal_graph_rebase_reviewed'])
@@ -1028,15 +1028,15 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Sag kurz hallo.'
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             response_payload={'output_text': 'Hallo.'},
         )
 
         decision_contract = phase_graph['decision_contract']
         review = self.owner.build_graph_closure_review(
             'Hallo.',
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload={
                 'output_text': 'Hallo.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -1087,7 +1087,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1121,7 +1121,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1150,7 +1150,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1188,7 +1188,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
                 review = self.owner.build_graph_closure_review(
                     payload['output_text'],
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     artifact_payload=payload,
                 )
                 check = next(
@@ -1218,7 +1218,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
                 review = self.owner.build_graph_closure_review(
                     payload['output_text'],
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     artifact_payload=payload,
                 )
                 check = next(
@@ -1267,7 +1267,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
                 review = self.owner.build_graph_closure_review(
                     payload['output_text'],
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     artifact_payload=payload,
                 )
                 check = next(
@@ -1293,7 +1293,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
                 review = self.owner.build_graph_closure_review(
                     payload['output_text'],
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     artifact_payload=payload,
                 )
                 check = next(
@@ -1321,7 +1321,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1359,7 +1359,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 )
                 review = self.owner.build_graph_closure_review(
                     payload['output_text'],
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     artifact_payload=payload,
                 )
                 check = next(
@@ -1379,7 +1379,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1443,7 +1443,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 )
                 review = self.owner.build_graph_closure_review(
                     payload['output_text'],
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     artifact_payload=payload,
                 )
                 check = next(
@@ -1463,7 +1463,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1496,7 +1496,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
                 review = self.owner.build_graph_closure_review(
                     payload['output_text'],
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     artifact_payload=payload,
                 )
 
@@ -1520,7 +1520,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1552,7 +1552,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1579,7 +1579,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1603,7 +1603,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1638,7 +1638,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1659,7 +1659,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -1716,7 +1716,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'Prepared landing page assets.',
-            request_payload={'ghost_route': True, 'prompt': 'Create index.html and styles.css.'},
+            request_payload={'inference_route': True, 'prompt': 'Create index.html and styles.css.'},
             artifact_payload={
                 'output_text': 'Prepared landing page assets.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -1808,7 +1808,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'Prepared scene text.',
-            request_payload={'ghost_route': True, 'prompt': 'Prepare a scene, then compare evidence.'},
+            request_payload={'inference_route': True, 'prompt': 'Prepare a scene, then compare evidence.'},
             artifact_payload={
                 'output_text': 'Prepared scene text.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -1890,7 +1890,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'Prepared scene text.',
-            request_payload={'ghost_route': True, 'prompt': 'Prepare a scene, then create an image.'},
+            request_payload={'inference_route': True, 'prompt': 'Prepare a scene, then create an image.'},
             artifact_payload={
                 'output_text': 'Prepared scene text.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -2144,7 +2144,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             for index in range(1, 4)
         ]
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'current_phase_id': 'phase-1',
             'current_phase_capability': 'chat',
@@ -2307,7 +2307,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             for index in range(1, 5)
         ]
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'current_phase_id': 'phase-prepare',
             'current_phase_capability': 'chat',
@@ -2365,7 +2365,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             for index in range(1, 5)
         ]
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'current_phase_id': 'phase-prepare',
             'current_phase_capability': 'chat',
@@ -2503,7 +2503,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
     def test_build_response_semantic_phase_payload_rejects_invalid_graph_count_without_value_error(self):
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'current_phase_id': 'phase-prepare',
             'current_phase_capability': 'chat',
@@ -2563,7 +2563,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
     def test_build_response_semantic_phase_payload_rejects_plain_alpha_without_exact_image_slots(self):
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'current_phase_id': 'phase-1',
             'current_phase_capability': 'chat',
@@ -2624,7 +2624,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             for index in range(1, 3)
         ]
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'current_phase_id': 'phase-1',
             'current_phase_capability': 'chat',
@@ -3283,7 +3283,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             '**Style: Heat-haze, golden hour, warm tones.**\n'
             '2. **@LemurLeap**: A Ring-tailed Lemur jumping between Madagascar branches; '
             '**Style: Action freeze-frame, high shutter speed.**\n'
-            '3. **@SnowLeopardGhost**: A Snow Leopard blending into Himalayan rocks; '
+            '3. **@SnowLeopardInference**: A Snow Leopard blending into Himalayan rocks; '
             '**Style: Misty atmosphere, desaturated cool tones.**\n'
             '4. **@PlatypusPuzzled**: A Platypus surfacing in an Australian creek; '
             '**Style: Surface ripple distortion, soft focus.**\n'
@@ -3861,7 +3861,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(container_tag, 'section')
         self.assertIn('../images/four.png', updated)
         self.assertIn('../images/five.png', updated)
-        self.assertNotIn('ollmo-generated-media', updated)
+        self.assertNotIn('fruth-generated-media', updated)
 
     def test_composed_site_image_closure_fans_out_target_bound_cohort_repairs(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -4284,8 +4284,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 image_path.write_bytes(b'png')
             index_path.write_text(
                 '<html><body><section class="hero"></section>'
-                '<section class="ollmo-generated-media" '
-                'data-ollmo-repair="composed-page-image-representation">'
+                '<section class="fruth-generated-media" '
+                'data-fruth-repair="composed-page-image-representation">'
                 + ''.join(
                     f'<img src="../images/{image_path.name}">'
                     for image_path in image_paths[1:]
@@ -4536,7 +4536,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
             self.assertEqual(updated, payload)
             self.assertEqual(html_path.read_text(encoding='utf-8'), original_html)
-            self.assertNotIn('ollmo-generated-media', html_path.read_text(encoding='utf-8'))
+            self.assertNotIn('fruth-generated-media', html_path.read_text(encoding='utf-8'))
 
     def test_composed_page_repair_expands_manifest_backed_unfinished_template_gallery(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -4647,8 +4647,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             html = html_path.read_text(encoding='utf-8')
 
             self.assertNotEqual(updated, payload)
-            self.assertNotIn('ollmo-generated-media', html)
-            self.assertEqual(html.count('data-ollmo-repair="manifest-backed-gallery-expansion"'), 4)
+            self.assertNotIn('fruth-generated-media', html)
+            self.assertEqual(html.count('data-fruth-repair="manifest-backed-gallery-expansion"'), 4)
             for image_path in image_paths:
                 self.assertIn(f'../images/{image_path.name}', html)
             self.assertIn('@FennecEars', html)
@@ -5179,10 +5179,10 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     'output_text': 'Prepared the requested final evidence join.',
                 },
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'conversation_id': 'conv_r5',
                     'prompt': prompt,
-                    'ghost_messages': [
+                    'inference_messages': [
                         {
                             'role': 'assistant',
                             'response_id': 'resp_r5_root',
@@ -5281,10 +5281,10 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     'output_text': 'The five image specifications are ready.',
                 },
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'conversation_id': 'conv-site-repair',
                     'prompt': prompt,
-                    'ghost_messages': [
+                    'inference_messages': [
                         {
                             'role': 'assistant',
                             'response_id': 'resp-site-root',
@@ -5353,7 +5353,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'id': 'resp_same_turn_generated_multimodal_source',
             'output_text': prepared_scene,
         }
-        request_payload = {'ghost_route': True, 'prompt': prompt}
+        request_payload = {'inference_route': True, 'prompt': prompt}
         phase_graph = build_request_phase_graph(
             prompt,
             request_payload=request_payload,
@@ -5382,7 +5382,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'id': 'resp_same_turn_image_vision_source',
             'output_text': 'Unter der klaren Nachtkuppel steht ein kleines Observatorium.',
         }
-        request_payload = {'ghost_route': True, 'prompt': prompt}
+        request_payload = {'inference_route': True, 'prompt': prompt}
         phase_graph = build_request_phase_graph(
             prompt,
             request_payload=request_payload,
@@ -5404,7 +5404,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'Erzeuge ein Audio mit einem kurzen Warnton und transkribiere danach '
             'dieses Audio.'
         )
-        request_payload = {'ghost_route': True, 'prompt': prompt}
+        request_payload = {'inference_route': True, 'prompt': prompt}
         phase_graph = build_request_phase_graph(
             prompt,
             request_payload=request_payload,
@@ -5429,7 +5429,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'Erzeuge ein lokales Bild eines kleinen Observatoriums und analysiere danach '
             'nur sichtbare Details dieses Bildes.'
         )
-        request_payload = {'ghost_route': True, 'prompt': prompt}
+        request_payload = {'inference_route': True, 'prompt': prompt}
         base_graph = build_request_phase_graph(
             prompt,
             request_payload=request_payload,
@@ -5695,7 +5695,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = (
             'Erzeuge ein neues Bild einer Sternwarte und analysiere danach dieses alte Bild.'
         )
-        request_payload = {'ghost_route': True, 'prompt': prompt}
+        request_payload = {'inference_route': True, 'prompt': prompt}
         phase_graph = build_request_phase_graph(
             prompt,
             request_payload=request_payload,
@@ -5755,7 +5755,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         for prompt in prompts:
             with self.subTest(prompt=prompt):
-                request_payload = {'ghost_route': True, 'prompt': prompt}
+                request_payload = {'inference_route': True, 'prompt': prompt}
                 phase_graph = build_request_phase_graph(
                     prompt,
                     request_payload=request_payload,
@@ -5800,7 +5800,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         for prompt in prompts:
             with self.subTest(prompt=prompt):
-                request_payload = {'ghost_route': True, 'prompt': prompt}
+                request_payload = {'inference_route': True, 'prompt': prompt}
                 phase_graph = build_request_phase_graph(
                     prompt,
                     request_payload=request_payload,
@@ -5941,7 +5941,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 )
 
         graph_prompt = 'Generate three images and analyze these images.'
-        graph_request = {'ghost_route': True, 'prompt': graph_prompt}
+        graph_request = {'inference_route': True, 'prompt': graph_prompt}
         phase_graph = build_request_phase_graph(
             graph_prompt,
             request_payload=graph_request,
@@ -6243,7 +6243,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'Generate an image and analyze this image. '
             'Generate another image and analyze this image.'
         )
-        request_payload = {'ghost_route': True, 'prompt': prompt}
+        request_payload = {'inference_route': True, 'prompt': prompt}
         phase_graph = build_request_phase_graph(
             prompt,
             request_payload=request_payload,
@@ -6339,7 +6339,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
     def test_truth_gate_graph_grounding_requires_declared_plural_cardinality(self):
         prompt = 'Generate three images and analyze these images.'
-        request_payload = {'ghost_route': True, 'prompt': prompt}
+        request_payload = {'inference_route': True, 'prompt': prompt}
         phase_graph = build_request_phase_graph(
             prompt,
             request_payload=request_payload,
@@ -6392,7 +6392,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
     def test_graph_grounding_handles_deep_acyclic_topology_iteratively(self):
         prompt = 'Generate an image and analyze this image.'
-        request_payload = {'ghost_route': True, 'prompt': prompt}
+        request_payload = {'inference_route': True, 'prompt': prompt}
         phase_graph = build_request_phase_graph(
             prompt,
             request_payload=request_payload,
@@ -6480,7 +6480,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 }
                 graph = build_request_phase_graph(
                     prompt,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     route_payload={'capability': 'chat'},
                 )
 
@@ -7191,7 +7191,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         stale_route_payload = {
             'route_runtime': {
                 'request_phase_graph': {
-                    'kind': 'ollmo.request_phase_graph',
+                    'kind': 'fruth.request_phase_graph',
                     'prompt': prompt,
                     'current_phase_id': 'phase-1',
                     'current_phase_capability': 'chat',
@@ -7225,7 +7225,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         route_payload = {
             'route_runtime': {
                 'request_phase_graph': {
-                    'kind': 'ollmo.request_phase_graph',
+                    'kind': 'fruth.request_phase_graph',
                     'prompt': 'Schreibe einen kurzen Szenentext und generiere danach ein Bild davon.',
                     'current_phase_id': 'phase-1',
                     'current_phase_capability': 'chat',
@@ -7270,7 +7270,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'artifact_prompt': 'A deterministic alpine room image.',
         }
         graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'current_phase_id': 'phase-1',
             'phases': [
                 {'phase_id': 'phase-1', 'capability': 'chat', 'status': 'completed'},
@@ -7316,7 +7316,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             for index in (1, 2)
         ]
         graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'current_phase_id': 'phase-1',
             'phases': [
                 {'phase_id': 'phase-1', 'capability': 'chat', 'status': 'completed'},
@@ -7558,7 +7558,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             for index in (1, 2)
         ]
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'current_phase_id': 'phase-1',
             'current_phase_capability': 'chat',
             'current_phase_resolution': 'graph_resolved',
@@ -7641,12 +7641,12 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         for task in (bounded_task, fallback_bounded_task):
             with self.subTest(task=task[:48]):
-                self.assertIn('Ollmo phase contract: prepare-only.', task)
+                self.assertIn('Fruth phase contract: prepare-only.', task)
                 self.assertIn('only the current text-preparation phase', task)
                 self.assertIn('image generation and chat separately', task)
                 self.assertIn('Do not perform filesystem writes', task)
                 self.assertIn(
-                    'Ollmo retains authority for downstream execution',
+                    'Fruth retains authority for downstream execution',
                     task,
                 )
                 self.assertNotIn(prompt, task)
@@ -8034,13 +8034,13 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Erzeuge 99 getrennte Audiofassungen aus diesem Satz.'
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         review = self.owner.build_graph_closure_review(
             'Bitte reduziere die Anzahl auf höchstens sechs.',
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload={
                 'output_text': 'Bitte reduziere die Anzahl auf höchstens sechs.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -8060,7 +8060,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(cardinality_check['missing_count'], 1)
         self.assertTrue(cardinality_check['materialization_blocked'])
         self.assertTrue(cardinality_check['needs_external_input'])
-        feedback = review['ghost_repair_feedback']
+        feedback = review['inference_repair_feedback']
         self.assertEqual(feedback['repair_loop']['next_actions'], ['repair_branch_contract'])
         self.assertEqual(feedback['repair_loop']['executable_contract_count'], 0)
         self.assertEqual(feedback['repair_loop']['blocked_contract_count'], 1)
@@ -8068,8 +8068,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
     def test_path_only_vision_result_is_dependency_repair_not_completed_phase(self):
         graph = build_request_phase_graph(
             'Generate two images and then compare both generated images.',
-            request_payload={'ghost_route': True},
-            route_payload={'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True},
+            route_payload={'route_source': 'inference_carried'},
         )
         overlaid = self.late_fill_owner.request_phase_graph_for_late_fill(
             route_payload={'route_runtime': {'request_phase_graph': graph}},
@@ -8083,7 +8083,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                             'branch_id': 'branch-vision_analysis-2',
                             'phase_id': 'phase-5',
                             'capability': 'vision_analysis',
-                            'result_text': '/Users/example/Projects/ollmo/artifacts/images/generated.png',
+                            'result_text': '/Users/example/Projects/fruth/artifacts/images/generated.png',
                         },
                     ],
                 },
@@ -8226,7 +8226,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         reason_code='TTS_AUDIO_INTEGRITY_PASSED',
     ):
         return {
-            'kind': 'ollmo.tts_audio_integrity_evidence',
+            'kind': 'fruth.tts_audio_integrity_evidence',
             'version': 1,
             'policy_id': TTS_AUDIO_INTEGRITY_POLICY_ID,
             'authority': 'runtime_deterministic_audio_verification',
@@ -8293,7 +8293,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'saved_audio_path': '/tmp/truncated.wav',
             'tts_semantic_source': source,
             'tts_generation_budget': {
-                'kind': 'ollmo.tts_generation_budget',
+                'kind': 'fruth.tts_generation_budget',
                 'policy_id': 'qwen3_tts_adaptive_audio_tokens_v1',
                 'max_tokens': 192,
             },
@@ -8351,7 +8351,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             reason_code='TTS_AUDIO_GENERATION_LIMIT_EXHAUSTED',
         )
         failed_integrity['chunking_evidence'] = {
-            'kind': 'ollmo.tts_chunking_plan',
+            'kind': 'fruth.tts_chunking_plan',
             'policy_id': 'qwen3_tts_sentence_chunks_v1',
             'status': 'failed',
             'generation_limit_recovery_attempt_count': 1,
@@ -8361,7 +8361,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     'status': 'failed',
                     'attempt_count': 2,
                     'generation_limit_recovery': {
-                        'kind': 'ollmo.tts_generation_limit_recovery',
+                        'kind': 'fruth.tts_generation_limit_recovery',
                         'policy_id': (
                             'qwen3_tts_single_sequence_generation_limit_retry_v2'
                         ),
@@ -8392,7 +8392,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'saved_audio_path': '/tmp/qwen-at-generation-cap.wav',
             'tts_semantic_source': source,
             'tts_generation_budget': {
-                'kind': 'ollmo.tts_generation_budget',
+                'kind': 'fruth.tts_generation_budget',
                 'policy_id': 'qwen3_tts_adaptive_audio_tokens_v2',
                 'model_family': 'qwen3_tts',
                 'tts_model_type': 'voice_design',
@@ -8433,7 +8433,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
     def test_direct_audio_closure_blocks_failed_integrity_despite_saved_wav(self):
         source_text = 'Dies ist die vollständige Audiofassung.'
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'single_phase',
             'current_phase_id': 'phase-1',
             'current_phase_capability': 'text_to_speech',
@@ -8506,7 +8506,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
     def test_direct_audio_closure_accepts_passed_integrity(self):
         source_text = 'Dies ist die vollständige Audiofassung.'
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'single_phase',
             'current_phase_id': 'phase-1',
             'current_phase_capability': 'text_to_speech',
@@ -9213,7 +9213,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': 'Create an index.html artifact with a hello page.'},
+            request_payload={'inference_route': True, 'prompt': 'Create an index.html artifact with a hello page.'},
             artifact_payload=payload,
         )
 
@@ -9255,7 +9255,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': 'Create an index.html artifact with a hello page.'},
+            request_payload={'inference_route': True, 'prompt': 'Create an index.html artifact with a hello page.'},
             artifact_payload=payload,
         )
 
@@ -9319,8 +9319,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_unbound_page_links',
@@ -9347,7 +9347,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -9369,8 +9369,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Create index.html, rooms.html, styles.css, and app.js as a two-page room website.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_page_specific_script',
@@ -9413,7 +9413,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -9590,15 +9590,15 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 )
             )
 
-    def test_closure_review_displays_ollmo_relative_artifact_paths_for_link_rebind(self):
+    def test_closure_review_displays_fruth_relative_artifact_paths_for_link_rebind(self):
         prompt = (
             'Generate exactly one local image artifact first. '
             'Then create index.html and styles.css and use the generated image as the hero background.'
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         workspace_root = Path.cwd().resolve()
         image_path = workspace_root / 'artifacts' / 'images' / 'aethelgard-abyss-7.png'
@@ -9629,7 +9629,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -9650,8 +9650,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_bound_page_links',
@@ -9678,7 +9678,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -9696,8 +9696,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_bound_page_links_with_hash_nav',
@@ -9728,7 +9728,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -9746,8 +9746,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_bound_page_links_with_example_copy',
@@ -9777,7 +9777,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -9795,8 +9795,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_bound_page_links_with_hero_image_class',
@@ -9829,7 +9829,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -9847,8 +9847,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_hero_placeholder_with_later_images',
@@ -9885,7 +9885,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -9905,8 +9905,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Create index.html and styles.css for a modern property page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         html = (
             '<!doctype html><html><head><link rel="stylesheet" href="styles.css"></head>'
@@ -9927,7 +9927,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'Artifacts generated.',
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload={
                 'output_text': 'Artifacts generated.',
                 'runtime': {'request_phase_graph': graph},
@@ -9972,8 +9972,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Create index.html and styles.css with a hero image.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         html = (
             '<!doctype html><html><head><link rel="stylesheet" href="styles.css"></head>'
@@ -9994,7 +9994,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'Artifacts generated.',
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload={
                 'output_text': 'Artifacts generated.',
                 'runtime': {'request_phase_graph': graph},
@@ -11380,14 +11380,14 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
 
     def test_deterministic_syntax_repair_normalizes_simple_json_trailing_comma(self):
-        content = '{ "name": "ollmo", "items": [1, 2,], }'
+        content = '{ "name": "fruth", "items": [1, 2,], }'
 
         repaired, repairs = ResponseSemanticsRuntimeOwner.repair_text_artifact_syntax_content(
             'json',
             content,
         )
 
-        self.assertIn('"name": "ollmo"', repaired)
+        self.assertIn('"name": "fruth"', repaired)
         self.assertTrue(
             any(item.get('kind') == 'json_remove_trailing_commas' for item in repairs)
         )
@@ -11506,8 +11506,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Create index.html and styles.css artifacts for a sci-fi landing page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_malformed_page_artifacts',
@@ -11538,7 +11538,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -11578,7 +11578,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(checks[0]['resource_class'], 'text_io')
         self.assertEqual(checks[0]['dependency_policy'], 'target_artifact_snapshot_only')
 
-        feedback = self.owner.build_ghost_repair_feedback(
+        feedback = self.owner.build_inference_repair_feedback(
             review_status='pending',
             reason='syntax defect',
             checks=checks,
@@ -11654,8 +11654,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Create index.html as a local artifact for a brutalist landing page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_balanced_unsupported_href_element',
@@ -11678,7 +11678,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -11696,8 +11696,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Create index.html and styles.css artifacts for a playful landing page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_malformed_attr_page_artifacts',
@@ -11727,7 +11727,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -11746,8 +11746,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Create index.html and styles.css artifacts for a boutique hotel page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_nav_wrapper_and_malformed_css',
@@ -11778,7 +11778,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -11797,8 +11797,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Create index.html and styles.css artifacts for a sci-fi landing page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_valid_page_artifacts',
@@ -11829,7 +11829,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -11844,8 +11844,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Create index.html and styles.css, and link the stylesheet from the HTML.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_duplicate_css_records',
@@ -11888,7 +11888,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload=payload,
         )
 
@@ -11939,7 +11939,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': 'Plane fünf Artefakte.'},
+            request_payload={'inference_route': True, 'prompt': 'Plane fünf Artefakte.'},
             artifact_payload=payload,
         )
 
@@ -11950,8 +11950,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         ]
         self.assertEqual(len(truth_checks), 1)
         self.assertEqual(truth_checks[0]['evidence'], 'text_only_artifact_claim_guard')
-        self.assertEqual(review['ghost_repair_feedback']['status'], 'repair_required')
-        self.assertEqual(review['ghost_repair_feedback']['target'], 'request_ir_patch')
+        self.assertEqual(review['inference_repair_feedback']['status'], 'repair_required')
+        self.assertEqual(review['inference_repair_feedback']['target'], 'request_ir_patch')
 
     def test_truth_guard_records_claimed_tts_capability_from_audio_artifact_claim(self):
         payload = {
@@ -12018,7 +12018,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': 'Plane fünf Artefakte.'},
+            request_payload={'inference_route': True, 'prompt': 'Plane fünf Artefakte.'},
             artifact_payload=payload,
         )
 
@@ -12073,7 +12073,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'ghost_route': True, 'prompt': 'Plane fünf Artefakte.'},
+            request_payload={'inference_route': True, 'prompt': 'Plane fünf Artefakte.'},
             artifact_payload=payload,
         )
 
@@ -12106,7 +12106,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'Ich kann die Datei transkribieren.',
-            request_payload={'ghost_route': True, 'prompt': 'Transkribiere diese Audiodatei.'},
+            request_payload={'inference_route': True, 'prompt': 'Transkribiere diese Audiodatei.'},
             artifact_payload={
                 'output_text': 'Ich kann die Datei transkribieren.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -12120,7 +12120,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         ]
         self.assertEqual(len(missing), 1)
         self.assertEqual(missing[0]['capability'], 'speech_to_text')
-        feedback = review['ghost_repair_feedback']
+        feedback = review['inference_repair_feedback']
         self.assertEqual(feedback['status'], 'repair_required')
         self.assertEqual(feedback['target'], 'request_ir_patch')
         self.assertEqual(feedback['patch_scope'], 'current_working_frame_request_phase_graph')
@@ -12144,7 +12144,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
     def test_graph_closure_review_marks_dependency_repair_action(self):
         execution_contract = {
-            'kind': 'ollmo.execution_contract',
+            'kind': 'fruth.execution_contract',
             'branch_id': 'branch-image-1',
             'phase_id': 'phase-2',
             'capability': 'image_generation',
@@ -12158,7 +12158,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'decision_contract': {
                 'semantic_decision_proposals': [
                     {
-                        'kind': 'ollmo.semantic_decision_proposal',
+                        'kind': 'fruth.semantic_decision_proposal',
                         'proposal_id': 'semantic-decision-image-1',
                         'phase_id': 'phase-2',
                         'branch_id': 'branch-image-1',
@@ -12196,7 +12196,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'Image prompt ready.',
-            request_payload={'ghost_route': True, 'prompt': 'Create an image after writing the prompt.'},
+            request_payload={'inference_route': True, 'prompt': 'Create an image after writing the prompt.'},
             artifact_payload={
                 'output_text': 'Image prompt ready.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -12230,12 +12230,12 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(image_check['semantic_decision_action'], 'continue_branch_local_work')
         self.assertEqual(image_check['repair_action'], 'repair_dependency_chain')
         self.assertEqual(image_check['execution_contract'], execution_contract)
-        feedback_item = next(item for item in review['ghost_repair_feedback']['items'] if item.get('branch_id') == 'branch-image-1')
+        feedback_item = next(item for item in review['inference_repair_feedback']['items'] if item.get('branch_id') == 'branch-image-1')
         self.assertEqual(feedback_item['repair_action'], 'repair_dependency_chain')
         self.assertEqual(feedback_item['execution_contract'], execution_contract)
 
     def test_dependency_repair_contract_runs_when_block_resolution_evidence_exists(self):
-        feedback = self.owner.build_ghost_repair_feedback(
+        feedback = self.owner.build_inference_repair_feedback(
             review_status='pending',
             reason='final comparison lacked dependency evidence before repair',
             request_phase_graph={
@@ -12276,7 +12276,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(feedback['items'][0]['repair_execution_policy'], 'schedule_late_fill_branch')
 
     def test_dependency_repair_contract_stays_blocked_with_only_planned_input_refs(self):
-        feedback = self.owner.build_ghost_repair_feedback(
+        feedback = self.owner.build_inference_repair_feedback(
             review_status='pending',
             reason='dependency evidence is still absent',
             request_phase_graph={
@@ -12324,7 +12324,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertTrue(feedback['items'][0]['repair_work_available'])
 
     def test_dependency_rebind_contract_runs_when_concrete_evidence_exists(self):
-        feedback = self.owner.build_ghost_repair_feedback(
+        feedback = self.owner.build_inference_repair_feedback(
             review_status='pending',
             reason='dependency evidence exists but needs rebinding',
             request_phase_graph={
@@ -12364,7 +12364,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(feedback['repair_loop']['blocked_contract_count'], 0)
 
     def test_dependency_rebind_contract_blocks_without_concrete_evidence(self):
-        feedback = self.owner.build_ghost_repair_feedback(
+        feedback = self.owner.build_inference_repair_feedback(
             review_status='pending',
             reason='dependency evidence is requested but absent',
             request_phase_graph={
@@ -12406,13 +12406,13 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
     def test_branch_contract_repair_runs_when_execution_contract_exists(self):
         execution_contract = {
-            'kind': 'ollmo.execution_contract',
+            'kind': 'fruth.execution_contract',
             'phase_id': 'phase-2',
             'branch_id': 'branch-image_generation-1',
             'capability': 'image_generation',
             'output_type': 'image',
         }
-        feedback = self.owner.build_ghost_repair_feedback(
+        feedback = self.owner.build_inference_repair_feedback(
             review_status='pending',
             reason='branch contract exists and can be materialized',
             request_phase_graph={
@@ -12443,7 +12443,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(contract['execution_contract'], execution_contract)
 
     def test_branch_contract_repair_blocks_without_execution_contract(self):
-        feedback = self.owner.build_ghost_repair_feedback(
+        feedback = self.owner.build_inference_repair_feedback(
             review_status='pending',
             reason='branch contract is still absent',
             request_phase_graph={
@@ -12478,7 +12478,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertFalse(contract['needs_external_input'])
 
     def test_promoted_obligation_rebuild_runs_when_concrete_image_branch_exists(self):
-        feedback = self.owner.build_ghost_repair_feedback(
+        feedback = self.owner.build_inference_repair_feedback(
             review_status='pending',
             reason='closure promoted a missing image branch',
             request_phase_graph={
@@ -12518,7 +12518,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(feedback['repair_loop']['blocked_contract_count'], 0)
 
     def test_counted_image_adequacy_feedback_expands_to_distinct_repair_contracts(self):
-        feedback = self.owner.build_ghost_repair_feedback(
+        feedback = self.owner.build_inference_repair_feedback(
             review_status='pending',
             reason='closure found three missing promoted image obligations',
             request_phase_graph={
@@ -12579,7 +12579,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(feedback['repair_loop']['executable_contract_count'], 3)
 
     def test_promoted_obligation_rebuild_blocks_when_only_action_label_exists(self):
-        feedback = self.owner.build_ghost_repair_feedback(
+        feedback = self.owner.build_inference_repair_feedback(
             review_status='pending',
             reason='closure knows graph underplanned but no concrete branch exists yet',
             request_phase_graph={
@@ -12635,7 +12635,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'Image prompt ready.',
-            request_payload={'ghost_route': True, 'prompt': 'Create an image.'},
+            request_payload={'inference_route': True, 'prompt': 'Create an image.'},
             artifact_payload={
                 'output_text': 'Image prompt ready.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -12644,9 +12644,9 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         image_check = next(item for item in review['checks'] if item.get('capability') == 'image_generation')
         self.assertEqual(image_check['repair_action'], 'repair_branch_contract')
-        self.assertEqual(review['ghost_repair_feedback']['items'][0]['repair_action'], 'repair_branch_contract')
+        self.assertEqual(review['inference_repair_feedback']['items'][0]['repair_action'], 'repair_branch_contract')
         self.assertEqual(
-            review['ghost_repair_feedback']['repair_loop']['next_actions'],
+            review['inference_repair_feedback']['repair_loop']['next_actions'],
             ['repair_branch_contract'],
         )
 
@@ -12656,11 +12656,11 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'current_phase_capability': 'chat',
             'mode': 'phase_chain',
             'decision_contract': {
-                'kind': 'ollmo.ghost_decision_contract',
+                'kind': 'fruth.inference_decision_contract',
                 'decision_contract_version': 1,
                 'next_decision_priorities': ['continue_or_repair_open_promoted_obligations'],
                 'semantic_planning_contract': {
-                    'kind': 'ollmo.ghost_semantic_planning_contract',
+                    'kind': 'fruth.inference_semantic_planning_contract',
                     'authority': 'advisory_read_model_only',
                     'current_focus': ['continue_or_repair_open_promoted_obligations'],
                 },
@@ -12714,14 +12714,14 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     }
                 ],
                 'block_resolution_reflex': {
-                    'kind': 'ollmo.block_resolution_reconsideration_reflex',
+                    'kind': 'fruth.block_resolution_reconsideration_reflex',
                     'status': 'active',
                     'signal_count': 1,
                     'authority': 'advisory_read_model_only',
                 },
                 'reconsideration_reflex_signals': [
                     {
-                        'kind': 'ollmo.block_resolution_signal',
+                        'kind': 'fruth.block_resolution_signal',
                         'phase_id': 'phase-2',
                         'branch_id': 'branch-final-review',
                         'obligation_id': 'obligation-phase-2',
@@ -12733,14 +12733,14 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     }
                 ],
                 'active_reconsideration_review': {
-                    'kind': 'ollmo.active_reconsideration_review',
+                    'kind': 'fruth.active_reconsideration_review',
                     'status': 'active',
                     'authority': 'advisory_read_model_only',
                     'decision_count': 1,
                 },
                 'active_reconsideration_decisions': [
                     {
-                        'kind': 'ollmo.active_reconsideration_decision',
+                        'kind': 'fruth.active_reconsideration_decision',
                         'phase_id': 'phase-2',
                         'branch_id': 'branch-final-review',
                         'obligation_id': 'obligation-phase-2',
@@ -12751,14 +12751,14 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     }
                 ],
                 'semantic_quality_review': {
-                    'kind': 'ollmo.semantic_quality_review',
+                    'kind': 'fruth.semantic_quality_review',
                     'status': 'required',
                     'contract_count': 1,
                     'authority': 'advisory_until_promoted_semantic_verifier',
                 },
                 'semantic_quality_contracts': [
                     {
-                        'kind': 'ollmo.semantic_quality_contract',
+                        'kind': 'fruth.semantic_quality_contract',
                         'quality_review_id': 'semantic-quality-final-review',
                         'phase_id': 'phase-2',
                         'branch_id': 'branch-final-review',
@@ -12772,14 +12772,14 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     }
                 ],
                 'semantic_review_lens_review': {
-                    'kind': 'ollmo.semantic_review_lens_review',
+                    'kind': 'fruth.semantic_review_lens_review',
                     'status': 'active',
                     'authority': 'advisory_read_model_only',
                     'lens_count': 1,
                 },
                 'semantic_review_lenses': [
                     {
-                        'kind': 'ollmo.semantic_review_lens',
+                        'kind': 'fruth.semantic_review_lens',
                         'lens_id': 'semantic-lens-final-review',
                         'lens': 'integrator',
                         'phase_id': 'phase-2',
@@ -12792,13 +12792,13 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     }
                 ],
                 'recursive_cycle_review': {
-                    'kind': 'ollmo.recursive_cycle_review',
+                    'kind': 'fruth.recursive_cycle_review',
                     'status': 'active',
                     'task_count': 1,
                 },
                 'recursive_cycle_tasks': [
                     {
-                        'kind': 'ollmo.recursive_cycle_task',
+                        'kind': 'fruth.recursive_cycle_task',
                         'phase_id': 'phase-2',
                         'branch_id': 'branch-final-review',
                         'task_id': 'task-phase-2',
@@ -12807,14 +12807,14 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     }
                 ],
                 'aspiration_review': {
-                    'kind': 'ollmo.aspiration_review',
+                    'kind': 'fruth.aspiration_review',
                     'status': 'active',
                     'authority': 'advisory_read_model_only',
                     'frame_count': 1,
                 },
                 'aspiration_frames': [
                     {
-                        'kind': 'ollmo.aspiration_frame',
+                        'kind': 'fruth.aspiration_frame',
                         'frame_id': 'aspiration-final-review',
                         'phase_id': 'phase-2',
                         'branch_id': 'branch-final-review',
@@ -12828,14 +12828,14 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     }
                 ],
                 'commitment_review': {
-                    'kind': 'ollmo.commitment_review',
+                    'kind': 'fruth.commitment_review',
                     'status': 'active',
                     'authority': 'advisory_read_model_only',
                     'frame_count': 1,
                 },
                 'commitment_frames': [
                     {
-                        'kind': 'ollmo.commitment_frame',
+                        'kind': 'fruth.commitment_frame',
                         'frame_id': 'commitment-final-review',
                         'phase_id': 'phase-2',
                         'branch_id': 'branch-final-review',
@@ -12850,14 +12850,14 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     }
                 ],
                 'semantic_decision_review': {
-                    'kind': 'ollmo.semantic_decision_review',
+                    'kind': 'fruth.semantic_decision_review',
                     'status': 'active',
                     'authority': 'advisory_read_model_only',
                     'proposal_count': 1,
                 },
                 'semantic_decision_proposals': [
                     {
-                        'kind': 'ollmo.semantic_decision_proposal',
+                        'kind': 'fruth.semantic_decision_proposal',
                         'proposal_id': 'semantic-decision-final-review',
                         'phase_id': 'phase-2',
                         'branch_id': 'branch-final-review',
@@ -12870,14 +12870,14 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     }
                 ],
                 'controlled_attention_review': {
-                    'kind': 'ollmo.controlled_attention_review',
+                    'kind': 'fruth.controlled_attention_review',
                     'status': 'active',
                     'authority': 'advisory_read_model_only',
                     'frame_count': 1,
                 },
                 'controlled_attention_frames': [
                     {
-                        'kind': 'ollmo.controlled_attention_frame',
+                        'kind': 'fruth.controlled_attention_frame',
                         'frame_id': 'controlled-attention-final-review',
                         'phase_id': 'phase-2',
                         'branch_id': 'branch-final-review',
@@ -12931,7 +12931,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'Prepared dependency text.',
-            request_payload={'ghost_route': True, 'prompt': 'Prepare text, then write a final review.'},
+            request_payload={'inference_route': True, 'prompt': 'Prepare text, then write a final review.'},
             artifact_payload={
                 'output_text': 'Prepared dependency text.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -12940,7 +12940,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         final_check = next(item for item in review['checks'] if item.get('branch_id') == 'branch-final-review')
         feedback_item = next(
-            item for item in review['ghost_repair_feedback']['items']
+            item for item in review['inference_repair_feedback']['items']
             if item.get('branch_id') == 'branch-final-review'
         )
 
@@ -13019,31 +13019,31 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(feedback_item['promotion_suggestions'][0]['candidate_id'], 'candidate-final-review')
         self.assertEqual(feedback_item['waiver_candidates'][0]['obligation_id'], 'obligation-phase-2')
         self.assertEqual(
-            review['ghost_repair_feedback']['decision_contract_guidance']['reconsideration_candidates'][0]['candidate_id'],
+            review['inference_repair_feedback']['decision_contract_guidance']['reconsideration_candidates'][0]['candidate_id'],
             'candidate-extra-image',
         )
         self.assertEqual(
-            review['ghost_repair_feedback']['decision_contract_guidance']['block_resolution_reflex']['signal_count'],
+            review['inference_repair_feedback']['decision_contract_guidance']['block_resolution_reflex']['signal_count'],
             1,
         )
         self.assertEqual(
-            review['ghost_repair_feedback']['decision_contract_guidance']['active_reconsideration_review']['decision_count'],
+            review['inference_repair_feedback']['decision_contract_guidance']['active_reconsideration_review']['decision_count'],
             1,
         )
         self.assertEqual(
-            review['ghost_repair_feedback']['decision_contract_guidance']['semantic_decision_review']['proposal_count'],
+            review['inference_repair_feedback']['decision_contract_guidance']['semantic_decision_review']['proposal_count'],
             1,
         )
         self.assertEqual(
-            review['ghost_repair_feedback']['decision_contract_guidance']['aspiration_review']['frame_count'],
+            review['inference_repair_feedback']['decision_contract_guidance']['aspiration_review']['frame_count'],
             1,
         )
         self.assertEqual(
-            review['ghost_repair_feedback']['decision_contract_guidance']['commitment_review']['frame_count'],
+            review['inference_repair_feedback']['decision_contract_guidance']['commitment_review']['frame_count'],
             1,
         )
         self.assertEqual(
-            review['ghost_repair_feedback']['decision_contract_guidance']['controlled_attention_review']['frame_count'],
+            review['inference_repair_feedback']['decision_contract_guidance']['controlled_attention_review']['frame_count'],
             1,
         )
         self.assertEqual(
@@ -13071,7 +13071,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             1,
         )
         self.assertEqual(
-            review['ghost_repair_feedback']['decision_contract_guidance']['accepted_learning']['allowed_use'],
+            review['inference_repair_feedback']['decision_contract_guidance']['accepted_learning']['allowed_use'],
             'orientation_only_not_promotion_authority',
         )
 
@@ -13081,7 +13081,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'current_phase_capability': 'chat',
             'mode': 'phase_chain',
             'decision_contract': {
-                'kind': 'ollmo.ghost_decision_contract',
+                'kind': 'fruth.inference_decision_contract',
                 'decision_contract_version': 1,
                 'supersession_candidates': [
                     {
@@ -13125,7 +13125,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'Image prompt prepared.',
-            request_payload={'ghost_route': True, 'prompt': 'Generate an image.'},
+            request_payload={'inference_route': True, 'prompt': 'Generate an image.'},
             artifact_payload={
                 'output_text': 'Image prompt prepared.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -13143,7 +13143,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             'obligation-phase-3',
         )
         self.assertEqual(
-            review['ghost_repair_feedback']['items'][0]['decision_contract_supersession_candidates'][0]['obligation_id'],
+            review['inference_repair_feedback']['items'][0]['decision_contract_supersession_candidates'][0]['obligation_id'],
             'obligation-phase-2',
         )
 
@@ -13186,7 +13186,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'Here is a final comparison, but it was not bound to branch evidence.',
-            request_payload={'ghost_route': True, 'prompt': 'Use the generated audio and image analysis.'},
+            request_payload={'inference_route': True, 'prompt': 'Use the generated audio and image analysis.'},
             artifact_payload={
                 'output_text': 'Here is a final comparison, but it was not bound to branch evidence.',
                 'tts_audio_integrity_evidence': self._tts_integrity_evidence(
@@ -13204,13 +13204,13 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(final_check['repair_action'], 'repair_dependency_chain')
         self.assertEqual(final_check['input_refs'][0]['phase_id'], 'phase-1')
         feedback_item = next(
-            item for item in review['ghost_repair_feedback']['items']
+            item for item in review['inference_repair_feedback']['items']
             if item.get('branch_id') == 'branch-final-review'
         )
         self.assertEqual(feedback_item['repair_action'], 'repair_dependency_chain')
         self.assertEqual(feedback_item['review_criteria'][0], 'uses_dependency_evidence')
         self.assertEqual(
-            review['ghost_repair_feedback']['repair_loop']['next_actions'],
+            review['inference_repair_feedback']['repair_loop']['next_actions'],
             ['repair_dependency_chain'],
         )
 
@@ -13252,7 +13252,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'The generated visual is ready for a compact deployment plan.',
-            request_payload={'ghost_route': True, 'prompt': 'Write the final deployment plan from available evidence.'},
+            request_payload={'inference_route': True, 'prompt': 'Write the final deployment plan from available evidence.'},
             artifact_payload={
                 'output_text': 'The generated visual is ready for a compact deployment plan.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -13291,15 +13291,15 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertIn('semantic_review_lens', branch_review_check['content_payload'])
         self.assertIn('success_definition', branch_review_check['content_payload'])
         feedback_item = next(
-            item for item in review['ghost_repair_feedback']['items']
+            item for item in review['inference_repair_feedback']['items']
             if item.get('check_kind') == 'branch_semantic_review'
         )
         self.assertEqual(feedback_item['repair_action'], 'semantic_review')
         self.assertEqual(
-            review['ghost_repair_feedback']['repair_loop']['next_actions'],
+            review['inference_repair_feedback']['repair_loop']['next_actions'],
             ['semantic_review'],
         )
-        self.assertTrue(review['ghost_repair_feedback']['repair_loop']['auto_execute'])
+        self.assertTrue(review['inference_repair_feedback']['repair_loop']['auto_execute'])
 
     def test_branch_semantic_review_requires_current_strict_verdict(self):
         criterion = 'final comparison is concise and visually grounded'
@@ -13726,7 +13726,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                             'saved_text_path': str(html_path),
                             'result_text': unbounded_history,
                             'execution_contract': {'recursive': unbounded_history},
-                            'ghost_messages': [{'content': unbounded_history}],
+                            'inference_messages': [{'content': unbounded_history}],
                         },
                         *[
                             {
@@ -13798,8 +13798,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.late_fill_owner.attach_request_meta = lambda payload: payload
         self.late_fill_owner.extract_responses_prompt = lambda payload: str(payload.get('prompt') or '')
         self.late_fill_owner.parse_bool = lambda value, default=False: default if value is None else bool(value)
-        self.late_fill_owner.extract_ghost_route_messages = lambda payload: self.fail(
-            'semantic-review stages must not extract recent Ghost messages'
+        self.late_fill_owner.extract_inference_route_messages = lambda payload: self.fail(
+            'semantic-review stages must not extract recent interpretive inference messages'
         )
         self.late_fill_owner.response_registry_now_iso = lambda: '2026-08-23T00:00:00Z'
         self.late_fill_owner.max_recent_messages = 14
@@ -13814,9 +13814,9 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                         'prompt': 'original root request',
                         'input': 'original root input',
                         'messages': [{'role': 'user', 'content': 'old message'}],
-                        'ghost_messages': [{'role': 'assistant', 'content': 'old reply'}],
+                        'inference_messages': [{'role': 'assistant', 'content': 'old reply'}],
                         'batch_prompts': ['old batch prompt'],
-                        'ghost_route': True,
+                        'inference_route': True,
                     },
                     expected_capability='chat',
                     assistant_message='old assistant surface',
@@ -13829,7 +13829,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 self.assertEqual(prepared['prompt'], 'bounded explicit semantic-review packet')
                 self.assertEqual(prepared['_prompt_hint'], 'bounded explicit semantic-review packet')
                 self.assertTrue(prepared['suppress_reference_file_context'])
-                for carrier in ('input', 'messages', 'ghost_messages', 'batch_prompts'):
+                for carrier in ('input', 'messages', 'inference_messages', 'batch_prompts'):
                     self.assertNotIn(carrier, prepared)
 
     def test_global_semantic_review_completion_allows_truthful_freeze(self):
@@ -13891,7 +13891,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             preliminary,
             (
                 '{'
-                '"kind":"ollmo.semantic_review_verdict",'
+                '"kind":"fruth.semantic_review_verdict",'
                 '"verdict":"passed",'
                 '"overall_status":"fulfilled",'
                 '"whole_intent_fit":"The final deployment plan is grounded in the generated visual evidence.",'
@@ -14282,7 +14282,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             preliminary,
             (
                 '{'
-                '"kind":"ollmo.semantic_review_verdict",'
+                '"kind":"fruth.semantic_review_verdict",'
                 '"verdict":"failed",'
                 '"overall_status":"blocked",'
                 '"whole_intent_fit":"The final text does not use the generated image evidence.",'
@@ -14426,7 +14426,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             'The old image branch has been replaced by the newer branch.',
-            request_payload={'ghost_route': True, 'prompt': 'Review the existing branch plan.'},
+            request_payload={'inference_route': True, 'prompt': 'Review the existing branch plan.'},
             artifact_payload={
                 'output_text': 'The old image branch has been replaced by the newer branch.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -14440,7 +14440,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(checks['obligation-phase-2']['evidence'], 'explicit_obligation_superseded')
         self.assertEqual(checks['obligation-phase-2']['review_criteria_status'], 'not_required')
         self.assertEqual(checks['obligation-phase-2']['superseded_by_obligation_id'], 'obligation-phase-3')
-        self.assertNotIn('ghost_repair_feedback', review)
+        self.assertNotIn('inference_repair_feedback', review)
 
     def test_intent_adequacy_does_not_promote_reserved_image_candidate(self):
         prompt = (
@@ -14449,12 +14449,12 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True},
-            route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True},
+            route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
         )
 
         review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=phase_graph,
         )
 
@@ -14468,7 +14468,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
     def test_intent_adequacy_keeps_spoken_poem_request_audio_only(self):
         prompt = (
-            'Write a short original poem in English inspired by Ollmo – by open possibilities, '
+            'Write a short original poem in English inspired by Fruth – by open possibilities, '
             'intentions taking form, unfinished work remaining visible, and truth resting in what '
             'was actually made. Let it feel reflective and lyrical rather than technical.\n\n'
             'Save the poem as a Markdown file and generate a spoken version using local '
@@ -14476,12 +14476,12 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=phase_graph,
         )
 
@@ -14504,12 +14504,12 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=phase_graph,
         )
 
@@ -14563,7 +14563,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         }
 
         review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=phase_graph,
         )
 
@@ -14576,12 +14576,12 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         prompt = 'Create one image of a green ghost.'
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=phase_graph,
         )
 
@@ -14734,7 +14734,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             with self.subTest(has_preserved_reference=bool(reference_artifacts)):
                 review = self.owner.build_intent_graph_adequacy_review(
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': prompt,
                         'reference_artifacts': reference_artifacts,
                     },
@@ -14775,8 +14775,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         phase_graph['prompt_intent'] = dict(phase_graph['prompt_intent'])
         phase_graph['prompt_intent'].update(
@@ -14798,7 +14798,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             phase_graph['prompt_intent'].pop(key, None)
 
         review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=phase_graph,
         )
 
@@ -14841,7 +14841,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     if item.get('phase_id') != terminal_phase_id
                 ]
         broken_review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=broken_graph,
         )
         missing_chat = next(
@@ -14898,7 +14898,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         }
 
         review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=phase_graph,
         )
 
@@ -14989,7 +14989,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         }
 
         review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=phase_graph,
         )
 
@@ -15009,8 +15009,8 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         broken_graph = dict(phase_graph)
         broken_graph['phases'] = [dict(item) for item in phase_graph.get('phases', [])]
@@ -15027,7 +15027,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     record.pop('dependency_contract', None)
 
         review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=broken_graph,
         )
 
@@ -15065,12 +15065,12 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=phase_graph,
         )
 
@@ -15101,12 +15101,12 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         review = self.owner.build_intent_graph_adequacy_review(
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             request_phase_graph=phase_graph,
         )
 
@@ -15131,13 +15131,13 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True},
-            route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True},
+            route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
         )
 
         review = self.owner.build_graph_closure_review(
             'Eine Poster-Idee für eine nachhaltige Zukunft.',
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload={
                 'output_text': 'Eine Poster-Idee für eine nachhaltige Zukunft.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -15145,7 +15145,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
 
         self.assertEqual(review['status'], 'pending')
-        feedback = review['ghost_repair_feedback']
+        feedback = review['inference_repair_feedback']
         self.assertEqual(
             [item.get('capability') for item in feedback['items']],
             ['text_to_speech'],
@@ -15223,7 +15223,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         }
         if include_write_proof:
             fill_result['text_artifact_revision_write_proof'] = {
-                'kind': 'ollmo.text_artifact_revision_write_proof',
+                'kind': 'fruth.text_artifact_revision_write_proof',
                 'version': 1,
                 'status': 'applied',
                 'target_path': str(proof_target_path or target),
@@ -15232,7 +15232,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             }
         if preservation_status is not None:
             fill_result['text_artifact_revision_preservation_evidence'] = {
-                'kind': 'ollmo.text_artifact_revision_preservation_evidence',
+                'kind': 'fruth.text_artifact_revision_preservation_evidence',
                 'version': 1,
                 'policy': 'structural_anchor_retention_v1',
                 'status': preservation_status,
@@ -15251,7 +15251,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 ),
             }
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'single_phase',
             'current_phase_id': phase_id,
             'current_phase_capability': 'chat',
@@ -15303,7 +15303,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             review = self.owner.build_graph_closure_review(
                 payload['output_text'],
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': 'Update styles.css and keep the rest intact.',
                 },
                 artifact_payload=payload,
@@ -15337,7 +15337,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             review = self.owner.build_graph_closure_review(
                 payload['output_text'],
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': 'Update styles.css and keep the rest intact.',
                 },
                 artifact_payload=payload,
@@ -15381,7 +15381,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                     review = self.owner.build_graph_closure_review(
                         payload['output_text'],
                         request_payload={
-                            'ghost_route': True,
+                            'inference_route': True,
                             'prompt': 'Update styles.css and keep the rest intact.',
                         },
                         artifact_payload=payload,
@@ -15411,7 +15411,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             review = self.owner.build_graph_closure_review(
                 payload['output_text'],
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': 'Update styles.css and keep the rest intact.',
                 },
                 artifact_payload=payload,

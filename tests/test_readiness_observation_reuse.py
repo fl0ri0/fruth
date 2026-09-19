@@ -6,14 +6,14 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_services import response_frames as rf
-from ollmo_services import graph_rebase_readiness_registry as registry
-from ollmo_services.graph_rebase_rollout import project_graph_rebase_readiness_observation as project
+from fruth_services import response_frames as rf
+from fruth_services import graph_rebase_readiness_registry as registry
+from fruth_services.graph_rebase_rollout import project_graph_rebase_readiness_observation as project
 
 
 def frame(response_id='reuse-response', reason='additive_repair_insufficient'):
     return {
-        'kind': 'ollmo.response_frame', 'frame_version': 9,
+        'kind': 'fruth.response_frame', 'frame_version': 9,
         'response_id': response_id, 'status': 'completed',
         'current_state': {'id': response_id, 'status': 'completed', 'lifecycle_state': 'completed'},
         'request': {'prompt': 'One bounded readiness test', 'workload_family': 'reuse'},

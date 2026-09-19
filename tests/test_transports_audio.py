@@ -5,7 +5,7 @@ import wave
 from pathlib import Path
 from typing import Optional
 
-from ollmo_core.transports import (
+from fruth_core.transports import (
     join_pcm_wav_bytes,
     ollama_generate,
     mlx_audio_speech,
@@ -102,7 +102,7 @@ class TransportAudioTests(unittest.TestCase):
         result = mlx_audio_speech(
             11505,
             'mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16',
-            'Hello from Ollmo.',
+            'Hello from Fruth.',
             fake_requests,
             response_format=None,
             timeout_sec=1200,
@@ -125,7 +125,7 @@ class TransportAudioTests(unittest.TestCase):
         mlx_audio_speech(
             11505,
             'mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16',
-            'Hello from Ollmo.',
+            'Hello from Fruth.',
             fake_requests,
             response_format='wav',
             lang_code='auto',
@@ -145,7 +145,7 @@ class TransportAudioTests(unittest.TestCase):
         self.assertEqual(request_payload['top_k'], 50)
         self.assertEqual(request_payload['repetition_penalty'], 1.05)
         self.assertEqual(request_payload['model'], 'mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16')
-        self.assertEqual(request_payload['input'], 'Hello from Ollmo.')
+        self.assertEqual(request_payload['input'], 'Hello from Fruth.')
 
     def test_persist_audio_bytes_locally_uses_mp3_extension_for_mpeg_content(self):
         with tempfile.TemporaryDirectory() as tmpdir:

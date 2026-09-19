@@ -8,17 +8,22 @@ from pathlib import Path
 
 import pytest
 
-from ollmo_webserver import app
-from ollmo_core.version import __version__
+from fruth_webserver import app
+from fruth_core.version import __version__
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-OLLMO_CLI = REPO_ROOT / 'ollmo'
+FRUTH_CLI = REPO_ROOT / 'fruth'
 LANDING_SITE_ROOT = REPO_ROOT / 'site'
 LANDING_PATH = LANDING_SITE_ROOT / 'index.html'
 LANDING_CSS_PATH = LANDING_SITE_ROOT / 'landing.css'
 LANDING_JS_PATH = LANDING_SITE_ROOT / 'landing.js'
-DASHBOARD_CSS_PATH = REPO_ROOT / 'static' / 'ui' / 'ollmo.css'
+DASHBOARD_CSS_PATH = REPO_ROOT / 'static' / 'ui' / 'fruth.css'
+
+
+def test_removed_launcher_identity_endpoint_is_unavailable():
+    with app.test_client() as client:
+        assert client.get('/api/instance_identity').status_code == 404
 
 
 def _run_node(script: str) -> dict:
@@ -55,7 +60,7 @@ def _keyframes_block(css: str, name: str) -> str:
 def test_landing_is_a_standalone_static_repo_page():
     html = LANDING_PATH.read_text(encoding='utf-8')
 
-    assert 'data-page="ollmo-landing"' in html
+    assert 'data-page="fruth-landing"' in html
     assert re.search(r'href="\./landing\.css(?:\?[^\"]+)?"', html)
     assert 'src="./landing.js"' in html
     assert '{{' not in html
@@ -65,9 +70,9 @@ def test_landing_is_a_standalone_static_repo_page():
     assert '<header class="site-header">' not in html
     assert 'class="wordmark"' not in html
     assert 'class="hero-actions"' not in html
-    assert 'Open Ollmo' not in html
+    assert 'Open Fruth' not in html
     assert 'Install locally' not in html
-    assert 'class="repo-link" href="https://github.com/fl0ri0/ollmo"' in html
+    assert 'class="repo-link" href="https://github.com/fl0ri0/fruth"' in html
     setup = html.split(
         '<section id="setup" class="setup-scene scene"',
         1,
@@ -75,33 +80,33 @@ def test_landing_is_a_standalone_static_repo_page():
     assert setup.index('class="install-copy"') < setup.index('class="setup-path"')
     assert setup.index('class="setup-path"') < setup.index('class="repo-link"')
     assert 'href="#install"' not in html
-    assert '<p class="eyebrow">Ollmo</p>' in html
+    assert '<p class="eyebrow">Fruth</p>' in html
     hero = html.split('<section id="intro" class="hero scene"', 1)[1].split(
         '</section>',
         1,
     )[0]
     assert '0.1 experimental' not in hero.lower()
-    assert 'class="landing-ghost"' in html
-    assert 'landing-ghost__body' in html
-    assert 'landing-ghost__outline' in html
-    assert 'id="landing-ghost-shape"' in html
-    assert 'id="landing-ghost-body-clip"' in html
-    assert 'id="landing-ghost-body-mask"' in html
-    assert 'landing-ghost__eye-cutouts' in html
-    assert html.count('href="#landing-ghost-shape"') == 3
+    assert 'class="landing-mascot"' in html
+    assert 'landing-mascot__body' in html
+    assert 'landing-mascot__outline' in html
+    assert 'id="landing-mascot-shape"' in html
+    assert 'id="landing-mascot-body-clip"' in html
+    assert 'id="landing-mascot-body-mask"' in html
+    assert 'landing-mascot__eye-cutouts' in html
+    assert html.count('href="#landing-mascot-shape"') == 3
     assert html.count('d="M128,24') == 1
     assert (
-        'class="landing-ghost__body" href="#landing-ghost-shape" '
-        'fill="#baff8a" mask="url(#landing-ghost-body-mask)"' in html
+        'class="landing-mascot__body" href="#landing-mascot-shape" '
+        'fill="#baff8a" mask="url(#landing-mascot-body-mask)"' in html
     )
     assert (
-        'class="landing-ghost__outline" href="#landing-ghost-shape" '
+        'class="landing-mascot__outline" href="#landing-mascot-shape" '
         'fill="none" stroke="#baff8a" '
-        'clip-path="url(#landing-ghost-body-clip)"' in html
+        'clip-path="url(#landing-mascot-body-clip)"' in html
     )
-    assert 'landing-ghost__eyes' not in html
-    assert 'landing-ghost__icon--stroke' not in html
-    assert 'landing-ghost__icon--filled' not in html
+    assert 'landing-mascot__eyes' not in html
+    assert 'landing-mascot__icon--stroke' not in html
+    assert 'landing-mascot__icon--filled' not in html
     assert 'ambient ambient--' not in html
     assert 'fonts.googleapis.com' not in html
     assert 'cdnjs.cloudflare.com' not in html
@@ -177,16 +182,16 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
     assert 'ChatGPT' not in hero
     assert 'Backend packages and model weights are installed' in hero
     assert 'separately.' in hero
-    assert 'Ollmo is a state-native runtime for local AI.' in hero
+    assert 'Fruth is a durable semantic state inference engine for local AI.' in hero
     assert 'A model can say' in hero
-    assert '“done”; Ollmo records what the runtime can prove happened' in hero
+    assert '“done”; Fruth records what the runtime can prove happened' in hero
     assert 'A response is more than an answer.' in html
-    assert 'a graph of connected work' in html
-    assert 'State becomes a response frame.' in html
+    assert 'a graph of required work, dependencies, and evidence' in html
+    assert 'Completion follows evidence.' in html
     assert 'Completion still has to be earned.' in html
     assert '<p class="eyebrow">The runtime underneath</p>' in html
     assert (
-        '<h2 id="today-title">Ollmo gives every<br>'
+        '<h2 id="today-title">Fruth gives every <br>'
         'response a body.</h2>'
     ) in html
     assert (
@@ -194,7 +199,7 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
         'text-to-speech, vision, and OCR work'
     ) in html
     visible_text = re.sub(r'<[^>]+>', ' ', html)
-    assert 'Ghost' not in visible_text
+    assert 'interpretive inference' not in visible_text
     assert 'For supported workflows' not in visible_text
     assert 'For supported local workflows' not in visible_text
     assert 'In a supported workflow' not in visible_text
@@ -203,28 +208,23 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
         'One request becomes connected work.'
     )
     assert html.index('One request becomes connected work.') < html.index(
-        '<h2 id="today-title">Ollmo gives every<br>'
+        '<h2 id="today-title">Fruth gives every <br>'
     )
     assert '<strong>Third-party providers.</strong>' in html
     assert 'an explicitly enabled third-party provider (currently ChatGPT)' in html
     assert (
-        'For those turns, the current prompt, only the context Ollmo promotes as '
-        'relevant, and any explicitly selected files or Ollmo artifacts leave your device'
+        'For those turns, the current prompt, only the context Fruth promotes as '
+        'relevant, and any explicitly selected files or Fruth artifacts leave your device'
     ) in html
     assert 'by OpenAI for the current ChatGPT integration' in html
-    assert "directly or through Ollmo's routing" in html
+    assert "directly or through Fruth's routing" in html
     assert (
-        'Ollmo also offers an optional companion skill that helps ChatGPT inspect '
-        'runtime truth, work with canonical outputs, and execute requests through Ollmo'
+        'Fruth also offers an optional companion skill that helps ChatGPT inspect '
+        'runtime truth, work with canonical outputs, and execute requests through Fruth'
     ) in html
     assert 'Codex' not in visible_text
-    release_label = (
-        'release candidate'
-        if f'## [{__version__}] - Unreleased' in (REPO_ROOT / 'CHANGELOG.md').read_text()
-        else 'release'
-    )
     assert (
-        f'Ollmo {__version__} is an experimental {release_label}, tested on macOS on '
+        'Fruth is experimental, tested on macOS on '
         'Apple Silicon with Python 3.11 or newer.'
     ) in html
     assert (
@@ -233,14 +233,14 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
     ) in html
     for heading in (
         'Promotion turns possibility into obligation.',
-        'Work becomes a graph.',
-        'State becomes a response frame.',
+        'Owed work stays visible.',
+        'Completion follows evidence.',
         'Run compatible local models.',
         'Turn branches into outputs.',
         'Carry the work forward.',
     ):
         assert heading in html
-    assert 'checked, not bound' in html
+    assert 'without becoming owed work' in html
     assert 'Review and freeze.' in html
     for step_number in ('1', '2', '3'):
         assert f'class="proof-flow__index">{step_number}</span>' in html
@@ -248,21 +248,20 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
         assert f'class="proof-flow__index">{padded_step_number}</span>' not in html
     assert 'what is fulfilled, blocked, or still open' in html
     for overpromise in (
-        'Ollmo is deterministic',
+        'Fruth is deterministic',
         'sees your entire conversation',
         'No more history-induced hallucinations',
         'transactional runtime',
         'snapshot of the entire system state',
     ):
         assert overpromise not in html
-    assert 'An image prompt is not an image' in html
-    assert 'Ask for one webpage with three different local images.' in html
-    assert 'Create a webpage with three different local images.' in html
-    assert 'One webpage branch, three local image branches' in html
+    assert 'audio integrity checks, fulfilled branch contracts' in html
+    assert 'One response, opened up' in html
+    assert 'Create a local exhibition website with HTML, CSS, exactly two mountain images, and one English WAV narration.' in html
+    assert 'Late fill carries the image, audio, and file branches' in html
     assert (
-        'Ollmo checks each required output and link against runtime evidence and, '
-        'where needed, reviews whether the finished set still fits the current intent '
-        'before the frame can report fulfillment.'
+        'The final frame records fulfilled closure with no pending or failed branches. '
+        'The portable bundle contains all five artifacts, with its local links checked.'
     ) in html
     assert '<span>Open</span>' not in html
     assert 'Not yet fulfilled. Two images exist, or a placeholder remains.' not in html
@@ -273,16 +272,16 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
     ) in html
     assert 'class="proof-cadence"' not in html
     assert (
-        'All four artifacts satisfy their branch contracts, exist as saved outputs, '
-        'and their links resolve.'
+        'https://github.com/fl0ri0/fruth/blob/HEAD/examples/reference-runs/'
+        '2026-09-18-echoes-of-the-pass/README.md'
     ) in html
     assert 'Arena sends one text prompt to two running local chat models' not in html
     assert 'compatible link-checked bundles' in html
     assert 'canonical Responses endpoints' in html
-    assert 'Ollmo itself can start before a backend or model is available' in html
+    assert 'Fruth itself can start before a backend or model is available' in html
     assert 'neither the runtime nor its model weights are bundled' in html
     assert 'Choose a local runtime.' in html
-    assert 'Start the control plane.' in html
+    assert 'Start Fruth.' in html
     assert 'Add a compatible model.' in html
     assert 'add Hugging Face repositories or local GGUF files' in html
     assert 'remove local copies' in html
@@ -291,24 +290,24 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
     assert 'start or stop each instance independently' in html
     assert html.index('Choose a local runtime.') < html.index('Add a compatible model.')
     assert html.index('Add a compatible model.') < html.index(
-        'Start the control plane.'
+        'Start Fruth.'
     )
     assert 'Python 3.11 or newer' in html
     assert 'class="install"' not in html
-    assert 'From the Ollmo checkout' not in html
+    assert 'From the Fruth checkout' not in html
     assert '<span class="install-terminal__label">Terminal</span>' in html
     assert 'data-copy-target="install-commands"' in html
     assert 'id="install-commands"' in html
     assert (
         '<code>python3 -m venv .venv\n'
         '.venv/bin/python -m pip install -r requirements.txt\n'
-        './ollmo start</code>'
+        './fruth start</code>'
     ) in html
-    assert html.index('Start the control plane.') < html.index(
+    assert html.index('Start Fruth.') < html.index(
         'class="install-terminal"'
     )
     assert '.venv/bin/python -m pip install -r requirements.txt' in html
-    assert './ollmo start</code>' in html
+    assert './fruth start</code>' in html
     assert 'role="status"' in html
     assert 'aria-live="polite"' in html
     assert 'class="provider-note"' in html
@@ -325,9 +324,9 @@ def test_root_renders_dashboard_without_redirect():
     assert response.status_code == 200
     assert not response.history
     html = response.get_data(as_text=True)
-    assert 'data-page="ollmo-landing"' not in html
+    assert 'data-page="fruth-landing"' not in html
     assert 'id="models-list"' in html
-    assert '/static/ui/ollmo.css' in html
+    assert '/static/ui/fruth.css' in html
 
 
 def test_dashboard_alias_renders_same_workbench_without_redirect():
@@ -349,7 +348,7 @@ def test_standalone_landing_has_canonical_local_preview_route():
     assert not response.history
     assert response.mimetype == 'text/html'
     html = response.get_data(as_text=True)
-    assert 'data-page="ollmo-landing"' in html
+    assert 'data-page="fruth-landing"' in html
     assert re.search(r'href="\./landing\.css(?:\?[^\"]+)?"', html)
     assert 'src="./landing.js"' in html
     assert 'id="models-list"' not in html
@@ -493,34 +492,34 @@ def test_landing_styles_are_local_responsive_and_motion_safe():
     assert 'align-self: start;' in narrow_repo_rule
     assert 'justify-self: center;' in narrow_repo_rule
     assert 'animation-iteration-count: 1 !important' in css
-    assert 'animation: ghostBlink 6.4s linear infinite;' in css
-    assert '@keyframes ghostBlink' in css
-    assert '@keyframes ghostSymbolPeek' in css
-    assert '@keyframes ghostStrokeCounterPeek' in css
+    assert 'animation: mascotBlink 6.4s linear infinite;' in css
+    assert '@keyframes mascotBlink' in css
+    assert '@keyframes mascotSymbolPeek' in css
+    assert '@keyframes mascotStrokeCounterPeek' in css
     shared_aura_animation = (
-        'animation: ghostAuraBloomA var(--ghost-aura-duration) '
+        'animation: mascotAuraBloomA var(--mascot-aura-duration) '
         'ease-in-out infinite alternate;'
     )
     assert css.count(shared_aura_animation) == 2
     assert (
-        'animation: ghostAuraBloomB var(--ghost-aura-duration) '
+        'animation: mascotAuraBloomB var(--mascot-aura-duration) '
         'ease-in-out infinite alternate;' in css
     )
-    assert '--ghost-aura-duration: 21s;' in css
+    assert '--mascot-aura-duration: 21s;' in css
     assert '--hero-paint-bleed: clamp(3rem, 6vw, 6rem);' in css
     assert 'width: calc(100% + (2 * var(--hero-paint-bleed)));' in css
     assert 'margin-inline: calc(-1 * var(--hero-paint-bleed));' in css
     assert 'padding-inline: var(--hero-paint-bleed);' in css
     assert 'transition: opacity 0.24s ease;' in css
-    assert '.ghost-stage--returning' not in css
+    assert '.mascot-stage--returning' not in css
     assert 'animation-play-state: paused;' not in css
     assert '-5.2s' not in css
     assert '-3.9s' not in css
-    assert '@keyframes ghostSolidPhase' not in css
-    assert '@keyframes ghostOutlinePhase' not in css
-    assert '@keyframes ghostPresence' not in css
-    assert 'landing-ghost__eye-cutouts' in css
-    assert '.ghost-stage--vanished' in css
+    assert '@keyframes inferenceSolidPhase' not in css
+    assert '@keyframes inferenceOutlinePhase' not in css
+    assert '@keyframes inferencePresence' not in css
+    assert 'landing-mascot__eye-cutouts' in css
+    assert '.mascot-stage--vanished' in css
     assert '.site-header' not in css
     assert '.wordmark' not in css
     assert '.header-link' not in css
@@ -651,20 +650,20 @@ def test_landing_styles_are_local_responsive_and_motion_safe():
     assert '.button--quiet' not in css
     assert 'mix-blend-mode: screen' not in css
     assert 'filter: blur(1.5rem);' in css
-    ghost_body_rule = re.search(
-        r'\.landing-ghost__body\s*\{(?P<body>.*?)\}',
+    inference_body_rule = re.search(
+        r'\.landing-mascot__body\s*\{(?P<body>.*?)\}',
         css,
         re.DOTALL,
     )
-    assert ghost_body_rule is not None
-    assert 'fill: var(--status-success-vivid, #baff8a);' in ghost_body_rule.group(
+    assert inference_body_rule is not None
+    assert 'fill: var(--status-success-vivid, #baff8a);' in inference_body_rule.group(
         'body',
     )
-    assert 'filter:' not in ghost_body_rule.group('body')
+    assert 'filter:' not in inference_body_rule.group('body')
     for selector in (
-        '.landing-ghost',
-        '.landing-ghost__icon',
-        '.landing-ghost__outline',
+        '.landing-mascot',
+        '.landing-mascot__icon',
+        '.landing-mascot__outline',
     ):
         rule = re.search(
             rf'{re.escape(selector)}\s*\{{(?P<body>.*?)\}}',
@@ -700,11 +699,11 @@ def test_landing_setup_copy_control_reads_the_rendered_command():
     css = LANDING_CSS_PATH.read_text(encoding='utf-8')
     script = LANDING_JS_PATH.read_text(encoding='utf-8')
 
-    assert 'From the Ollmo checkout' not in html
+    assert 'From the Fruth checkout' not in html
     assert 'install-terminal__dots' not in html
     assert '<button class="install-copy-button" type="button"' in html
-    assert 'aria-label="Copy the Ollmo installation commands"' in html
-    assert 'title="Copy the Ollmo installation commands"' in html
+    assert 'aria-label="Copy the Fruth installation commands"' in html
+    assert 'title="Copy the Fruth installation commands"' in html
     assert '<svg viewBox="0 0 24 24" aria-hidden="true"' in html
     assert 'data-copy-target="install-commands"' in html
     assert 'id="install-commands"' in html
@@ -1048,7 +1047,7 @@ def test_landing_serves_bundled_montserrat_black_and_license():
 
 def test_landing_ambient_vanish_uses_dashboard_timing():
     script = LANDING_JS_PATH.read_text(encoding='utf-8')
-    dashboard_html = (REPO_ROOT / 'ollmo_webUI.html').read_text(encoding='utf-8')
+    dashboard_html = (REPO_ROOT / 'fruth_webUI.html').read_text(encoding='utf-8')
     shared_timing = (
         '78000 + Math.floor(Math.random() * 54000)',
         'Math.random() < 0.1',
@@ -1058,11 +1057,11 @@ def test_landing_ambient_vanish_uses_dashboard_timing():
         assert expression in script
         assert expression in dashboard_html
 
-    assert "document.querySelector('.ghost-stage')" in script
-    assert "ghostStage.classList.add('ghost-stage--vanished')" in script
-    assert 'ghost-stage--returning' not in script
+    assert "document.querySelector('.mascot-stage')" in script
+    assert "mascotStage.classList.add('mascot-stage--vanished')" in script
+    assert 'mascot-stage--returning' not in script
     assert '18000 + Math.floor(Math.random() * 6001)' in script
-    assert "'--ghost-aura-duration'" in script
+    assert "'--mascot-aura-duration'" in script
     assert 'AURA_FADE_OUT_MS' not in script
     assert 'AURA_FADE_IN_MS' not in script
     assert "matchMedia('(prefers-reduced-motion: reduce)')" in script
@@ -1072,7 +1071,7 @@ def test_landing_ambient_vanish_uses_dashboard_timing():
     assert 'if (event.persisted) startAmbientVanish();' in script
 
 
-def test_landing_inherits_dashboard_surface_and_ghost_language():
+def test_landing_inherits_dashboard_surface_and_inference_language():
     landing_css = LANDING_CSS_PATH.read_text(encoding='utf-8')
     dashboard_css = DASHBOARD_CSS_PATH.read_text(encoding='utf-8')
 
@@ -1100,18 +1099,18 @@ def test_landing_inherits_dashboard_surface_and_ghost_language():
         '--pattern-grid',
     )
 
-    shared_ghost_animations = (
-        'ghostFloat',
-        'ghostAuraBloomA',
-        'ghostAuraBloomB',
-        'ghostSymbolPeek',
-        'ghostStrokeCounterPeek',
+    shared_inference_animations = (
+        'mascotFloat',
+        'mascotAuraBloomA',
+        'mascotAuraBloomB',
+        'mascotSymbolPeek',
+        'mascotStrokeCounterPeek',
     )
-    for animation in shared_ghost_animations:
+    for animation in shared_inference_animations:
         assert f'@keyframes {animation}' in landing_css
         assert f'@keyframes {animation}' in dashboard_css
 
-    for animation in ('ghostSymbolPeek', 'ghostStrokeCounterPeek'):
+    for animation in ('mascotSymbolPeek', 'mascotStrokeCounterPeek'):
         assert _keyframes_block(landing_css, animation) == _keyframes_block(
             dashboard_css,
             animation,
@@ -1123,7 +1122,7 @@ def test_route_split_keeps_canonical_api_routes_registered():
 
     assert '/site/' in routes
     assert '/site/<path:filename>' in routes
-    assert '/ollmo_landing.html' not in routes
+    assert '/fruth_landing.html' not in routes
     assert '/api/responses' in routes
     assert '/v1/responses' in routes
     assert '/api/runtime_manifest' in routes
@@ -1131,9 +1130,9 @@ def test_route_split_keeps_canonical_api_routes_registered():
 
 def test_dashboard_cli_opens_direct_dashboard_route():
     result = subprocess.run(
-        [str(OLLMO_CLI), 'dashboard'],
+        [str(FRUTH_CLI), 'dashboard'],
         cwd=REPO_ROOT,
-        env={'PATH': '/usr/bin:/bin', 'OLLMO_DRY_RUN_OPEN': '1'},
+        env={'PATH': '/usr/bin:/bin', 'FRUTH_DRY_RUN_OPEN': '1'},
         capture_output=True,
         text=True,
         check=False,
@@ -1141,7 +1140,7 @@ def test_dashboard_cli_opens_direct_dashboard_route():
 
     assert result.returncode == 0
     assert result.stdout.strip() == (
-        'DRY RUN: would open dashboard at http://127.0.0.1:5001/'
+        'DRY RUN: would open dashboard at http://127.0.0.1:5011/'
     )
 
 
@@ -1150,7 +1149,7 @@ def test_version_cli_uses_single_python_version_source():
         [
             sys.executable,
             '-c',
-            'from ollmo_core.version import __version__; print(f"Ollmo {__version__}")',
+            'from fruth_core.version import __version__; print(f"Fruth {__version__}")',
         ],
         cwd=REPO_ROOT,
         capture_output=True,
@@ -1160,7 +1159,7 @@ def test_version_cli_uses_single_python_version_source():
 
     for command in ('version', '--version'):
         result = subprocess.run(
-            [str(OLLMO_CLI), command],
+            [str(FRUTH_CLI), command],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,

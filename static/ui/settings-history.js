@@ -578,7 +578,7 @@ function initializeSettings() {
 
 function loadSettings() {
     try {
-        const saved = localStorage.getItem('ollmo_settings');
+        const saved = localStorage.getItem('fruth_settings');
         if (saved) {
             const parsed = JSON.parse(saved);
             if (parsed && typeof parsed === 'object' && (parsed.global || parsed.byModel)) {
@@ -607,7 +607,7 @@ function loadSettings() {
 function saveSettings() {
     try {
         persistSettingsForCurrentInstance();
-        localStorage.setItem('ollmo_settings', JSON.stringify({
+        localStorage.setItem('fruth_settings', JSON.stringify({
             global: sanitizeSettingsObject(state.settingsGlobal),
             byModel: state.settingsByModel,
         }));

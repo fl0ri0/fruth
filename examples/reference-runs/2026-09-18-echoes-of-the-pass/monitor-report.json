@@ -1,0 +1,73 @@
+{
+  "artifact_summary": {
+    "artifact_bytes": 2737780,
+    "artifact_count": 5,
+    "css_issue_count": 0,
+    "file_count_by_suffix": {
+      "css": 1,
+      "html": 1,
+      "png": 2,
+      "wav": 1
+    },
+    "html_issue_count": 0,
+    "kind_counts": {
+      "audio": 1,
+      "image": 2,
+      "text": 2
+    },
+    "missing_file_count": 0,
+    "sha_mismatch_count": 0
+  },
+  "authority": "independent_observer_evidence",
+  "branch_summary": {
+    "capability_counts": {
+      "chat": 2,
+      "image_generation": 2,
+      "text_to_speech": 1
+    },
+    "counts": {
+      "active": 0,
+      "completed": 5,
+      "failed": 0,
+      "pending": 0
+    },
+    "image_branch_count": 2,
+    "output_obligation_counts": {
+      "audio": 1,
+      "image": 2,
+      "text": 3
+    },
+    "role_counts": {
+      "audio": 1,
+      "image": 2,
+      "text": 2
+    },
+    "text_artifact_branch_count": 2
+  },
+  "frame_id": "resp_1789748468875_a6b4f80ba9e8d8:frame-2",
+  "frame_sequence": 2,
+  "provenance": {
+    "raw_record_published": false,
+    "record_sha256": "dedfd5cebb52e75453ba7f92c8751c49775c1d01e8233a9a4a5ae843016a46ac",
+    "record_size_bytes": 44170,
+    "source": "exact reports.jsonl record"
+  },
+  "reported_at": "2026-09-18T16:29:06.542166Z",
+  "response_id": "resp_1789748468875_a6b4f80ba9e8d8",
+  "runtime_summary": {
+    "failed_branch_count": 0,
+    "final_materialization_contract_status": "fulfilled",
+    "late_fill_status": "completed",
+    "lifecycle_state": "completed",
+    "materialization_contract_unmet": false
+  },
+  "schema": "fruth.public_monitor_snapshot.v1",
+  "timing_seconds": {
+    "hygiene_seconds": 349.472438,
+    "image_wave_seconds": 148.424907,
+    "initial_chat_seconds": 101.559322,
+    "terminal_seconds": 309.146233
+  },
+  "verdict": "clean",
+  "version": 1
+}

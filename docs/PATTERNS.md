@@ -48,9 +48,9 @@ state → structure → decision → execution → state
 
 ---
 
-### 7. External systems call Ollmo
+### 7. External systems call Fruth
 
-external → Ollmo → outputs
+external → Fruth → outputs
 
 Not:
 
@@ -62,7 +62,7 @@ Route preview and route selection are not lifecycle actions. They must not start
 
 ### 8. Tools as runtime capabilities
 
-- tools are invoked by Ollmo
+- tools are invoked by Fruth
 - results come back into substrate
 
 ---
@@ -72,7 +72,7 @@ Route preview and route selection are not lifecycle actions. They must not start
 - local or remote
 - cheap or premium
 - same contract
-- provider execution receives the current request plus only context that Ollmo
+- provider execution receives the current request plus only context that Fruth
   promoted as relevant for that turn
 - files and artifacts cross the provider boundary only when they are explicit
   current-turn inputs; a remote provider additionally requires the declared
@@ -80,13 +80,13 @@ Route preview and route selection are not lifecycle actions. They must not start
 - runtime records the concrete input handoff; provider prose is not proof of
   which context or files were supplied
 - external execution of an already-shaped branch begins with
-  `[OLLMO_DOWNSTREAM_EXECUTION_V1]`; Ollmo remains supervisor while the provider
-  executes only `<ollmo_bounded_task>` under the supplied
-  `<ollmo_promoted_context>`, without recursively invoking Ollmo or widening the
+  `[FRUTH_DOWNSTREAM_EXECUTION_V1]`; Fruth remains supervisor while the provider
+  executes only `<fruth_bounded_task>` under the supplied
+  `<fruth_promoted_context>`, without recursively invoking Fruth or widening the
   task
-- Ghost planning itself is a separate Ollmo-internal role: it does not invoke
-  the Ollmo companion skill and receives runtime manifest, model, and capability
-  orientation directly from Ollmo. When Ghost subsequently resolves an
+- Interpretive inference planning itself is a separate Fruth-internal role: it does not invoke
+  the Fruth companion skill and receives runtime manifest, model, and capability
+  orientation directly from Fruth. When the interpretive inference layer subsequently resolves an
   already-shaped branch to an external target, that target call is downstream
   execution and does receive the marker
 
@@ -179,7 +179,7 @@ Route preview and route selection are not lifecycle actions. They must not start
 
 ### 14d. Validated Graph Repair
 
-- Ghost, Closure, decision contracts, and accepted learning may propose graph repair, but proposals are non-executable until reviewed
+- The interpretive inference layer, Closure, decision contracts, and accepted learning may propose graph repair, but proposals are non-executable until reviewed
 - accepted learning can orient repair when repeated frames show basic intent was not met, but it cannot validate or apply a patch
 - current response-frame, Closure, late fill, and artifact evidence can be mapped by backend runtime into proposal-only repairs for known failure classes before validation; monitor reports are optional observer evidence only
 - fulfilled-contract/surface-state reconciliation is repairable only when surface actionability shows blocked, repair-pending, semantic-review-pending, dependency, artifact, or promoted owed-work evidence
@@ -216,9 +216,9 @@ Route preview and route selection are not lifecycle actions. They must not start
 
 - the ladder escalates from additive graph repair to the higher-risk partial-subtree and full-successor rebase rungs when a broader candidate graph is needed
 - bounded additive redraw remains autonomously available on the lower graph-repair rungs; `shadow` is only the non-mutating rollout mode of the upper rebase rungs, not a new architectural layer
-- Ghost, semantic review, or an operator may propose `ollmo.graph_rebase_proposal`, but Runtime must compute the diff and preservation proof instead of trusting model prose
+- The interpretive inference layer, semantic review, or an operator may propose `fruth.graph_rebase_proposal`, but Runtime must compute the diff and preservation proof instead of trusting model prose
 - preservation proof must keep required intent obligations, output obligations, artifact refs, dependencies, review duties, target-bound repair contracts, failure visibility, and frozen parent lineage visible
-- the upper rebase rungs use their own authority boundary, `OLLMO_GRAPH_REBASE_AUTONOMY=off|shadow|stage|apply_reviewed|apply_enforced`, so additive repair authority cannot silently climb the ladder; absent configuration defaults to non-executable `shadow`, explicit `off` blocks staging and partial authorization while evidence-only adjudication remains available, and invalid values fail closed
+- the upper rebase rungs use their own authority boundary, `FRUTH_GRAPH_REBASE_AUTONOMY=off|shadow|stage|apply_reviewed|apply_enforced`, so additive repair authority cannot silently climb the ladder; absent configuration defaults to non-executable `shadow`, explicit `off` blocks staging and partial authorization while evidence-only adjudication remains available, and invalid values fail closed
 - `GET /api/graph_rebase/readiness` is the canonical read-only evidence report; it does not promote, stage, authorize, or execute anything, and the product default remains `shadow` while its evidence gates are not green
 - promotion is explicit and ordered through `POST /api/responses/<response_id>/graph_rebase/operator`: `adjudicate` records a trusted useful/false-positive/false-negative/investigation judgment, `stage` durably records the exact accepted proposal with `staged_no_executable_mutation`, and `authorize_partial` requires that trusted chain plus the green partial-promotion gate
 - the mutating operator writer is dormant without both an explicit startup token and configured exact operator identity; requests must match both, the credentials stay control-plane-only and are stripped from every child-process environment, Runtime creates deterministic replay confirmation, and only exact registry/runtime stage pairs count toward promotion
@@ -255,7 +255,7 @@ Route preview and route selection are not lifecycle actions. They must not start
 
 - backend/API route selection reuses eligible running instances by default
 - explicit frontend play/start is a user lifecycle action and can send `start_source=frontend_button`
-- `force_start` belongs only to deliberate duplicate starts, not Ghost, route preview, late fill, or backend automatic paths
+- `force_start` belongs only to deliberate duplicate starts, not interpretive inference, route preview, late fill, or backend automatic paths
 
 ---
 
@@ -359,7 +359,7 @@ Use:
 
 ### 13. Wrapper-as-artifact persistence
 
-- saving Ghost/router JSON as the user-facing file
+- saving interpretive inference/router JSON as the user-facing file
 - persisting `output_obligations` metadata instead of `output_obligations[].content`
 - treating a model's artifact claim as proof that a file exists
 
@@ -383,7 +383,7 @@ Use:
 
 ### 16. Route-driven starts
 
-- starting models from Ghost route preview or route selection
+- starting models from interpretive inference route preview or route selection
 - using `force_start` outside explicit user lifecycle actions
 - treating load, busy, or cooldown feedback as authority when live process/port/backend truth says the instance is usable
 

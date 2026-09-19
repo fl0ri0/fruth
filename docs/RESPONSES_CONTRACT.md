@@ -1,13 +1,13 @@
 # Responses Contract
 
-This document names the response-state fields that are part of Ollmo's runtime truth contract. It is intentionally narrower than general product docs: it describes what callers and UI code may rely on.
+This document names the response-state fields that are part of Fruth's runtime truth contract. It is intentionally narrower than general product docs: it describes what callers and UI code may rely on.
 
 ## OpenAI-shaped compatibility boundary
 
-Ollmo exposes `/api/responses` and `/v1/responses` through its local response
+Fruth exposes `/api/responses` and `/v1/responses` through its local response
 handler. This is a supported local contract with an OpenAI-shaped text
 compatibility surface, not complete OpenAI Responses protocol support or a direct
-call to OpenAI's hosted API. `ollmo_services/responses.py` owns the text adapter.
+call to OpenAI's hosted API. `fruth_services/responses.py` owns the text adapter.
 
 - Text normalization accepts `prompt`, string `input`, and text message content.
   Role-bearing message items currently preserve their role when explicitly typed
@@ -19,7 +19,7 @@ call to OpenAI's hosted API. `ollmo_services/responses.py` owns the text adapter
   OpenAI Conversations resources and `previous_response_id` semantics are not
   implemented by this adapter. Unsupported input may be ignored rather than
   rejected. Do not infer support from an endpoint name or backend feature flag.
-- Local `conversation_id`, response frames and Late Fill retain Ollmo semantics.
+- Local `conversation_id`, response frames and Late Fill retain Fruth semantics.
   Canonical `outputs` and lifecycle/closure truth are distinct from compatibility
   `output`, `output_text` and `status`. The text-output builder's zero token usage
   values are placeholders, not measured zero consumption.
@@ -121,13 +121,28 @@ model's assertion or a general guarantee of semantic output quality. The
 isolated positive test independently computes its output from that submitted
 input.
 
-Closure and terminal branch reconciliation use the same strict validator:
+Early existing-file fulfilment, missing-result fallback, Closure, and terminal
+branch reconciliation use the same strict saved-file evidence validator:
 exact producer and consumer records, artifact identities, captured-byte digest,
 input digest, saved output and current versions must agree. Missing, malformed,
 unauthorized, ambiguous, changed or misbound evidence remains unmet. Identical
 bytes at another artifact identity are not aliases. Evidence is preserved by
 ordinary response-frame storage and read-only hydration; no historical frame
 is migrated or retroactively credited with a read.
+
+After a producer's exact snapshot, artifact identity and current bytes pass
+validation, its named-file closure check stays bound to that verified path.
+Earlier streamed drafts with the same logical filename cannot make that binding
+ambiguous or substitute for it. Any explicit contracted target must agree;
+filename, extension and saved-content syntax checks still apply. Work without
+an exact proven producer binding retains the ordinary ambiguity checks.
+
+An early saved file does not discharge a producer or consumer branch without
+that branch's required snapshot or consumption evidence. Missing evidence keeps
+the branch eligible for its normal dependency-gated execution. Reusing a proven
+result preserves its complete evidence record; ordinary file reuse and its
+existing syntax-repair rules remain available for branches without a saved-read
+contract.
 
 When Closure repair projection changes the executable branch identity, its
 promoted contract retains the originating identities and records an
@@ -186,7 +201,7 @@ Non-streaming `POST /api/responses` and `POST /v1/responses` attempt canonical f
 
 When present, `status_lookup` is a compact status companion inside the response lookup payload. It should carry the same lifecycle/status semantics used by the compact observer so clients can render state without inferring from assistant prose, stale slots, or compatibility `status`.
 
-`ollmoctl` makes the wire/truth split explicit. `send ... --json` performs one bounded `POST /api/responses` and prints that public wire result. `send ... --truth-json` performs the bounded POST, then reads the same response id through exact `view=truth` and emits a normalized canonical summary. `responses get <response_id> --json` returns the raw canonical truth-view payload, while `--truth-json` emits its normalized summary. `--json` and `--truth-json` are mutually exclusive for each command.
+`fruthctl` makes the wire/truth split explicit. `send ... --json` performs one bounded `POST /api/responses` and prints that public wire result. `send ... --truth-json` performs the bounded POST, then reads the same response id through exact `view=truth` and emits a normalized canonical summary. `responses get <response_id> --json` returns the raw canonical truth-view payload, while `--truth-json` emits its normalized summary. `--json` and `--truth-json` are mutually exclusive for each command.
 
 Artifact registry split:
 
@@ -197,7 +212,7 @@ Artifact registry split:
   mint replacement refs. Without an attached frame, explicit artifact records
   take precedence over compatibility shortcuts for the same saved path/type.
 - `state/artifact_registry.jsonl` is the durable lookup surface for concrete artifacts across modalities. New output artifacts from `artifacts[]`, `saved_text_path`, `saved_text_artifacts`, `saved_audio_path`, and `saved_image_path` are persisted with `roles = ["output"]`, `artifact_ref`, path, type, provenance, metadata, and linked response ids. True external user inputs are persisted with `roles = ["input"]`.
-- Reused Ollmo artifacts are references, not new inputs. Route reuse, selected reference artifacts, artifact bindings, and registry-known paths must carry stable refs/bindings and must not be re-materialized as fresh `input_artifacts`.
+- Reused Fruth artifacts are references, not new inputs. Route reuse, selected reference artifacts, artifact bindings, and registry-known paths must carry stable refs/bindings and must not be re-materialized as fresh `input_artifacts`.
 - Modality-specific provenance wins over generic output provenance. For example, generated-image provenance remains attached to the image artifact and generic output registration may add lookup metadata or linked responses without downgrading that provenance.
 
 Response artifact bundle operations fail closed on incomplete wire projections. A previewed, truncated, or emergency handle set is not enough to choose bundle contents: bundle creation resolves and recursively hydrates the exact CAS-backed response truth first. Missing, malformed, or corrupt refs return HTTP 409 instead of producing a silently incomplete bundle.
@@ -251,10 +266,21 @@ boundaries. Closure compares saved outputs and exact dependency evidence with
 the preserved original obligations. It may repeat during reconciliation and
 repair. A frozen frame can record fulfilled, pending, blocked or failed work.
 
-The finalizer in `ollmo_webserver.py` constructs the frame and reconciles public
+Before terminal link repair, Runtime prepares an eligibility view from accepted
+current Late Fill results, artifact identities and output slots using the same
+preparation as frame construction. This view is local to link repair; it does not
+publish outputs, freeze or persist a frame. It repeats after deterministic
+saved-file repairs, before the final link and Closure checks. An earlier pending
+output projection cannot hide newly
+accepted media, and an older fulfilled frame cannot override a current rejected
+or empty public output set. Existing dependency selection, unique public-media
+fallback and ambiguity checks still govern rebinding; saved bytes alone do not
+publish failed or cancelled work.
+
+The finalizer in `fruth_webserver.py` constructs the frame and reconciles public
 artifact identities, then attempts Artifact Registry persistence from that
 frame's accepted output set. The frame writer in
-`ollmo_services/response_frames.py` prepares and verifies CAS sidecars, appends
+`fruth_services/response_frames.py` prepares and verifies CAS sidecars, appends
 and flushes/fsyncs the Ledger row under the append lock, then atomically publishes
 the derived Index. Parent compare-and-swap checks remain mandatory where the
 successor path requires them. These stores are not one atomic transaction: an
@@ -309,7 +335,7 @@ public authority, and registry validation/deduplication still runs.
 
 ## Request Phase Graph
 
-`runtime.request_phase_graph` is the request obligation graph. Its user intent is anchored by Ghost and the current turn, but its state may be refined before freeze from runtime evidence.
+`runtime.request_phase_graph` is the request obligation graph. Its user intent is anchored by interpretive inference and the current turn, but its state may be refined before freeze from runtime evidence.
 
 Graph refinement is allowed only when it continues the same request intent. It must not invent a new task because an older turn or generic history mentioned an artifact.
 
@@ -399,7 +425,7 @@ Core fields:
 - `error`: display-safe aggregate error text when the overall late fill failed or partially failed.
 - `skip_kind`, `skip_reason`, `skip_source`: present when `status == "skipped"` so "no work needed" is not confused with a failed or suppressed continuation.
 - `recovery_candidates[]`: branch-local recovery options discovered by failure analysis. Candidates are inert unless explicitly promoted.
-- `auto_recovery_enabled`: currently `false` for generic recovery candidates. This does not disable separately Closure-promoted auto-executable repairs or the named bounded image/TTS recovery policies; their exact contracts and gates still decide scheduling.
+- `auto_recovery_enabled`: currently `false` for generic recovery candidates. This does not disable separately Closure-promoted auto-executable repairs or the named bounded image, TTS and vision recovery policies; their exact contracts and gates still decide scheduling.
 - `repair_action` / `repair_actions`: optional Closure Repair classification for the active gap or pending repair branches.
 
 UI surfaces should treat `pending_branches`, `active_branches`, `completed_branches`, `failed_branches`, and `fill_results` as branch-state truth before older slot projections. Slots are still useful for layout and artifact identity, but a stale pending slot must not keep showing queued when the matching branch is completed or blocked.
@@ -434,7 +460,7 @@ Failed branch shape:
         "exclude_instance_ids": ["flux-2"]
       },
       "recovery_state": {
-        "kind": "ollmo.late_fill_recovery_state",
+        "kind": "fruth.late_fill_recovery_state",
         "status": "candidate",
         "trigger": "late_fill_failure",
         "branch_id": "branch-image_generation-2",
@@ -473,7 +499,7 @@ Closure repair feedback may include:
 
     {
       "repair_loop": {
-        "kind": "ollmo.repair_loop",
+        "kind": "fruth.repair_loop",
         "status": "candidate",
         "authority": "runtime_review_promoted",
         "auto_execute": false,
@@ -485,9 +511,9 @@ Closure repair feedback may include:
       }
     }
 
-This candidate loop frame is not an autonomous retry. It tells clients and repair policy where the next bounded repair round would start. When Closure promotes a concrete executable repair contract, `repair_loop.auto_execute` may become `true`; that means the promoted repair branch is schedulable through late fill and may remain open until its bounded automatic repair budget is exhausted. The default budget is controlled by non-UI policy `OLLMO_AUTO_EXECUTABLE_REPAIR_MAX_ATTEMPTS`, and branch/repair-contract metadata such as `auto_executable_repair_max_attempts` can provide a more specific budget within the safe cap.
+This candidate loop frame is not an autonomous retry. It tells clients and repair policy where the next bounded repair round would start. When Closure promotes a concrete executable repair contract, `repair_loop.auto_execute` may become `true`; that means the promoted repair branch is schedulable through late fill and may remain open until its bounded automatic repair budget is exhausted. The default budget is controlled by non-UI policy `FRUTH_AUTO_EXECUTABLE_REPAIR_MAX_ATTEMPTS`, and branch/repair-contract metadata such as `auto_executable_repair_max_attempts` can provide a more specific budget within the safe cap.
 
-Late fill gates repair branches before backend execution. A `repair_dependency_chain` or `rebind_dependency_evidence` branch without dependency artifacts or prior branch evidence becomes a blocked failed branch with `DEPENDENCY_CHAIN_REPAIR_REQUIRED`. A `repair_branch_contract` branch without a bounded `execution_contract` becomes a blocked failed branch with `BRANCH_CONTRACT_REPAIR_REQUIRED`. These blocks apply to target materialization, not to the whole repair loop. Response frames should surface `materialization_blocked`, `blocked_scope`, `blocked_prerequisite`, `repair_work_available`, `repair_work_policy`, and `needs_external_input` so clients know whether Ollmo can still repair the missing prerequisite locally. When the required dependency evidence or execution contract is present, the corresponding block flag is resolved and the bounded branch can run. These are repair states, not backend retries.
+Late fill gates repair branches before backend execution. A `repair_dependency_chain` or `rebind_dependency_evidence` branch without dependency artifacts or prior branch evidence becomes a blocked failed branch with `DEPENDENCY_CHAIN_REPAIR_REQUIRED`. A `repair_branch_contract` branch without a bounded `execution_contract` becomes a blocked failed branch with `BRANCH_CONTRACT_REPAIR_REQUIRED`. These blocks apply to target materialization, not to the whole repair loop. Response frames should surface `materialization_blocked`, `blocked_scope`, `blocked_prerequisite`, `repair_work_available`, `repair_work_policy`, and `needs_external_input` so clients know whether Fruth can still repair the missing prerequisite locally. When the required dependency evidence or execution contract is present, the corresponding block flag is resolved and the bounded branch can run. These are repair states, not backend retries.
 
 ## Output Slots And Outputs
 
@@ -528,7 +554,7 @@ Blocked slot shape:
         "exclude_instance_ids": ["flux-2"]
       },
       "recovery_state": {
-        "kind": "ollmo.late_fill_recovery_state",
+        "kind": "fruth.late_fill_recovery_state",
         "status": "candidate",
         "trigger": "late_fill_failure",
         "branch_id": "branch-image_generation-2",
@@ -585,7 +611,7 @@ Artifact continuity is centered on durable identity, not copied paths. `artifact
 Explicit selected-file collections retain every valid reference, in order,
 including producer response/branch/phase provenance and supplied file digests.
 Repeated intake normalization must not reduce the collection to the last file.
-Ghost receives a bounded path/type view of the complete collection; that view is
+The interpretive inference layer receives a bounded path/type view of the complete collection; that view is
 not artifact authority. Message merging must distinguish different attachment
 collections even when their text envelopes are identical.
 
@@ -641,6 +667,25 @@ If the dossier evidence is missing, stale, or insufficient, the runtime may prom
 
 ## Explicit Recovery
 
+Generated-image vision analysis also has a bounded automatic evidence recovery.
+`vision_input_evidence` records the SHA-256, byte count and instance at actual
+image dispatch; Late Fill binds it to the response, branch and phase. For a
+unique completed direct image producer, Runtime verifies that receipt against
+the saved image. A rejected path-only or missing-input answer then becomes
+`VISION_DEPENDENCY_EVIDENCE_REJECTED`, eligible for one alternate-instance attempt
+under `vision_bounded_evidence_recovery_v1` (two total attempts maximum).
+
+The same branch and exact image remain owed. The failed instance stays excluded,
+and the retry uses only available compatible capacity. Missing, changed,
+unbound or ambiguous input remains dependency repair; PDFs and text-only input
+do not enter this policy. Cancellation, waiver, optional/deferred work and
+automatic-follow-up opt-outs remain authoritative. The retry undergoes the same
+evidence check and Closure; exhaustion does not publish rejected text as success.
+Both the original rejected answer and dispatch proof survive normalization and
+frame storage in `recovery_attempt.prior_vision_evidence_failure`, while a second
+rejection retains its own error evidence. Existing frames without dispatch proof
+are not retroactively made retryable.
+
 Recovery is user-triggered and branch-scoped. It preserves the original request intent and reopens only an existing failed branch.
 
 The failure side exposes `recovery_state.status == "candidate"`. The retry endpoint promotes exactly one candidate into `recovery_state.status == "attempting"` and records a `recovery_attempt`. This is preparation for operational recovery, not general automatic recovery.
@@ -660,7 +705,7 @@ Retry state:
 
     {
       "recovery_state": {
-        "kind": "ollmo.late_fill_recovery_state",
+        "kind": "fruth.late_fill_recovery_state",
         "status": "attempting",
         "trigger": "explicit_retry_endpoint",
         "branch_id": "branch-image_generation-2",
@@ -669,7 +714,7 @@ Retry state:
         "auto_execute": false
       },
       "recovery_attempt": {
-        "kind": "ollmo.late_fill_recovery_attempt",
+        "kind": "fruth.late_fill_recovery_attempt",
         "trigger": "explicit_retry_endpoint",
         "branch_id": "branch-image_generation-2",
         "capability": "image_generation",
@@ -690,7 +735,7 @@ Behavior:
 
 ## Control Gating
 
-Required session controls are hard requirements only after Ollmo has applied safe defaults and prompt-derived hints.
+Required session controls are hard requirements only after Fruth has applied safe defaults and prompt-derived hints.
 
 Safe defaults:
 

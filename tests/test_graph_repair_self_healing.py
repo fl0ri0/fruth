@@ -4,10 +4,10 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_g.decision_contracts import build_ghost_decision_contract
-from ollmo_g.request_phase_graph import build_request_phase_graph
-from ollmo_server.responses_request_runtime import ResponsesRequestRuntimeOwner
-from ollmo_services.graph_repair import (
+from fruth_inference.decision_contracts import build_inference_decision_contract
+from fruth_inference.request_phase_graph import build_request_phase_graph
+from fruth_server.responses_request_runtime import ResponsesRequestRuntimeOwner
+from fruth_services.graph_repair import (
     GRAPH_PATCH_LIFECYCLE_KIND,
     GRAPH_REPAIR_PROPOSAL_KIND,
     PROPOSAL_ALLOWED_USE,
@@ -23,7 +23,7 @@ from ollmo_services.graph_repair import (
     normalize_graph_repair_autonomy,
     validate_graph_repair_proposal,
 )
-from scripts.ollmo_run_monitor import (
+from scripts.fruth_run_monitor import (
     _artifact_checks,
     _collect_learning_healing,
     _render_human,
@@ -43,16 +43,16 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         self.assertFalse(product_default['configured'])
 
         explicit_off = describe_graph_repair_autonomy_from_env(
-            {'OLLMO_GRAPH_REPAIR_AUTONOMY': 'off'}
+            {'FRUTH_GRAPH_REPAIR_AUTONOMY': 'off'}
         )
-        self.assertEqual(graph_repair_autonomy_from_env({'OLLMO_GRAPH_REPAIR_AUTONOMY': 'off'}), 'off')
+        self.assertEqual(graph_repair_autonomy_from_env({'FRUTH_GRAPH_REPAIR_AUTONOMY': 'off'}), 'off')
         self.assertEqual(explicit_off['autonomy_level'], 'off')
         self.assertEqual(explicit_off['source'], 'environment')
         self.assertTrue(explicit_off['configured'])
         self.assertFalse(explicit_off['invalid_value'])
 
         invalid = describe_graph_repair_autonomy_from_env(
-            {'OLLMO_GRAPH_REPAIR_AUTONOMY': 'launch_the_missiles'}
+            {'FRUTH_GRAPH_REPAIR_AUTONOMY': 'launch_the_missiles'}
         )
         self.assertEqual(invalid['autonomy_level'], 'off')
         self.assertEqual(invalid['source'], 'environment')
@@ -202,7 +202,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
             'source': 'closure_review',
             'repair_type': 'additive_graph_patch',
             'target_graph_id': 'graph-test',
-            'evidence_refs': ['closure_review:ghost_repair_feedback'],
+            'evidence_refs': ['closure_review:inference_repair_feedback'],
             'patch': {
                 'add_phases': [
                     {
@@ -223,14 +223,14 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
     def _closure_review(self):
         return {
             'status': 'repair_required',
-            'ghost_repair_feedback': {'status': 'repair_required'},
+            'inference_repair_feedback': {'status': 'repair_required'},
         }
 
     def test_closure_repair_gap_builds_validated_additive_patch(self):
         graph = self._base_graph()
         repair_gap = {
-            'trigger': 'ghost_repair_feedback',
-            'ghost_repair_feedback': {'status': 'repair_required'},
+            'trigger': 'inference_repair_feedback',
+            'inference_repair_feedback': {'status': 'repair_required'},
             'repair_loop': {'status': 'promoted'},
             'pending_branches': [
                 {
@@ -333,8 +333,8 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         image_phase_id = next(
             branch['phase_id'] for branch in graph['downstream_branches']
@@ -659,7 +659,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
                 'hints': [
                     {
                         'learning_id': 'accepted-basic-intent',
-                        'target_area': 'ghost_intake_graph_policy',
+                        'target_area': 'inference_intake_graph_policy',
                         'hint': 'Basic intent was underrepresented; propose bounded graph repair.',
                         'case_kinds': {'intent_graph_inadequacy': 2},
                     }
@@ -749,7 +749,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         )
 
     def test_decision_contract_exposes_repair_proposals_as_advisory_only(self):
-        contract = build_ghost_decision_contract(
+        contract = build_inference_decision_contract(
             workload_graph={
                 'tasks': [
                     {
@@ -788,7 +788,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
             {
                 'repair_action': 'rebuild_from_promoted_obligations',
                 'repair_actions': ['rebuild_from_promoted_obligations'],
-                'ghost_repair_feedback': {'status': 'repair_required'},
+                'inference_repair_feedback': {'status': 'repair_required'},
                 'repair_loop': {'status': 'promoted'},
                 'pending_branches': [
                     {
@@ -818,7 +818,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         updated = owner._attach_repair_gap_to_request_phase_graph(
             payload,
             {
-                'ghost_repair_feedback': {'status': 'repair_required'},
+                'inference_repair_feedback': {'status': 'repair_required'},
                 'repair_loop': {'status': 'promoted'},
                 'pending_branches': [
                     {
@@ -1007,7 +1007,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
             )
             if repair_branch:
                 return {
-                    'kind': 'ollmo.graph_closure_review',
+                    'kind': 'fruth.graph_closure_review',
                     'status': 'pending',
                     'reason': 'one or more graph obligations remain open inside the same intent',
                     'pending_branch_count': 1,
@@ -1021,16 +1021,16 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
                         }
                     ],
                     'surface_state': {
-                        'kind': 'ollmo.surface_state',
+                        'kind': 'fruth.surface_state',
                         'status': 'pending',
                         'category_counts': {'late_fill_pending': 1},
                         'active_categories': ['late_fill_pending'],
                     },
                 }
             return {
-                'kind': 'ollmo.graph_closure_review',
+                'kind': 'fruth.graph_closure_review',
                 'status': 'fulfilled',
-                'surface_state': {'kind': 'ollmo.surface_state', 'status': 'fulfilled'},
+                'surface_state': {'kind': 'fruth.surface_state', 'status': 'fulfilled'},
             }
 
         owner = ResponsesRequestRuntimeOwner(
@@ -1100,7 +1100,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         self.assertEqual(review['status'], 'accepted')
         graph['graph_repair_reviews'] = [review]
 
-        with patch.dict('os.environ', {'OLLMO_GRAPH_REPAIR_AUTONOMY': 'apply_safe'}, clear=False):
+        with patch.dict('os.environ', {'FRUTH_GRAPH_REPAIR_AUTONOMY': 'apply_safe'}, clear=False):
             updated, gap = owner.attach_pre_freeze_closure_review(
                 {
                     'response_id': 'resp-runtime-same-turn-reseed',
@@ -1266,7 +1266,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
             closure_calls.append(graph)
             if 'repair-image' in (graph.get('downstream_branch_ids') or []):
                 return {
-                    'kind': 'ollmo.graph_closure_review',
+                    'kind': 'fruth.graph_closure_review',
                     'status': 'blocked',
                     'reason': 'one or more graph obligations are blocked by runtime truth',
                     'pending_branch_count': 0,
@@ -1281,16 +1281,16 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
                         }
                     ],
                     'surface_state': {
-                        'kind': 'ollmo.surface_state',
+                        'kind': 'fruth.surface_state',
                         'status': 'blocked',
                         'category_counts': {'blocked': 1},
                         'active_categories': ['blocked'],
                     },
                 }
             return {
-                'kind': 'ollmo.graph_closure_review',
+                'kind': 'fruth.graph_closure_review',
                 'status': 'fulfilled',
-                'surface_state': {'kind': 'ollmo.surface_state', 'status': 'fulfilled'},
+                'surface_state': {'kind': 'fruth.surface_state', 'status': 'fulfilled'},
             }
 
         def attach_late_fill_state(payload, state):
@@ -1308,7 +1308,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
                 'extract_responses_current_turn_prompt': lambda payload: str(payload.get('prompt') or ''),
                 'build_pre_freeze_closure_review_gap': lambda *args, **kwargs: {
                     'code': 'closure_review_repair',
-                    'trigger': 'ghost_repair_feedback',
+                    'trigger': 'inference_repair_feedback',
                     'expected_capability': 'image_generation',
                     'active_capability': 'image_generation',
                     'pending_capabilities': ['image_generation'],
@@ -1343,7 +1343,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         self.assertEqual(review['status'], 'accepted')
         graph['graph_repair_reviews'] = [review]
 
-        with patch.dict('os.environ', {'OLLMO_GRAPH_REPAIR_AUTONOMY': 'apply_safe'}, clear=False):
+        with patch.dict('os.environ', {'FRUTH_GRAPH_REPAIR_AUTONOMY': 'apply_safe'}, clear=False):
             updated, gap = owner.attach_pre_freeze_closure_review(
                 {
                     'response_id': 'resp-runtime-policy-blocked-full-path',
@@ -1490,7 +1490,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
             if item.get('repair_class') == 'missing_materialization_branch'
         )
         successor_graph = successor['successor_request_phase_graph']
-        self.assertEqual(successor['kind'], 'ollmo.graph_patch_successor_reopen_request')
+        self.assertEqual(successor['kind'], 'fruth.graph_patch_successor_reopen_request')
         self.assertEqual(successor['status'], 'candidate')
         self.assertEqual(successor['runtime_effect'], 'successor_reopen_required')
         self.assertEqual(successor['parent_response_id'], 'resp-runtime-terminal-successor')
@@ -1550,7 +1550,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
             'runtime': {
                 'request_phase_graph': graph,
                 'graph_closure_review': {
-                    'kind': 'ollmo.graph_closure_review',
+                    'kind': 'fruth.graph_closure_review',
                     'status': 'repair_required',
                     'checks': [
                         {
@@ -1673,7 +1673,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
 
         with patch.dict(
             'os.environ',
-            {'OLLMO_GRAPH_REPAIR_AUTONOMY': 'off'},
+            {'FRUTH_GRAPH_REPAIR_AUTONOMY': 'off'},
             clear=True,
         ):
             environment_off = owner.prepare_terminal_graph_patch_successor(payload)
@@ -1682,7 +1682,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
 
         with patch.dict(
             'os.environ',
-            {'OLLMO_GRAPH_REPAIR_AUTONOMY': 'invalid-autonomy'},
+            {'FRUTH_GRAPH_REPAIR_AUTONOMY': 'invalid-autonomy'},
             clear=True,
         ):
             invalid_autonomy = owner.prepare_terminal_graph_patch_successor(payload)
@@ -1691,7 +1691,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
 
         with patch.dict(
             'os.environ',
-            {'OLLMO_APPLY_ENFORCED_POLICY': 'off'},
+            {'FRUTH_APPLY_ENFORCED_POLICY': 'off'},
             clear=True,
         ):
             enforced_policy_off = owner.prepare_terminal_graph_patch_successor(payload)
@@ -1701,8 +1701,8 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         with patch.dict(
             'os.environ',
             {
-                'OLLMO_GRAPH_REPAIR_AUTONOMY': 'apply_safe',
-                'OLLMO_APPLY_ENFORCED_POLICY': 'off',
+                'FRUTH_GRAPH_REPAIR_AUTONOMY': 'apply_safe',
+                'FRUTH_APPLY_ENFORCED_POLICY': 'off',
             },
             clear=True,
         ):
@@ -1836,7 +1836,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
                 'graph_closure_review': {
                     'status': 'fulfilled',
                     'surface_state': {
-                        'kind': 'ollmo.surface_state',
+                        'kind': 'fruth.surface_state',
                         'state': 'pending',
                         'category_counts': {
                             'controlled_attention_advisory': 1,
@@ -1882,7 +1882,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
                 'graph_closure_review': {
                     'status': 'fulfilled',
                     'surface_state': {
-                        'kind': 'ollmo.surface_state',
+                        'kind': 'fruth.surface_state',
                         'state': 'review_pending',
                         'category_counts': {'semantic_review_pending': 1},
                         'items': [
@@ -1952,7 +1952,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
             'branch_counts': {'pending': 1, 'failed': 0, 'completed': 2},
             'artifacts': {
                 'duplicate_artifact_refs': ['artifact:image_duplicate'],
-                'missing_files': ['/Users/example/Projects/ollmo/artifacts/images/missing.png'],
+                'missing_files': ['/Users/example/Projects/fruth/artifacts/images/missing.png'],
                 'html_image_links': [
                     {'src': 'artifact://fake-image-ref', 'exists': False},
                 ],
@@ -2038,7 +2038,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         closure_review = {
             'status': 'fulfilled',
             'surface_state': {
-                'kind': 'ollmo.surface_state',
+                'kind': 'fruth.surface_state',
                 'state': 'pending',
                 'category_counts': {
                     'controlled_attention_advisory': 4,
@@ -2123,7 +2123,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
                 },
             ],
             'surface_state': {
-                'kind': 'ollmo.surface_state',
+                'kind': 'fruth.surface_state',
                 'state': 'pending',
                 'category_counts': {
                     'completed': 2,
@@ -2171,7 +2171,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         closure_review = {
             'status': 'fulfilled',
             'surface_state': {
-                'kind': 'ollmo.surface_state',
+                'kind': 'fruth.surface_state',
                 'state': 'review_pending',
                 'category_counts': {
                     'semantic_review_pending': 1,
@@ -2215,7 +2215,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         closure_review = {
             'status': 'fulfilled',
             'surface_state': {
-                'kind': 'ollmo.surface_state',
+                'kind': 'fruth.surface_state',
                 'state': 'pending',
                 'category_counts': {
                     'controlled_attention_advisory': 1,
@@ -2249,7 +2249,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         closure_review = {
             'status': 'fulfilled',
             'surface_state': {
-                'kind': 'ollmo.surface_state',
+                'kind': 'fruth.surface_state',
                 'state': 'pending',
                 'category_counts': {
                     'open': 4,
@@ -2376,7 +2376,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         }
 
         info = _collect_learning_healing(
-            Path('/Users/example/Projects/ollmo'),
+            Path('/Users/example/Projects/fruth'),
             payload,
             {},
             lambda ref, **kwargs: {},
@@ -2571,7 +2571,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         }
 
         info = _collect_learning_healing(
-            Path('/Users/example/Projects/ollmo'),
+            Path('/Users/example/Projects/fruth'),
             payload,
             {},
             lambda ref, **kwargs: {},
@@ -2637,7 +2637,7 @@ class GraphRepairSelfHealingTests(unittest.TestCase):
         }
 
         info = _collect_learning_healing(
-            Path('/Users/example/Projects/ollmo'),
+            Path('/Users/example/Projects/fruth'),
             payload,
             {},
             lambda ref, **kwargs: {},

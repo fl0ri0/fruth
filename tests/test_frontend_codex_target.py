@@ -9,13 +9,13 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WEB_UI_PATH = ROOT / "ollmo_webUI.html"
+WEB_UI_PATH = ROOT / "fruth_webUI.html"
 MODELS_PATH = ROOT / "static" / "ui" / "models.js"
 CONVERSATIONS_PATH = ROOT / "static" / "ui" / "conversations.js"
 REQUEST_LIFECYCLE_PATH = ROOT / "static" / "ui" / "request-lifecycle.js"
 REQUEST_TRANSPORT_PATH = ROOT / "static" / "ui" / "request-transport.js"
 MESSAGE_STATE_PATH = ROOT / "static" / "ui" / "message-state.js"
-UI_CSS_PATH = ROOT / "static" / "ui" / "ollmo.css"
+UI_CSS_PATH = ROOT / "static" / "ui" / "fruth.css"
 LANDING_PATH = ROOT / "site" / "index.html"
 LANDING_CSS_PATH = ROOT / "site" / "landing.css"
 
@@ -49,7 +49,7 @@ def test_codex_connection_is_a_compact_visible_external_card():
     assert "hidden" not in opening_tag.group(0)
     assert "Optional cloud provider" in html
     assert '<span>ChatGPT</span>' in html
-    assert "exact model variant is not exposed to Ollmo" in html
+    assert "exact model variant is not exposed to Fruth" in html
     assert 'class="badge-soft badge-muted badge-inline">External</span>' in html
     assert html.index('id="models-list"') < html.index('id="codex-connection"')
 
@@ -150,10 +150,10 @@ def test_reasoning_effort_defaults_and_serialization_are_target_schema_bound():
           enabled: true,
           fields: { reasoning_effort: { visible: true, kind: 'select', options: ['off', 'low'] } },
         };
-        const ghostTarget = { model: 'ghost-qwen', backend: 'mlx', session_controls: qwenSchema };
+        const inferenceTarget = { model: 'inference-qwen', backend: 'mlx', session_controls: qwenSchema };
         const pinnedTarget = { model: 'pinned-qwen', backend: 'mlx', session_controls: qwenSchema };
         const directTarget = { model: 'direct-qwen', backend: 'mlx', session_controls: qwenSchema };
-        let owner = ghostTarget;
+        let owner = inferenceTarget;
         getCurrentSettingsOwnerInstance = () => owner;
         makeModelKey = (model, backend) => backend + '::' + model;
         saveSettings = () => {};
@@ -163,7 +163,7 @@ def test_reasoning_effort_defaults_and_serialization_are_target_schema_bound():
         state.settingsByModel = {};
         state.settings = sanitizeSettingsObject({});
         const firstUse = [];
-        for (const target of [ghostTarget, pinnedTarget, directTarget]) {
+        for (const target of [inferenceTarget, pinnedTarget, directTarget]) {
           owner = target;
           state.settings = sanitizeSettingsObject({});
           refreshSessionControlSelectOptions(target);
@@ -175,21 +175,21 @@ def test_reasoning_effort_defaults_and_serialization_are_target_schema_bound():
         const legacyOff = { value: legacyOffSettings.reasoningEffort, explicit: legacyOffSettings.reasoningEffortExplicit };
         const legacyOn = { value: legacyOnSettings.reasoningEffort, explicit: legacyOnSettings.reasoningEffortExplicit };
         state.settings = legacyOffSettings;
-        refreshSessionControlSelectOptions(ghostTarget);
+        refreshSessionControlSelectOptions(inferenceTarget);
         const migratedLegacyOff = { value: state.settings.reasoningEffort, explicit: state.settings.reasoningEffortExplicit };
 
         state.settings = sanitizeSettingsObject({ reasoningEffort: 'off', reasoningEffortExplicit: true });
-        refreshSessionControlSelectOptions(ghostTarget);
+        refreshSessionControlSelectOptions(inferenceTarget);
         const explicitOff = { value: state.settings.reasoningEffort, explicit: state.settings.reasoningEffortExplicit };
-        state.settingsByModel['mlx::ghost-qwen'] = {
+        state.settingsByModel['mlx::inference-qwen'] = {
           reasoningEffort: 'off',
           reasoningEffortExplicit: true,
         };
-        loadSettingsForInstance(ghostTarget);
+        loadSettingsForInstance(inferenceTarget);
         const reloadedOff = { value: state.settings.reasoningEffort, explicit: state.settings.reasoningEffortExplicit };
 
         state.settings = sanitizeSettingsObject({ reasoningEffort: 'xhigh', reasoningEffortExplicit: false });
-        const targetDefault = buildSessionControlRequestFields(ghostTarget);
+        const targetDefault = buildSessionControlRequestFields(inferenceTarget);
         const heterogeneousTarget = buildSessionControlRequestFields({
           ...directTarget,
           session_controls: narrowSchema,
@@ -269,7 +269,7 @@ def test_selectable_codex_projects_into_direct_targets_and_tabs_not_running_inst
         const context = {
           console,
           window: {
-            location: { protocol: 'http:', hostname: '127.0.0.1', port: '5001' },
+            location: { protocol: 'http:', hostname: '127.0.0.1', port: '5011' },
             matchMedia: () => ({
               matches: false,
               addEventListener() {},
@@ -296,7 +296,7 @@ def test_selectable_codex_projects_into_direct_targets_and_tabs_not_running_inst
         vm.runInContext(fs.readFileSync('static/ui/models.js', 'utf8'), context);
         vm.runInContext(fs.readFileSync('static/ui/conversations.js', 'utf8'), context);
 
-        const page = fs.readFileSync('ollmo_webUI.html', 'utf8');
+        const page = fs.readFileSync('fruth_webUI.html', 'utf8');
         const scripts = [...page.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
           .map((match) => match[1]);
         const inline = scripts.find((source) => source.includes('const settingsDefaults'));
@@ -355,7 +355,7 @@ def test_selectable_codex_projects_into_direct_targets_and_tabs_not_running_inst
     assert result["instanceMeta"]["instance_id"] == "external:codex"
 
     assert len(result["tabs"]) == 2
-    assert "Ollmo" in result["tabs"][0]["html"]
+    assert "Fruth" in result["tabs"][0]["html"]
     assert result["tabs"][1]["dataset"] == {
         "instanceId": "external:codex",
         "targetKind": "external",
@@ -381,7 +381,7 @@ def test_selectable_codex_projects_into_direct_targets_and_tabs_not_running_inst
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is required for frontend VM tests")
-def test_ollmo_auto_and_chatgpt_remain_sendable_with_explicit_context():
+def test_fruth_auto_and_chatgpt_remain_sendable_with_explicit_context():
     result = _run_node(
         r"""
         const fs = require('fs');
@@ -390,11 +390,11 @@ def test_ollmo_auto_and_chatgpt_remain_sendable_with_explicit_context():
           console,
           state: {
             arena: { enabled: false, modelA: null, modelB: null },
-            responsesWorkbench: { targetInstanceId: '__responses_ghost_auto__' },
+            responsesWorkbench: { targetInstanceId: '__responses_inference_auto__' },
             runningInstances: [],
             inference: {},
           },
-          elements: { userInput: { value: 'hello from Ollmo' } },
+          elements: { userInput: { value: 'hello from Fruth' } },
           setTimeout,
           clearTimeout,
           setInterval,
@@ -412,7 +412,7 @@ def test_ollmo_auto_and_chatgpt_remain_sendable_with_explicit_context():
           getPendingInputItems = () => pendingItems;
           isResponsesWorkbenchActive = () => true;
           isResponsesWorkbenchAutoTarget = () => true;
-          getResponsesWorkbenchConversationId = () => 'ollmo-auto';
+          getResponsesWorkbenchConversationId = () => 'fruth-auto';
           hasPendingConversationPreview = () => false;
           hasPendingConversationChatRequest = () => false;
           arenaSelectionsAreChatCapable = () => false;
@@ -471,7 +471,7 @@ def test_external_codex_stream_payload_preserves_explicit_artifact_references():
         const vm = require('vm');
         const context = {
           console,
-          state: { flaskServerUrl: 'http://127.0.0.1:5001' },
+          state: { flaskServerUrl: 'http://127.0.0.1:5011' },
           elements: {},
           TextDecoder,
           Uint8Array,
@@ -486,9 +486,9 @@ def test_external_codex_stream_payload_preserves_explicit_artifact_references():
         vm.runInContext(`
           getRequestExecutionInstance = (instance) => instance;
           buildResponsesInputForHistory = () => [{ type: 'message', role: 'user' }];
-          buildGhostRoutingConversationSnapshot = () => [];
-          getResponsesGhostPreferencesPayload = () => null;
-          getResponsesGhostRequestMetaPayload = () => null;
+          buildInferenceRoutingConversationSnapshot = () => [];
+          getResponsesInferencePreferencesPayload = () => null;
+          getResponsesInferenceRequestMetaPayload = () => null;
           buildSessionControlRequestFields = () => ({});
           isExternalConversationTarget = (instance) => instance?.target_kind === 'external';
           buildSelectedReferenceArtifactPayload = () => ({
@@ -557,7 +557,7 @@ def test_external_codex_stream_error_preserves_canonical_response_truth():
         const context = {
           console,
           canonicalFailure,
-          state: { flaskServerUrl: 'http://127.0.0.1:5001' },
+          state: { flaskServerUrl: 'http://127.0.0.1:5011' },
           elements: {},
           TextDecoder,
           Uint8Array,
@@ -572,9 +572,9 @@ def test_external_codex_stream_error_preserves_canonical_response_truth():
         vm.runInContext(`
           getRequestExecutionInstance = (instance) => instance;
           buildResponsesInputForHistory = () => [{ type: 'message', role: 'user', content: 'hello' }];
-          buildGhostRoutingConversationSnapshot = () => [];
-          getResponsesGhostPreferencesPayload = () => null;
-          getResponsesGhostRequestMetaPayload = () => null;
+          buildInferenceRoutingConversationSnapshot = () => [];
+          getResponsesInferencePreferencesPayload = () => null;
+          getResponsesInferenceRequestMetaPayload = () => null;
           buildSessionControlRequestFields = () => ({});
           buildSelectedReferenceArtifactPayload = () => null;
           buildCanonicalResponseId = () => 'resp-codex-failed';
@@ -624,7 +624,7 @@ def test_external_codex_copy_discloses_independent_turns_and_observer_preserves_
 
     assert "Each turn is independent" in html
     assert "Send a prompt and any explicitly selected files to ChatGPT." in html
-    assert "exact model variant is not exposed to Ollmo" in html
+    assert "exact model variant is not exposed to Fruth" in html
     assert "processed by OpenAI" in html
     assert "each turn is independent" in models_source
     assert "const activeExternalTarget" in fetch_running_source
@@ -659,7 +659,7 @@ def test_external_codex_provenance_uses_chatgpt_label_without_inventing_model_id
           responseModel: 'codex:auto',
           responseBackend: 'codex_cli',
           responseInstanceId: 'external:codex',
-          routeSource: 'ghost_carried',
+          routeSource: 'inference_carried',
           routeRouterModel: 'codex:auto',
         };
         const legacyMessage = {
@@ -676,7 +676,7 @@ def test_external_codex_provenance_uses_chatgpt_label_without_inventing_model_id
     )
 
     assert result["provenance"] == (
-        "Answered by ChatGPT through Ollmo (via Codex) · automatic model"
+        "Answered by ChatGPT through Fruth (via Codex) · automatic model"
     )
     assert result["legacyProvenance"] == result["provenance"]
     assert "codex:auto" not in result["provenance"]
@@ -697,8 +697,8 @@ def test_landing_keeps_third_party_provider_and_skill_as_a_demoted_runtime_note(
     assert 'class="provider-note"' in about
     assert "<strong>Third-party providers.</strong>" in about
     assert "(currently ChatGPT)" in about
-    assert "Ollmo also offers an optional companion skill" in about
-    assert "execute requests through Ollmo" in about
+    assert "Fruth also offers an optional companion skill" in about
+    assert "execute requests through Fruth" in about
     assert 'class="provider-note"' not in setup
 
     skill_note_rule = _css_rule(css, ".today > .provider-note")

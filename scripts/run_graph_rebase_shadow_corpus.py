@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Plan, run, and inspect a resumable Ollmo graph-rebase shadow corpus.
+"""Plan, run, and inspect a resumable Fruth graph-rebase shadow corpus.
 
-The runner is deliberately conservative.  It talks only to Ollmo's passive
+The runner is deliberately conservative.  It talks only to Fruth's passive
 observer surfaces and canonical Responses endpoint, persists ``submitting``
 before dispatch, and never repeats an ambiguous POST.  A resumed
-``submitting`` or ``dispatch_unknown`` case is GET-only until Ollmo exposes the
+``submitting`` or ``dispatch_unknown`` case is GET-only until Fruth exposes the
 client-chosen response id.
 """
 
@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import fcntl
 import hashlib
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
@@ -39,12 +40,12 @@ from urllib.request import (
 
 
 DEFAULT_BASE_URL = (
-    os.environ.get('OLLMO_WEB_BASE')
-    or os.environ.get('OLLMO_BASE_URL')
-    or 'http://127.0.0.1:5001'
+    os.environ.get('FRUTH_WEB_BASE')
+    or os.environ.get('FRUTH_BASE_URL')
+    or 'http://127.0.0.1:5011'
 )
 DEFAULT_MANIFEST_ROOT = Path('state/graph_rebase_shadow_corpus')
-MANIFEST_KIND = 'ollmo.graph_rebase_shadow_corpus_manifest'
+MANIFEST_KIND = 'fruth.graph_rebase_shadow_corpus_manifest'
 MANIFEST_SCHEMA_VERSION = 1
 CORPUS_SCHEMA_VERSION = 1
 MAX_STATUS_OBSERVATIONS = 64
@@ -129,7 +130,7 @@ FORBIDDEN_OPPORTUNITY_CONTRACT_KEYS = {
     'fault',
     'fault_injection',
     'formal_rebase_proposal_expected',
-    'ghost_messages',
+    'inference_messages',
     'graph_rebase_authorization',
     'graph_rebase_proposal',
     'operator_action',
@@ -175,10 +176,10 @@ PROTECTED_REQUEST_KEYS = {
     'backend',
     'conversationId',
     'conversation_id',
-    'ghost_messages',
-    'ghost_messages_json',
-    'ghost_preferences',
-    'ghost_route',
+    'inference_messages',
+    'inference_messages_json',
+    'inference_preferences',
+    'inference_route',
     'input',
     'input_artifacts',
     'instance_id',
@@ -212,7 +213,7 @@ EVIDENCE_BULK_KEYS = {
     'source_proposal',
 }
 LOOPBACK_HOSTS = {'127.0.0.1', 'localhost', '::1'}
-LOCAL_CONTROL_PLANE_PORT = 5001
+LOCAL_CONTROL_PLANE_PORT = 5011
 
 
 class CorpusError(RuntimeError):
@@ -292,15 +293,23 @@ class JsonHttpClient:
                     byte_count=len(raw),
                 )
         except HTTPError as exc:
-            raw = exc.read()
+            try:
+                raw = exc.read()
+            except (HTTPException, OSError) as read_error:
+                # An HTTP status does not make a truncated body usable.
+                return HttpResult(
+                    status_code=0, payload={},
+                    error=f'{exc}; {type(read_error).__name__}: {read_error}',
+                )
             return HttpResult(
                 status_code=int(exc.code),
                 payload=decode_json_payload(raw),
                 byte_count=len(raw),
                 error=str(exc),
             )
-        except (URLError, TimeoutError, OSError) as exc:
-            return HttpResult(status_code=0, payload={}, error=str(exc))
+        except (HTTPException, URLError, TimeoutError, OSError) as exc:
+            error = f'{type(exc).__name__}: {exc}' if isinstance(exc, HTTPException) else str(exc)
+            return HttpResult(status_code=0, payload={}, error=error)
 
     def get(self, path: str, *, timeout: Optional[float] = None) -> HttpResult:
         return self.request_json('GET', path, timeout=timeout)
@@ -345,24 +354,24 @@ def validate_base_url(value: str) -> str:
     normalized = str(value or '').strip().rstrip('/')
     parsed = urlparse(normalized)
     if parsed.scheme not in {'http', 'https'} or not parsed.hostname:
-        raise CorpusError(f'Invalid Ollmo base URL: {value!r}')
+        raise CorpusError(f'Invalid Fruth base URL: {value!r}')
     if str(parsed.hostname).lower() not in LOOPBACK_HOSTS:
-        raise CorpusError('The shadow-corpus runner is restricted to the local Ollmo control plane.')
+        raise CorpusError('The shadow-corpus runner is restricted to the local Fruth control plane.')
     try:
         port = parsed.port
     except ValueError as exc:
-        raise CorpusError(f'Invalid Ollmo base URL port: {value!r}') from exc
+        raise CorpusError(f'Invalid Fruth base URL port: {value!r}') from exc
     if (
         port != LOCAL_CONTROL_PLANE_PORT
         or parsed.username is not None
         or parsed.password is not None
     ):
         raise CorpusError(
-            'The shadow-corpus runner requires the exact loopback Ollmo control '
+            'The shadow-corpus runner requires the exact loopback Fruth control '
             f'plane on port {LOCAL_CONTROL_PLANE_PORT} without userinfo.'
         )
     if parsed.path not in {'', '/'} or parsed.params or parsed.query or parsed.fragment:
-        raise CorpusError('The Ollmo base URL must not contain a path, query, or fragment.')
+        raise CorpusError('The Fruth base URL must not contain a path, query, or fragment.')
     return normalized
 
 
@@ -725,7 +734,7 @@ def deterministic_conversation_id(corpus: Mapping[str, Any], case: Mapping[str, 
             'conversation_key': case.get('conversation_key'),
         }
     )[:10]
-    return f'ollmo-corpus-{corpus_slug}-{conversation_slug}-{identity}'
+    return f'fruth-corpus-{corpus_slug}-{conversation_slug}-{identity}'
 
 
 def build_manifest(corpus: Mapping[str, Any], manifest_path: Path | str) -> dict[str, Any]:
@@ -768,7 +777,7 @@ def load_manifest(path: Path | str) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise CorpusError(f'Manifest JSON is invalid: {exc}') from exc
     if not isinstance(payload, dict) or payload.get('kind') != MANIFEST_KIND:
-        raise CorpusError(f'Not an Ollmo shadow-corpus manifest: {manifest_path}')
+        raise CorpusError(f'Not a Fruth shadow-corpus manifest: {manifest_path}')
     if payload.get('schema_version') != MANIFEST_SCHEMA_VERSION:
         raise CorpusError(
             f"Unsupported manifest schema_version {payload.get('schema_version')!r}."
@@ -1881,7 +1890,7 @@ def derive_rebase_opportunity_summary(
         eligible_for_operator_inspection = True
 
     return {
-        'kind': 'ollmo.graph_rebase_opportunity_summary',
+        'kind': 'fruth.graph_rebase_opportunity_summary',
         'disposition': disposition,
         'eligible_for_operator_inspection': eligible_for_operator_inspection,
         'false_negative_review': false_negative_review,
@@ -2373,10 +2382,10 @@ def _opportunity_predecessor_context(
     }
     context_digest = stable_digest(digest_source)
     context = {
-        'ghost_messages': [assistant_message],
+        'inference_messages': [assistant_message],
         'reference_artifacts': [message_reference, *context_artifact_handles],
         'audit': {
-            'kind': 'ollmo.graph_rebase_shadow_corpus_predecessor_context',
+            'kind': 'fruth.graph_rebase_shadow_corpus_predecessor_context',
             'source': 'immutable_final_debug_summary',
             'predecessor_case_id': predecessor.get('case_id'),
             'response_id': predecessor_id,
@@ -2401,14 +2410,14 @@ def _opportunity_predecessor_context(
 def build_request_payload(
     manifest: Mapping[str, Any],
     case: Mapping[str, Any],
-    ghost_preferences: Mapping[str, Any],
+    inference_preferences: Mapping[str, Any],
 ) -> dict[str, Any]:
     payload = dict(case.get('request_overrides') or {})
     payload.update(
         {
             'response_id': case.get('response_id'),
             'conversation_id': case.get('conversation_id'),
-            'ghost_route': True,
+            'inference_route': True,
             'prompt': case.get('prompt'),
             'workload_family': case.get('workload_family'),
             'request_meta': {
@@ -2421,11 +2430,11 @@ def build_request_payload(
             },
         }
     )
-    if ghost_preferences:
-        payload['ghost_preferences'] = dict(ghost_preferences)
+    if inference_preferences:
+        payload['inference_preferences'] = dict(inference_preferences)
     predecessor_context = _opportunity_predecessor_context(manifest, case)
     if predecessor_context:
-        payload['ghost_messages'] = predecessor_context['ghost_messages']
+        payload['inference_messages'] = predecessor_context['inference_messages']
         payload['reference_artifacts'] = predecessor_context['reference_artifacts']
         payload['request_meta']['predecessor_context'] = predecessor_context['audit']
     return payload
@@ -2466,7 +2475,7 @@ class ShadowCorpusRunner:
         self.request_transform = request_transform
         self._dispatch_results: queue.Queue[tuple[str, HttpResult]] = queue.Queue()
         self._dispatch_threads: dict[str, threading.Thread] = {}
-        self._ghost_preferences: dict[str, Any] = {}
+        self._inference_preferences: dict[str, Any] = {}
         self._runtime_ready = False
 
     def persist(self) -> None:
@@ -2493,7 +2502,7 @@ class ShadowCorpusRunner:
 
     def _preflight(self) -> bool:
         running = self.client.get('/api/running_instances', timeout=self.get_timeout)
-        preferences = self.client.get('/api/ghost_preferences', timeout=self.get_timeout)
+        preferences = self.client.get('/api/inference_preferences', timeout=self.get_timeout)
         if not running.ok or not isinstance(running.payload, list):
             self._append_run_history(
                 'runtime_preflight_failed',
@@ -2514,14 +2523,14 @@ class ShadowCorpusRunner:
             return False
         if not preferences.ok or not isinstance(preferences.payload, Mapping):
             self._append_run_history(
-                'ghost_preferences_unavailable',
+                'inference_preferences_unavailable',
                 status_code=preferences.status_code,
                 error=preferences.error or preferences.payload,
             )
             self.persist()
             return False
         preferences_value = preferences.payload.get('preferences')
-        self._ghost_preferences = (
+        self._inference_preferences = (
             dict(preferences_value) if isinstance(preferences_value, Mapping) else {}
         )
         ready_capabilities: set[str] = set()
@@ -2556,7 +2565,7 @@ class ShadowCorpusRunner:
             'checked_at': utc_now(),
             'ready_instance_count': len(ready_instances),
             'ready_capabilities': sorted(ready_capabilities),
-            'ghost_preferences_digest': stable_digest(self._ghost_preferences),
+            'inference_preferences_digest': stable_digest(self._inference_preferences),
         }
         self._runtime_ready = True
         self.persist()
@@ -2802,9 +2811,9 @@ class ShadowCorpusRunner:
         self._dispatch_results.put((case_id, result))
 
     def _start_dispatch(self, case: dict[str, Any]) -> None:
-        payload = build_request_payload(self.manifest, case, self._ghost_preferences)
+        payload = build_request_payload(self.manifest, case, self._inference_preferences)
         if self.request_transform is not None:
-            original = {key: payload.get(key) for key in ('response_id', 'conversation_id', 'ghost_route', 'prompt', 'ghost_preferences')}
+            original = {key: payload.get(key) for key in ('response_id', 'conversation_id', 'inference_route', 'prompt', 'inference_preferences')}
             payload = self.request_transform(payload, case)
             if any(payload.get(key) != value for key, value in original.items()):
                 raise CorpusError('Request transform cannot change shadow dispatch identity, intent or persisted preferences.')
@@ -2817,7 +2826,7 @@ class ShadowCorpusRunner:
         thread = threading.Thread(
             target=self._dispatch_worker,
             args=(str(case.get('case_id')), payload),
-            name=f"ollmo-shadow-{slug(case.get('case_id'), maximum=32)}",
+            name=f"fruth-shadow-{slug(case.get('case_id'), maximum=32)}",
             daemon=True,
         )
         self._dispatch_threads[str(case.get('case_id'))] = thread

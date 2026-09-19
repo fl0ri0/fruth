@@ -1,13 +1,45 @@
 # Changelog
 
-Notable public releases of Ollmo are recorded here.
+Fruth changes are recorded here. The original Ollmo release history is retained
+below.
+
+## [0.1.2] - 2026-09-19
+
+Continues Ollmo 0.1.1 under the Fruth name, with legacy-input cleanup and
+migration fixes. The existing engine and experimental `0.x` support scope are
+carried forward.
+
+- Rename the project, Python packages, CLI and project configuration to Fruth;
+  describe the former Ghost responsibility as interpretive inference.
+- Use the canonical `semantic_role_ids` list for explicit role selection; remove
+  the former public `ghost_mode` aliases. Preserve internal intent orientations,
+  role sets, precedence and advisory authority.
+- Set the web/API default to port 5011, preserving backend ports 11434–11600 and
+  the existing startup, shutdown, restart, discovery and recovery workflow.
+- Package maintained Research code and initialize missing empty stores during
+  normal startup. Keep accumulated Research data and accepted learning separate.
+- Normalize working-frame role summaries through the canonical request owner,
+  including malformed inputs, deduplication and metadata precedence.
+- Require contract-specific evidence before skipping already-completed-looking
+  branches, including reads of saved files used by later outputs.
+- Add one bounded retry for failed vision-analysis evidence when a compatible
+  alternative is available, preserving the original branch and source binding.
+- Reconcile accepted media and file outputs before final link repair and Closure;
+  prefer exact verified producer paths to avoid unintended extra artifacts.
+- Update project documentation, citation concepts, copyright attribution and the
+  architecture diagram's persistence, observation and rebase authority boundaries.
+- Replace migrated examples with five recorded Fruth reference runs, retaining
+  their response, monitor, artifact and checksum evidence.
+- Record the 18–19 September full conformance pass: 380 deterministic cases and
+  170 live cases. See the [dated report](docs/SELF_ATTACK_STATUS_2026-09-19.md)
+  for tested scope and limitations.
 
 ## [0.1.1] - 2026-09-12
 
 Stabilization and evidence hardening since the August 1, 2026 public release.
 This patch release retains the existing local-first product and experimental
-`0.x` support scope. See [release notes](docs/RELEASE_NOTES_0.1.1.md) for upgrade
-considerations, references and validation limits.
+`0.x` support scope. See [installation](README.md#install-and-start) and
+[known limitations](docs/KNOWN_LIMITATIONS.md) for current usage guidance.
 
 ### Fixed and hardened
 

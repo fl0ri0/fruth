@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_services.events import log_event, read_events
+from fruth_services.events import log_event, read_events
 
 
 class EventLogTests(unittest.TestCase):

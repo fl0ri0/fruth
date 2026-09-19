@@ -6,21 +6,21 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from ollmo_services.response_frame_ledger_maintenance import (
+from fruth_services.response_frame_ledger_maintenance import (
     audit_response_frame_ledger,
     compact_response_frame_ledger,
 )
-from ollmo_services.response_frames import (
-    _compact_request_ghost_preview,
+from fruth_services.response_frames import (
+    _compact_request_inference_preview,
     _read_snapshot_ref_payload,
     _write_snapshot_ref,
 )
 
 
-def _large_ghost_preview() -> dict[str, Any]:
+def _large_inference_preview() -> dict[str, Any]:
     return {
         'instance': {
-            'instance_id': 'ghost-preview-cas-test',
+            'instance_id': 'inference-preview-cas-test',
             'model': 'test-model',
             'backend': 'fake',
             'capability': 'chat',
@@ -31,11 +31,11 @@ def _large_ghost_preview() -> dict[str, Any]:
             'confidence': 0.91,
         },
         'request_meta': {
-            'ghost_mode': 'assistant',
+            'semantic_role_ids': ['materializer', 'quality_reviewer', 'transition_committer'],
             'capability_hint': 'chat',
         },
         # Keep every child below the recursive-sidecar split threshold while
-        # making the complete preview large enough for Ghost-preview CAS.
+        # making the complete preview large enough for interpretive inference-preview CAS.
         'legacy_routing_evidence': {
             f'evidence_{index:02d}': f'{index:02d}-' + ('evidence ' * 120)
             for index in range(20)
@@ -47,7 +47,7 @@ def _frame(
     response_id: str,
     *,
     frame_sequence: int = 1,
-    ghost_preview: dict[str, Any] | None = None,
+    inference_preview: dict[str, Any] | None = None,
     parent_frame_id: str | None = None,
 ) -> dict[str, Any]:
     frame_id = f'frame-{response_id}-{frame_sequence}'
@@ -60,7 +60,7 @@ def _frame(
     }
     frame: dict[str, Any] = {
         'frame_version': 9,
-        'kind': 'ollmo.response_frame',
+        'kind': 'fruth.response_frame',
         'response_id': response_id,
         'frame_id': frame_id,
         'frame_sequence': frame_sequence,
@@ -75,8 +75,8 @@ def _frame(
             'lifecycle_state': 'completed',
         },
     }
-    if ghost_preview is not None:
-        frame['request']['ghost_preview'] = ghost_preview
+    if inference_preview is not None:
+        frame['request']['inference_preview'] = inference_preview
     return frame
 
 
@@ -101,7 +101,7 @@ def _legacy_recursive_snapshot_frame(
     root_ref = _write_snapshot_ref(
         {
             'candidate_graph': {
-                'kind': 'ollmo.test_candidate_graph',
+                'kind': 'fruth.test_candidate_graph',
                 'payload': 'manifest-bound-child-' * 2_500,
             }
         },
@@ -121,7 +121,7 @@ def _legacy_recursive_snapshot_frame(
         }
     ]
     frame['external_snapshots'] = {
-        'kind': 'ollmo.response_frame_external_snapshots',
+        'kind': 'fruth.response_frame_external_snapshots',
         'items': {'runtime': root_ref},
         'storage': 'sidecar_json',
         'version': 1,
@@ -165,7 +165,7 @@ def _write_exact_source_index(frames_dir: Path) -> Path:
         }
         byte_offset += len(raw_line)
     payload = {
-        'kind': 'ollmo.response_frame_current_index',
+        'kind': 'fruth.response_frame_current_index',
         'version': 2,
         'ledger_path': str(ledger_path),
         'ledger_name': ledger_path.name,
@@ -209,7 +209,7 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             frames_dir = Path(tmpdir) / 'response_frames'
             _write_ledger(
                 frames_dir,
-                [_frame('resp-dry-run', ghost_preview=_large_ghost_preview())],
+                [_frame('resp-dry-run', inference_preview=_large_inference_preview())],
             )
             before = _tree_fingerprint(frames_dir)
 
@@ -223,7 +223,7 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
         self.assertEqual(audit['mode'], 'audit')
         self.assertFalse(audit['changed'])
         self.assertTrue(audit['ok'])
-        self.assertEqual(audit['eligible_ghost_preview_frame_count'], 1)
+        self.assertEqual(audit['eligible_inference_preview_frame_count'], 1)
         self.assertEqual(audit['authoritative_missing_sidecar_count'], 0)
 
         self.assertEqual(report['mode'], 'audit')
@@ -231,24 +231,24 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
         self.assertTrue(report['ok'])
         self.assertEqual(report['ledger_line_count'], 1)
         self.assertEqual(report['response_count'], 1)
-        self.assertEqual(report['eligible_ghost_preview_frame_count'], 1)
-        self.assertGreater(report['inline_ghost_preview_bytes'], 8_192)
+        self.assertEqual(report['eligible_inference_preview_frame_count'], 1)
+        self.assertGreater(report['inline_inference_preview_bytes'], 8_192)
         self.assertGreater(report['estimated_reclaimable_inline_bytes'], 0)
 
     def test_execute_uses_existing_content_sha256_cas_and_dedupes_identical_previews(self):
-        preview = _large_ghost_preview()
+        preview = _large_inference_preview()
         first_parent_id = 'frame-resp-a-1'
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir) / 'response_frames'
             ledger_path = _write_ledger(
                 frames_dir,
                 [
-                    _frame('resp-a', ghost_preview=preview),
-                    _frame('resp-b', ghost_preview=preview),
+                    _frame('resp-a', inference_preview=preview),
+                    _frame('resp-b', inference_preview=preview),
                     _frame(
                         'resp-a',
                         frame_sequence=2,
-                        ghost_preview=preview,
+                        inference_preview=preview,
                         parent_frame_id=first_parent_id,
                     ),
                 ],
@@ -268,7 +268,7 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             cas_payload = cas_files[0].read_bytes()
 
             refs = [
-                frame['request']['ghost_preview_snapshot_ref']
+                frame['request']['inference_preview_snapshot_ref']
                 for frame in migrated_frames
             ]
             hydrated_previews = [
@@ -288,16 +288,16 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
         self.assertEqual(report['mode'], 'execute')
         self.assertTrue(report['changed'])
         self.assertEqual(report['rewrite']['changed_frame_count'], 3)
-        self.assertEqual(report['preflight']['eligible_ghost_preview_frame_count'], 3)
-        self.assertEqual(report['postflight']['eligible_ghost_preview_frame_count'], 0)
+        self.assertEqual(report['preflight']['eligible_inference_preview_frame_count'], 3)
+        self.assertEqual(report['postflight']['eligible_inference_preview_frame_count'], 0)
 
         self.assertEqual(len(cas_files), 1)
         self.assertEqual(len({ref['sha256'] for ref in refs}), 1)
         self.assertEqual(len({ref['path'] for ref in refs}), 1)
         effective_manifest_by_frame_id: dict[str, dict[str, Any]] = {}
         for frame, ref, hydrated in zip(migrated_frames, refs, hydrated_previews):
-            self.assertEqual(ref['kind'], 'ollmo.response_frame_snapshot_ref')
-            self.assertEqual(ref['json_path'], 'request.ghost_preview')
+            self.assertEqual(ref['kind'], 'fruth.response_frame_snapshot_ref')
+            self.assertEqual(ref['json_path'], 'request.inference_preview')
             self.assertTrue(ref['content_addressed'])
             self.assertEqual(ref['dedupe_scope'], 'response_frame_snapshot_store')
             relation = frame.get('frame_relation') or {}
@@ -310,13 +310,13 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
                 **(frame['external_snapshots'].get('items') or {}),
             }
             effective_manifest_by_frame_id[frame['frame_id']] = effective_manifest
-            authorized_ref = effective_manifest['request.ghost_preview']
+            authorized_ref = effective_manifest['request.inference_preview']
             self.assertEqual(authorized_ref['sha256'], ref['sha256'])
             self.assertEqual(authorized_ref['path'], ref['path'])
             self.assertEqual(frame['snapshot_policy']['dedupe_strategy'], 'content_sha256')
-            self.assertEqual(frame['request']['ghost_preview'], _compact_request_ghost_preview(preview))
+            self.assertEqual(frame['request']['inference_preview'], _compact_request_inference_preview(preview))
             self.assertLess(
-                len(json.dumps(frame['request']['ghost_preview']).encode('utf-8')),
+                len(json.dumps(frame['request']['inference_preview']).encode('utf-8')),
                 8_192,
             )
             self.assertEqual(hydrated, preview)
@@ -326,7 +326,7 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(cas_payload).hexdigest(), refs[0]['sha256'])
         self.assertEqual(len(cas_payload), refs[0]['size_bytes'])
 
-        self.assertEqual(index['kind'], 'ollmo.response_frame_current_index')
+        self.assertEqual(index['kind'], 'fruth.response_frame_current_index')
         self.assertEqual(index['version'], 2)
         self.assertEqual(index['ledger_line_count'], len(raw_lines))
         self.assertEqual(index['ledger_size_bytes'], sum(map(len, raw_lines)))
@@ -357,8 +357,8 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             self.assertEqual(entry['latest_frame_id'], frame['frame_id'])
             self.assertEqual(entry['latest_frame_sequence'], frame['frame_sequence'])
             self.assertEqual(
-                entry['effective_snapshot_manifest']['request.ghost_preview']['sha256'],
-                frame['request']['ghost_preview_snapshot_ref']['sha256'],
+                entry['effective_snapshot_manifest']['request.inference_preview']['sha256'],
+                frame['request']['inference_preview_snapshot_ref']['sha256'],
             )
 
         self.assertTrue(second_report['ok'])
@@ -366,17 +366,17 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
         self.assertEqual(second_report['mode'], 'execute')
         self.assertFalse(second_report['changed'])
         self.assertEqual(
-            second_report['preflight']['eligible_ghost_preview_frame_count'],
+            second_report['preflight']['eligible_inference_preview_frame_count'],
             0,
         )
         self.assertEqual(after_second_execute, after_first_execute)
 
     def test_manifest_authorized_missing_snapshot_blocks_execute_without_mutation(self):
         response_id = 'resp-missing-authoritative-sidecar'
-        frame = _frame(response_id, ghost_preview=_large_ghost_preview())
+        frame = _frame(response_id, inference_preview=_large_inference_preview())
         missing_digest = 'f' * 64
         missing_ref = {
-            'kind': 'ollmo.response_frame_snapshot_ref',
+            'kind': 'fruth.response_frame_snapshot_ref',
             'json_path': 'runtime',
             'path': f'snapshots/content_sha256/ff/{missing_digest}.json',
             'sha256': missing_digest,
@@ -387,13 +387,13 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             'source_frame_id': frame['frame_id'],
         }
         frame['external_snapshots'] = {
-            'kind': 'ollmo.response_frame_external_snapshots',
+            'kind': 'fruth.response_frame_external_snapshots',
             'items': {'runtime': missing_ref},
             'storage': 'sidecar_json',
             'version': 1,
         }
         frame['snapshot_policy'] = {
-            'kind': 'ollmo.response_frame_snapshot_policy',
+            'kind': 'fruth.response_frame_snapshot_policy',
             'dedupe_strategy': 'content_sha256',
             'snapshot_ref_count': 1,
         }
@@ -439,7 +439,7 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             frames_dir = Path(tmpdir) / 'response_frames'
             _write_ledger(
                 frames_dir,
-                [_frame('resp-stale-index', ghost_preview=_large_ghost_preview())],
+                [_frame('resp-stale-index', inference_preview=_large_inference_preview())],
             )
             index_path = _write_exact_source_index(frames_dir)
             index = json.loads(index_path.read_text(encoding='utf-8'))
@@ -520,22 +520,22 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
 
     def test_digest_only_audit_identity_without_path_is_not_a_missing_sidecar(self):
         digest_only_ref = {
-            'kind': 'ollmo.ghost_preview_content_digest_ref',
-            'json_path': 'ghost_preview.working_frame',
+            'kind': 'fruth.inference_preview_content_digest_ref',
+            'json_path': 'inference_preview.working_frame',
             'sha256': hashlib.sha256(b'identity-only').hexdigest(),
             'size_bytes': len(b'identity-only'),
             'content_addressed': True,
             'storage': 'digest_only',
             'authority': 'audit_identity_only',
         }
-        preview = _large_ghost_preview()
+        preview = _large_inference_preview()
         preview['compaction'] = {
-            'kind': 'ollmo.ghost_preview_response_frame_projection',
+            'kind': 'fruth.inference_preview_response_frame_projection',
             'omitted_content_refs': [digest_only_ref],
         }
         preview['copied_model_data'] = {
             'snapshot_ref': {
-                'kind': 'ollmo.response_frame_snapshot_ref',
+                'kind': 'fruth.response_frame_snapshot_ref',
                 'json_path': 'model.copied_snapshot',
                 'path': 'snapshots/content_sha256/ee/' + ('e' * 64) + '.json',
                 'sha256': 'e' * 64,
@@ -551,7 +551,7 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             frames_dir = Path(tmpdir) / 'response_frames'
             _write_ledger(
                 frames_dir,
-                [_frame('resp-digest-only-audit-ref', ghost_preview=preview)],
+                [_frame('resp-digest-only-audit-ref', inference_preview=preview)],
             )
             before = _tree_fingerprint(frames_dir)
 
@@ -573,8 +573,8 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
 
     def test_malformed_digest_only_lookalike_fails_closed(self):
         digest_only_ref = {
-            'kind': 'ollmo.ghost_preview_content_digest_ref',
-            'json_path': 'ghost_preview.working_frame',
+            'kind': 'fruth.inference_preview_content_digest_ref',
+            'json_path': 'inference_preview.working_frame',
             'path': 'snapshots/content_sha256/aa/lookalike.json',
             'sha256': hashlib.sha256(b'lookalike').hexdigest(),
             'size_bytes': len(b'lookalike'),
@@ -582,9 +582,9 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             'storage': 'sidecar_json',
             'authority': 'audit_identity_only',
         }
-        preview = _large_ghost_preview()
+        preview = _large_inference_preview()
         preview['compaction'] = {
-            'kind': 'ollmo.ghost_preview_response_frame_projection',
+            'kind': 'fruth.inference_preview_response_frame_projection',
             'omitted_content_refs': [digest_only_ref],
         }
 
@@ -592,7 +592,7 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             frames_dir = Path(tmpdir) / 'response_frames'
             _write_ledger(
                 frames_dir,
-                [_frame('resp-malformed-digest-ref', ghost_preview=preview)],
+                [_frame('resp-malformed-digest-ref', inference_preview=preview)],
             )
             before = _tree_fingerprint(frames_dir)
 
@@ -627,7 +627,7 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             (frames_dir / noncanonical_path).write_bytes(source_path.read_bytes())
             ref['path'] = noncanonical_path.as_posix()
             frame['external_snapshots'] = {
-                'kind': 'ollmo.response_frame_external_snapshots',
+                'kind': 'fruth.response_frame_external_snapshots',
                 'items': {'runtime': ref},
                 'storage': 'sidecar_json',
                 'version': 1,
@@ -653,7 +653,7 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             frames_dir = root / 'response_frames'
             _write_ledger(
                 frames_dir,
-                [_frame('resp-existing-backup', ghost_preview=_large_ghost_preview())],
+                [_frame('resp-existing-backup', inference_preview=_large_inference_preview())],
             )
             _write_exact_source_index(frames_dir)
             backup_dir = root / 'already-reserved-backup'
@@ -684,7 +684,7 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             frames_dir = root / 'response_frames'
             ledger_path = _write_ledger(
                 frames_dir,
-                [_frame('resp-cas-failure', ghost_preview=_large_ghost_preview())],
+                [_frame('resp-cas-failure', inference_preview=_large_inference_preview())],
             )
             index_path = _write_exact_source_index(frames_dir)
             backup_dir = root / 'verified-backup'
@@ -692,7 +692,7 @@ class ResponseFrameLedgerMaintenanceTests(unittest.TestCase):
             source_index = index_path.read_bytes()
 
             with mock.patch(
-                'ollmo_services.response_frame_ledger_maintenance._atomic_install',
+                'fruth_services.response_frame_ledger_maintenance._atomic_install',
                 side_effect=RuntimeError('injected_atomic_install_failure'),
             ):
                 report = compact_response_frame_ledger(

@@ -13,11 +13,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ollmo_services.graph_rebase_readiness_registry import (
+from fruth_services.graph_rebase_readiness_registry import (
     DEFAULT_GRAPH_REBASE_READINESS_REGISTRY_PATH,
     sync_graph_rebase_readiness_epoch,
 )
-from ollmo_services.response_frames import (
+from fruth_services.response_frames import (
     DEFAULT_RESPONSE_FRAME_INDEX,
     DEFAULT_RESPONSE_FRAME_LEDGER,
     DEFAULT_RESPONSE_FRAMES_DIR,

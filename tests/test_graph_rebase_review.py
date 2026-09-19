@@ -2,10 +2,10 @@ import copy
 import unittest
 from unittest.mock import patch
 
-from ollmo_g.request_phase_graph import build_request_phase_graph
-from ollmo_g.request_ir import build_request_ir
-from ollmo_server.responses_request_runtime import ResponsesRequestRuntimeOwner
-from ollmo_services.graph_rebase import (
+from fruth_inference.request_phase_graph import build_request_phase_graph
+from fruth_inference.request_ir import build_request_ir
+from fruth_server.responses_request_runtime import ResponsesRequestRuntimeOwner
+from fruth_services.graph_rebase import (
     GRAPH_REBASE_LIFECYCLE_KIND,
     GRAPH_REBASE_PROPOSAL_KIND,
     build_graph_rebase_execution_contract_proof,
@@ -35,7 +35,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
         self.assertFalse(product_default['configured'])
 
         explicit_off = describe_graph_rebase_autonomy_from_env(
-            {'OLLMO_GRAPH_REBASE_AUTONOMY': 'off'}
+            {'FRUTH_GRAPH_REBASE_AUTONOMY': 'off'}
         )
         self.assertEqual(explicit_off['autonomy_level'], 'off')
         self.assertEqual(explicit_off['source'], 'environment')
@@ -43,7 +43,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
         self.assertFalse(explicit_off['invalid_value'])
 
         invalid = describe_graph_rebase_autonomy_from_env(
-            {'OLLMO_GRAPH_REBASE_AUTONOMY': 'full_auto_redraw_now'}
+            {'FRUTH_GRAPH_REBASE_AUTONOMY': 'full_auto_redraw_now'}
         )
         self.assertEqual(invalid['autonomy_level'], 'off')
         self.assertEqual(invalid['source'], 'environment')
@@ -64,7 +64,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
     def _base_graph(self):
         return {
             'graph_version': 3,
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'response_id': 'resp-base',
             'frame_id': 'frame-base',
             'lifecycle_state': 'completed',
@@ -327,7 +327,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
 
     def _authorization(self, proposal_id='*', candidate_graph_digest='*'):
         return {
-            'kind': 'ollmo.graph_rebase_authorization',
+            'kind': 'fruth.graph_rebase_authorization',
             'status': 'accepted',
             'authority': 'operator_review',
             'source': 'runtime_operator_registry',
@@ -346,7 +346,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
             'Return a concise branch-local verdict only.'
         )
         local_contract = {
-            'kind': 'ollmo.execution_contract',
+            'kind': 'fruth.execution_contract',
             'execution_scope': 'branch_local',
             'root_scoped': False,
             'allow_root_prompt': False,
@@ -419,7 +419,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
         prompt = 'Create an HTML page with one generated image.'
         return build_request_phase_graph(
             prompt,
-            request_payload={'prompt': prompt, 'ghost_route': True},
+            request_payload={'prompt': prompt, 'inference_route': True},
             route_payload={'capability': 'chat'},
             response_payload={'output_text': 'Prepared the page copy.'},
         )
@@ -428,7 +428,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
         diff = build_graph_rebase_diff(self._base_graph(), self._candidate_graph())
         operation_types = {item['op'] for item in diff['operations']}
 
-        self.assertEqual(diff['kind'], 'ollmo.graph_rebase_diff')
+        self.assertEqual(diff['kind'], 'fruth.graph_rebase_diff')
         self.assertIn('preserve_phase', operation_types)
         self.assertIn('add_phase', operation_types)
         self.assertIn('add_dependency', operation_types)
@@ -440,7 +440,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
         prompt = 'Create an HTML page with one generated image.'
         base = build_request_phase_graph(
             prompt,
-            request_payload={'prompt': prompt, 'ghost_route': True},
+            request_payload={'prompt': prompt, 'inference_route': True},
             route_payload={'capability': 'chat'},
             response_payload={'output_text': 'Prepared the page copy.'},
         )
@@ -1101,7 +1101,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
         proposal = self._proposal()
         proposal['candidate_graph']['successor_rebase_requests'] = [
             {
-                'kind': 'ollmo.graph_rebase_successor_request',
+                'kind': 'fruth.graph_rebase_successor_request',
                 'runtime_effect': 'successor_rebase_created',
             }
         ]
@@ -1707,7 +1707,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
         )
         current_graph = self._base_graph()
         current_graph['redraw_scope_ladder_review'] = {
-            'kind': 'ollmo.redraw_scope_ladder_review',
+            'kind': 'fruth.redraw_scope_ladder_review',
             'status': 'selected',
             'selected_scope': 'add_missing_branch',
             'scopes_considered': [
@@ -1798,7 +1798,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
         self.assertEqual(len(result['graph']['phases']), len(self._base_graph()['phases']))
         self.assertEqual(len(result['graph']['successor_rebase_requests']), 1)
         successor = result['graph']['successor_rebase_requests'][0]
-        self.assertEqual(successor['kind'], 'ollmo.graph_rebase_successor_request')
+        self.assertEqual(successor['kind'], 'fruth.graph_rebase_successor_request')
         self.assertEqual(successor['lineage']['relation'], 'graph_rebase_successor')
         self.assertEqual(successor['requested_rebase_class'], 'partial_subtree_rebase')
         self.assertEqual(
@@ -2065,7 +2065,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
         graph = self._base_graph()
         graph['graph_rebase_proposals'] = [self._proposal()]
         graph['redraw_scope_ladder_review'] = {
-            'kind': 'ollmo.redraw_scope_ladder_review',
+            'kind': 'fruth.redraw_scope_ladder_review',
             'status': 'selected',
             'selected_scope': 'add_missing_branch',
             'scopes_considered': [
@@ -2133,7 +2133,7 @@ class GraphRebaseReviewTests(unittest.TestCase):
         active_payload['runtime'].setdefault('developer_diagnostics', {})[
             'runtime_graph_rebase_candidate_review'
         ] = {
-            'kind': 'ollmo.runtime_graph_rebase_candidate_review',
+            'kind': 'fruth.runtime_graph_rebase_candidate_review',
             'status': 'validated_by_runtime_review',
             'proposal_id': 'stale-proposal-diagnostic',
         }

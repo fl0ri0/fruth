@@ -12,7 +12,7 @@ MLX_START_PORT=${MLX_START_PORT:-11501}
 MLX_PORT_MAX=${MLX_PORT_MAX:-11550}
 LLAMA_CPP_START_PORT=${LLAMA_CPP_START_PORT:-11551}
 LLAMA_CPP_PORT_MAX=${LLAMA_CPP_PORT_MAX:-11600}
-WEBSERVER_SCRIPT="ollmo_webserver.py" # Webserver script name.
+WEBSERVER_SCRIPT="fruth_webserver.py" # Webserver script name.
 
 quiet_lsof() {
     lsof -w "$@"
@@ -298,8 +298,8 @@ echo -e "\n🧹 Finalizing runtime registry, status, and log hygiene..."
 run_repo_python - <<'PY'
 from pathlib import Path
 
-from ollmo_core.status import DEFAULT_RUNTIME_STATUS_PATH
-from ollmo_runtime.runtime_hygiene import finalize_runtime_shutdown
+from fruth_core.status import DEFAULT_RUNTIME_STATUS_PATH
+from fruth_runtime.runtime_hygiene import finalize_runtime_shutdown
 
 summary = finalize_runtime_shutdown(
     registry_path=Path("model_ports.json"),
@@ -316,6 +316,6 @@ print(
 PY
 
 echo -e "\n--- Stop script finished ---"
-echo "ℹ️  External provider projections were left untouched. Run './ollmo sync' or the cleanup/unsync scripts manually if needed."
+echo "ℹ️  External provider projections were left untouched. Run './fruth sync' or the cleanup/unsync scripts manually if needed."
 
 exit 0

@@ -1,0 +1,177 @@
+{
+  "artifacts": [
+    {
+      "artifact_ref": "artifact:image_41c0555d1c1cbaa1478b4011",
+      "branch_id": "branch-image_generation-1",
+      "height": 720,
+      "mime_type": "image/png",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/images/image-01.png",
+      "sha256": "1c2546bfa704849a8f780ebd96822e0fee640d60c26d6bfcb378c567737b856d",
+      "size_bytes": 1529588,
+      "type": "image",
+      "width": 1280
+    },
+    {
+      "artifact_ref": "artifact:image_5bf7b7f8eb95fdd6a07528d6",
+      "branch_id": "branch-image_generation-2",
+      "height": 720,
+      "mime_type": "image/png",
+      "phase_id": "phase-3",
+      "published_path": "artifacts/images/image-02.png",
+      "sha256": "92beb107d6b4afa47aa5ed1571ac3236a0d6cd53278651138a8a9d370274d826",
+      "size_bytes": 1367968,
+      "type": "image",
+      "width": 1280
+    },
+    {
+      "artifact_ref": "artifact:image_b46c2f1a0046f2d55f29ed1c",
+      "branch_id": "branch-image_generation-3",
+      "height": 1024,
+      "mime_type": "image/png",
+      "phase_id": "phase-4",
+      "published_path": "artifacts/images/image-03.png",
+      "sha256": "d35e7be7b7b6288d9346980b98aa50d9c76da3b2f219ee811e63e2be14e15f86",
+      "size_bytes": 1657592,
+      "type": "image",
+      "width": 1024
+    }
+  ],
+  "bundle": null,
+  "integrity": {
+    "frame_identity_verified": true,
+    "index_only_wire_lookup": true,
+    "ledger_fallback_used": false,
+    "observation_snapshot_digests_verified": true,
+    "source_frame_record_sha256": "6986911266148bb97bc725ebc19edc965bc2d5484682c8ff01b7941b38a8bd6f",
+    "source_frame_record_size_bytes": 812789,
+    "verified_response_map": true
+  },
+  "outputs": [
+    {
+      "branch_id": "phase-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-1",
+      "slot_id": "output-phase-1",
+      "status": "fulfilled",
+      "text": "**Image 1 Prompt:**\nA wide-angle fisheye-lens selfie of a ring-tailed lemur in a lush, tropical rainforest. The lemur's large, curious eyes and nose are comedically close to the camera lens, creating extreme distortion and a \"nose-on\" perspective. Vibrant green foliage and bright sunbeams filtering through the canopy, high-detail wildlife photography.\n\n**Image 2 Prompt:**\nA cinematic selfie of a chubby penguin wearing oversized, mirrored aviator sunglasses, looking smug. The setting is an indoor ice skating rink with soft-focus background lights and reflective ice surfaces. High-quality photography with dramatic, cool-toned lighting.\n\n**Image 3 Prompt:**\nA blurry, action-oriented selfie of a capybara in a steaming Japanese hot spring (onsen) surrounded by floating yuzu citrus fruits. Water droplets are splashing directly onto the camera lens, creating a sense of motion and accidental movement. Soft, warm, misty atmosphere, naturalistic documentary photography style.",
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:image_41c0555d1c1cbaa1478b4011",
+      "branch_id": "branch-image_generation-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/images/image-01.png",
+      "slot_id": "output-phase-2",
+      "status": "fulfilled",
+      "type": "image"
+    },
+    {
+      "artifact_ref": "artifact:image_5bf7b7f8eb95fdd6a07528d6",
+      "branch_id": "branch-image_generation-2",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-3",
+      "published_path": "artifacts/images/image-02.png",
+      "slot_id": "output-phase-3",
+      "status": "fulfilled",
+      "type": "image"
+    },
+    {
+      "artifact_ref": "artifact:image_b46c2f1a0046f2d55f29ed1c",
+      "branch_id": "branch-image_generation-3",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-4",
+      "published_path": "artifacts/images/image-03.png",
+      "slot_id": "output-phase-4",
+      "status": "fulfilled",
+      "type": "image"
+    },
+    {
+      "branch_id": "branch-chat-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-8",
+      "slot_id": "output-phase-8",
+      "status": "fulfilled",
+      "text": "## Visual Inspection — Per-Image Report\n\n**Image 1:** Small nocturnal primate filling the frame, looking directly at the camera—large round amber/orange eyes ringed by bold black markings, white face and muzzle, grayish-brown fur, rounded ears, dark nose/mouth area. Framing is a low-angle close-up with a circular fisheye/wide-angle vignette; strong barrel distortion curves the background foliage inward. Background: dense green forest undergrowth (broad leaves, grasses, tree trunks) with bright sunburst flare bursting through the canopy in the upper-left. No readable text; no obvious defects beyond intentional lens distortion/vignetting.\n\n**Image 2:** Penguin with black-and-white plumage wearing large reflective mirrored sunglasses, positioned eye-level and prominently centered on an indoor ice rink. Background: blurred ice-rink environment with bright out-of-focus lights (bokeh). No readable text; no obvious visual defects detected.\n\n**Image 3:** Capybara in a steaming outdoor hot spring—low-angle close-up with face centered and sharply focused, large dark nose and wet fur prominent. Water droplets scattered across the frame as frozen splashes and motion-blurred streaks. Bottom-left foreground: human hand holding an orange citrus fruit toward the capybara's paw. Several yellow/green citrus fruits floating in the surrounding dark water. Background: large rocks obscured by heavy mist/steam. No readable text; no obvious visual defects detected.",
+      "type": "text"
+    }
+  ],
+  "provenance": {
+    "original_runtime_truth_remains_authoritative": true,
+    "raw_frame_published": false,
+    "runtime_effect": "none",
+    "source": "indexed final response frame and canonical artifact bytes"
+  },
+  "request": {
+    "prompt_path": "prompt.txt",
+    "prompt_sha256": "712b83cc91c0fc50c427f86887ed3306d3b8c86c2967427b3f6bffa915a43ff1",
+    "runtime_request_sha256": "3b12226f8faaeeb0f789ccf66819fee1ac812e4c77cfff6c72261feae77e696b",
+    "verified": true
+  },
+  "response": {
+    "frame_id": "resp_1789747143885_0bfdac3579e688:frame-2",
+    "frame_sequence": 2,
+    "frame_version": 9,
+    "id": "resp_1789747143885_0bfdac3579e688",
+    "lifecycle_state": "completed",
+    "status": "completed",
+    "status_semantics": {
+      "has_actionable_repair": false,
+      "has_open_continuation": false,
+      "is_terminal": true,
+      "terminal": true
+    }
+  },
+  "runtime_truth": {
+    "closure": {
+      "continuation_required": false,
+      "counts": {
+        "blocked": 0,
+        "deferred": 0,
+        "fulfilled": 8,
+        "pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "obligation_count": 8,
+      "pending_branch_count": 0,
+      "status": "fulfilled"
+    },
+    "late_fill": {
+      "counts": {
+        "cancelled": 0,
+        "completed": 7,
+        "failed": 0,
+        "pending": 0
+      },
+      "final_materialization_contract_status": "fulfilled",
+      "status": "completed"
+    },
+    "surface": {
+      "active_categories": [
+        "completed",
+        "reconsiderable",
+        "controlled_attention_advisory",
+        "aspiration_advisory",
+        "commitment_advisory"
+      ],
+      "category_counts": {
+        "aspiration_advisory": 16,
+        "blocked": 0,
+        "commitment_advisory": 32,
+        "completed": 8,
+        "controlled_attention_advisory": 180,
+        "open": 0,
+        "reconsiderable": 8,
+        "repair_pending": 0,
+        "semantic_review_pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "status": "fulfilled"
+    }
+  },
+  "schema": "fruth.public_reference_run.v1",
+  "version": 1
+}

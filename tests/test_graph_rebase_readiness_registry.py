@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
-from ollmo_services.graph_rebase_readiness_registry import (
+from fruth_services.graph_rebase_readiness_registry import (
     GraphRebaseReadinessRegistryError,
     append_graph_rebase_readiness_observation,
     append_graph_rebase_readiness_registry_records,
@@ -17,14 +17,14 @@ from ollmo_services.graph_rebase_readiness_registry import (
     load_graph_rebase_readiness_registry,
     sync_graph_rebase_readiness_epoch,
 )
-from ollmo_services.response_frames import (
+from fruth_services.response_frames import (
     load_latest_response_observation_state,
     load_latest_response_state,
     load_response_frame_index,
     persist_response_frame,
     verify_response_frame_epoch,
 )
-from ollmo_services.graph_rebase_rollout import (
+from fruth_services.graph_rebase_rollout import (
     project_graph_rebase_readiness_observation,
 )
 
@@ -42,7 +42,7 @@ class GraphRebaseReadinessRegistryTests(unittest.TestCase):
         lifecycle_state: str = 'completed',
     ) -> dict:
         frame = {
-            'kind': 'ollmo.response_frame',
+            'kind': 'fruth.response_frame',
             'frame_version': 9,
             'response_id': response_id,
             'status': 'completed',
@@ -231,10 +231,10 @@ class GraphRebaseReadinessRegistryTests(unittest.TestCase):
             oversized = 'raw-proposal-payload-' * 1500
             frame = self._frame(response_id)
             frame['runtime']['request_phase_graph'] = {
-                'kind': 'ollmo.request_phase_graph',
+                'kind': 'fruth.request_phase_graph',
                 'graph_rebase_proposals': [
                     {
-                        'kind': 'ollmo.graph_rebase_proposal',
+                        'kind': 'fruth.graph_rebase_proposal',
                         'proposal_id': 'proposal-raw-canonicalized',
                         'payload': oversized,
                     }

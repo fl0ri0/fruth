@@ -11,9 +11,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from ollmo_server.late_fill_runtime import LateFillRuntimeOwner
-from ollmo_server import tts_semantic_regeneration as policy
-from ollmo_services.tts_audio_integrity import build_tts_semantic_source, build_tts_audio_integrity_evidence
+from fruth_server.late_fill_runtime import LateFillRuntimeOwner
+from fruth_server import tts_semantic_regeneration as policy
+from fruth_services.tts_audio_integrity import build_tts_semantic_source, build_tts_audio_integrity_evidence
 
 TEXT = 'The lighthouse is quiet.'
 BAD = 'The night house is quiet.'
@@ -205,8 +205,8 @@ def test_request_snapshot_never_recovers_a_provider_rng(env):
 
 
 def test_real_frame_roundtrip_keeps_budget_attempts_and_accepted_output(env,tmp_path):
-    from ollmo_services.response_frames import build_response_frame, persist_response_frame, load_latest_response_state
-    from ollmo_services.responses import build_canonical_response_artifacts
+    from fruth_services.response_frames import build_response_frame, persist_response_frame, load_latest_response_state
+    from fruth_services.responses import build_canonical_response_artifacts
     out=policy.run(env.owner,**env.args)
     frame=build_response_frame(out['payload'],request_payload={'prompt':TEXT})
     frames=tmp_path/'frames'
@@ -243,7 +243,7 @@ def test_concurrent_duplicate_review_only_one_backend_attempt(env):
 def test_late_fill_integration_reenters_existing_semantic_gate(env,monkeypatch,repair_pass):
     # Reuse the Responses test isolation setup; no production inference/registry.
     from test_responses_api import ResponsesApiTests
-    import ollmo_webserver as web
+    import fruth_webserver as web
     harness=ResponsesApiTests(methodName='runTest');harness.setUp()
     try:
         payload=copy.deepcopy(env.payload)
@@ -344,7 +344,7 @@ def test_two_tts_branches_have_independent_one_attempt_budgets(env,tmp_path):
 
 
 def test_registry_records_accept_repair_without_rewriting_original(env,tmp_path):
-    from ollmo_services.artifact_registry import persist_output_artifact_registry_records
+    from fruth_services.artifact_registry import persist_output_artifact_registry_records
     ledger=tmp_path/'registry.jsonl'
     persist_output_artifact_registry_records(env.payload,ledger_path=ledger)
     old_lines=ledger.read_bytes()

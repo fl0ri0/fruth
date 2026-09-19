@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 from tests.fake_backends import FakeBackendHarness
 from tests.fake_backends.harness import FakeTranscriptionError
-from ollmo_g.semantic_role_profile import build_semantic_role_profile
-from ollmo_g.request_meta import extract_request_meta
+from fruth_inference.semantic_role_profile import build_semantic_role_profile
+from fruth_inference.request_meta import extract_request_meta
 from scripts.run_graph_rebase_shadow_corpus import HttpResult
 from scripts.run_graph_rebase_shadow_corpus import atomic_write_json, utc_now
 
@@ -24,7 +24,7 @@ class SelfAttackBackend(FakeBackendHarness):
 
     def __enter__(self):
         super().__enter__()
-        import ollmo_webserver as server
+        import fruth_webserver as server
         self._stack.enter_context(patch.object(server, '_resolve_late_fill_route', self.resolve_late_fill))
         self._stack.enter_context(patch.object(server, '_schedule_response_late_fill', self.schedule))
         self._stack.enter_context(patch.object(server._LATE_FILL_RUNTIME, 'schedule_response_late_fill', self.schedule))
@@ -87,8 +87,8 @@ class SelfAttackBackend(FakeBackendHarness):
                 offset += 8 + size + size % 2
         raise FakeTranscriptionError('Fake STT has no decodable source in this exact input artifact.')
 
-    def _resolve_ghost_auto_route(self, data, *args, **kwargs):
-        route, error = super()._resolve_ghost_auto_route(data, *args, **kwargs)
+    def _resolve_inference_auto_route(self, data, *args, **kwargs):
+        route, error = super()._resolve_inference_auto_route(data, *args, **kwargs)
         route['route_runtime']['semantic_role_profile'] = build_semantic_role_profile(
             {'prompt': data.get('prompt', ''), 'runtime': route['route_runtime']},
             request_meta=extract_request_meta(data))
@@ -105,7 +105,7 @@ class SelfAttackBackend(FakeBackendHarness):
         return True
 
     def post(self, path, payload, *, timeout):
-        import ollmo_webserver as server
+        import fruth_webserver as server
         if path != '/api/responses':
             raise ValueError('Self-attack may only execute canonical Responses.')
         self.source_output = payload.get('content_payload')

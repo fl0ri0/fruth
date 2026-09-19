@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import patch
 
-from ollmo_core.lifecycle import StartModelRequestError
-from ollmo_webserver import app
+from fruth_core.lifecycle import StartModelRequestError
+from fruth_webserver import app
 
 
 class StartModelApiTests(unittest.TestCase):
@@ -10,7 +10,7 @@ class StartModelApiTests(unittest.TestCase):
         app.config["TESTING"] = True
         self.client = app.test_client()
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_start_chat_model(self, mock_start_instance):
         mock_start_instance.return_value = {
             "instance_id": "qwen3-coder:latest-1",
@@ -47,9 +47,9 @@ class StartModelApiTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_webserver.start_instance")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.start_instance")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_start_chat_model_reuses_existing_usable_instance(
         self,
         mock_load_running_instances,
@@ -95,9 +95,9 @@ class StartModelApiTests(unittest.TestCase):
         self.assertEqual(payload["start_audit"]["status"], "reused")
         mock_start_instance.assert_not_called()
 
-    @patch("ollmo_webserver.start_instance")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.start_instance")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_frontend_button_force_start_bypasses_existing_instance_reuse(
         self,
         mock_load_running_instances,
@@ -158,7 +158,7 @@ class StartModelApiTests(unittest.TestCase):
             start_source="frontend_button",
         )
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_start_model_rejects_route_selection_start_source(self, mock_start_instance):
         response = self.client.post(
             "/api/start_model",
@@ -166,18 +166,18 @@ class StartModelApiTests(unittest.TestCase):
                 "model": "qwen3-coder:latest",
                 "backend": "ollama",
                 "capability": "chat",
-                "start_source": "ghost_route",
+                "start_source": "inference_route",
                 "force_start": True,
             },
         )
 
         self.assertEqual(response.status_code, 400)
         payload = response.get_json()
-        self.assertEqual(payload["policy_violation"]["start_source"], "ghost_route")
+        self.assertEqual(payload["policy_violation"]["start_source"], "inference_route")
         self.assertEqual(payload["policy_violation"]["reason"], "forbidden_route_source")
         mock_start_instance.assert_not_called()
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_start_image_generation_model(self, mock_start_instance):
         mock_start_instance.return_value = {
             "instance_id": "x_flux2-klein-1",
@@ -213,7 +213,7 @@ class StartModelApiTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_start_image_generation_model_without_tag_or_namespace(self, mock_start_instance):
         mock_start_instance.return_value = {
             "instance_id": "x_flux2-klein_latest-1",
@@ -248,7 +248,7 @@ class StartModelApiTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_start_speech_model(self, mock_start_instance):
         mock_start_instance.return_value = {
             "instance_id": "openai__whisper-large-v3-mlx-11501",
@@ -284,7 +284,7 @@ class StartModelApiTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_start_mlx_vlm_model(self, mock_start_instance):
         mock_start_instance.return_value = {
             "instance_id": "mlx-community__Qwen2.5-VL-3B-Instruct-4bit-mlx-11520",
@@ -320,7 +320,7 @@ class StartModelApiTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_start_text_to_speech_model(self, mock_start_instance):
         mock_start_instance.return_value = {
             "instance_id": "mlx-community__Qwen3-TTS-12Hz-0.6B-Base-bf16-mlx-11504",
@@ -357,7 +357,7 @@ class StartModelApiTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_start_llama_cpp_model(self, mock_start_instance):
         mock_start_instance.return_value = {
             "instance_id": "gemma-3-1b-it-q4-llama_cpp-11551",
@@ -393,7 +393,7 @@ class StartModelApiTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_start_llama_cpp_model_with_hf_file(self, mock_start_instance):
         mock_start_instance.return_value = {
             "instance_id": "gemma-4-26b-a4b-llama_cpp-11551",
@@ -427,7 +427,7 @@ class StartModelApiTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_start_mlx_vlm_model_with_launch_defaults(self, mock_start_instance):
         mock_start_instance.return_value = {
             "instance_id": "mlx-community__Qwen2.5-VL-3B-Instruct-4bit-mlx-11520",
@@ -469,7 +469,7 @@ class StartModelApiTests(unittest.TestCase):
             start_source="api_start_model",
         )
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_start_speech_model_runtime_error_returns_400(self, mock_start_instance):
         mock_start_instance.side_effect = StartModelRequestError(
             "No safetensors found in model path",
@@ -490,7 +490,7 @@ class StartModelApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertIn("No safetensors", payload["error"])
 
-    @patch("ollmo_webserver.start_instance")
+    @patch("fruth_webserver.start_instance")
     def test_wrong_ollama_model_name_returns_400(self, mock_start_instance):
         mock_start_instance.side_effect = StartModelRequestError(
             "Model 'totally-unknown-model' is not available in 'ollama list'.",

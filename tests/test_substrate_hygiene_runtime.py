@@ -1,6 +1,6 @@
 import unittest
 
-from ollmo_server.substrate_hygiene_runtime import (
+from fruth_server.substrate_hygiene_runtime import (
     PostResponseSubstrateHygieneRuntimeOwner,
     collect_response_substrate_instance_ids,
 )

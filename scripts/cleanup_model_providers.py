@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ollmo_integrations.codex.provider_cleanup import cleanup_providers
+from fruth_integrations.codex.provider_cleanup import cleanup_providers
 
 
 def main() -> None:

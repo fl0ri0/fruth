@@ -14,12 +14,12 @@ import time
 from scripts.run_graph_rebase_shadow_corpus import atomic_write_json, stable_digest, utc_now, CorpusError
 from scripts.self_attack_checks import records
 
-SCHEMA = 'ollmo.self_attack.convergence.v1'
+SCHEMA = 'fruth.self_attack.convergence.v1'
 CLASSES = ('necessary_repeat', 'defensive_repeat', 'redundant_repeat', 'false_wait',
            'necessary_wait', 'avoidable_serialization', 'missed_wakeup', 'over_trigger', 'unknown')
 # These are projection owners, never presumed model invocations.
 SURFACES = {
-    'ghost_resolution': 'Ghost', 'semantic_role_profile': 'lens_selection',
+    'inference_resolution': 'interpretive inference', 'semantic_role_profile': 'lens_selection',
     'execution_planner': 'resolver_planning',
     'candidate_graph': 'possibility', 'promotion_review': 'promotion',
     'controlled_attention_review': 'attention', 'semantic_review_lens_review': 'lenses',
@@ -38,7 +38,7 @@ SURFACES = {
     'request_phase_graph_refinements': 'graph_refinement', 'embedding_audit': 'evidence',
 }
 INSTRUMENTATION = [
-    {'owner': 'Ghost / semantic review / decision-contract builders',
+    {'owner': 'interpretive inference / semantic review / decision-contract builders',
      'add': 'One invocation id and parent/trigger event id per actual call, owner+target+frame/graph version, trigger reason and changed relevant keys, owner-defined effective-input digest, evidence-set digest and authority/contract digest. Do not use output or whole-snapshot hashes as input hashes.'},
     {'owner': 'Lens / attention / aspiration / doubt / commitment / promotion',
      'add': 'Attach selected lens, attention target, semantic-depth and structural-scope identities to that same invocation; distinguish projection rebuild from model execution. Record required defensive-contract id when revalidation is compulsory.'},
@@ -127,7 +127,7 @@ def analyze_causal_records(items):
     """Exact-ID joins only. Negative claims need complete owner/interval proof."""
     unique, conflicts = {}, set()
     for item in items:
-        if not isinstance(item, dict) or item.get('schema') != 'ollmo.causal_event.v1' or not isinstance(item.get('event_id'), str):
+        if not isinstance(item, dict) or item.get('schema') != 'fruth.causal_event.v1' or not isinstance(item.get('event_id'), str):
             continue
         event_id = item['event_id']
         if event_id in unique and stable_digest(unique[event_id]) != stable_digest(item):
@@ -612,7 +612,7 @@ def rank_opportunities(summaries):
                 component={'post_execution_batch_tail':'multi_materialization_runtime callback drain',
                            'observer_debug_capture':'self-attack CaptureClient / shadow runner',
                            'branch_execution':'multi_materialization_runtime branch executor',
-                           'serial_preparation':'multi_materialization_runtime preparation'}.get(code, 'Ghost → Late Fill → closure → observer'),
+                           'serial_preparation':'multi_materialization_runtime preparation'}.get(code, 'interpretive inference → Late Fill → closure → observer'),
                 classification='unknown', finding_type='instrumentation_opportunity',
                 measured_exposure_seconds=seconds, estimated_recoverable_wall_seconds=None,
                 timing_confidence=confidence, optimization_confidence='unknown', detail=detail,
@@ -664,7 +664,7 @@ def render_report(result):
         lines.append(f"| {name} | {counts['classification_counts'].get(name, 0)} |")
     lines += ['', 'Unknown here counts invocation witnesses; unknown state projections and wait records are separate populations, not additional execution. A first required materialization has no repeat classification. Zero proven findings is not evidence of zero waste.', '',
               '## Causal boundaries and interaction coverage', '',
-              '- Ghost order: request/case dependency order and retained route result are visible. Internal Ghost invocation order and per-call trigger deltas are not generally retained.',
+              '- interpretive inference order: request/case dependency order and retained route result are visible. Internal interpretive inference invocation order and per-call trigger deltas are not generally retained.',
               '- Lenses ↔ attention ↔ aspiration/doubt/commitment: selected/read-model state and changes are indexed; a frame or policy entry is not proof of a model pass. No pass count is inferred from projection multiplicity.',
               '- Possibility ↔ promotion ↔ graph/branches/phases: capture state and declared dependencies are preserved with pointers and hashes. Those are projected state identities, not effective invocation input identities.',
               '- Repair/rebase ↔ Late Fill ↔ evidence ↔ closure: lifecycle, refinement and closure surfaces are indexed where present. Branch histories retain timing/order and graph captures retain dependency edges. Rebase shadow evidence does not imply executable rebase.',
@@ -740,7 +740,7 @@ def run_audit(root, output, *, repo=None):
                      omitted_by_extension=omitted)
     identity = stable_digest(inventory)
     source_files = [Path(__file__).with_name(name) for name in (
-        'self_attack_convergence.py', 'ollmo_self_attack.py', 'self_attack_checks.py',
+        'self_attack_convergence.py', 'fruth_self_attack.py', 'self_attack_checks.py',
         'run_graph_rebase_shadow_corpus.py')]
     source_hash = stable_digest({p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in source_files})
     run_path = output / 'run.json'

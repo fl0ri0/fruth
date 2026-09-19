@@ -1,4 +1,4 @@
-"""Deterministic negative-evidence oracle over canonical Ollmo response truth.
+"""Deterministic negative-evidence oracle over canonical Fruth response truth.
 
 This does not decide runtime fulfillment. It detects contradictory runtime
 records and reports absent evidence, rather than accepting assistant claims.
@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 
 from scripts.run_graph_rebase_shadow_corpus import stable_digest
-from ollmo_services.graph_rebase import _semantic_record_payload
+from fruth_services.graph_rebase import _semantic_record_payload
 
 OPEN = {'pending', 'blocked', 'failed', 'repair_needed', 'repair_required', 'unmet',
         'semantic_review_pending', 'running', 'queued', 'in_progress'}
@@ -152,11 +152,11 @@ def audit_truth(payload: dict, *, artifact_evidence=None) -> dict:
             if record.get('status') in SUCCESS and isinstance(verdict, dict) and verdict.get('status') in {'failed', 'uncertain', 'unparseable'}:
                 fail('failed_review_claimed_passed', path, 'Failed semantic verdict was projected as fulfilled.')
     for path, record in walk(runtime):
-        if record.get('kind') in {'ollmo.commitment_review', 'ollmo.aspiration_review', 'ollmo.controlled_attention_review'}:
+        if record.get('kind') in {'fruth.commitment_review', 'fruth.aspiration_review', 'fruth.controlled_attention_review'}:
             exercised.append('advisory_authority')
             if record.get('authority') and record['authority'] != 'advisory_read_model_only':
                 fail('advisory_runtime_authority', path, 'Advisory movement claims promotion/closure authority.')
-        if record.get('kind') == 'ollmo.semantic_role_profile':
+        if record.get('kind') == 'fruth.semantic_role_profile':
             exercised.append('advisory_authority')
             effect = (record.get('runtime_orientation') or {}).get('runtime_effect') or (record.get('authority_boundary') or {}).get('runtime_effect')
             if effect and effect != 'none':

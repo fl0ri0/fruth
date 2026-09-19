@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_services.scoped_file_tools import (
+from fruth_services.scoped_file_tools import (
     copy_scoped_file,
     read_scoped_text,
     replace_scoped_text,
@@ -49,7 +49,7 @@ class ScopedFileToolTests(unittest.TestCase):
             (repo_root / 'state').mkdir()
 
             with self.assertRaises(ValueError):
-                resolve_scoped_path('ollmo_webserver.py', repo_root=repo_root)
+                resolve_scoped_path('fruth_webserver.py', repo_root=repo_root)
 
             with self.assertRaises(ValueError):
                 write_scoped_text('../outside.txt', 'nope', repo_root=repo_root)

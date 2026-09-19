@@ -5,7 +5,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from ollmo_services.response_frames import (
+from fruth_services.response_frames import (
     RESPONSE_FRAME_STALE_PARENT_REASON,
     ResponseFrameParentCASMismatch,
     append_response_frame_with_parent_cas,
@@ -18,7 +18,7 @@ class ResponseFrameParentCASTests(unittest.TestCase):
     @staticmethod
     def _frame(response_id, writer):
         return {
-            'kind': 'ollmo.response_frame',
+            'kind': 'fruth.response_frame',
             'frame_version': 9,
             'response_id': response_id,
             'current_state': {'writer': writer},

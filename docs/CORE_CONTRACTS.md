@@ -1,15 +1,15 @@
 # Core Contracts
 
-This note freezes the current Ollmo core vocabulary and request/artifact contracts. It is the contract companion to [Canonical Stack](CANONICAL_STACK.md), [Architecture Map](ARCHITECTURE_MAP.md), and [Truth Sources](TRUTH_SOURCES.md).
+This note freezes the current Fruth core vocabulary and request/artifact contracts. It is the contract companion to [Canonical Stack](CANONICAL_STACK.md), [Architecture Map](ARCHITECTURE_MAP.md), and [Truth Sources](TRUTH_SOURCES.md).
 
 ## Core Vocabulary
 
-- `Ollmo`
-  The whole product idea and surface: a continuable AI-work state model plus its current local runtime/control-plane embodiment. Ollmo turns intent into possibility space, obligations, runtime truth, closure review, and frozen response frames.
-- `Ollmo core`
+- `Fruth`
+  The whole product idea and surface: a continuable AI-work state model plus its current local runtime/control-plane embodiment. Fruth turns intent into possibility space, obligations, runtime truth, closure review, and frozen response frames.
+- `Fruth core`
   The runtime plus control plane. Core owns canonical execution, runtime truth, durable artifacts, history, and response freezing.
-- `Ollmo_G`
-  Embedded runtime intelligence inside core. Ghost routes from runtime truth plus bounded hints; it is not a public orchestration framework.
+- Fruth's interpretive inference layer (`fruth_inference`)
+  Embedded runtime intelligence inside core. The layer routes from runtime truth plus bounded hints; it is not a public orchestration framework.
 - `extension space`
   Optional recipes, integrations, docks, and higher-order composition that sit around core without widening the core request contract.
 - `candidate_graph`
@@ -17,13 +17,13 @@ This note freezes the current Ollmo core vocabulary and request/artifact contrac
 - `promotion_review`
   The validation boundary that decides whether a candidate is relevant enough in the current turn to become a promoted contract.
 - `decision_contract`
-  A read-only Ghost decision surface derived from candidate, promotion, workload, obligation, promotion-suggestion, waiver-candidate, repair, supersession, semantic review, and accepted-learning state. It guides Ghost's proposals without becoming runtime truth or promotion authority.
+  A read-only interpretive inference decision surface derived from candidate, promotion, workload, obligation, promotion-suggestion, waiver-candidate, repair, supersession, semantic review, and accepted-learning state. It guides the interpretive inference layer's proposals without becoming runtime truth or promotion authority.
 
 - `semantic_planning_contract`
-  A nested advisory rubric inside `decision_contract`. It describes Ghost's planning cycle, proposal requirements, current proposal obligations, and non-authority boundaries. It is not executable topology and does not prove fulfillment, waiver, supersession, or review.
+  A nested advisory rubric inside `decision_contract`. It describes the interpretive inference layer's planning cycle, proposal requirements, current proposal obligations, and non-authority boundaries. It is not executable topology and does not prove fulfillment, waiver, supersession, or review.
 
 - `block_resolution_reflex`
-  A nested advisory read-model inside `decision_contract`. It applies the global rule that the solution to a block is the block's own resolution. It keeps open, blocked, reserved, stale, waived, superseded, repair, and semantic-review signals visible so Ghost/Closure can consider the right-sized verified transition without forcing completion or under-scoping the work.
+  A nested advisory read-model inside `decision_contract`. It applies the global rule that the solution to a block is the block's own resolution. It keeps open, blocked, reserved, stale, waived, superseded, repair, and semantic-review signals visible so interpretive inference/Closure can consider the right-sized verified transition without forcing completion or under-scoping the work.
 
 - `active_reconsideration_review`
   A nested advisory review inside `decision_contract`. It turns reflex signals into reviewable decisions such as promotion relevance review, waiver evidence review, supersession truth review, repair contract review, semantic quality review, or continuation/repair review. It does not execute or change contract state.
@@ -50,7 +50,7 @@ This note freezes the current Ollmo core vocabulary and request/artifact contrac
   A nested advisory focus review inside `decision_contract`. It converts reconsideration, quality, recursive-cycle, semantic-decision, and learning signals into scoped attention frames with allowed transitions and evidence refs. It focuses model attention between steps but is not execution permission or runtime truth.
 
 - `graph_repair_proposal`
-  A proposal-only repair object for additive request-phase-graph changes. It may come from Ghost, Closure, decision contracts, accepted-learning orientation, or the backend runtime evidence bridge, but it is not executable graph truth until `validate_graph_repair_proposal` accepts it. Provider-family trouble is route-health, preference, or cooldown evidence by default, not a graph patch or broad provider ban. The run monitor may summarize graph-repair diagnostics, but it is observer-only.
+  A proposal-only repair object for additive request-phase-graph changes. It may come from interpretive inference, Closure, decision contracts, accepted-learning orientation, or the backend runtime evidence bridge, but it is not executable graph truth until `validate_graph_repair_proposal` accepts it. Provider-family trouble is route-health, preference, or cooldown evidence by default, not a graph patch or broad provider ban. The run monitor may summarize graph-repair diagnostics, but it is observer-only.
 
 - `semantic_review_verdict`
   A structured advisory verdict produced by a promoted semantic reviewer. It says whether whole-intent fit or qualitative criteria are `passed`, `failed`, or `uncertain`, lists criterion results, evidence refs, defects, confidence, and the recommended transition. It is evidence for Closure, not freeze authority by itself.
@@ -65,13 +65,13 @@ This note freezes the current Ollmo core vocabulary and request/artifact contrac
   A Closure/runtime projection for UI and diagnostics. It summarizes open, blocked, reconsiderable, waived, superseded, repair-pending, semantic-review-pending, and completed state from runtime truth. It is not a frontend authority and should not be inferred from prose.
 
 - `repair_rebuild_contract`
-  A Closure-promoted contract for bounded repair/rebuild work. It is created from open Closure Review checks, not from Ghost suggestions alone. It may be schedulable through late fill or blocked until dependency evidence, a branch contract, manual review, or semantic review exists.
+  A Closure-promoted contract for bounded repair/rebuild work. It is created from open Closure Review checks, not from interpretive inference suggestions alone. It may be schedulable through late fill or blocked until dependency evidence, a branch contract, manual review, or semantic review exists.
 - `promoted contract`
   Executable owed work derived from current evidence. Unpromoted, omitted, stale, rejected, or reserved candidates remain visible state but are not executable obligations.
 - `workload_task`
   The branch-scale task contract derived from a promoted phase or obligation. It carries declared inputs, dependencies, lifecycle stages, output contract, visibility, and review criteria so the runtime can verify the small task as well as the whole request.
 
-Ghost is part of Ollmo, not a synonym for Ollmo. Ghost is the semantic/current-turn interpretation layer inside the larger Ollmo runtime/control-plane substrate.
+Fruth's interpretive inference layer handles semantic/current-turn interpretation inside the larger runtime/control-plane substrate. It is a component of Fruth, not a synonym for the whole system.
 
 ## Retired Core Concepts
 
@@ -89,16 +89,21 @@ Core may still accept those fields at the ingestion edge as deprecated compatibi
 
 Core requests may carry:
 
-- compatibility `ghost_mode` API alias
+- `semantic_role_ids` accepts canonical role IDs, such as `["repairer", "evidence_reasoner"]`, as advisory orientation only.
 - `capability_hint`
 - `language_hint`
 - `developer_flags`
 
-`ghost_mode` is a narrow compatibility hint at the API edge. It does not create a second orchestration surface, does not replace runtime truth, and does not directly control planner timeout, branching, payload shaping, promotion, waiver, supersession, or freeze. When present, it is translated into `semantic_role_profile` and compiled into `decision_contract.semantic_role_orientation_review` as advisory orientation frames. Those frames may bias controlled attention only when they do not conflict with branch-local semantic review lenses, execution contracts, runtime evidence, or Closure truth.
+`semantic_role_ids` is an explicit list of canonical file-backed role IDs, projected into `semantic_role_profile` for advisory attention. It does not create a second orchestration surface or replace runtime truth. It does not control planner timeout, branching, payload shaping, promotion, waiver, supersession, execution, or freeze.
+
+The profile compiles into `decision_contract.semantic_role_orientation_review`
+as advisory orientation frames. Those frames may guide controlled attention only
+when they do not conflict with branch-local semantic review lenses, execution
+contracts, runtime evidence, or Closure truth.
 
 ## Routing Contract
 
-Ghost routes from:
+The interpretive inference layer routes from:
 
 - prompt and normalized messages
 - explicit `input_artifacts`
@@ -109,27 +114,27 @@ Ghost routes from:
 - referential-only recent thread context when the current turn clearly points back, explicit-only stable preference statements when present, and output-centered artifact continuity anchors
 
 Fresh turns normally use a `current_turn_only` context strategy. Older history, old tool calls, and prior artifacts may explain references, but they must not become the next turn's intent by recency alone.
-Ghost does not treat retired orchestration vocabulary as canonical routing truth.
-Live Ghost routing does not carry a separate derived `memory` block. Compiled memory remains archival/runtime-diagnostic state and must not act as competing fresh-intent route authority.
-Every Ghost-owned request freezes into a request phase graph. The graph is frozen in intent and fluid in state: Ghost anchors the user's request, while runtime evidence marks graph obligations fulfilled, pending, blocked, waived, superseded, failed, or clarified. Plain chat may end at phase 1; image/audio materialization defaults to prepare-first plus downstream branches unless the caller supplied an explicit low-level direct contract. If an initial graph is too thin, pre-freeze graph refinement may add a missing downstream branch only from strong same-turn evidence for an already-promoted obligation. A pending/queued assistant claim is diagnostic evidence, not independent promotion authority; reserved, negated or merely inferred modalities remain non-executable.
+The interpretive inference layer does not treat retired orchestration vocabulary as canonical routing truth.
+Live interpretive inference routing does not carry a separate derived `memory` block. Compiled memory remains archival/runtime-diagnostic state and must not act as competing fresh-intent route authority.
+Every interpretive inference-owned request freezes into a request phase graph. The graph is frozen in intent and fluid in state: the interpretive inference layer anchors the user's request, while runtime evidence marks graph obligations fulfilled, pending, blocked, waived, superseded, failed, or clarified. Plain chat may end at phase 1; image/audio materialization defaults to prepare-first plus downstream branches unless the caller supplied an explicit low-level direct contract. If an initial graph is too thin, pre-freeze graph refinement may add a missing downstream branch only from strong same-turn evidence for an already-promoted obligation. A pending/queued assistant claim is diagnostic evidence, not independent promotion authority; reserved, negated or merely inferred modalities remain non-executable.
 
 `request_phase_graph.intent_obligations` is the normalized current-turn promise ledger. It decomposes coarse asks into text artifacts, media artifacts, evidence branches, dependency bindings, navigation promises, and other structural checks before they are surfaced back through runtime truth. The ledger is not a separate executor: only promoted graph branches/phases and validated runtime patches create owed work. Strong current-turn dependency obligations such as local generated image assets before HTML consumers may shape branch dependencies before execution; binding-only relations such as shared CSS or page navigation remain visible structural promises unless runtime evidence requires an executable repair.
 
-The general contract lifecycle is: possibility -> relevance -> promoted contract -> runtime work -> review -> freeze. Ghost may propose candidates, promotion suggestions, waiver candidates, repair paths, semantic-review work, and supersession candidates, but runtime validation decides which candidates become output obligations, workload tasks, context promotions, dependency repairs, continuations, waivers, or supersessions. `decision_contract` is the compact read model for this boundary. Reserved/omitted/stale candidates are reconsiderable and may inform planning, but they are preserved as graph truth without becoming late fill work. Superseded obligations are closed by newer runtime truth instead of being retried as missing work.
+The general contract lifecycle is: possibility -> relevance -> promoted contract -> runtime work -> review -> freeze. The interpretive inference layer may propose candidates, promotion suggestions, waiver candidates, repair paths, semantic-review work, and supersession candidates, but runtime validation decides which candidates become output obligations, workload tasks, context promotions, dependency repairs, continuations, waivers, or supersessions. `decision_contract` is the compact read model for this boundary. Reserved/omitted/stale candidates are reconsiderable and may inform planning, but they are preserved as graph truth without becoming late fill work. Superseded obligations are closed by newer runtime truth instead of being retried as missing work.
 
 The block-resolution reflex is the same lifecycle seen through failures and vacancies. It does not wait for a dramatic error: pending work, blocked work, reserved candidates, stale candidates, waivers, supersessions, repair candidates, and semantic-review needs are all reconsideration signals. The safe movement is always the right-sized verified state transition: continue, repair, wait, clarify, waive, supersede, or freeze truthfully at the scope that actually matches the intent and evidence.
 
-Active reconsideration is the operational read-model for that movement. It does not decide stronger semantic truth by itself, but it gives Ghost, Closure, and UI the same list of state transitions that deserve attention now. Quality review and recursive cycle review are part of the same language: subjective success stays pending review until evidence exists, and every subtask should expose the same mini-cycle as the root request.
+Active reconsideration is the operational read-model for that movement. It does not decide stronger semantic truth by itself, but it gives interpretive inference, Closure, and UI the same list of state transitions that deserve attention now. Quality review and recursive cycle review are part of the same language: subjective success stays pending review until evidence exists, and every subtask should expose the same mini-cycle as the root request.
 
 Aspiration and commitment complete the orientation triad around the existing doubt/review surfaces. Aspiration opens the coherent solution space before the graph collapses to too little work. Doubt verifies evidence through reconsideration, semantic quality, verdicts, and Closure. Commitment proposes the right-sized sufficient movement once enough truth is visible. All three speak the same lifecycle language, and only Runtime/Contracts/Closure can turn proposals into truth.
 
 Scale movement is part of the same contract language, but it has two separate axes. Shallow/deep is semantic depth: visible request, intent, evidence meaning, quality, contradiction, learning, and aspiration/doubt/commitment. Coarse/fine is structural granularity: whole turn, candidate set, branch contract, payload, dependency, artifact evidence, and review criterion.
 
-During discovery, Ollmo may move shallow -> deep when surface truth is insufficient, and coarse -> fine when relevant work needs decomposition. During integration, it may move deep -> shallow when semantic review has produced enough truth for a practical next action, and fine -> coarse when artifact or branch truth must resolve into global closure. These zoom directions are advisory orientation, not authority; Runtime/Contracts/Closure still decide truth.
+During discovery, Fruth may move shallow -> deep when surface truth is insufficient, and coarse -> fine when relevant work needs decomposition. During integration, it may move deep -> shallow when semantic review has produced enough truth for a practical next action, and fine -> coarse when artifact or branch truth must resolve into global closure. These zoom directions are advisory orientation, not authority; Runtime/Contracts/Closure still decide truth.
 
-Semantic decision review is an advisory layer over that movement. It gives Ghost and Closure structured candidate decisions with reason, confidence, evidence refs, and allowed transitions, while remaining subordinate to promotion review, Closure Review, runtime evidence, and artifact truth.
+Semantic decision review is an advisory layer over that movement. It gives interpretive inference and Closure structured candidate decisions with reason, confidence, evidence refs, and allowed transitions, while remaining subordinate to promotion review, Closure Review, runtime evidence, and artifact truth.
 
-Semantic role orientation is the compatibility bridge for old Ghost modes. `repair`, `worker`, `explorer`, and `improviser` remain accepted request hints, but they are only API aliases. They translate into `semantic_role_profile` and advisory frames inside the same decision contract, where semantic lenses and runtime truth can accept, ignore, or supersede the hint.
+Semantic role orientation accepts explicit canonical `semantic_role_ids`. These select file-backed roles in `semantic_role_profile` and advisory frames inside the same decision contract, where semantic lenses and runtime truth can accept, ignore, or supersede the hint.
 
 Semantic review lenses sharpen that brain loop without becoming a new authority surface. A lens tells a model whether the branch should be judged as planning coverage, worker execution, materialization, evidence verification, dependency integration, quality review, repair, transition commitment, or whole-turn fit. The lens travels with semantic quality contracts, controlled attention frames, Closure checks, branch semantic review prompts, and repair feedback so the model asks the right question at the right scope.
 
@@ -141,7 +146,7 @@ Late-fill executor handoff uses a bounded `execution_contract`. The contract car
 
 Closure Repair is contract-driven. Closure checks may carry `repair_action` values such as `retry_same_branch`, `retry_excluding_instance`, `start_compatible_instance`, `repair_dependency_chain`, `rebind_dependency_evidence`, `repair_branch_contract`, or `rebuild_from_promoted_obligations`. Repair feedback preserves the branch-local `execution_contract`, workload task refs, output obligation refs, input refs, review criteria, and output contract where available, so repair can start at the failing contract edge instead of replaying the full root prompt.
 
-Blocked repair contracts block blind materialization, not repair work. When a prerequisite is absent, contracts should expose `materialization_blocked=true` and `repair_work_available=true` whenever the dependency chain, branch identity, obligation, or contract source gives Ollmo a bounded local repair path. `needs_external_input=true` is reserved for cases where runtime truth cannot derive the missing prerequisite.
+Blocked repair contracts block blind materialization, not repair work. When a prerequisite is absent, contracts should expose `materialization_blocked=true` and `repair_work_available=true` whenever the dependency chain, branch identity, obligation, or contract source gives Fruth a bounded local repair path. `needs_external_input=true` is reserved for cases where runtime truth cannot derive the missing prerequisite.
 
 Closure Review reads `decision_contract` as a guidance surface for the same loop. Matched repair candidates may supply a missing repair action for an already-open check; semantic-review candidates can make qualitative review work explicit; supersession candidates remain advisory until Closure confirms replacement truth; reconsiderable candidates stay visible without becoming executable work.
 
@@ -199,12 +204,12 @@ Current frame truth:
 
 Current request-shape truth:
 
-- every Ghost-owned request first freezes into `request_phase_graph`
+- every interpretive inference-owned request first freezes into `request_phase_graph`
 - plain chat can complete at the current phase without downstream branches
 - image/audio requests normally keep the current phase on `chat` and materialize the final artifact through downstream branches
 - text/file artifact requests are output materialization obligations only when the source payload is clear; ambiguous source language such as "this" without a selected source should clarify instead of persisting a guessed artifact
 - structured text/file artifact wrappers such as `output_obligations[].content` are payload envelopes; persistence saves the declared `content`, not the router JSON or control-plane metadata around it
-- before each freeze, Ollmo reviews already-anchored obligations; Closure may repeat after materialization, reconciliation or validated repair, and it may refine graph state from strong runtime/output evidence, but it must not reinterpret user intent or invent new capability goals
+- before each freeze, Fruth reviews already-anchored obligations; Closure may repeat after materialization, reconciliation or validated repair, and it may refine graph state from strong runtime/output evidence, but it must not reinterpret user intent or invent new capability goals
 - that review is surfaced as `runtime.graph_closure_review` and may also appear under developer diagnostics
 - local model calls execute selected phases or materialize branches; graph, slot, output, artifact, status, and late fill state decide fulfillment
 - branch-local model calls should carry `execution_contract`, `workload_task_ref`, and `output_obligation_ref` through late fill and infer payloads so completion can be matched to the planned branch without relying on model wording
@@ -255,7 +260,7 @@ Rules:
 - `path` is metadata attached to durable identity, not the identity itself.
 - Executor temp copies and backend-specific materialization stay internal.
 - Internal bindings may translate a `reference_artifact` into a temp file, but history and response frames must continue to point at the original durable `artifact_ref`.
-- Only true external current-turn files are `input_artifacts`. A prior Ollmo output, selected reference, route-reused artifact, artifact binding, or registry-known path must remain a reference/binding and must not be copied back into the public input surface.
+- Only true external current-turn files are `input_artifacts`. A prior Fruth output, selected reference, route-reused artifact, artifact binding, or registry-known path must remain a reference/binding and must not be copied back into the public input surface.
 - Provenance is the durable continuity layer for generated outputs and derived artifacts.
 - Canonical read-side retrieval is now artifact-centered: `artifact_dossiers` are keyed by `artifact_ref` and gather artifact identity, provenance, metadata, enrichments, and linked response/message IDs together.
 - `state/artifact_registry.jsonl` is the durable materialized artifact index for concrete artifacts. It may merge provenance and integrity metadata by artifact identity; final saved artifact files remain the canonical artifact bytes. Text/document, audio, image, OCR/transcript, and other `artifacts[]` outputs are registered with `roles = ["output"]`; true external request files are registered with `roles = ["input"]`. This lets clients resolve artifact identity without mining `responses.jsonl` and without confusing reused outputs with fresh user input. Generated-image provenance remains the richest image-specific provenance and generic output registration must not overwrite it; generated-image helper enrichments append back onto the original artifact record instead of creating new input truth. A registered TTS WAV proves that bytes were produced, not that the audio obligation was fulfilled: source/file-bound `tts_audio_integrity_evidence` must pass effective-signal, duration, silence, and readability checks before promotion, while a failed file remains diagnostic artifact truth.

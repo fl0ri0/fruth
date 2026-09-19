@@ -1,16 +1,48 @@
 import unittest
 
-from ollmo_g.request_phase_graph import build_request_phase_graph
-from ollmo_orchestration.working_frame import build_working_frame
+from fruth_inference.request_phase_graph import build_request_phase_graph
+from fruth_orchestration.working_frame import build_working_frame
 
 
 class WorkingFrameTests(unittest.TestCase):
+    def test_working_frame_records_only_canonical_request_role_ids(self):
+        cases = [
+            (None, []),
+            (42, []),
+            ('materializer', []),
+            ({'materializer': True}, []),
+            (['materializer', 'unknown', 'materializer', 42], ['materializer']),
+            ('["repairer", "evidence_reasoner"]', ['repairer', 'evidence_reasoner']),
+        ]
+        for value, expected in cases:
+            with self.subTest(value=value):
+                frame = build_working_frame(request_payload={
+                    'prompt': 'Answer briefly.', 'semantic_role_ids': value,
+                })
+                self.assertEqual(frame['request'].get('semantic_role_ids', []), expected)
+
+    def test_working_frame_uses_request_metadata_role_precedence(self):
+        cases = [
+            ({'request_meta': {'semantic_role_ids': ['repairer']}}, ['repairer']),
+            ({'request_meta': {'semantic_role_ids': ['repairer']},
+              'semantic_role_ids': ['materializer']}, ['materializer']),
+            ({'request_meta': {'semantic_role_ids': ['repairer']},
+              'semantic_role_ids': []}, []),
+            ({'ghost_mode': 'repair'}, []),
+        ]
+        for fields, expected in cases:
+            with self.subTest(fields=fields):
+                frame = build_working_frame(request_payload={
+                    'prompt': 'Answer briefly.', **fields,
+                })
+                self.assertEqual(frame['request'].get('semantic_role_ids', []), expected)
+
     def test_build_working_frame_tracks_chain_loop_goals_and_journal(self):
         working_frame = build_working_frame(
             request_payload={
                 'conversation_id': 'conv-1',
                 'prompt': 'Summarize the PDF and read it aloud.',
-                'ghost_self_heal_attempted': True,
+                'inference_self_heal_attempted': True,
                 'input_artifacts': [{'type': 'pdf', 'path': 'artifacts/inputs/notes.pdf'}],
                 'voice': 'alloy',
             },
@@ -44,7 +76,7 @@ class WorkingFrameTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(working_frame['kind'], 'ollmo.working_frame')
+        self.assertEqual(working_frame['kind'], 'fruth.working_frame')
         self.assertEqual(working_frame['working_frame_version'], 4)
         self.assertEqual(working_frame['status'], 'repairing')
         self.assertEqual(working_frame['loop']['chain_id'], 'conv-1')
@@ -56,7 +88,7 @@ class WorkingFrameTests(unittest.TestCase):
         phases = [entry['phase'] for entry in working_frame['journal']]
         self.assertIn('critic', phases)
         self.assertIn('revise', phases)
-        self.assertEqual(working_frame['work_tree']['kind'], 'ollmo.work_tree')
+        self.assertEqual(working_frame['work_tree']['kind'], 'fruth.work_tree')
         self.assertTrue(working_frame['artifact_dossiers'])
         self.assertEqual(working_frame['possibility_space']['state'], 'open')
         self.assertIn('continue', working_frame['possibility_space']['review_paths'])
@@ -90,7 +122,7 @@ class WorkingFrameTests(unittest.TestCase):
         self.assertEqual(working_frame['freeze']['status'], 'frozen')
         self.assertEqual(working_frame['possibility_space']['state'], 'closed')
         self.assertEqual(working_frame['closure']['status'], 'closed')
-        self.assertEqual(working_frame['closure']['close_authority'], 'ollmo')
+        self.assertEqual(working_frame['closure']['close_authority'], 'fruth')
         self.assertFalse(working_frame['editability']['mutable'])
         self.assertEqual(working_frame['review']['status'], 'frozen')
 
@@ -167,12 +199,12 @@ class WorkingFrameTests(unittest.TestCase):
     def test_build_working_frame_projects_intent_contract_from_graph_review(self):
         phase_graph = build_request_phase_graph(
             'Describe two tiny stage scenes and then generate two images.',
-            request_payload={'ghost_route': True},
-            route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True},
+            route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
             response_payload={'output_text': 'Two image prompts are ready.'},
         )
         graph_review = {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'pending',
             'reason': 'one image obligation remains open',
             'contract_source': 'request_ir.output_obligations',
@@ -212,7 +244,7 @@ class WorkingFrameTests(unittest.TestCase):
             request_payload={
                 'conversation_id': 'conv-contract',
                 'prompt': 'Describe two tiny stage scenes and then generate two images.',
-                'ghost_route': True,
+                'inference_route': True,
             },
             response_payload={
                 'id': 'resp_contract',
@@ -245,7 +277,7 @@ class WorkingFrameTests(unittest.TestCase):
         )
 
         intent_contract = working_frame['intent_contract']
-        self.assertEqual(intent_contract['kind'], 'ollmo.intent_contract')
+        self.assertEqual(intent_contract['kind'], 'fruth.intent_contract')
         self.assertEqual(intent_contract['source'], 'request_ir.output_obligations')
         self.assertEqual(intent_contract['status'], 'pending')
         self.assertEqual(intent_contract['counts']['fulfilled'], 2)
@@ -257,12 +289,12 @@ class WorkingFrameTests(unittest.TestCase):
     def test_build_working_frame_freezes_pending_obligations_as_truthful_partial_state(self):
         phase_graph = build_request_phase_graph(
             'Describe two tiny stage scenes and then generate two images.',
-            request_payload={'ghost_route': True},
-            route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True},
+            route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
             response_payload={'output_text': 'Two image prompts are ready.'},
         )
         graph_review = {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'pending',
             'reason': 'one image obligation remains open',
             'contract_source': 'request_ir.output_obligations',
@@ -302,7 +334,7 @@ class WorkingFrameTests(unittest.TestCase):
             request_payload={
                 'conversation_id': 'conv-partial-freeze',
                 'prompt': 'Describe two tiny stage scenes and then generate two images.',
-                'ghost_route': True,
+                'inference_route': True,
             },
             response_payload={
                 'id': 'resp_partial_freeze',
@@ -345,12 +377,12 @@ class WorkingFrameTests(unittest.TestCase):
     def test_build_working_frame_projects_explicit_waived_obligations(self):
         phase_graph = build_request_phase_graph(
             'Describe two tiny stage scenes and then generate two images.',
-            request_payload={'ghost_route': True},
-            route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True},
+            route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
             response_payload={'output_text': 'One image prompt is enough.'},
         )
         graph_review = {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'fulfilled',
             'reason': 'remaining image obligation was explicitly waived',
             'contract_source': 'request_ir.output_obligations',
@@ -390,7 +422,7 @@ class WorkingFrameTests(unittest.TestCase):
             request_payload={
                 'conversation_id': 'conv-waived-contract',
                 'prompt': 'Describe two tiny stage scenes and then generate two images.',
-                'ghost_route': True,
+                'inference_route': True,
             },
             response_payload={
                 'id': 'resp_waived_contract',
@@ -422,7 +454,7 @@ class WorkingFrameTests(unittest.TestCase):
         phase_graph = build_request_phase_graph(
             'Now use the reserved image direction and generate it.',
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'downstream_branches': [
                     {
                         'candidate_id': 'candidate-image-1',
@@ -436,7 +468,7 @@ class WorkingFrameTests(unittest.TestCase):
                     }
                 ],
             },
-            route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
             response_payload={'output_text': 'The reserved image prompt is ready.'},
         )
 
@@ -444,7 +476,7 @@ class WorkingFrameTests(unittest.TestCase):
             request_payload={
                 'conversation_id': 'conv-candidate-promotion',
                 'prompt': 'Now use the reserved image direction and generate it.',
-                'ghost_route': True,
+                'inference_route': True,
             },
             response_payload={
                 'id': 'resp_candidate_promotion',
@@ -463,8 +495,8 @@ class WorkingFrameTests(unittest.TestCase):
         intent_contract = working_frame['intent_contract']
         self.assertEqual(intent_contract['candidate_count'], 1)
         self.assertEqual(intent_contract['promotion_count'], 1)
-        self.assertEqual(intent_contract['candidate_graph']['kind'], 'ollmo.candidate_graph')
-        self.assertEqual(intent_contract['promotion_review']['kind'], 'ollmo.promotion_review')
+        self.assertEqual(intent_contract['candidate_graph']['kind'], 'fruth.candidate_graph')
+        self.assertEqual(intent_contract['promotion_review']['kind'], 'fruth.promotion_review')
         self.assertGreaterEqual(intent_contract['general_promoted_count'], 2)
         self.assertEqual(intent_contract['candidate_output_ids'], ['candidate-image-1'])
         self.assertEqual(intent_contract['output_candidates'][0]['status'], 'promoted')
@@ -510,7 +542,7 @@ class WorkingFrameTests(unittest.TestCase):
         )
 
         context_contract = working_frame['context_contract']
-        self.assertEqual(context_contract['kind'], 'ollmo.context_contract')
+        self.assertEqual(context_contract['kind'], 'fruth.context_contract')
         self.assertEqual(context_contract['status'], 'candidate_only')
         self.assertEqual(context_contract['candidate_count'], 2)
         self.assertEqual(context_contract.get('promotion_count', 0), 0)
@@ -554,8 +586,8 @@ class WorkingFrameTests(unittest.TestCase):
         self.assertEqual(context_contract['status'], 'active')
         self.assertEqual(context_contract['candidate_count'], 1)
         self.assertEqual(context_contract['promotion_count'], 1)
-        self.assertEqual(context_contract['candidate_graph']['kind'], 'ollmo.candidate_graph')
-        self.assertEqual(context_contract['promotion_review']['kind'], 'ollmo.promotion_review')
+        self.assertEqual(context_contract['candidate_graph']['kind'], 'fruth.candidate_graph')
+        self.assertEqual(context_contract['promotion_review']['kind'], 'fruth.promotion_review')
         self.assertEqual(context_contract['general_promoted_count'], 1)
         self.assertEqual(context_contract['context_candidates'][0]['status'], 'promoted')
         self.assertEqual(context_contract['context_candidates'][0]['source_kind'], 'artifact')
@@ -597,7 +629,7 @@ class WorkingFrameTests(unittest.TestCase):
                             }
                         ],
                         'context_gate_review': {
-                            'kind': 'ollmo.context_gate_review',
+                            'kind': 'fruth.context_gate_review',
                             'status': 'checked',
                             'intake_boundary': 'current_turn',
                             'mode': 'current_turn_only',

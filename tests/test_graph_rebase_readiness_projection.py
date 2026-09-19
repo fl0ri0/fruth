@@ -1,7 +1,7 @@
 import copy
 import json
 
-from ollmo_services.graph_rebase_rollout import (
+from fruth_services.graph_rebase_rollout import (
     GRAPH_REBASE_READINESS_OBSERVATION_KIND,
     build_graph_rebase_readiness_report,
     project_graph_rebase_readiness_observation,
@@ -10,7 +10,7 @@ from ollmo_services.graph_rebase_rollout import (
 
 def _settled_payload_with_bulky_candidate_graph():
     candidate_graph = {
-        'kind': 'ollmo.request_phase_graph',
+        'kind': 'fruth.request_phase_graph',
         'phases': [
             {
                 'phase_id': 'phase-partial',
@@ -21,7 +21,7 @@ def _settled_payload_with_bulky_candidate_graph():
         'outputs': [{'content': 'candidate-output-' + ('y' * 250_000)}],
     }
     proposal = {
-        'kind': 'ollmo.graph_rebase_proposal',
+        'kind': 'fruth.graph_rebase_proposal',
         'proposal_id': 'proposal-projected-partial',
         'target_response_id': 'resp-projected-partial',
         'target_frame_id': 'frame-projected-partial',
@@ -32,20 +32,20 @@ def _settled_payload_with_bulky_candidate_graph():
         'candidate_graph': candidate_graph,
     }
     proof = {
-        'kind': 'ollmo.graph_rebase_preservation_proof',
+        'kind': 'fruth.graph_rebase_preservation_proof',
         'status': 'passed',
         'base_graph_digest': proposal['base_graph_digest'],
         'candidate_graph_digest': proposal['candidate_graph_digest'],
         'blocked_reasons': [],
     }
     local_proof = {
-        'kind': 'ollmo.graph_rebase_local_execution_contract_proof',
+        'kind': 'fruth.graph_rebase_local_execution_contract_proof',
         'status': 'passed',
         'candidate_graph_digest': proposal['candidate_graph_digest'],
         'content_payload': 'local-contract-body-' + ('z' * 200_000),
     }
     review = {
-        'kind': 'ollmo.graph_rebase_review',
+        'kind': 'fruth.graph_rebase_review',
         'review_id': 'review-projected-partial',
         'proposal_id': proposal['proposal_id'],
         'status': 'accepted',
@@ -61,14 +61,14 @@ def _settled_payload_with_bulky_candidate_graph():
         },
         'blocked_reasons': [],
         'graph_rebase_authorization': {
-            'kind': 'ollmo.graph_rebase_authorization',
+            'kind': 'fruth.graph_rebase_authorization',
             'authorization_id': 'inline-untrusted-authorization',
             'status': 'accepted',
             'requested_rebase_class': 'partial_subtree_rebase',
         },
     }
     lifecycle = {
-        'kind': 'ollmo.graph_rebase_lifecycle',
+        'kind': 'fruth.graph_rebase_lifecycle',
         'rebase_id': 'rebase-projected-partial',
         'proposal_id': proposal['proposal_id'],
         'status': 'validated',
@@ -91,7 +91,7 @@ def _settled_payload_with_bulky_candidate_graph():
         },
     }
     successor = {
-        'kind': 'ollmo.graph_rebase_successor_request',
+        'kind': 'fruth.graph_rebase_successor_request',
         'status': 'completed',
         'proposal_id': proposal['proposal_id'],
         'rebase_id': lifecycle['rebase_id'],
@@ -101,7 +101,7 @@ def _settled_payload_with_bulky_candidate_graph():
         'blocked_reasons': ['root_prompt_fallback'],
     }
     outcome = {
-        'kind': 'ollmo.graph_rebase_terminal_outcome',
+        'kind': 'fruth.graph_rebase_terminal_outcome',
         'outcome_id': 'outcome-projected-partial',
         'status': 'blocked',
         'proposal_id': proposal['proposal_id'],
@@ -111,7 +111,7 @@ def _settled_payload_with_bulky_candidate_graph():
         'parent_mutated': True,
     }
     graph = {
-        'kind': 'ollmo.request_phase_graph',
+        'kind': 'fruth.request_phase_graph',
         'response_id': 'resp-projected-partial',
         'frame_id': 'frame-projected-partial',
         'phases': [{'content_payload': 'parent-graph-body-' + ('p' * 250_000)}],
@@ -129,7 +129,7 @@ def _settled_payload_with_bulky_candidate_graph():
     }
     diagnostics = {
         'runtime_graph_rebase_candidate_review': {
-            'kind': 'ollmo.runtime_graph_rebase_candidate_review',
+            'kind': 'fruth.runtime_graph_rebase_candidate_review',
             'status': 'validated_by_runtime_review',
             'proposal_id': proposal['proposal_id'],
             'requested_rebase_class': 'partial_subtree_rebase',
@@ -137,7 +137,7 @@ def _settled_payload_with_bulky_candidate_graph():
             'candidate_graph_digest': proposal['candidate_graph_digest'],
         },
         'response_time_graph_rebase_candidate': {
-            'kind': 'ollmo.runtime_graph_rebase_candidate',
+            'kind': 'fruth.runtime_graph_rebase_candidate',
             'status': 'rederived_from_terminal_materialization_truth',
             'candidate_graph_digest': proposal['candidate_graph_digest'],
             'candidate_graph': candidate_graph,
@@ -242,13 +242,13 @@ def test_projection_preserves_active_candidate_without_retaining_candidate_graph
         'request_meta': {'prompt_family': 'multimodal-review'},
         'runtime': {
             'request_phase_graph': {
-                'kind': 'ollmo.request_phase_graph',
+                'kind': 'fruth.request_phase_graph',
                 'response_id': 'resp-active-projection',
                 'frame_id': 'frame-active-projection',
             },
             'developer_diagnostics': {
                 'response_time_graph_rebase_candidate': {
-                    'kind': 'ollmo.runtime_graph_rebase_candidate',
+                    'kind': 'fruth.runtime_graph_rebase_candidate',
                     'status': 'rederived_from_terminal_materialization_truth',
                     'candidate_graph_digest': 'candidate-active-projection',
                     'candidate_graph': {
@@ -256,7 +256,7 @@ def test_projection_preserves_active_candidate_without_retaining_candidate_graph
                     },
                 },
                 'runtime_graph_rebase_candidate_review': {
-                    'kind': 'ollmo.runtime_graph_rebase_candidate_review',
+                    'kind': 'fruth.runtime_graph_rebase_candidate_review',
                     'status': 'not_proposed',
                     'reason': 'active_late_fill_must_settle',
                 },

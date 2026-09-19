@@ -1,4 +1,4 @@
-from ollmo_services.semantic_review_verdict import (
+from fruth_services.semantic_review_verdict import (
     semantic_review_verdict_freeze_acceptance,
     semantic_review_verdict_from_text,
 )
@@ -8,7 +8,7 @@ def test_semantic_review_verdict_parses_strict_pass_json() -> None:
     verdict = semantic_review_verdict_from_text(
         '''
         {
-          "kind": "ollmo.semantic_review_verdict",
+          "kind": "fruth.semantic_review_verdict",
           "verdict": "passed",
           "overall_status": "fulfilled",
           "whole_intent_fit": "The final text uses the generated image evidence.",
@@ -34,7 +34,7 @@ def test_semantic_review_verdict_parses_strict_pass_json() -> None:
     assert verdict['recommended_transition'] == 'truthful_freeze'
     assert verdict['criterion_results'][0]['status'] == 'passed'
     assert verdict['evidence_refs'] == ['branch-final-review']
-    assert verdict['declared_schema']['kind'] == 'ollmo.semantic_review_verdict'
+    assert verdict['declared_schema']['kind'] == 'fruth.semantic_review_verdict'
     assert verdict['declared_schema']['defects_is_empty_array'] is True
 
     acceptance = semantic_review_verdict_freeze_acceptance(
@@ -143,7 +143,7 @@ def test_model_declared_schema_field_cannot_spoof_freeze_provenance() -> None:
             'evidence_refs': ['phase-artifact'],
             'defects': [],
             'declared_schema': {
-                'kind': 'ollmo.semantic_review_verdict',
+                'kind': 'fruth.semantic_review_verdict',
                 'verdict': 'passed',
                 'recommended_transition': 'truthful_freeze',
                 'defects_is_empty_array': True,
@@ -168,7 +168,7 @@ def test_truthful_freeze_requires_passed_coverage_of_every_required_criterion() 
     verdict = semantic_review_verdict_from_text(
         '''
         {
-          "kind": "ollmo.semantic_review_verdict",
+          "kind": "fruth.semantic_review_verdict",
           "verdict": "passed",
           "criterion_results": [
             {

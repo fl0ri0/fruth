@@ -4,13 +4,28 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from ollmo_runtime import ollama_model_manager
+from fruth_runtime import ollama_model_manager
 
 
 class OllamaModelManagerTests(unittest.TestCase):
-    @patch('ollmo_runtime.ollama_model_manager.time.sleep', return_value=None)
-    @patch('ollmo_runtime.ollama_model_manager.subprocess.Popen')
-    @patch('ollmo_runtime.ollama_model_manager.is_port_listening', side_effect=[False, True])
+    @patch('fruth_runtime.ollama_model_manager.subprocess.Popen')
+    @patch('fruth_runtime.ollama_model_manager.is_port_listening', return_value=True)
+    def test_existing_default_server_is_reused_without_launching(
+        self, _listening, start,
+    ):
+        self.assertTrue(ollama_model_manager.ensure_default_server_running())
+        start.assert_not_called()
+
+    @patch('fruth_runtime.ollama_model_manager.is_port_listening', side_effect=lambda port: port == 11436)
+    def test_model_instance_allocation_skips_registered_and_occupied_ports(self, _listening):
+        self.assertEqual(
+            ollama_model_manager.find_free_port(start=11435, end=11440, used_ports={11435}),
+            11437,
+        )
+
+    @patch('fruth_runtime.ollama_model_manager.time.sleep', return_value=None)
+    @patch('fruth_runtime.ollama_model_manager.subprocess.Popen')
+    @patch('fruth_runtime.ollama_model_manager.is_port_listening', side_effect=[False, True])
     def test_ensure_default_server_running_rotates_default_server_log(
         self,
         _mock_is_port_listening,
@@ -33,13 +48,13 @@ class OllamaModelManagerTests(unittest.TestCase):
                 archived_logs = list((log_dir / 'archive' / 'global').rglob('*.log'))
                 self.assertEqual(len(archived_logs), 1)
 
-    @patch('ollmo_runtime.ollama_model_manager.wait_for_model_loaded', return_value=True)
-    @patch('ollmo_runtime.ollama_model_manager._fetch_model_metadata', return_value={})
-    @patch('ollmo_runtime.ollama_model_manager.is_port_listening', return_value=True)
-    @patch('ollmo_runtime.ollama_model_manager.subprocess.Popen')
-    @patch('ollmo_runtime.ollama_model_manager.time.sleep', return_value=None)
-    @patch('ollmo_runtime.ollama_model_manager.find_free_port', return_value=11435)
-    @patch('ollmo_runtime.ollama_model_manager.allocate_instance_id', return_value='qwen3-coder:latest-1')
+    @patch('fruth_runtime.ollama_model_manager.wait_for_model_loaded', return_value=True)
+    @patch('fruth_runtime.ollama_model_manager._fetch_model_metadata', return_value={})
+    @patch('fruth_runtime.ollama_model_manager.is_port_listening', return_value=True)
+    @patch('fruth_runtime.ollama_model_manager.subprocess.Popen')
+    @patch('fruth_runtime.ollama_model_manager.time.sleep', return_value=None)
+    @patch('fruth_runtime.ollama_model_manager.find_free_port', return_value=11435)
+    @patch('fruth_runtime.ollama_model_manager.allocate_instance_id', return_value='qwen3-coder:latest-1')
     def test_start_model_records_active_ollama_instance_log_path(
         self,
         _mock_allocate_instance_id,

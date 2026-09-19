@@ -6,7 +6,7 @@ import pytest
 
 @pytest.mark.parametrize('identity', ['same', 'older', 'foreign', 'missing', 'unavailable'])
 def test_detailed_lookup_binds_only_matching_durable_frame(monkeypatch, identity):
-    import ollmo_webserver as web
+    import fruth_webserver as web
     live = {'id': 'lookup-test', 'status': 'in_progress', 'response_payload': {
         'id': 'lookup-test', 'response_frame': {'frame_id': 'lookup-test:frame-2',
             'frame_sequence': 2, 'runtime': {'expanded': True}},

@@ -8,8 +8,8 @@ from helpers.session_controls import (
     resolve_reasoning_effort_for_instance,
     validate_reasoning_effort_for_instance,
 )
-from ollmo_core.lifecycle import list_running_instances
-from ollmo_server.late_fill_runtime import _retarget_model_scoped_reasoning_effort
+from fruth_core.lifecycle import list_running_instances
+from fruth_server.late_fill_runtime import _retarget_model_scoped_reasoning_effort
 
 
 class SessionControlsTests(unittest.TestCase):

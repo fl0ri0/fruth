@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_webserver import app
+from fruth_webserver import app
 
 
 class RuntimeStatusApiTests(unittest.TestCase):
@@ -12,8 +12,8 @@ class RuntimeStatusApiTests(unittest.TestCase):
         app.config["TESTING"] = True
         self.client = app.test_client()
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_running_instances_route_includes_runtime_status(self, mock_load_running_instances, mock_merge_instances):
         mock_load_running_instances.return_value = [
             {
@@ -57,12 +57,12 @@ class RuntimeStatusApiTests(unittest.TestCase):
         self.assertIn("outputs", payload[0])
         self.assertEqual(payload[0]["backend_metadata"]["source"], "ollama_api_show")
         self.assertEqual(payload[0]["backend_runtime"]["source"], "ollama_api_ps")
-        self.assertEqual(response.headers["X-Ollmo-Truth-Mode"], "cached")
-        self.assertEqual(response.headers["X-Ollmo-Refresh-Performed"], "false")
+        self.assertEqual(response.headers["X-Fruth-Truth-Mode"], "cached")
+        self.assertEqual(response.headers["X-Fruth-Refresh-Performed"], "false")
         self.assertEqual(mock_merge_instances.call_args.kwargs["refresh"], False)
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_running_instances_route_refresh_is_explicit(self, mock_load_running_instances, mock_merge_instances):
         mock_load_running_instances.return_value = [{"instance_id": "gpt-oss:20b-1"}]
         mock_merge_instances.return_value = [{"instance_id": "gpt-oss:20b-1"}]
@@ -70,12 +70,12 @@ class RuntimeStatusApiTests(unittest.TestCase):
         response = self.client.get("/api/running_instances?refresh=true")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.headers["X-Ollmo-Truth-Mode"], "refreshed")
-        self.assertEqual(response.headers["X-Ollmo-Refresh-Performed"], "true")
+        self.assertEqual(response.headers["X-Fruth-Truth-Mode"], "refreshed")
+        self.assertEqual(response.headers["X-Fruth-Refresh-Performed"], "true")
         self.assertEqual(mock_merge_instances.call_args.kwargs["refresh"], True)
 
-    @patch("ollmo_webserver.refresh_runtime_status_entries")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.refresh_runtime_status_entries")
+    @patch("fruth_webserver.load_running_instances")
     def test_runtime_status_route_default_reads_cached_status_without_refresh_or_write(
         self,
         mock_load_running_instances,
@@ -97,7 +97,7 @@ class RuntimeStatusApiTests(unittest.TestCase):
             status_path.write_text(json.dumps(status_payload, sort_keys=True), encoding="utf-8")
             before = status_path.read_text(encoding="utf-8")
 
-            with patch("ollmo_webserver.RUNTIME_STATUS_PATH", status_path):
+            with patch("fruth_webserver.RUNTIME_STATUS_PATH", status_path):
                 response = self.client.get("/api/runtime_status")
 
             after = status_path.read_text(encoding="utf-8")
@@ -106,14 +106,14 @@ class RuntimeStatusApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["count"], 1)
         self.assertEqual(payload["items"][0]["instance_id"], "qwen-1")
-        self.assertEqual(response.headers["X-Ollmo-Truth-Mode"], "cached")
-        self.assertEqual(response.headers["X-Ollmo-Refresh-Performed"], "false")
+        self.assertEqual(response.headers["X-Fruth-Truth-Mode"], "cached")
+        self.assertEqual(response.headers["X-Fruth-Refresh-Performed"], "false")
         self.assertEqual(before, after)
         mock_load_running_instances.assert_not_called()
         mock_refresh.assert_not_called()
 
-    @patch("ollmo_webserver.refresh_runtime_status_entries")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.refresh_runtime_status_entries")
+    @patch("fruth_webserver.load_running_instances")
     def test_runtime_status_route_returns_single_instance_from_cached_status(self, mock_load_running_instances, mock_refresh):
         with tempfile.TemporaryDirectory() as tmpdir:
             status_path = Path(tmpdir) / "runtime_status.json"
@@ -134,20 +134,20 @@ class RuntimeStatusApiTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("ollmo_webserver.RUNTIME_STATUS_PATH", status_path):
+            with patch("fruth_webserver.RUNTIME_STATUS_PATH", status_path):
                 response = self.client.get("/api/runtime_status?instance_id=qwen-1")
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["instance_id"], "qwen-1")
         self.assertEqual(payload["readiness"], "ready")
-        self.assertEqual(response.headers["X-Ollmo-Truth-Mode"], "cached")
-        self.assertEqual(response.headers["X-Ollmo-Refresh-Performed"], "false")
+        self.assertEqual(response.headers["X-Fruth-Truth-Mode"], "cached")
+        self.assertEqual(response.headers["X-Fruth-Refresh-Performed"], "false")
         mock_load_running_instances.assert_not_called()
         mock_refresh.assert_not_called()
 
-    @patch("ollmo_webserver.refresh_runtime_status_entries")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.refresh_runtime_status_entries")
+    @patch("fruth_webserver.load_running_instances")
     def test_runtime_status_route_refresh_is_explicit(self, mock_load_running_instances, mock_refresh):
         mock_load_running_instances.return_value = [{"instance_id": "qwen-1"}]
         mock_refresh.return_value = {
@@ -163,13 +163,13 @@ class RuntimeStatusApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["instance_id"], "qwen-1")
-        self.assertEqual(response.headers["X-Ollmo-Truth-Mode"], "refreshed")
-        self.assertEqual(response.headers["X-Ollmo-Refresh-Performed"], "true")
+        self.assertEqual(response.headers["X-Fruth-Truth-Mode"], "refreshed")
+        self.assertEqual(response.headers["X-Fruth-Refresh-Performed"], "true")
         mock_load_running_instances.assert_called_once()
         mock_refresh.assert_called_once()
 
-    @patch("ollmo_webserver.refresh_runtime_status_entries")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.refresh_runtime_status_entries")
+    @patch("fruth_webserver.load_running_instances")
     def test_runtime_status_route_rejects_traversal_shaped_instance_id(self, mock_load_running_instances, mock_refresh):
         response = self.client.get("/api/runtime_status?instance_id=../secret")
 
@@ -178,9 +178,9 @@ class RuntimeStatusApiTests(unittest.TestCase):
         mock_load_running_instances.assert_not_called()
         mock_refresh.assert_not_called()
 
-    @patch("ollmo_webserver.build_backend_fabric_snapshot")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.build_backend_fabric_snapshot")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_runtime_manifest_exposes_canonical_and_direct_wrapper_routes(
         self,
         mock_load_running_instances,
@@ -245,7 +245,7 @@ class RuntimeStatusApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertEqual(payload["service"]["name"], "ollmo")
+        self.assertEqual(payload["service"]["name"], "fruth")
         self.assertEqual(payload["service"]["canonical_responses"]["path"], "/api/responses")
         self.assertTrue(payload["service"]["canonical_responses"]["requires_instance_id"])
         self.assertEqual(payload["aliases"]["image"], "image_generation")
@@ -280,9 +280,9 @@ class RuntimeStatusApiTests(unittest.TestCase):
         self.assertEqual(payload["runtime_truth"]["refresh_performed"], False)
         self.assertEqual(mock_merge_instances.call_args.kwargs["refresh"], False)
 
-    @patch("ollmo_webserver.build_backend_fabric_snapshot")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.build_backend_fabric_snapshot")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_runtime_manifest_refresh_is_explicit(
         self,
         mock_load_running_instances,
@@ -301,9 +301,9 @@ class RuntimeStatusApiTests(unittest.TestCase):
         self.assertEqual(payload["runtime_truth"]["refresh_performed"], True)
         self.assertEqual(mock_merge_instances.call_args.kwargs["refresh"], True)
 
-    @patch("ollmo_webserver.build_backend_fabric_snapshot")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.build_backend_fabric_snapshot")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_routing_table_alias_route_returns_same_manifest_shape(
         self,
         mock_load_running_instances,
@@ -323,11 +323,11 @@ class RuntimeStatusApiTests(unittest.TestCase):
         self.assertEqual(payload["aliases"]["tts"], "text_to_speech")
         self.assertEqual(payload["capabilities"]["chat"]["count"], 0)
 
-    @patch("ollmo_webserver.read_events")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_g.payload._read_recent_log_lines")
-    def test_ghost_route_returns_runtime_intelligence_payload(
+    @patch("fruth_webserver.read_events")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_inference.payload._read_recent_log_lines")
+    def test_inference_route_returns_runtime_intelligence_payload(
         self,
         mock_read_log_lines,
         mock_load_running_instances,
@@ -335,7 +335,7 @@ class RuntimeStatusApiTests(unittest.TestCase):
         mock_read_events,
     ):
         mock_read_log_lines.return_value = [
-            "2026-04-03 16:55:45,334 - INFO - Ghost router execution fallback: HTTPConnectionPool(host='localhost', port=11437): Read timed out. (read timeout=35)"
+            "2026-04-03 16:55:45,334 - INFO - interpretive inference router execution fallback: HTTPConnectionPool(host='localhost', port=11437): Read timed out. (read timeout=35)"
         ]
         mock_load_running_instances.return_value = [
             {
@@ -367,28 +367,28 @@ class RuntimeStatusApiTests(unittest.TestCase):
             }
         ]
 
-        response = self.client.get("/api/ghost")
+        response = self.client.get("/api/inference")
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertEqual(payload["identity"]["name"], "ollmo-ghost")
+        self.assertEqual(payload["identity"]["name"], "fruth-inference")
         self.assertEqual(payload["identity"]["role"], "self-describing local runtime intelligence")
         self.assertEqual(payload["capabilities"]["chat"]["default_instance_id"], "gpt-oss:20b-1")
         self.assertEqual(payload["recommendations"][0]["instance_id"], "gpt-oss:20b-1")
         self.assertIn("self_healing_hints", payload)
         self.assertTrue(any("router" in str(item.get("reason") or "").lower() for item in payload["self_healing_hints"]))
-        self.assertIn("Ollmo Ghost", payload["markdown"])
-        self.assertEqual(payload["paths"]["guide"], "GHOST.md")
+        self.assertIn("Fruth's interpretive inference layer", payload["markdown"])
+        self.assertEqual(payload["paths"]["guide"], "FRUTH_INFERENCE.md")
         self.assertEqual(payload["paths"]["response_frame_ledger"], "state/response_frames/responses.jsonl")
         self.assertEqual(payload["runtime_truth"]["truth_mode"], "cached")
         self.assertEqual(payload["runtime_truth"]["refresh_performed"], False)
         self.assertEqual(mock_merge_instances.call_args.kwargs["refresh"], False)
 
-    @patch("ollmo_webserver.read_events")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_g.payload._read_recent_log_lines")
-    def test_ghost_route_refresh_is_explicit(
+    @patch("fruth_webserver.read_events")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_inference.payload._read_recent_log_lines")
+    def test_inference_route_refresh_is_explicit(
         self,
         mock_read_log_lines,
         mock_load_running_instances,
@@ -400,7 +400,7 @@ class RuntimeStatusApiTests(unittest.TestCase):
         mock_merge_instances.return_value = []
         mock_read_events.return_value = []
 
-        response = self.client.get("/api/ghost?refresh=true")
+        response = self.client.get("/api/inference?refresh=true")
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
@@ -408,10 +408,10 @@ class RuntimeStatusApiTests(unittest.TestCase):
         self.assertEqual(payload["runtime_truth"]["refresh_performed"], True)
         self.assertEqual(mock_merge_instances.call_args.kwargs["refresh"], True)
 
-    @patch("ollmo_webserver.read_events")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_ghost_route_can_return_markdown(
+    @patch("fruth_webserver.read_events")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_inference_route_can_return_markdown(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -421,25 +421,25 @@ class RuntimeStatusApiTests(unittest.TestCase):
         mock_merge_instances.return_value = []
         mock_read_events.return_value = []
 
-        response = self.client.get("/api/ghost?format=md")
+        response = self.client.get("/api/inference?format=md")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/markdown", response.content_type)
         body = response.get_data(as_text=True)
-        self.assertIn("# Ollmo Ghost", body)
+        self.assertIn("# Fruth's interpretive inference layer", body)
         self.assertIn("No running instances", body)
         self.assertEqual(mock_merge_instances.call_args.kwargs["refresh"], False)
 
-    @patch("ollmo_webserver._build_ghost_route_preview_payload")
-    @patch("ollmo_webserver._prepare_effective_request_data")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_ghost_route_preview_default_is_cached_observer(
+    @patch("fruth_webserver._build_inference_route_preview_payload")
+    @patch("fruth_webserver._prepare_effective_request_data")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_inference_route_preview_default_is_cached_observer(
         self,
-        mock_resolve_ghost_auto_route,
+        mock_resolve_inference_auto_route,
         mock_prepare_effective_request_data,
         mock_build_preview_payload,
     ):
-        mock_resolve_ghost_auto_route.return_value = ({"instance": {"instance_id": "qwen-1"}}, None)
+        mock_resolve_inference_auto_route.return_value = ({"instance": {"instance_id": "qwen-1"}}, None)
         mock_prepare_effective_request_data.return_value = (
             {"prompt": "hello"},
             {"instance": {"instance_id": "qwen-1"}},
@@ -448,24 +448,24 @@ class RuntimeStatusApiTests(unittest.TestCase):
         )
         mock_build_preview_payload.return_value = {"route": {"instance_id": "qwen-1"}}
 
-        response = self.client.post("/api/ghost_route_preview", json={"prompt": "hello"})
+        response = self.client.post("/api/inference_route_preview", json={"prompt": "hello"})
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["runtime_truth"]["truth_mode"], "cached")
         self.assertEqual(payload["runtime_truth"]["refresh_performed"], False)
-        self.assertEqual(mock_resolve_ghost_auto_route.call_args.kwargs["refresh_runtime_status"], False)
+        self.assertEqual(mock_resolve_inference_auto_route.call_args.kwargs["refresh_runtime_status"], False)
 
-    @patch("ollmo_webserver._build_ghost_route_preview_payload")
-    @patch("ollmo_webserver._prepare_effective_request_data")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_ghost_route_preview_refresh_is_explicit(
+    @patch("fruth_webserver._build_inference_route_preview_payload")
+    @patch("fruth_webserver._prepare_effective_request_data")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_inference_route_preview_refresh_is_explicit(
         self,
-        mock_resolve_ghost_auto_route,
+        mock_resolve_inference_auto_route,
         mock_prepare_effective_request_data,
         mock_build_preview_payload,
     ):
-        mock_resolve_ghost_auto_route.return_value = ({"instance": {"instance_id": "qwen-1"}}, None)
+        mock_resolve_inference_auto_route.return_value = ({"instance": {"instance_id": "qwen-1"}}, None)
         mock_prepare_effective_request_data.return_value = (
             {"prompt": "hello", "refresh": True},
             {"instance": {"instance_id": "qwen-1"}},
@@ -474,13 +474,13 @@ class RuntimeStatusApiTests(unittest.TestCase):
         )
         mock_build_preview_payload.return_value = {"route": {"instance_id": "qwen-1"}}
 
-        response = self.client.post("/api/ghost_route_preview", json={"prompt": "hello", "refresh": True})
+        response = self.client.post("/api/inference_route_preview", json={"prompt": "hello", "refresh": True})
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["runtime_truth"]["truth_mode"], "refreshed")
         self.assertEqual(payload["runtime_truth"]["refresh_performed"], True)
-        self.assertEqual(mock_resolve_ghost_auto_route.call_args.kwargs["refresh_runtime_status"], True)
+        self.assertEqual(mock_resolve_inference_auto_route.call_args.kwargs["refresh_runtime_status"], True)
 
 
 if __name__ == "__main__":

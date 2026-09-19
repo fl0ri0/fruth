@@ -15,7 +15,7 @@ import requests
 from flask import Response
 from werkzeug.datastructures import FileStorage
 
-from ollmo_webserver import (
+from fruth_webserver import (
     _RESPONSE_LATE_FILL_IN_FLIGHT,
     _RESPONSE_LOOKUP,
     _LATE_FILL_RUNTIME,
@@ -37,19 +37,19 @@ from ollmo_webserver import (
     _ensure_response_lookup_for_payload,
     _execute_chat_backend_request,
     _execute_embedding_backend_request,
-    _extract_ghost_route_messages,
+    _extract_inference_route_messages,
     _finalize_response_frame_payload,
     _format_response_sse_event,
     _build_response_ui_lookup_payload,
-    _ghost_execution_preference_applies_to_capability,
+    _inference_execution_preference_applies_to_capability,
     _get_bounded_response_lookup_record,
-    _inject_ghost_runtime_policy_into_chat_messages,
+    _inject_inference_runtime_policy_into_chat_messages,
     _inject_prepare_phase_contract_into_chat_messages,
     _lookup_bind_slot_to_exact_output,
     _normalize_chat_messages_for_backend,
     _normalize_late_fill_branches,
     _normalize_reference_mirror_input_artifacts,
-    _pick_ghost_preference_instance,
+    _pick_inference_preference_instance,
     _plan_compound_execution_payload,
     _prepare_effective_request_data,
     _prepare_late_fill_branch_plan,
@@ -63,7 +63,7 @@ from ollmo_webserver import (
     _response_wire_enforce_outer_envelope_byte_ceiling,
     _merge_late_fill_result_fields,
     _persist_generated_image_provenance_for_infer_result,
-    _resolve_ghost_auto_route,
+    _resolve_inference_auto_route,
     _resolve_late_fill_route,
     _resolve_responses_target_instance,
     _rewrite_mailto_anchor_targets,
@@ -80,38 +80,38 @@ from ollmo_webserver import (
     _truth_gate_response_output_claims,
     app,
 )
-from ollmo_services.responses import (
+from fruth_services.responses import (
     build_canonical_response_payload,
     extract_responses_current_turn_prompt,
     extract_responses_messages,
     extract_responses_prompt,
 )
-from ollmo_services.chat_history import read_chat_history, write_chat_history
-from ollmo_services.response_artifact_bundles import bundle_response_artifacts
-from ollmo_services.response_frames import (
+from fruth_services.chat_history import read_chat_history, write_chat_history
+from fruth_services.response_artifact_bundles import bundle_response_artifacts
+from fruth_services.response_frames import (
     build_response_frame,
     load_latest_response_state,
     persist_response_frame,
 )
-from ollmo_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
-from ollmo_server.responses_runtime import (
+from fruth_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
+from fruth_server.responses_runtime import (
     derive_response_lifecycle_state,
     late_fill_has_actionable_repair_work,
 )
-from ollmo_g.intent import analyze_prompt_intent
-from ollmo_g.router import build_route_context, build_route_hint
-from ollmo_g.request_phase_graph import build_request_phase_graph, downstream_phase_records
-from ollmo_services.graph_repair import (
+from fruth_inference.intent import analyze_prompt_intent
+from fruth_inference.router import build_route_context, build_route_hint
+from fruth_inference.request_phase_graph import build_request_phase_graph, downstream_phase_records
+from fruth_services.graph_repair import (
     build_graph_repair_proposal_from_repair_gap,
     validate_graph_repair_proposal,
 )
-from ollmo_services.tts_audio_integrity import TTS_AUDIO_INTEGRITY_POLICY_ID
-from ollmo_services.graph_rebase import stable_graph_rebase_prompt_digest
+from fruth_services.tts_audio_integrity import TTS_AUDIO_INTEGRITY_POLICY_ID
+from fruth_services.graph_rebase import stable_graph_rebase_prompt_digest
 
 
 def _passed_tts_audio_integrity_evidence(source_text, path):
     return {
-        'kind': 'ollmo.tts_audio_integrity_evidence',
+        'kind': 'fruth.tts_audio_integrity_evidence',
         'version': 1,
         'policy_id': TTS_AUDIO_INTEGRITY_POLICY_ID,
         'authority': 'runtime_deterministic_audio_verification',
@@ -153,8 +153,8 @@ class ResponsesApiTests(unittest.TestCase):
 
     def test_terminal_missing_pages_without_original_branches_queue_bounded_repairs(self):
         prompt = 'Create a local hotel website with room detail pages.'
-        request = {'ghost_route': True, 'prompt': prompt}
-        route = {'capability': 'chat', 'route_source': 'ghost_carried'}
+        request = {'inference_route': True, 'prompt': prompt}
+        route = {'capability': 'chat', 'route_source': 'inference_carried'}
         graph = build_request_phase_graph(prompt, request_payload=request, route_payload=route)
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = str(Path(tmpdir).resolve())
@@ -225,8 +225,8 @@ class ResponsesApiTests(unittest.TestCase):
             record['branch_id'] = 'repair-app'
             self.assertTrue(_LATE_FILL_RUNTIME._text_artifact_branch_has_canonical_evidence(branch, payload))
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_live_cooldown_routes_without_wait_but_dead_or_excluded_do_not(self, load, merge):
         for dead, excluded in [(False, False), (True, False), (False, True)]:
             with self.subTest(dead=dead, excluded=excluded):
@@ -327,9 +327,9 @@ class ResponsesApiTests(unittest.TestCase):
 
                 with patch.object(_LATE_FILL_RUNTIME, 'execute_materialization_branches', side_effect=execute), \
                      patch.object(_LATE_FILL_RUNTIME, 'semantic_execution_gate_decision', side_effect=gate), \
-                     patch('ollmo_server.late_fill_runtime.time.time', side_effect=lambda: clock[0]), \
-                     patch('ollmo_server.late_fill_runtime.time.sleep', side_effect=sleep), \
-                     patch.dict(os.environ, {'OLLMO_LATE_FILL_AVAILABILITY_POLL_SEC': '5'}):
+                     patch('fruth_server.late_fill_runtime.time.time', side_effect=lambda: clock[0]), \
+                     patch('fruth_server.late_fill_runtime.time.sleep', side_effect=sleep), \
+                     patch.dict(os.environ, {'FRUTH_LATE_FILL_AVAILABILITY_POLL_SEC': '5'}):
                     _complete_response_late_fill(
                         response_payload=payload, request_payload={'prompt': 'Repair index.html.'},
                         assistant_message=payload['output_text'],
@@ -379,6 +379,11 @@ class ResponsesApiTests(unittest.TestCase):
 
     def setUp(self):
         app.config["TESTING"] = True
+        # Direct owner calls need the same TESTING context as HTTP requests so
+        # late-fill workers cannot outlive these temporary runtime roots.
+        self._app_context = app.app_context()
+        self._app_context.push()
+        self.addCleanup(self._app_context.pop)
         self._live_runtime_snapshots = {}
         for path in (Path("model_ports.json"), Path("state/runtime_status.json")):
             try:
@@ -390,7 +395,7 @@ class ResponsesApiTests(unittest.TestCase):
         self._runtime_status_path = Path(self._runtime_tmpdir.name) / "runtime_status.json"
         self._response_frames_dir = Path(self._runtime_tmpdir.name) / "response_frames"
         self._chat_history_dir = Path(self._runtime_tmpdir.name) / "chat_history"
-        self._ghost_preferences_path = Path(self._runtime_tmpdir.name) / "ghost_preferences.json"
+        self._inference_preferences_path = Path(self._runtime_tmpdir.name) / "inference_preferences.json"
         self._response_frames_dir.mkdir(parents=True, exist_ok=True)
         self._chat_history_dir.mkdir(parents=True, exist_ok=True)
         self._runtime_registry_path.write_text("[]\n", encoding="utf-8")
@@ -405,19 +410,22 @@ class ResponsesApiTests(unittest.TestCase):
             return read_chat_history(instance_id, *args, **kwargs)
 
         self._runtime_patchers = [
-            patch("ollmo_webserver.CONFIG_FILE_NAME", str(self._runtime_registry_path)),
-            patch("ollmo_webserver.RUNTIME_STATUS_PATH", self._runtime_status_path),
-            patch("ollmo_webserver.RESPONSE_FRAMES_DIR", self._response_frames_dir),
-            patch("ollmo_webserver.CHAT_HISTORY_DIR", self._chat_history_dir),
-            patch("ollmo_webserver.GHOST_PREFERENCES_PATH", self._ghost_preferences_path),
-            patch("ollmo_g.router.read_chat_history", side_effect=read_isolated_chat_history),
+            # Exercise hygiene synchronously instead of letting status writes
+            # race teardown. Its behavior is still executed and asserted.
+            patch("fruth_webserver._POST_RESPONSE_SUBSTRATE_HYGIENE_RUNTIME.run_async", False),
+            patch("fruth_webserver.CONFIG_FILE_NAME", str(self._runtime_registry_path)),
+            patch("fruth_webserver.RUNTIME_STATUS_PATH", self._runtime_status_path),
+            patch("fruth_webserver.RESPONSE_FRAMES_DIR", self._response_frames_dir),
+            patch("fruth_webserver.CHAT_HISTORY_DIR", self._chat_history_dir),
+            patch("fruth_webserver.INFERENCE_PREFERENCES_PATH", self._inference_preferences_path),
+            patch("fruth_inference.router.read_chat_history", side_effect=read_isolated_chat_history),
             patch(
-                "ollmo_server.ghost_route_runtime.read_chat_history",
+                "fruth_server.inference_route_runtime.read_chat_history",
                 side_effect=read_isolated_chat_history,
             ),
-            patch("ollmo_webserver.load_running_instances", return_value=[]),
-            patch("ollmo_core.registry.DEFAULT_REGISTRY_PATH", self._runtime_registry_path),
-            patch("ollmo_core.status.DEFAULT_RUNTIME_STATUS_PATH", self._runtime_status_path),
+            patch("fruth_webserver.load_running_instances", return_value=[]),
+            patch("fruth_core.registry.DEFAULT_REGISTRY_PATH", self._runtime_registry_path),
+            patch("fruth_core.status.DEFAULT_RUNTIME_STATUS_PATH", self._runtime_status_path),
         ]
         for patcher in self._runtime_patchers:
             patcher.start()
@@ -435,8 +443,8 @@ class ResponsesApiTests(unittest.TestCase):
         return response.get_json()
 
     def test_route_history_reads_use_isolated_root_and_preserve_explicit_override(self):
-        from ollmo_services import chat_history as chat_history_service
-        from ollmo_server import ghost_route_runtime
+        from fruth_services import chat_history as chat_history_service
+        from fruth_server import inference_route_runtime
 
         conversation_id = "responses_route_history_isolation"
         write_chat_history(
@@ -457,7 +465,7 @@ class ResponsesApiTests(unittest.TestCase):
             return real_history_path(instance_id, history_dir)
 
         with patch(
-            "ollmo_services.chat_history._history_path",
+            "fruth_services.chat_history._history_path",
             side_effect=guarded_history_path,
         ):
             history_response = self.client.get(
@@ -471,7 +479,7 @@ class ResponsesApiTests(unittest.TestCase):
                 conversation_id=conversation_id,
                 messages=[],
                 runtime_manifest={},
-                ghost_payload={},
+                inference_payload={},
                 instances=[],
             )
 
@@ -487,7 +495,7 @@ class ResponsesApiTests(unittest.TestCase):
             [{"role": "assistant", "content": "Explicit history root."}],
             history_dir=explicit_history_dir,
         )
-        explicit_history = ghost_route_runtime.read_chat_history(
+        explicit_history = inference_route_runtime.read_chat_history(
             "responses_explicit_history_override",
             history_dir=explicit_history_dir,
         )
@@ -510,11 +518,11 @@ class ResponsesApiTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content, encoding="utf-8")
 
-    def test_api_ghost_preferences_returns_defaults_when_missing(self):
+    def test_api_inference_preferences_returns_defaults_when_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            target = Path(tmpdir) / "ghost_preferences.json"
-            with patch("ollmo_webserver.GHOST_PREFERENCES_PATH", target):
-                response = self.client.get("/api/ghost_preferences")
+            target = Path(tmpdir) / "inference_preferences.json"
+            with patch("fruth_webserver.INFERENCE_PREFERENCES_PATH", target):
+                response = self.client.get("/api/inference_preferences")
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
@@ -555,8 +563,8 @@ class ResponsesApiTests(unittest.TestCase):
             }
             registry_path = root / "artifact_registry.jsonl"
             with (
-                patch("ollmo_webserver.ARTIFACT_BUNDLES_DIR", root / "bundles"),
-                patch("ollmo_webserver.ARTIFACT_REGISTRY_LEDGER", registry_path),
+                patch("fruth_webserver.ARTIFACT_BUNDLES_DIR", root / "bundles"),
+                patch("fruth_webserver.ARTIFACT_REGISTRY_LEDGER", registry_path),
             ):
                 response = self.client.post(
                     f"/api/responses/{response_id}/bundle_artifacts",
@@ -612,21 +620,21 @@ class ResponsesApiTests(unittest.TestCase):
             "source_response_id": response_id,
         }
         with patch(
-            "ollmo_webserver._get_bounded_response_lookup_record",
+            "fruth_webserver._get_bounded_response_lookup_record",
             return_value=(bounded_record, None, 200),
         ), patch(
-            "ollmo_webserver._load_latest_response_state",
+            "fruth_webserver._load_latest_response_state",
             return_value={"ok": True, "response_payload": canonical_payload},
         ) as mock_load_truth, patch(
-            "ollmo_webserver._hydrate_bundle_payload_artifacts_from_registry",
+            "fruth_webserver._hydrate_bundle_payload_artifacts_from_registry",
             side_effect=lambda payload: payload,
         ), patch(
-            "ollmo_webserver._bundle_response_artifacts",
+            "fruth_webserver._bundle_response_artifacts",
             return_value=bundle_payload,
         ) as mock_bundle, patch(
-            "ollmo_webserver._persist_response_artifact_bundle_record",
+            "fruth_webserver._persist_response_artifact_bundle_record",
         ), patch(
-            "ollmo_webserver._log_unified_event",
+            "fruth_webserver._log_unified_event",
         ):
             response = self.client.post(
                 f"/api/responses/{response_id}/bundle_artifacts",
@@ -654,10 +662,10 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         with patch(
-            "ollmo_webserver._get_bounded_response_lookup_record",
+            "fruth_webserver._get_bounded_response_lookup_record",
             return_value=(bounded_record, None, 200),
         ), patch(
-            "ollmo_webserver._load_latest_response_state",
+            "fruth_webserver._load_latest_response_state",
             return_value={
                 "ok": True,
                 "response_payload": {
@@ -667,7 +675,7 @@ class ResponsesApiTests(unittest.TestCase):
                     "artifacts": [{"artifact_ref": "artifact:old", "path": "/tmp/old.txt"}],
                 },
             },
-        ), patch("ollmo_webserver._bundle_response_artifacts") as mock_bundle:
+        ), patch("fruth_webserver._bundle_response_artifacts") as mock_bundle:
             response = self.client.post(
                 f"/api/responses/{response_id}/bundle_artifacts",
                 json={},
@@ -704,7 +712,7 @@ class ResponsesApiTests(unittest.TestCase):
             registry_path.write_text(
                 json.dumps(
                     {
-                        "kind": "ollmo.artifact_registry_record",
+                        "kind": "fruth.artifact_registry_record",
                         "artifact_ref": "bundle:test_lookup",
                         "artifact": {
                             "type": "bundle",
@@ -734,7 +742,7 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             }
 
-            with patch("ollmo_webserver.ARTIFACT_REGISTRY_LEDGER", registry_path):
+            with patch("fruth_webserver.ARTIFACT_REGISTRY_LEDGER", registry_path):
                 response = self.client.get(f"/api/responses/{response_id}")
 
         self.assertEqual(response.status_code, 200)
@@ -752,7 +760,7 @@ class ResponsesApiTests(unittest.TestCase):
             registry_path.write_text(
                 json.dumps(
                     {
-                        "kind": "ollmo.artifact_registry_record",
+                        "kind": "fruth.artifact_registry_record",
                         "artifact_ref": "bundle:test_missing",
                         "artifact": {
                             "type": "bundle",
@@ -786,7 +794,7 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             }
 
-            with patch("ollmo_webserver.ARTIFACT_REGISTRY_LEDGER", registry_path):
+            with patch("fruth_webserver.ARTIFACT_REGISTRY_LEDGER", registry_path):
                 response = self.client.get(f"/api/responses/{response_id}")
 
         self.assertEqual(response.status_code, 200)
@@ -815,7 +823,7 @@ class ResponsesApiTests(unittest.TestCase):
             ):
                 records.append(
                     {
-                        "kind": "ollmo.artifact_registry_record",
+                        "kind": "fruth.artifact_registry_record",
                         "artifact_ref": bundle_id,
                         "artifact": {
                             "type": "bundle",
@@ -851,7 +859,7 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             }
 
-            with patch("ollmo_webserver.ARTIFACT_REGISTRY_LEDGER", registry_path):
+            with patch("fruth_webserver.ARTIFACT_REGISTRY_LEDGER", registry_path):
                 response = self.client.get(f"/api/responses/{response_id}")
 
         self.assertEqual(response.status_code, 200)
@@ -874,7 +882,7 @@ class ResponsesApiTests(unittest.TestCase):
             registry_path.write_text(
                 json.dumps(
                     {
-                        "kind": "ollmo.artifact_registry_record",
+                        "kind": "fruth.artifact_registry_record",
                         "artifact_ref": "bundle:test_history",
                         "artifact": {
                             "type": "bundle",
@@ -916,8 +924,8 @@ class ResponsesApiTests(unittest.TestCase):
             }
 
             with (
-                patch("ollmo_webserver.CHAT_HISTORY_DIR", history_dir),
-                patch("ollmo_webserver.ARTIFACT_REGISTRY_LEDGER", registry_path),
+                patch("fruth_webserver.CHAT_HISTORY_DIR", history_dir),
+                patch("fruth_webserver.ARTIFACT_REGISTRY_LEDGER", registry_path),
             ):
                 response = self.client.get("/api/chat_history", query_string={"instance_id": conversation_id})
 
@@ -970,7 +978,7 @@ class ResponsesApiTests(unittest.TestCase):
             "response_payload": {"id": response_id, "status": "completed", "output_text": "Plain chat."},
         }
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("ollmo_webserver.ARTIFACT_BUNDLES_DIR", Path(tmpdir) / "bundles"):
+            with patch("fruth_webserver.ARTIFACT_BUNDLES_DIR", Path(tmpdir) / "bundles"):
                 empty = self.client.post(f"/api/responses/{response_id}/bundle_artifacts", json={})
 
         self.assertEqual(empty.status_code, 400)
@@ -1022,10 +1030,10 @@ class ResponsesApiTests(unittest.TestCase):
                 '<a href="https://example.test" target="_blank">Web</a>',
                 encoding="utf-8",
             )
-            with patch("ollmo_webserver.ARTIFACT_BUNDLES_DIR", root / "bundles"):
-                with patch("ollmo_webserver._open_path_in_file_manager") as mock_open:
+            with patch("fruth_webserver.ARTIFACT_BUNDLES_DIR", root / "bundles"):
+                with patch("fruth_webserver._open_path_in_file_manager") as mock_open:
                     open_response = self.client.post("/api/open_saved_artifact", json={"path": str(bundle_dir)})
-                with patch("ollmo_webserver._open_path_with_default_app") as mock_open_entry:
+                with patch("fruth_webserver._open_path_with_default_app") as mock_open_entry:
                     open_entry_response = self.client.post(
                         "/api/open_saved_artifact",
                         json={"path": str(entrypoint), "open_file": True},
@@ -1092,8 +1100,8 @@ class ResponsesApiTests(unittest.TestCase):
             image_path.write_bytes(b"png")
 
             with (
-                patch("ollmo_webserver.ARTIFACT_OUTPUTS_DOCUMENTS_DIR", documents_dir),
-                patch("ollmo_webserver.ARTIFACT_OUTPUTS_IMAGES_DIR", images_dir),
+                patch("fruth_webserver.ARTIFACT_OUTPUTS_DOCUMENTS_DIR", documents_dir),
+                patch("fruth_webserver.ARTIFACT_OUTPUTS_IMAGES_DIR", images_dir),
             ):
                 html_response = self.client.get(
                     "/api/view_saved_artifact",
@@ -1156,7 +1164,7 @@ class ResponsesApiTests(unittest.TestCase):
             image_path.write_bytes(b"png")
             quoted_name_path.write_text('<!doctype html><title>Quoted</title>', encoding="utf-8")
 
-            with patch("ollmo_webserver.ARTIFACT_OUTPUTS_DOCUMENTS_DIR", documents_dir):
+            with patch("fruth_webserver.ARTIFACT_OUTPUTS_DOCUMENTS_DIR", documents_dir):
                 preview_response = self.client.get(
                     "/api/preview_saved_artifact",
                     query_string={"path": str(index_path)},
@@ -1217,7 +1225,7 @@ class ResponsesApiTests(unittest.TestCase):
                 self.assertIn('event.isTrusted', html)
                 self.assertIn('bridge_token:bridgeToken', html)
                 self.assertLess(
-                    html.index('data-ollmo-preview-bridge="mailto"'),
+                    html.index('data-fruth-preview-bridge="mailto"'),
                     html.index('window.previewReady = true'),
                 )
                 base_href = html.split('<base href="', 1)[1].split('"', 1)[0]
@@ -1307,7 +1315,7 @@ class ResponsesApiTests(unittest.TestCase):
             index_path.write_text('<!doctype html><title>Flat</title>', encoding="utf-8")
             secret_path.write_text('{"secret": true}', encoding="utf-8")
 
-            with patch("ollmo_webserver.ARTIFACT_OUTPUTS_DOCUMENTS_DIR", documents_dir):
+            with patch("fruth_webserver.ARTIFACT_OUTPUTS_DOCUMENTS_DIR", documents_dir):
                 response = self.client.get(
                     "/api/preview_saved_artifact",
                     query_string={"path": str(index_path)},
@@ -1316,7 +1324,7 @@ class ResponsesApiTests(unittest.TestCase):
             self.assertEqual(response.status_code, 400)
 
     def test_flat_response_html_uses_an_expiring_response_bound_preview_package(self):
-        import ollmo_webserver
+        import fruth_webserver
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1399,13 +1407,13 @@ class ResponsesApiTests(unittest.TestCase):
             }
 
             with (
-                patch("ollmo_webserver.ARTIFACT_OUTPUTS_DOCUMENTS_DIR", documents_dir),
-                patch("ollmo_webserver.ARTIFACT_BUNDLES_DIR", persistent_bundles),
-                patch("ollmo_webserver._SAVED_HTML_PREVIEW_TEMP_ROOT", preview_root),
-                patch("ollmo_webserver._persist_response_artifact_bundle_record") as persist_bundle,
-                patch("ollmo_webserver._find_artifact_registry_record_by_artifact_ref") as registry_lookup,
+                patch("fruth_webserver.ARTIFACT_OUTPUTS_DOCUMENTS_DIR", documents_dir),
+                patch("fruth_webserver.ARTIFACT_BUNDLES_DIR", persistent_bundles),
+                patch("fruth_webserver._SAVED_HTML_PREVIEW_TEMP_ROOT", preview_root),
+                patch("fruth_webserver._persist_response_artifact_bundle_record") as persist_bundle,
+                patch("fruth_webserver._find_artifact_registry_record_by_artifact_ref") as registry_lookup,
             ):
-                ollmo_webserver._SAVED_HTML_PREVIEW_PACKAGES.clear()
+                fruth_webserver._SAVED_HTML_PREVIEW_PACKAGES.clear()
                 preview_response = self.client.get(
                     "/api/preview_saved_artifact",
                     query_string={"path": str(index_path), "response_id": response_id},
@@ -1436,9 +1444,9 @@ class ResponsesApiTests(unittest.TestCase):
                 self.assertNotIn('allow-popups', frame_response.headers.get('Content-Security-Policy', ''))
                 self.assertNotIn("'unsafe-eval'", frame_response.headers.get('Content-Security-Policy', ''))
 
-                self.assertEqual(len(ollmo_webserver._SAVED_HTML_PREVIEW_PACKAGES), 1)
+                self.assertEqual(len(fruth_webserver._SAVED_HTML_PREVIEW_PACKAGES), 1)
                 preview_id, record = next(
-                    iter(ollmo_webserver._SAVED_HTML_PREVIEW_PACKAGES.items())
+                    iter(fruth_webserver._SAVED_HTML_PREVIEW_PACKAGES.items())
                 )
                 package_root = Path(record["bundle_path"])
                 self.assertTrue(package_root.is_dir())
@@ -1505,37 +1513,37 @@ class ResponsesApiTests(unittest.TestCase):
                     wrong_response,
                 ):
                     response.close()
-                ollmo_webserver._expire_saved_html_preview_package(
+                fruth_webserver._expire_saved_html_preview_package(
                     preview_id,
                     str(package_root),
                 )
                 self.assertFalse(package_root.exists())
-                self.assertFalse(ollmo_webserver._SAVED_HTML_PREVIEW_PACKAGES)
+                self.assertFalse(fruth_webserver._SAVED_HTML_PREVIEW_PACKAGES)
                 expired_response = self.client.get(frame_src)
                 self.assertEqual(expired_response.status_code, 404)
                 self.assertTrue(index_path.exists())
                 self.assertTrue(unrelated_path.exists())
 
     def test_interactive_html_preview_token_allows_null_bytes_inside_its_signature(self):
-        import ollmo_webserver
+        import fruth_webserver
 
         with tempfile.TemporaryDirectory() as tmpdir:
             base_root = Path(tmpdir).resolve()
             digest_with_null = (b"a" * 15) + b"\0" + (b"b" * 16)
-            with patch("ollmo_webserver.hmac.new") as hmac_new:
+            with patch("fruth_webserver.hmac.new") as hmac_new:
                 hmac_new.return_value.digest.return_value = digest_with_null
-                token = ollmo_webserver._encode_saved_artifact_interactive_preview_base_root(
+                token = fruth_webserver._encode_saved_artifact_interactive_preview_base_root(
                     base_root
                 )
-                decoded = ollmo_webserver._decode_saved_artifact_interactive_preview_base_root(
+                decoded = fruth_webserver._decode_saved_artifact_interactive_preview_base_root(
                     token
                 )
 
             self.assertEqual(decoded, base_root)
 
-    def test_api_ghost_preferences_round_trip_persists_ui_payload(self):
+    def test_api_inference_preferences_round_trip_persists_ui_payload(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            target = Path(tmpdir) / "ghost_preferences.json"
+            target = Path(tmpdir) / "inference_preferences.json"
             request_payload = {
                 "preferences": {
                     "lockPrimary": True,
@@ -1556,9 +1564,9 @@ class ResponsesApiTests(unittest.TestCase):
                 },
                 "expanded": True,
             }
-            with patch("ollmo_webserver.GHOST_PREFERENCES_PATH", target):
-                post_response = self.client.post("/api/ghost_preferences", json=request_payload)
-                get_response = self.client.get("/api/ghost_preferences")
+            with patch("fruth_webserver.INFERENCE_PREFERENCES_PATH", target):
+                post_response = self.client.post("/api/inference_preferences", json=request_payload)
+                get_response = self.client.get("/api/inference_preferences")
                 file_exists = target.exists()
 
         self.assertEqual(post_response.status_code, 200)
@@ -1575,9 +1583,9 @@ class ResponsesApiTests(unittest.TestCase):
         get_payload = get_response.get_json()
         self.assertEqual(get_payload, post_payload)
 
-    def test_api_ghost_preferences_persists_routing_toggles_without_model_targets(self):
+    def test_api_inference_preferences_persists_routing_toggles_without_model_targets(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            target = Path(tmpdir) / "ghost_preferences.json"
+            target = Path(tmpdir) / "inference_preferences.json"
             request_payload = {
                 "preferences": {
                     "embeddingHelper": {
@@ -1589,8 +1597,8 @@ class ResponsesApiTests(unittest.TestCase):
                 },
                 "expanded": True,
             }
-            with patch("ollmo_webserver.GHOST_PREFERENCES_PATH", target):
-                response = self.client.post("/api/ghost_preferences", json=request_payload)
+            with patch("fruth_webserver.INFERENCE_PREFERENCES_PATH", target):
+                response = self.client.post("/api/inference_preferences", json=request_payload)
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
@@ -1598,9 +1606,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["preferences"]["embedding_helper"]["model"], "embeddinggemma:latest")
         self.assertTrue(payload["expanded"])
 
-    def test_api_ghost_preferences_persists_codex_cloud_consent(self):
+    def test_api_inference_preferences_persists_codex_cloud_consent(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            target = Path(tmpdir) / "ghost_preferences.json"
+            target = Path(tmpdir) / "inference_preferences.json"
             request_payload = {
                 "preferences": {
                     "externalTargets": {
@@ -1611,8 +1619,8 @@ class ResponsesApiTests(unittest.TestCase):
                 },
                 "expanded": True,
             }
-            with patch("ollmo_webserver.GHOST_PREFERENCES_PATH", target):
-                response = self.client.post("/api/ghost_preferences", json=request_payload)
+            with patch("fruth_webserver.INFERENCE_PREFERENCES_PATH", target):
+                response = self.client.post("/api/inference_preferences", json=request_payload)
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
@@ -1676,8 +1684,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["control"]["reason_ref"]["length_chars"], len(large_reason))
         self.assertLessEqual(len(response.data), 8 * 1024 * 1024)
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_skips_cancelled_pending_branch(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -1855,7 +1863,7 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             },
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': 'Invent three absurd prompt ideas and make images from them.',
             },
             artifact_payload={
@@ -1911,7 +1919,7 @@ class ResponsesApiTests(unittest.TestCase):
         gap = _build_pre_freeze_closure_review_gap(
             preparation,
             route_payload={'route_runtime': {'request_phase_graph': phase_graph}},
-            request_payload={'ghost_route': True, 'prompt': 'Create images and a website.'},
+            request_payload={'inference_route': True, 'prompt': 'Create images and a website.'},
             artifact_payload={
                 'output_text': preparation,
                 'phase_payload': {
@@ -2017,7 +2025,7 @@ class ResponsesApiTests(unittest.TestCase):
             'Three absurd prompt ideas are ready.',
             route_payload=route_payload,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': 'Invent three absurd prompt ideas and make images from them.',
             },
             artifact_payload=artifact_payload,
@@ -2026,7 +2034,7 @@ class ResponsesApiTests(unittest.TestCase):
             'Three absurd prompt ideas are ready.',
             route_payload=route_payload,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': 'Invent three absurd prompt ideas and make images from them.',
             },
             artifact_payload=artifact_payload,
@@ -2055,8 +2063,8 @@ class ResponsesApiTests(unittest.TestCase):
     def test_graph_closure_review_validates_request_ir_obligations(self):
         phase_graph = build_request_phase_graph(
             'Describe two tiny stage scenes and then generate images (2) of them.',
-            request_payload={'ghost_route': True},
-            route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True},
+            route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
         )
         artifact_payload = {
             'output_text': 'Two image prompts are ready.',
@@ -2091,7 +2099,7 @@ class ResponsesApiTests(unittest.TestCase):
         review = _build_graph_closure_review(
             'Two image prompts are ready.',
             route_payload={'route_runtime': {'request_phase_graph': phase_graph}},
-            request_payload={'ghost_route': True},
+            request_payload={'inference_route': True},
             artifact_payload=artifact_payload,
         )
 
@@ -2140,7 +2148,7 @@ class ResponsesApiTests(unittest.TestCase):
         review = _build_graph_closure_review(
             'Two image prompts are ready.',
             route_payload={'route_runtime': {'request_phase_graph': phase_graph}},
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload={
                 'output_text': 'Two image prompts are ready.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -2191,7 +2199,7 @@ class ResponsesApiTests(unittest.TestCase):
         review = _build_graph_closure_review(
             'Why did the model bring a ladder? To reach higher confidence.',
             route_payload={'route_runtime': {'request_phase_graph': phase_graph}},
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             artifact_payload={
                 'output_text': 'Why did the model bring a ladder? To reach higher confidence.',
                 'runtime': {'request_phase_graph': phase_graph},
@@ -2218,8 +2226,8 @@ class ResponsesApiTests(unittest.TestCase):
     def test_graph_closure_review_closes_explicitly_waived_request_ir_obligations(self):
         phase_graph = build_request_phase_graph(
             'Describe two tiny stage scenes and then generate images (2) of them.',
-            request_payload={'ghost_route': True},
-            route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True},
+            route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
         )
         for obligation in phase_graph['request_ir']['output_obligations']:
             if obligation.get('obligation_id') == 'obligation-phase-3':
@@ -2250,7 +2258,7 @@ class ResponsesApiTests(unittest.TestCase):
         review = _build_graph_closure_review(
             'Two image prompts are ready; the second image is not needed.',
             route_payload={'route_runtime': {'request_phase_graph': phase_graph}},
-            request_payload={'ghost_route': True},
+            request_payload={'inference_route': True},
             artifact_payload=artifact_payload,
         )
 
@@ -2273,8 +2281,8 @@ class ResponsesApiTests(unittest.TestCase):
         )
         phase_graph = build_request_phase_graph(
             'ok. generate it now',
-            request_payload={'ghost_route': True, 'prompt': 'ok. generate it now'},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': 'ok. generate it now'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             response_payload={'output_text': output_text},
         )
         artifact_payload = {
@@ -2292,7 +2300,7 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             },
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': 'ok. generate it now',
             },
             artifact_payload=artifact_payload,
@@ -2305,7 +2313,7 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             },
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': 'ok. generate it now',
             },
             artifact_payload=artifact_payload,
@@ -2434,7 +2442,7 @@ class ResponsesApiTests(unittest.TestCase):
         phase_graph = build_request_phase_graph(
             prompt,
             request_payload={'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertFalse(phase_graph['continuation_required'])
@@ -2454,8 +2462,8 @@ class ResponsesApiTests(unittest.TestCase):
         analysis = analyze_prompt_intent(prompt)
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'prompt': prompt, 'ghost_route': True},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'prompt': prompt, 'inference_route': True},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
 
         self.assertTrue(analysis['explicit_defer_materialization'])
@@ -2567,21 +2575,21 @@ class ResponsesApiTests(unittest.TestCase):
         phase_graph = build_request_phase_graph(
             prompt,
             request_payload={"prompt": prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
 
         injected = _inject_prepare_phase_contract_into_chat_messages(
             [{"role": "user", "content": prompt}],
             route_payload={
                 "capability": "chat",
-                "route_source": "ghost_carried",
+                "route_source": "inference_carried",
                 "route_runtime": {"request_phase_graph": phase_graph},
             },
             request_payload={"prompt": prompt},
         )
 
         self.assertEqual(injected[0]["role"], "system")
-        self.assertIn("Ollmo phase contract: prepare-only.", injected[0]["content"])
+        self.assertIn("Fruth phase contract: prepare-only.", injected[0]["content"])
         self.assertIn("Do not say that you cannot generate images", injected[0]["content"])
         self.assertIn("Do not pre-answer downstream artifact-dependent review", injected[0]["content"])
         self.assertIn("leave that work to the downstream branch", injected[0]["content"])
@@ -2602,29 +2610,29 @@ class ResponsesApiTests(unittest.TestCase):
 
         self.assertEqual(injected, [{"role": "user", "content": prompt}])
 
-    def test_inject_ghost_runtime_policy_into_chat_messages_for_ghost_owned_request(self):
-        prompt = 'Hello from Ghost.'
+    def test_inject_inference_runtime_policy_into_chat_messages_for_inference_owned_request(self):
+        prompt = 'Hello from interpretive inference.'
 
-        injected = _inject_ghost_runtime_policy_into_chat_messages(
+        injected = _inject_inference_runtime_policy_into_chat_messages(
             [{'role': 'user', 'content': prompt}],
             route_payload={
                 'capability': 'chat',
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
             },
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
         )
 
         self.assertEqual(injected[0]['role'], 'system')
-        self.assertIn('Ollmo Ghost runtime policy: attached.', injected[0]['content'])
-        self.assertIn('Ollmo Ghost Runtime Policy', injected[0]['content'])
-        self.assertIn('when acting as Ghost-owned user-facing chat', injected[0]['content'])
+        self.assertIn('Fruth interpretive inference runtime policy: attached.', injected[0]['content'])
+        self.assertIn('Fruth Interpretive Inference Policy', injected[0]['content'])
+        self.assertIn('when acting as interpretive inference-owned user-facing chat', injected[0]['content'])
         self.assertIn('do not expose route JSON', injected[0]['content'])
         self.assertEqual(injected[-1]['content'], prompt)
 
-    def test_inject_ghost_runtime_policy_into_chat_messages_keeps_non_ghost_chat_untouched(self):
+    def test_inject_inference_runtime_policy_into_chat_messages_keeps_non_inference_chat_untouched(self):
         prompt = 'Hello there.'
 
-        injected = _inject_ghost_runtime_policy_into_chat_messages(
+        injected = _inject_inference_runtime_policy_into_chat_messages(
             [{'role': 'user', 'content': prompt}],
             request_payload={'prompt': prompt},
         )
@@ -2683,7 +2691,7 @@ class ResponsesApiTests(unittest.TestCase):
                         "content": [{"type": "input_text", "text": "thank you"}],
                     },
                 ],
-                "ghost_messages": [
+                "inference_messages": [
                     {"role": "user", "content": "Write a short poem and then read it aloud."},
                     {"role": "assistant", "content": "The harbor hummed at dusk.\n\nLanterns answered the tide."},
                     {"role": "user", "content": "thank you"},
@@ -2691,7 +2699,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
             route_info={
                 "capability": "chat",
-                "route_source": "ghost_carried",
+                "route_source": "inference_carried",
                 "route_runtime": {},
                 "instance": {
                     "instance_id": "chat-1",
@@ -2724,7 +2732,7 @@ class ResponsesApiTests(unittest.TestCase):
             image_path = Path(tmpdir) / "image.png"
             image_path.write_bytes(b"fake")
             provenance_path = Path(tmpdir) / "artifact_registry.jsonl"
-            with patch("ollmo_webserver.ARTIFACT_REGISTRY_LEDGER", provenance_path):
+            with patch("fruth_webserver.ARTIFACT_REGISTRY_LEDGER", provenance_path):
                 record = _persist_generated_image_provenance_for_infer_result(
                     {
                         "mode": "image_generation",
@@ -2759,7 +2767,7 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(record["source"]["request_origin"], "responses_late_fill")
         self.assertEqual(record["source"]["route_source"], "phase_continuation")
 
-    @patch("ollmo_webserver.requests.post")
+    @patch("fruth_webserver.requests.post")
     def test_execute_chat_backend_request_hoists_system_messages_for_mlx(self, mock_post):
         response = Mock()
         response.raise_for_status.return_value = None
@@ -2816,7 +2824,7 @@ class ResponsesApiTests(unittest.TestCase):
             ]
         }
 
-        with patch('ollmo_webserver.requests.post', return_value=response) as mock_post:
+        with patch('fruth_webserver.requests.post', return_value=response) as mock_post:
             embeddings = _execute_embedding_backend_request(
                 target_port=11512,
                 model_name='mixed-helper',
@@ -2913,7 +2921,7 @@ class ResponsesApiTests(unittest.TestCase):
         ]
 
         with patch(
-            'ollmo_webserver._execute_embedding_backend_request',
+            'fruth_webserver._execute_embedding_backend_request',
             return_value=[[1.0, 0.0], [0.9, 0.1], [0.2, 0.8], [0.85, 0.15]],
         ):
             _attach_embedding_hints_to_route_context(
@@ -2928,13 +2936,13 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(route_context['runtime']['embedding_helper']['instance_id'], 'helper-1')
         self.assertIn('embedding_hints', route_context['runtime'])
 
-    @patch('ollmo_webserver._resolve_saved_downloadable_artifact_path')
-    def test_extract_ghost_route_messages_injects_selected_reference_artifact(self, mock_resolve_artifact):
+    @patch('fruth_webserver._resolve_saved_downloadable_artifact_path')
+    def test_extract_inference_route_messages_injects_selected_reference_artifact(self, mock_resolve_artifact):
         mock_resolve_artifact.return_value = '/tmp/generated/older-image.png'
 
-        messages = _extract_ghost_route_messages(
+        messages = _extract_inference_route_messages(
             {
-                'ghost_messages': [
+                'inference_messages': [
                     {'role': 'user', 'content': 'first'},
                     {'role': 'assistant', 'content': 'latest reply'},
                 ],
@@ -2954,10 +2962,10 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(messages[-1]['artifacts'][0]['path'], '/tmp/generated/older-image.png')
         self.assertEqual(messages[-1]['artifacts'][0]['image_state']['scene'], 'A prehistoric jungle scene.')
 
-    def test_extract_ghost_route_messages_injects_selected_reference_message(self):
-        messages = _extract_ghost_route_messages(
+    def test_extract_inference_route_messages_injects_selected_reference_message(self):
+        messages = _extract_inference_route_messages(
             {
-                'ghost_messages': [
+                'inference_messages': [
                     {'role': 'user', 'content': 'first'},
                     {'role': 'assistant', 'content': 'latest reply'},
                 ],
@@ -2980,13 +2988,13 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(messages[-1]['response_model'], 'gemma4:26b')
         self.assertEqual(messages[-1]['response_instance_id'], 'gemma4:26b-1')
 
-    @patch('ollmo_webserver._resolve_saved_downloadable_artifact_path')
-    def test_extract_ghost_route_messages_injects_selected_reference_message_and_artifact_list(self, mock_resolve_artifact):
+    @patch('fruth_webserver._resolve_saved_downloadable_artifact_path')
+    def test_extract_inference_route_messages_injects_selected_reference_message_and_artifact_list(self, mock_resolve_artifact):
         mock_resolve_artifact.return_value = '/tmp/generated/older-image.png'
 
-        messages = _extract_ghost_route_messages(
+        messages = _extract_inference_route_messages(
             {
-                'ghost_messages': [
+                'inference_messages': [
                     {'role': 'user', 'content': 'first'},
                     {'role': 'assistant', 'content': 'latest reply'},
                 ],
@@ -3016,19 +3024,19 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(messages[-1]['content'], 'Selected reference artifact.')
         self.assertEqual(messages[-1]['artifacts'][0]['path'], '/tmp/generated/older-image.png')
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._execute_chat_backend_request')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_attempts_router_before_obvious_tts_deterministic_fallback(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._execute_chat_backend_request')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_attempts_router_before_obvious_tts_deterministic_fallback(
         self,
         mock_attach_embedding_hints,
         mock_execute_router,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3053,8 +3061,8 @@ class ResponsesApiTests(unittest.TestCase):
         mock_merge_instances.return_value = instances
         mock_execute_router.side_effect = RuntimeError('router timeout')
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'prompt': 'generate me an audio of the following english sentence: "Hello world."',
                     'conversation_id': '__responses_workbench__',
@@ -3063,24 +3071,24 @@ class ResponsesApiTests(unittest.TestCase):
 
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'text_to_speech')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
-        self.assertEqual(route_info['route_runtime']['ghost_resolution']['status'], 'current_turn_resolved')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
+        self.assertEqual(route_info['route_runtime']['inference_resolution']['status'], 'current_turn_resolved')
         mock_attach_embedding_hints.assert_not_called()
         mock_execute_router.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._execute_chat_backend_request')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_prefers_stable_primary_model_when_requested(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._execute_chat_backend_request')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_prefers_stable_primary_model_when_requested(
         self,
         mock_attach_embedding_hints,
         mock_execute_router,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3108,7 +3116,7 @@ class ResponsesApiTests(unittest.TestCase):
         payload = {
             'prompt': 'explain quantum entanglement in 5 bullets',
             'conversation_id': '__responses_workbench__',
-            'ghost_preferences': {
+            'inference_preferences': {
                 'primary_mode': 'prefer',
                 'primary_target': {
                     'model': 'ggml-org/gemma-4-E4B-it-GGUF',
@@ -3116,31 +3124,31 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             },
         }
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json=payload):
-            route_info, error = _resolve_ghost_auto_route(payload)
+        with app.test_request_context('/api/inference_route_preview', method='POST', json=payload):
+            route_info, error = _resolve_inference_auto_route(payload)
 
         self.assertIsNone(error)
         self.assertEqual(route_info['instance_id'], 'chat-preferred-1')
         self.assertEqual(
-            route_info['route_runtime']['ghost_preference_selection']['applied'],
+            route_info['route_runtime']['inference_preference_selection']['applied'],
             'primary_target',
         )
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         mock_attach_embedding_hints.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._execute_chat_backend_request')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_lock_mode_uses_fallback_when_primary_missing(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._execute_chat_backend_request')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_lock_mode_uses_fallback_when_primary_missing(
         self,
         mock_attach_embedding_hints,
         mock_execute_router,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3168,7 +3176,7 @@ class ResponsesApiTests(unittest.TestCase):
         payload = {
             'prompt': 'summarize this topic in 4 bullets',
             'conversation_id': '__responses_workbench__',
-            'ghost_preferences': {
+            'inference_preferences': {
                 'primary_mode': 'lock',
                 'primary_target': {
                     'model': 'missing:model',
@@ -3180,21 +3188,21 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             },
         }
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json=payload):
-            route_info, error = _resolve_ghost_auto_route(payload)
+        with app.test_request_context('/api/inference_route_preview', method='POST', json=payload):
+            route_info, error = _resolve_inference_auto_route(payload)
 
         self.assertIsNone(error)
         self.assertEqual(route_info['instance_id'], 'chat-fallback-1')
         self.assertEqual(
-            route_info['route_runtime']['ghost_preference_selection']['applied'],
+            route_info['route_runtime']['inference_preference_selection']['applied'],
             'fallback_target',
         )
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         mock_attach_embedding_hints.assert_not_called()
 
-    def test_ghost_execution_preference_applies_capabilityless_targets_to_chat_only(self):
+    def test_inference_execution_preference_applies_capabilityless_targets_to_chat_only(self):
         self.assertTrue(
-            _ghost_execution_preference_applies_to_capability(
+            _inference_execution_preference_applies_to_capability(
                 {
                     'model': 'mlx-community/Qwen3.5-9B-MLX-4bit',
                     'backend': 'mlx',
@@ -3203,7 +3211,7 @@ class ResponsesApiTests(unittest.TestCase):
             )
         )
         self.assertFalse(
-            _ghost_execution_preference_applies_to_capability(
+            _inference_execution_preference_applies_to_capability(
                 {
                     'model': 'mlx-community/Qwen3.5-9B-MLX-4bit',
                     'backend': 'mlx',
@@ -3212,7 +3220,7 @@ class ResponsesApiTests(unittest.TestCase):
             )
         )
 
-    def test_pick_ghost_preference_instance_keeps_explicit_non_chat_targets_available(self):
+    def test_pick_inference_preference_instance_keeps_explicit_non_chat_targets_available(self):
         candidates = [
             {
                 'instance_id': 'vision-1',
@@ -3225,7 +3233,7 @@ class ResponsesApiTests(unittest.TestCase):
         ]
         route_context = {
             'runtime': {
-                'ghost_preferences': {
+                'inference_preferences': {
                     'primary_mode': 'prefer',
                     'primary_target': {
                         'model': 'mlx-community/Qwen3.5-9B-MLX-4bit',
@@ -3236,7 +3244,7 @@ class ResponsesApiTests(unittest.TestCase):
             }
         }
 
-        selected_instance_id, preference_meta = _pick_ghost_preference_instance(
+        selected_instance_id, preference_meta = _pick_inference_preference_instance(
             candidates,
             route_context,
             requested_capability='vision_analysis',
@@ -3245,7 +3253,7 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(selected_instance_id, 'vision-1')
         self.assertEqual(preference_meta['applied'], 'primary_target')
 
-    def test_pick_ghost_preference_instance_prefers_primary_chat_target_even_with_preselected_route(self):
+    def test_pick_inference_preference_instance_prefers_primary_chat_target_even_with_preselected_route(self):
         candidates = [
             {
                 'instance_id': 'chat-router-1',
@@ -3266,7 +3274,7 @@ class ResponsesApiTests(unittest.TestCase):
         ]
         route_context = {
             'runtime': {
-                'ghost_preferences': {
+                'inference_preferences': {
                     'primary_mode': 'prefer',
                     'primary_target': {
                         'model': 'gemma4:e4b',
@@ -3276,7 +3284,7 @@ class ResponsesApiTests(unittest.TestCase):
             }
         }
 
-        selected_instance_id, preference_meta = _pick_ghost_preference_instance(
+        selected_instance_id, preference_meta = _pick_inference_preference_instance(
             candidates,
             route_context,
             route_selected_instance_id='chat-router-1',
@@ -3286,19 +3294,19 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(selected_instance_id, 'chat-primary-1')
         self.assertEqual(preference_meta['applied'], 'primary_target')
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._execute_chat_backend_request')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_ignores_chat_preview_when_live_deterministic_fallback_is_image_generation(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._execute_chat_backend_request')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_ignores_chat_preview_when_live_deterministic_fallback_is_image_generation(
         self,
         mock_attach_embedding_hints,
         mock_execute_router,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3328,14 +3336,14 @@ class ResponsesApiTests(unittest.TestCase):
         payload = {
             'prompt': 'generate an image: a moonlit cove at night with silver water',
             'conversation_id': '__responses_workbench__',
-            'ghost_preview': {
+            'inference_preview': {
                 'instance_id': 'chat-1',
                 'capability': 'chat',
                 'route_source': 'heuristic',
                 'confidence': 0.62,
                 'reason': 'default chat fallback',
             },
-            'ghost_preferences': {
+            'inference_preferences': {
                 'primary_mode': 'lock',
                 'primary_target': {
                     'model': 'gemma4:e4b',
@@ -3343,31 +3351,31 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             },
         }
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json=payload):
-            route_info, error = _resolve_ghost_auto_route(payload)
+        with app.test_request_context('/api/inference_route_preview', method='POST', json=payload):
+            route_info, error = _resolve_inference_auto_route(payload)
 
         self.assertIsNone(error)
         self.assertEqual(route_info['instance_id'], 'flux-1')
         self.assertEqual(route_info['capability'], 'image_generation')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         self.assertEqual(route_info['route_reason'], 'image-generation cue')
-        self.assertIsNone(route_info['route_runtime']['ghost_preference_selection'])
+        self.assertIsNone(route_info['route_runtime']['inference_preference_selection'])
         mock_attach_embedding_hints.assert_not_called()
         mock_execute_router.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._execute_chat_backend_request')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_prefer_primary_chat_target_can_override_preselected_chat_route(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._execute_chat_backend_request')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_prefer_primary_chat_target_can_override_preselected_chat_route(
         self,
         mock_attach_embedding_hints,
         mock_execute_router,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3402,9 +3410,9 @@ class ResponsesApiTests(unittest.TestCase):
         }
 
         payload = {
-            'prompt': 'Hi Ollmo. How are you today?',
+            'prompt': 'Hi Fruth. How are you today?',
             'conversation_id': '__responses_workbench__',
-            'ghost_preferences': {
+            'inference_preferences': {
                 'primary_mode': 'prefer',
                 'primary_target': {
                     'model': 'gemma4:e4b',
@@ -3412,32 +3420,32 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             },
         }
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json=payload):
-            route_info, error = _resolve_ghost_auto_route(payload)
+        with app.test_request_context('/api/inference_route_preview', method='POST', json=payload):
+            route_info, error = _resolve_inference_auto_route(payload)
 
         self.assertIsNone(error)
         self.assertEqual(route_info['instance_id'], 'chat-primary-1')
         self.assertEqual(
-            route_info['route_runtime']['ghost_preference_selection']['applied'],
+            route_info['route_runtime']['inference_preference_selection']['applied'],
             'primary_target',
         )
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         mock_attach_embedding_hints.assert_not_called()
 
-    @patch('ollmo_webserver._resolve_saved_downloadable_artifact_path')
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._execute_chat_backend_request')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_uses_selected_reference_artifact_as_active_anchor_via_deterministic_fallback(
+    @patch('fruth_webserver._resolve_saved_downloadable_artifact_path')
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._execute_chat_backend_request')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_uses_selected_reference_artifact_as_active_anchor_via_deterministic_fallback(
         self,
         mock_attach_embedding_hints,
         mock_execute_router,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
         mock_resolve_saved_artifact,
     ):
@@ -3469,7 +3477,7 @@ class ResponsesApiTests(unittest.TestCase):
 
         payload = {
             'prompt': 'describe this image',
-            'ghost_messages': [
+            'inference_messages': [
                 {'role': 'assistant', 'content': 'New unrelated reply.'},
             ],
             'selected_reference_artifact': {
@@ -3480,31 +3488,31 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             },
         }
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json=payload):
-            route_info, error = _resolve_ghost_auto_route(payload, upload=None)
+        with app.test_request_context('/api/inference_route_preview', method='POST', json=payload):
+            route_info, error = _resolve_inference_auto_route(payload, upload=None)
 
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'vision_analysis')
         self.assertTrue(route_info['route_reuse_last_artifact'])
         self.assertEqual(route_info['route_artifact_path'], '/tmp/generated/older-image.png')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
-        self.assertEqual(route_info['route_runtime']['ghost_resolution']['status'], 'current_turn_resolved')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
+        self.assertEqual(route_info['route_runtime']['inference_resolution']['status'], 'current_turn_resolved')
         mock_execute_router.assert_not_called()
         mock_attach_embedding_hints.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._execute_chat_backend_request')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_attempts_router_before_implicit_tts_accessibility_deterministic_fallback(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._execute_chat_backend_request')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_attempts_router_before_implicit_tts_accessibility_deterministic_fallback(
         self,
         mock_attach_embedding_hints,
         mock_execute_router,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3529,8 +3537,8 @@ class ResponsesApiTests(unittest.TestCase):
         mock_merge_instances.return_value = instances
         mock_execute_router.side_effect = RuntimeError('router timeout')
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'prompt': 'for my blind friend, output a file he can consume with a female voice saying hello world',
                     'conversation_id': '__responses_workbench__',
@@ -3539,24 +3547,24 @@ class ResponsesApiTests(unittest.TestCase):
 
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'text_to_speech')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
-        self.assertEqual(route_info['route_runtime']['ghost_resolution']['status'], 'current_turn_resolved')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
+        self.assertEqual(route_info['route_runtime']['inference_resolution']['status'], 'current_turn_resolved')
         mock_attach_embedding_hints.assert_not_called()
         mock_execute_router.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._execute_chat_backend_request')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_attempts_router_before_typoed_image_deterministic_fallback(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._execute_chat_backend_request')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_attempts_router_before_typoed_image_deterministic_fallback(
         self,
         mock_attach_embedding_hints,
         mock_execute_router,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3581,8 +3589,8 @@ class ResponsesApiTests(unittest.TestCase):
         mock_merge_instances.return_value = instances
         mock_execute_router.side_effect = RuntimeError('router timeout')
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'prompt': 'generate me a igmae of "a butterfly"',
                     'conversation_id': '__responses_workbench__',
@@ -3592,24 +3600,24 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'image_generation')
         self.assertEqual(route_info['instance_id'], 'flux-1')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
-        self.assertEqual(route_info['route_runtime']['ghost_resolution']['status'], 'current_turn_resolved')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
+        self.assertEqual(route_info['route_runtime']['inference_resolution']['status'], 'current_turn_resolved')
         mock_attach_embedding_hints.assert_not_called()
         mock_execute_router.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._execute_chat_backend_request')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_prefers_qwen_tts_instance_from_prompt_cue(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._execute_chat_backend_request')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_prefers_qwen_tts_instance_from_prompt_cue(
         self,
         mock_attach_embedding_hints,
         mock_execute_router,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3646,8 +3654,8 @@ class ResponsesApiTests(unittest.TestCase):
         mock_merge_instances.return_value = instances
         mock_execute_router.side_effect = RuntimeError('router timeout')
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'prompt': 'use qwen tts to generate an audio of this: "Hello world."',
                     'conversation_id': '__responses_workbench__',
@@ -3657,25 +3665,25 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'text_to_speech')
         self.assertEqual(route_info['instance_id'], 'mlx-community__Qwen3-TTS-12Hz-0.6B-Base-bf16-mlx-11505')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         mock_attach_embedding_hints.assert_not_called()
         mock_execute_router.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    @patch('ollmo_webserver._resolve_saved_downloadable_artifact_path', side_effect=lambda value: value)
-    @patch('ollmo_webserver._execute_chat_backend_request')
-    def test_resolve_ghost_auto_route_applies_embedding_tiebreak_for_pinned_image_follow_up(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    @patch('fruth_webserver._resolve_saved_downloadable_artifact_path', side_effect=lambda value: value)
+    @patch('fruth_webserver._execute_chat_backend_request')
+    def test_resolve_inference_auto_route_applies_embedding_tiebreak_for_pinned_image_follow_up(
         self,
         mock_execute_router,
         _mock_resolve_artifact,
         mock_attach_embedding_hints,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3720,12 +3728,12 @@ class ResponsesApiTests(unittest.TestCase):
 
         mock_attach_embedding_hints.side_effect = _inject_embedding_hints
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'prompt': 'darker shadows',
                     'conversation_id': '__responses_workbench__',
-                    'ghost_messages': [
+                    'inference_messages': [
                         {'role': 'user', 'content': 'generate an image of a fox in a snowy forest'},
                         {'role': 'assistant', 'content': 'Image generated.', 'saved_image_path': '/tmp/generated/fox.png'},
                     ],
@@ -3746,22 +3754,22 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(route_info['route_runtime']['session_class'], 'artifact_chain')
         self.assertEqual(route_info['route_runtime']['routing_preferences']['matched_policy_ids'], [])
         mock_attach_embedding_hints.assert_called_once()
-        self.assertEqual(route_info['route_runtime']['ghost_resolution']['status'], 'resolved')
+        self.assertEqual(route_info['route_runtime']['inference_resolution']['status'], 'resolved')
         mock_execute_router.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    @patch('ollmo_webserver._execute_chat_backend_request', return_value='{"capability":"vision_analysis","instance_id":null,"reuse_last_artifact":false,"artifact_path":null,"confidence":0.91,"reason":"vision follow-up"}')
-    def test_resolve_ghost_auto_route_can_select_secondary_supported_capability_instance(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    @patch('fruth_webserver._execute_chat_backend_request', return_value='{"capability":"vision_analysis","instance_id":null,"reuse_last_artifact":false,"artifact_path":null,"confidence":0.91,"reason":"vision follow-up"}')
+    def test_resolve_inference_auto_route_can_select_secondary_supported_capability_instance(
         self,
         mock_execute_router,
         mock_attach_embedding_hints,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3782,12 +3790,12 @@ class ResponsesApiTests(unittest.TestCase):
         mock_load_running_instances.return_value = instances
         mock_merge_instances.return_value = instances
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'prompt': 'describe what happened in this image',
                     'conversation_id': '__responses_workbench__',
-                    'ghost_messages': [
+                    'inference_messages': [
                         {
                             'role': 'assistant',
                             'content': 'Image generated.',
@@ -3800,19 +3808,19 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'vision_analysis')
         self.assertEqual(route_info['instance_id'], 'gemma-vision-1')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
-        self.assertEqual(route_info['route_runtime']['ghost_resolution']['status'], 'current_turn_resolved')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
+        self.assertEqual(route_info['route_runtime']['inference_resolution']['status'], 'current_turn_resolved')
         mock_attach_embedding_hints.assert_not_called()
         mock_execute_router.assert_not_called()
 
-    @patch('ollmo_webserver._invoke_internal_api_json_route')
-    @patch('ollmo_webserver._resolve_ghost_auto_route')
+    @patch('fruth_webserver._invoke_internal_api_json_route')
+    @patch('fruth_webserver._resolve_inference_auto_route')
     def test_canonical_responses_allows_secondary_supported_capability_instance(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 'instance_id': 'gemma-vision-1',
                 'instance': {
@@ -3849,11 +3857,11 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             '/api/responses',
             json={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': 'read this screenshot and summarize the visible text in 5 bullets',
                 'input': 'read this screenshot and summarize the visible text in 5 bullets',
                 'conversation_id': 'responses-workbench',
-                'ghost_messages': [
+                'inference_messages': [
                     {'role': 'user', 'content': 'read this screenshot and summarize the visible text in 5 bullets'},
                 ],
                 'file_path': '/tmp/example.png',
@@ -3868,19 +3876,19 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(infer_payload['instance_id'], 'gemma-vision-1')
         self.assertEqual(infer_payload['capability'], 'vision_analysis')
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    @patch('ollmo_webserver._execute_chat_backend_request', return_value='{"capability":"chat","instance_id":"chat-1","reuse_last_artifact":false,"artifact_path":null,"confidence":0.8,"reason":"chat"}')
-    def test_resolve_ghost_auto_route_bounds_router_call_for_non_fast_path_chat(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    @patch('fruth_webserver._execute_chat_backend_request', return_value='{"capability":"chat","instance_id":"chat-1","reuse_last_artifact":false,"artifact_path":null,"confidence":0.8,"reason":"chat"}')
+    def test_resolve_inference_auto_route_bounds_router_call_for_non_fast_path_chat(
         self,
         mock_execute_router,
         mock_attach_embedding_hints,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3896,12 +3904,12 @@ class ResponsesApiTests(unittest.TestCase):
         mock_load_running_instances.return_value = instances
         mock_merge_instances.return_value = instances
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'prompt': 'continue from that transcript but rewrite it more concisely',
                     'conversation_id': '__responses_workbench__',
-                    'ghost_messages': [
+                    'inference_messages': [
                         {'role': 'assistant', 'content': 'Transcript', 'saved_text_path': '/tmp/latest.md'},
                     ],
                 }
@@ -3909,23 +3917,23 @@ class ResponsesApiTests(unittest.TestCase):
 
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'chat')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         mock_attach_embedding_hints.assert_not_called()
         mock_execute_router.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    @patch('ollmo_webserver._execute_chat_backend_request', return_value='{"capability":"chat","instance_id":"gguf-chat-1","reuse_last_artifact":false,"artifact_path":null,"confidence":0.8,"reason":"chat"}')
-    def test_resolve_ghost_auto_route_falls_back_to_degraded_chat_instance_when_ready_chat_is_gone(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    @patch('fruth_webserver._execute_chat_backend_request', return_value='{"capability":"chat","instance_id":"gguf-chat-1","reuse_last_artifact":false,"artifact_path":null,"confidence":0.8,"reason":"chat"}')
+    def test_resolve_inference_auto_route_falls_back_to_degraded_chat_instance_when_ready_chat_is_gone(
         self,
         mock_execute_router,
         mock_attach_embedding_hints,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3944,8 +3952,8 @@ class ResponsesApiTests(unittest.TestCase):
         mock_load_running_instances.return_value = instances
         mock_merge_instances.return_value = instances
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'prompt': 'please answer: how to transmute copper to gold, make a plan',
                     'conversation_id': '__responses_workbench__',
@@ -3955,23 +3963,23 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'chat')
         self.assertEqual(route_info['instance_id'], 'gguf-chat-1')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         mock_attach_embedding_hints.assert_not_called()
         mock_execute_router.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    @patch('ollmo_webserver._execute_chat_backend_request', return_value='{"capability":"chat","instance_id":"chat-1","reuse_last_artifact":false,"artifact_path":null,"confidence":0.8,"reason":"chat"}')
-    def test_resolve_ghost_auto_route_keeps_plain_text_follow_up_off_image_fast_path(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    @patch('fruth_webserver._execute_chat_backend_request', return_value='{"capability":"chat","instance_id":"chat-1","reuse_last_artifact":false,"artifact_path":null,"confidence":0.8,"reason":"chat"}')
+    def test_resolve_inference_auto_route_keeps_plain_text_follow_up_off_image_fast_path(
         self,
         mock_execute_router,
         mock_attach_embedding_hints,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -3995,12 +4003,12 @@ class ResponsesApiTests(unittest.TestCase):
         mock_load_running_instances.return_value = instances
         mock_merge_instances.return_value = instances
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'prompt': 'please answer: how to transmute copper to gold, make a plan',
                     'conversation_id': '__responses_workbench__',
-                    'ghost_messages': [
+                    'inference_messages': [
                         {'role': 'user', 'content': 'generate an image of a gold coin on velvet'},
                         {
                             'role': 'assistant',
@@ -4014,23 +4022,23 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'chat')
         self.assertEqual(route_info['instance_id'], 'chat-1')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         self.assertFalse(route_info['route_reuse_last_artifact'])
         self.assertIsNone(route_info['route_artifact_path'])
         mock_attach_embedding_hints.assert_not_called()
         mock_execute_router.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_keeps_acknowledgement_after_image_as_plain_chat(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_keeps_acknowledgement_after_image_as_plain_chat(
         self,
         mock_attach_embedding_hints,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -4054,8 +4062,8 @@ class ResponsesApiTests(unittest.TestCase):
         mock_load_running_instances.return_value = instances
         mock_merge_instances.return_value = instances
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'conversation_id': '__responses_workbench__',
                     'input': [
@@ -4084,20 +4092,20 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(route_info['instance_id'], 'chat-1')
         self.assertFalse(route_info['route_runtime']['request_phase_graph']['continuation_required'])
         self.assertIsNone(route_info['route_runtime'].get('prompt_class'))
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         mock_attach_embedding_hints.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_keeps_abstract_post_image_follow_up_as_plain_chat(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_keeps_abstract_post_image_follow_up_as_plain_chat(
         self,
         mock_attach_embedding_hints,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -4121,8 +4129,8 @@ class ResponsesApiTests(unittest.TestCase):
         mock_load_running_instances.return_value = instances
         mock_merge_instances.return_value = instances
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'conversation_id': '__responses_workbench__',
                     'input': [
@@ -4149,22 +4157,22 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'chat')
         self.assertEqual(route_info['instance_id'], 'chat-1')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         self.assertFalse(route_info['route_reuse_last_artifact'])
         self.assertIsNone(route_info['route_artifact_path'])
         mock_attach_embedding_hints.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    def test_resolve_ghost_auto_route_keeps_route_to_image_gen_control_turn_off_edit_reuse(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    def test_resolve_inference_auto_route_keeps_route_to_image_gen_control_turn_off_edit_reuse(
         self,
         mock_attach_embedding_hints,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -4188,8 +4196,8 @@ class ResponsesApiTests(unittest.TestCase):
         mock_load_running_instances.return_value = instances
         mock_merge_instances.return_value = instances
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'conversation_id': '__responses_workbench__',
                     'input': [
@@ -4216,24 +4224,24 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'chat')
         self.assertEqual(route_info['instance_id'], 'chat-1')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         self.assertFalse(route_info['route_reuse_last_artifact'])
         self.assertIsNone(route_info['route_artifact_path'])
         mock_attach_embedding_hints.assert_not_called()
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._attach_embedding_hints_to_route_context')
-    @patch('ollmo_webserver._execute_chat_backend_request', return_value='{"capability":"chat","instance_id":"chat-1","reuse_last_artifact":false,"artifact_path":null,"confidence":0.8,"reason":"chat"}')
-    def test_resolve_ghost_auto_route_raises_timeout_budget_for_large_context(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._attach_embedding_hints_to_route_context')
+    @patch('fruth_webserver._execute_chat_backend_request', return_value='{"capability":"chat","instance_id":"chat-1","reuse_last_artifact":false,"artifact_path":null,"confidence":0.8,"reason":"chat"}')
+    def test_resolve_inference_auto_route_raises_timeout_budget_for_large_context(
         self,
         mock_execute_router,
         mock_attach_embedding_hints,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -4250,25 +4258,25 @@ class ResponsesApiTests(unittest.TestCase):
         mock_merge_instances.return_value = instances
 
         long_message = 'A' * 2200
-        ghost_messages = [{'role': 'user', 'content': long_message} for _ in range(8)]
+        inference_messages = [{'role': 'user', 'content': long_message} for _ in range(8)]
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'prompt': 'continue from that transcript but rewrite it more concisely',
                     'conversation_id': '__responses_workbench__',
-                    'ghost_messages': ghost_messages,
+                    'inference_messages': inference_messages,
                 }
             )
 
         self.assertIsNone(error)
         self.assertEqual(route_info['capability'], 'chat')
-        self.assertEqual(route_info['route_source'], 'ghost_carried')
+        self.assertEqual(route_info['route_source'], 'inference_carried')
         mock_attach_embedding_hints.assert_not_called()
         mock_execute_router.assert_not_called()
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_returns_normalized_envelope(self, mock_lookup, mock_execute):
         mock_lookup.return_value = {
             "instance_id": "chat-1",
@@ -4279,7 +4287,7 @@ class ResponsesApiTests(unittest.TestCase):
             "port": 11502,
             "reasoning_efforts": ["low", "medium", "xhigh"],
         }
-        mock_execute.return_value = "Hello from Ollmo."
+        mock_execute.return_value = "Hello from Fruth."
 
         response = self.client.post(
             "/api/responses",
@@ -4301,9 +4309,9 @@ class ResponsesApiTests(unittest.TestCase):
         )
         self.assertEqual(payload["mode"], "chat")
         self.assertEqual(payload["instance_id"], "chat-1")
-        self.assertEqual(payload["output_text"], "Hello from Ollmo.")
-        self.assertEqual(payload["output"][0]["content"][0]["text"], "Hello from Ollmo.")
-        self.assertEqual(payload["response_frame"]["kind"], "ollmo.response_frame")
+        self.assertEqual(payload["output_text"], "Hello from Fruth.")
+        self.assertEqual(payload["output"][0]["content"][0]["text"], "Hello from Fruth.")
+        self.assertEqual(payload["response_frame"]["kind"], "fruth.response_frame")
         self.assertEqual(payload["response_frame"]["target"]["instance_id"], "chat-1")
         self.assertEqual(payload["response_frame"]["request"]["input"], "hello")
         self.assertEqual(payload["response_frame"]["controls"]["values"]["generation"]["max_tokens"], 777)
@@ -4311,7 +4319,7 @@ class ResponsesApiTests(unittest.TestCase):
             payload["response_frame"]["controls"]["values"]["generation"]["reasoning_effort"],
             "medium",
         )
-        self.assertEqual(payload["working_frame"]["kind"], "ollmo.working_frame")
+        self.assertEqual(payload["working_frame"]["kind"], "fruth.working_frame")
         self.assertEqual(payload["working_frame"]["status"], "frozen")
         self.assertEqual(payload["response_frame"]["working_frame"]["status"], "frozen")
         artifact_flow = payload["response_frame"]["planning"]["artifact_flow"]
@@ -4319,10 +4327,10 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(artifact_flow["output_slots"][0]["status"], "fulfilled")
         self.assertEqual(payload["outputs"][0]["type"], "text")
         self.assertEqual(payload["outputs"][0]["status"], "fulfilled")
-        self.assertEqual(payload["outputs"][0]["value"], "Hello from Ollmo.")
+        self.assertEqual(payload["outputs"][0]["value"], "Hello from Fruth.")
         self.assertEqual(payload["output_slots"][0]["type"], "text")
         self.assertEqual(payload["output_branches"][0]["type"], "text")
-        self.assertEqual(payload["work_tree"]["kind"], "ollmo.work_tree")
+        self.assertEqual(payload["work_tree"]["kind"], "fruth.work_tree")
         called = mock_execute.call_args
         self.assertEqual(called.kwargs["target_port"], 11502)
         self.assertEqual(
@@ -4335,8 +4343,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(called.kwargs["max_tokens"], 777)
         self.assertEqual(called.kwargs["reasoning_effort"], "medium")
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_records_omitted_reasoning_default(
         self,
         mock_lookup,
@@ -4390,8 +4398,8 @@ class ResponsesApiTests(unittest.TestCase):
             "xhigh",
         )
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_accepts_prompt_only_payload(self, mock_lookup, mock_execute):
         mock_lookup.return_value = {
             "instance_id": "chat-1",
@@ -4423,9 +4431,9 @@ class ResponsesApiTests(unittest.TestCase):
             ],
         )
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_persists_explicit_text_artifact(
         self,
         mock_lookup,
@@ -4464,9 +4472,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(mock_persist_text_artifact.call_args.kwargs["extension"], "html")
         self.assertEqual(mock_persist_text_artifact.call_args.kwargs["source_name"], "index")
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_persists_artifact_tag_payload(
         self,
         mock_lookup,
@@ -4503,9 +4511,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(mock_persist_text_artifact.call_args.kwargs["extension"], "html")
         self.assertEqual(mock_persist_text_artifact.call_args.kwargs["source_name"], "index")
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_persists_save_updated_artifact_tag_follow_up(
         self,
         mock_lookup,
@@ -4547,9 +4555,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(mock_persist_text_artifact.call_args.kwargs["extension"], "html")
         self.assertEqual(mock_persist_text_artifact.call_args.kwargs["source_name"], "index")
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_persists_multiple_text_artifacts(
         self,
         mock_lookup,
@@ -4605,9 +4613,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(mock_persist_text_artifact.call_args_list[1].args[0], "body { color: red; }")
         self.assertEqual(mock_persist_text_artifact.call_args_list[1].kwargs["extension"], "css")
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_persists_named_json_in_multifile_manifest(
         self,
         mock_lookup,
@@ -4663,9 +4671,9 @@ class ResponsesApiTests(unittest.TestCase):
             },
         )
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_persists_selected_text_source_edit(
         self,
         mock_lookup,
@@ -4731,8 +4739,8 @@ class ResponsesApiTests(unittest.TestCase):
                 str(target_path),
             )
 
-    @patch("ollmo_webserver._resolve_saved_text_artifact_path")
-    @patch("ollmo_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._resolve_saved_text_artifact_path")
+    @patch("fruth_webserver._persist_text_artifact_locally")
     def test_direct_selected_source_preservation_rejects_truncation_before_write(
         self,
         mock_persist_text_artifact,
@@ -4792,8 +4800,8 @@ class ResponsesApiTests(unittest.TestCase):
             )
             self.assertEqual(target_path.read_text(encoding='utf-8'), original)
 
-    @patch("ollmo_webserver._resolve_saved_text_artifact_path")
-    @patch("ollmo_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._resolve_saved_text_artifact_path")
+    @patch("fruth_webserver._persist_text_artifact_locally")
     def test_direct_named_predecessor_edit_binds_every_exact_file_target(
         self,
         mock_persist_text_artifact,
@@ -4878,7 +4886,7 @@ class ResponsesApiTests(unittest.TestCase):
                     'passed',
                 )
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._persist_text_artifact_locally")
     def test_r5c_audio_branch_edit_does_not_persist_selected_transcript(self, mock_persist_text_artifact):
         prompt = (
             'Ersetze den bisherigen einzelnen Audiozweig durch zwei getrennte Audiofassungen. '
@@ -4905,7 +4913,7 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(persisted, {})
         mock_persist_text_artifact.assert_not_called()
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._persist_text_artifact_locally")
     def test_response_only_json_edit_does_not_persist_selected_transcript(self, mock_persist_text_artifact):
         persisted = _persist_generated_text_artifact_if_requested(
             '{"status": "complete"}',
@@ -4926,10 +4934,10 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(persisted, {})
         mock_persist_text_artifact.assert_not_called()
 
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda raw_path: Path(str(raw_path)))
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda raw_path: Path(str(raw_path)))
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_internal_chat_file_context_persists_text_artifact_fallback(
         self,
         mock_lookup,
@@ -5002,9 +5010,9 @@ class ResponsesApiTests(unittest.TestCase):
                 str(target_path),
             )
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_does_not_persist_undefined_this_text_artifact(
         self,
         mock_lookup,
@@ -5037,9 +5045,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload.get("artifacts") or [], [])
         mock_persist_text_artifact.assert_not_called()
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_blocks_ungrounded_this_before_payload_extraction(
         self,
         mock_lookup,
@@ -5068,9 +5076,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertNotIn("saved_text_path", payload)
         mock_persist_text_artifact.assert_not_called()
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_uses_current_turn_for_text_artifact_detection(
         self,
         mock_lookup,
@@ -5123,9 +5131,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload.get("artifacts") or [], [])
         mock_persist_text_artifact.assert_not_called()
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_canonical_responses_can_resolve_chat_alias_without_instance_id(
         self,
         mock_load_running_instances,
@@ -5168,9 +5176,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["output_text"], "Alias hello.")
         self.assertEqual(mock_execute.call_args.kwargs["target_port"], 11435)
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_canonical_responses_can_resolve_capability_without_instance_id(
         self,
         mock_load_running_instances,
@@ -5221,9 +5229,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["mode"], "image_generation")
         self.assertEqual(mock_invoke.call_args.kwargs["payload"]["instance_id"], "flux-1")
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._lookup_instance")
     def test_resolve_responses_target_instance_recovers_stale_explicit_instance_from_model_metadata(
         self,
         mock_lookup,
@@ -5266,9 +5274,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(instance["model"], "x/z-image-turbo:latest")
         self.assertIsNone(resolved_capability)
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._lookup_instance")
     def test_resolve_responses_target_instance_skips_temporarily_quarantined_mlx_qwen36_candidate(
         self,
         mock_lookup,
@@ -5322,9 +5330,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(instance["model"], "mlx-community/gemma-4-e4b-it-8bit")
         self.assertEqual(resolved_capability, "vision_analysis")
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._lookup_instance")
     def test_resolve_responses_target_instance_recovers_from_quarantined_explicit_instance(
         self,
         mock_lookup,
@@ -5387,10 +5395,10 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(instance["model"], "mlx-community/gemma-4-e4b-it-8bit")
         self.assertIsNone(resolved_capability)
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_recovers_stale_explicit_instance_from_model_metadata(
         self,
         mock_lookup,
@@ -5446,8 +5454,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["mode"], "image_generation")
         self.assertEqual(mock_invoke.call_args.kwargs["payload"]["instance_id"], "x/z-image-turbo:latest-2")
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_canonical_responses_rejects_unknown_alias(self, mock_load_running_instances, mock_merge_instances):
         mock_load_running_instances.return_value = []
         mock_merge_instances.return_value = []
@@ -5464,7 +5472,7 @@ class ResponsesApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertIn("Unknown alias/profile", payload["error"])
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_rejects_embedding_instances(self, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "embed-1",
@@ -5485,9 +5493,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Embedding instances", response.get_json()["error"])
 
-    @patch("ollmo_webserver._schedule_response_late_fill")
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._schedule_response_late_fill")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_wraps_non_chat_artifacts(
         self,
         mock_lookup,
@@ -5542,9 +5550,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertFalse(called.args)
         self.assertEqual(called.kwargs["payload"]["prompt"], "a cat in watercolor")
 
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda raw_path: Path(str(raw_path)))
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda raw_path: Path(str(raw_path)))
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_selected_reference_artifact_does_not_surface_as_input_artifact(
         self,
         mock_lookup,
@@ -5598,8 +5606,8 @@ class ResponsesApiTests(unittest.TestCase):
         infer_payload = mock_invoke.call_args.kwargs["payload"]
         self.assertEqual(infer_payload["file_path"], "/tmp/generated/latest-image.png")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_explicit_file_path_preserves_input_artifacts(
         self,
         mock_lookup,
@@ -5646,14 +5654,14 @@ class ResponsesApiTests(unittest.TestCase):
         infer_payload = mock_invoke.call_args.kwargs["payload"]
         self.assertEqual(infer_payload["file_path"], "/tmp/user/request.png")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_reuses_route_artifact_seed_for_image_generation(
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_reuses_route_artifact_seed_for_image_generation(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "flux-1",
                 "instance": {
@@ -5686,9 +5694,9 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "make her wear a red dress",
-                "ghost_messages": [
+                "inference_messages": [
                     {
                         "role": "assistant",
                         "content": "Image generated.",
@@ -5713,8 +5721,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(infer_payload["file_path"], "/tmp/generated/latest-image.png")
         self.assertEqual(infer_payload["seed"], 777)
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_batches_image_generation_prompts(self, mock_lookup, mock_invoke):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -5795,8 +5803,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(first_call.kwargs["payload"]["prompt"], "storm over Zurich")
         self.assertEqual(second_call.kwargs["payload"]["prompt"], "foggy neon diner")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_batches_image_generation_prompt_objects_with_per_item_aspect_and_size(
         self,
         mock_lookup,
@@ -5858,15 +5866,15 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(second_payload["width"], 768)
         self.assertEqual(second_payload["height"], 1152)
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_explicit_batch_prompts_keep_direct_image_batch_execution(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_invoke,
     ):
         prompt = "Generate two different images of strange dream locations."
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "flux-1",
                 "instance": {
@@ -5877,7 +5885,7 @@ class ResponsesApiTests(unittest.TestCase):
                     "port": 11435,
                 },
                 "capability": "image_generation",
-                "route_source": "ghost_carried",
+                "route_source": "inference_carried",
                 "route_reason": "image-generation cue",
                 "route_confidence": 0.92,
                 "route_reuse_last_artifact": False,
@@ -5921,7 +5929,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": prompt,
                 "input": prompt,
                 "conversation_id": "responses-workbench",
@@ -5969,11 +5977,11 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["results"][0]["prompt"], "wide dream lake")
         self.assertEqual(payload["results"][1]["prompt"], "tower above clouds")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_direct_batch_parallelizes_across_shared_engine_and_preserves_order(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_invoke,
     ):
         resolve_calls = []
@@ -5993,7 +6001,7 @@ class ResponsesApiTests(unittest.TestCase):
                         "port": 11435 if instance_id == "flux-1" else 11436,
                     },
                     "capability": "image_generation",
-                    "route_source": "ghost_carried",
+                    "route_source": "inference_carried",
                     "route_reason": "image-generation cue",
                     "route_confidence": 0.92,
                     "route_reuse_last_artifact": False,
@@ -6040,13 +6048,13 @@ class ResponsesApiTests(unittest.TestCase):
                 200,
             )
 
-        mock_resolve_ghost_route.side_effect = resolve_route_side_effect
+        mock_resolve_inference_route.side_effect = resolve_route_side_effect
         mock_invoke.side_effect = invoke_side_effect
 
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "Generate two surreal dream images.",
                 "input": "Generate two surreal dream images.",
                 "conversation_id": "responses-workbench",
@@ -6085,11 +6093,11 @@ class ResponsesApiTests(unittest.TestCase):
             [item["artifact_ref"] for item in payload["artifacts"]],
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_direct_batch_reuses_instances_after_exhausting_image_candidates(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_invoke,
     ):
         resolve_calls = []
@@ -6123,7 +6131,7 @@ class ResponsesApiTests(unittest.TestCase):
                         "port": 11435 if instance_id == "flux-1" else 11436,
                     },
                     "capability": "image_generation",
-                    "route_source": "ghost_carried",
+                    "route_source": "inference_carried",
                     "route_reason": "image-generation cue",
                     "route_confidence": 0.92,
                     "route_reuse_last_artifact": False,
@@ -6157,13 +6165,13 @@ class ResponsesApiTests(unittest.TestCase):
                 200,
             )
 
-        mock_resolve_ghost_route.side_effect = resolve_route_side_effect
+        mock_resolve_inference_route.side_effect = resolve_route_side_effect
         mock_invoke.side_effect = invoke_side_effect
 
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "Generate three surreal dream images.",
                 "input": "Generate three surreal dream images.",
                 "conversation_id": "responses-workbench",
@@ -6204,8 +6212,8 @@ class ResponsesApiTests(unittest.TestCase):
             [1, 2, 3],
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_direct_batch_serializes_when_pinned_to_one_instance(
         self,
         mock_lookup,
@@ -6257,7 +6265,7 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(mock_invoke.call_count, 2)
         self.assertEqual(in_flight["max"], 1)
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_rejects_invalid_batch_image_aspect_ratio(self, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -6280,16 +6288,16 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Unsupported batch image aspect_ratio", response.get_json()["error"])
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_responses_target_instance")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_rebinds_stale_ghost_route_target_before_infer(
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_responses_target_instance")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_rebinds_stale_inference_route_target_before_infer(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_resolve_target,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "x/z-image-turbo:latest-1",
                 "instance": {
@@ -6302,7 +6310,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "model": "x/z-image-turbo:latest",
                 "backend": "ollama",
                 "capability": "image_generation",
-                "route_source": "ghost_carried",
+                "route_source": "inference_carried",
                 "route_reason": "image-generation cue",
                 "route_confidence": 0.9,
                 "route_reuse_last_artifact": True,
@@ -6338,7 +6346,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "bitter erstelle mir die anderen 4 bilder auch noch",
                 "artifact_ref": "artifact:image_old",
             },
@@ -6354,14 +6362,14 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["runtime"]["target_rebound"]["stale_instance_id"], "x/z-image-turbo:latest-1")
         self.assertEqual(payload["runtime"]["target_rebound"]["rebound_instance_id"], "x/flux2-klein:latest-2")
 
-    @patch("ollmo_webserver._resolve_responses_target_instance")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._resolve_responses_target_instance")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_reports_clean_provider_unavailable_after_stale_target_rebind_fails(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_resolve_target,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "x/z-image-turbo:latest-1",
                 "instance": {
@@ -6374,7 +6382,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "model": "x/z-image-turbo:latest",
                 "backend": "ollama",
                 "capability": "image_generation",
-                "route_source": "ghost_carried",
+                "route_source": "inference_carried",
                 "route_reason": "image-generation cue",
                 "route_confidence": 0.9,
                 "route_reuse_last_artifact": True,
@@ -6392,7 +6400,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "bitter erstelle mir die anderen 4 bilder auch noch",
                 "artifact_ref": "artifact:image_old",
             },
@@ -6402,8 +6410,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIn("No running instance found for capability 'image_generation'.", response.get_json()["error"])
         self.assertEqual(mock_resolve_target.call_count, 2)
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_rejects_batch_prompts_for_non_image_capabilities(self, mock_lookup, _mock_execute):
         mock_lookup.return_value = {
             "instance_id": "chat-1",
@@ -6424,8 +6432,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("batch_prompts", response.get_json()["error"])
 
-    @patch("ollmo_webserver._stream_chat_backend_as_responses")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._stream_chat_backend_as_responses")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_chat_streams_sse(self, mock_lookup, mock_stream):
         mock_lookup.return_value = {
             "instance_id": "chat-1",
@@ -6463,7 +6471,7 @@ class ResponsesApiTests(unittest.TestCase):
         mock_stream.assert_called_once()
         self.assertEqual(mock_stream.call_args.kwargs["reasoning_effort"], "low")
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_rejects_invalid_reasoning_effort(self, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "chat-1",
@@ -6485,7 +6493,7 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("reasoning_effort", response.get_json()["error"])
 
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_rejects_unadvertised_reasoning_effort(self, mock_lookup):
         mock_lookup.return_value = {
             "instance_id": "mlx-generic-1",
@@ -6507,8 +6515,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("not available", response.get_json()["error"])
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_responses_target_instance")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_responses_target_instance")
     def test_canonical_responses_text_only_selected_mlx_vlm_rebounds_to_chat_and_falls_back(
         self,
         mock_resolve_target,
@@ -6573,9 +6581,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(mock_execute.call_count, 2)
         self.assertEqual(mock_resolve_target.call_count, 3)
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_responses_target_instance")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_responses_target_instance")
     def test_canonical_responses_selected_mlx_vlm_keeps_vision_when_file_context_exists(
         self,
         mock_resolve_target,
@@ -6622,10 +6630,10 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(mock_invoke.call_args.kwargs["payload"]["capability"], "vision_analysis")
         mock_execute.assert_not_called()
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_chat_includes_route_metadata(self, mock_resolve_ghost_route, mock_execute):
-        mock_resolve_ghost_route.return_value = (
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_chat_includes_route_metadata(self, mock_resolve_inference_route, mock_execute):
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "chat-1",
                 "instance": {
@@ -6655,7 +6663,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hello"}]}],
             },
         )
@@ -6668,17 +6676,17 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["route_confidence"], 0.88)
         self.assertEqual(payload["context_mode"], "current_turn_only")
         self.assertEqual(payload["output_text"], "Backend-routed hello.")
-        mock_resolve_ghost_route.assert_called_once()
+        mock_resolve_inference_route.assert_called_once()
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_chat_injects_runtime_policy_into_chat_messages(
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_chat_injects_runtime_policy_into_chat_messages(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
     ):
-        prompt = 'Hello from the Ghost-owned path.'
-        mock_resolve_ghost_route.return_value = (
+        prompt = 'Hello from the interpretive inference-owned path.'
+        mock_resolve_inference_route.return_value = (
             {
                 'instance_id': 'chat-1',
                 'instance': {
@@ -6689,7 +6697,7 @@ class ResponsesApiTests(unittest.TestCase):
                     'port': 11435,
                 },
                 'capability': 'chat',
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_reason': 'single-phase text chat was resolved directly from the current user turn',
                 'route_confidence': 0.58,
                 'route_runtime': {},
@@ -6701,7 +6709,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             '/api/responses',
             json={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
             },
         )
@@ -6709,8 +6717,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         sent_messages = mock_execute.call_args.kwargs['messages']
         self.assertEqual(sent_messages[0]['role'], 'system')
-        self.assertIn('Ollmo Ghost runtime policy: attached.', sent_messages[0]['content'])
-        self.assertIn('Ollmo Ghost Runtime Policy', sent_messages[0]['content'])
+        self.assertIn('Fruth interpretive inference runtime policy: attached.', sent_messages[0]['content'])
+        self.assertIn('Fruth Interpretive Inference Policy', sent_messages[0]['content'])
         self.assertEqual(sent_messages[-1]['role'], 'user')
         self.assertEqual(sent_messages[-1]['content'], prompt)
 
@@ -6746,8 +6754,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(updated['output_text'], payload['output_text'])
         self.assertNotIn('truth_guard', updated.get('runtime', {}))
 
-    @patch('ollmo_webserver._get_response_lookup_record')
-    @patch('ollmo_webserver._resolve_saved_downloadable_artifact_path')
+    @patch('fruth_webserver._get_response_lookup_record')
+    @patch('fruth_webserver._resolve_saved_downloadable_artifact_path')
     def test_truth_gate_expands_only_canonical_same_conversation_predecessor_bundle(
         self,
         mock_resolve_artifact_path,
@@ -6805,10 +6813,10 @@ class ResponsesApiTests(unittest.TestCase):
                 *[dict(item) for item in artifacts],
             ]
             return {
-                'ghost_route': True,
+                'inference_route': True,
                 'conversation_id': conversation_id,
                 'prompt': prompt,
-                'ghost_messages': [
+                'inference_messages': [
                     {
                         'role': 'assistant',
                         'response_id': source_response_id,
@@ -6839,7 +6847,7 @@ class ResponsesApiTests(unittest.TestCase):
         explicit_files_request['reference_artifacts'] = [
             dict(item) for item in canonical_artifacts
         ]
-        explicit_files_request.pop('ghost_messages')
+        explicit_files_request.pop('inference_messages')
         explicit_files = _truth_gate_response_output_claims(
             {'id': 'resp-explicit-files', 'output_text': 'Explicit selected sources.'},
             request_payload=explicit_files_request,
@@ -6885,7 +6893,7 @@ class ResponsesApiTests(unittest.TestCase):
             'Turn this message into audio and analyze this image.'
         )
         forged_message_request['reference_artifacts'][0]['content'] = 'FORGED TEXT SOURCE'
-        forged_message_request['ghost_messages'][0]['content'] = 'FORGED TEXT SOURCE'
+        forged_message_request['inference_messages'][0]['content'] = 'FORGED TEXT SOURCE'
         forged_message = _truth_gate_response_output_claims(
             {
                 'id': 'resp-current-forged-message',
@@ -6898,12 +6906,12 @@ class ResponsesApiTests(unittest.TestCase):
             'clarification_required',
         )
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_chat_injects_prepare_phase_contract_for_carried_image_follow_up(
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_chat_injects_prepare_phase_contract_for_carried_image_follow_up(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
         mock_schedule_late_fill,
     ):
@@ -6911,9 +6919,9 @@ class ResponsesApiTests(unittest.TestCase):
         phase_graph = build_request_phase_graph(
             prompt,
             request_payload={"prompt": prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "chat-1",
                 "instance": {
@@ -6924,8 +6932,8 @@ class ResponsesApiTests(unittest.TestCase):
                     "port": 11435,
                 },
                 "capability": "chat",
-                "route_source": "ghost_carried",
-                "route_reason": "current phase stays on Ghost chat while deferred follow-up phases remain unresolved",
+                "route_source": "inference_carried",
+                "route_reason": "current phase stays on interpretive inference chat while deferred follow-up phases remain unresolved",
                 "route_confidence": 0.58,
                 "route_runtime": {
                     "request_phase_graph": phase_graph,
@@ -6938,7 +6946,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": prompt,
             },
         )
@@ -6946,26 +6954,26 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         sent_messages = mock_execute.call_args.kwargs["messages"]
         self.assertEqual(sent_messages[0]["role"], "system")
-        self.assertIn("Ollmo phase contract: prepare-only.", sent_messages[0]["content"])
+        self.assertIn("Fruth phase contract: prepare-only.", sent_messages[0]["content"])
         self.assertIn("Do not say that you cannot generate images", sent_messages[0]["content"])
         self.assertEqual(sent_messages[1]["role"], "system")
-        self.assertIn("Ollmo Ghost runtime policy: attached.", sent_messages[1]["content"])
-        self.assertIn("Ollmo Ghost Runtime Policy", sent_messages[1]["content"])
+        self.assertIn("Fruth interpretive inference runtime policy: attached.", sent_messages[1]["content"])
+        self.assertIn("Fruth Interpretive Inference Policy", sent_messages[1]["content"])
         self.assertEqual(sent_messages[-1]["role"], "user")
         self.assertEqual(sent_messages[-1]["content"], prompt)
         mock_schedule_late_fill.assert_called_once()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_truth_gates_false_local_artifact_claims_without_real_file(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
         mock_schedule_late_fill,
     ):
         prompt = 'generate me this html file as artifact'
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 'instance_id': 'chat-1',
                 'instance': {
@@ -6976,7 +6984,7 @@ class ResponsesApiTests(unittest.TestCase):
                     'port': 11435,
                 },
                 'capability': 'chat',
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_reason': 'single-phase text chat was resolved directly from the current user turn',
                 'route_confidence': 0.58,
                 'route_runtime': {},
@@ -6992,7 +7000,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             '/api/responses',
             json={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
             },
         )
@@ -7014,12 +7022,12 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertNotIn('late_fill', payload)
         mock_schedule_late_fill.assert_not_called()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_allows_same_turn_generated_source_and_schedules_multimodal_join(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
         mock_schedule_late_fill,
     ):
@@ -7038,10 +7046,10 @@ class ResponsesApiTests(unittest.TestCase):
         )
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 'instance_id': 'chat-1',
                 'instance': {
@@ -7052,7 +7060,7 @@ class ResponsesApiTests(unittest.TestCase):
                     'port': 11435,
                 },
                 'capability': 'chat',
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_reason': (
                     'current phase remains text-capable while downstream materialization '
                     'phases depend on its output'
@@ -7066,7 +7074,7 @@ class ResponsesApiTests(unittest.TestCase):
 
         response = self.client.post(
             '/api/responses',
-            json={'ghost_route': True, 'prompt': prompt},
+            json={'inference_route': True, 'prompt': prompt},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -7080,12 +7088,12 @@ class ResponsesApiTests(unittest.TestCase):
         )
         mock_schedule_late_fill.assert_called_once()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_allows_graph_grounded_image_then_vision_reference(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
         mock_schedule_late_fill,
     ):
@@ -7100,10 +7108,10 @@ class ResponsesApiTests(unittest.TestCase):
         prepared_text = 'Das kleine Observatorium steht unter einem klaren Nachthimmel.'
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 'instance_id': 'chat-1',
                 'instance': {
@@ -7114,7 +7122,7 @@ class ResponsesApiTests(unittest.TestCase):
                     'port': 11435,
                 },
                 'capability': 'chat',
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_reason': 'current phase prepares promoted multimodal dependencies',
                 'route_confidence': 0.58,
                 'route_runtime': {'request_phase_graph': phase_graph},
@@ -7125,7 +7133,7 @@ class ResponsesApiTests(unittest.TestCase):
 
         response = self.client.post(
             '/api/responses',
-            json={'ghost_route': True, 'prompt': prompt},
+            json={'inference_route': True, 'prompt': prompt},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -7135,17 +7143,17 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload['lifecycle_state'], 'late_fill_pending')
         mock_schedule_late_fill.assert_called_once()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_rejects_competing_source_after_generated_text(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
         mock_schedule_late_fill,
     ):
         prompt = 'Write a story. Then turn that old file into audio.'
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 'instance_id': 'chat-1',
                 'instance': {
@@ -7156,7 +7164,7 @@ class ResponsesApiTests(unittest.TestCase):
                     'port': 11435,
                 },
                 'capability': 'chat',
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_reason': 'current phase remains text-capable before downstream audio',
                 'route_confidence': 0.58,
                 'route_runtime': {},
@@ -7167,7 +7175,7 @@ class ResponsesApiTests(unittest.TestCase):
 
         response = self.client.post(
             '/api/responses',
-            json={'ghost_route': True, 'prompt': prompt},
+            json={'inference_route': True, 'prompt': prompt},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -7181,20 +7189,20 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertNotIn('late_fill', payload)
         mock_schedule_late_fill.assert_not_called()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._build_graph_closure_review")
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._build_graph_closure_review")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_direct_vision_response_suppresses_redundant_same_capability_repair(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_invoke_internal_api_json_route,
         mock_build_graph_closure_review,
         mock_schedule_late_fill,
     ):
         prompt = 'Beschreibe das referenzierte Bild in genau 2 kurzen deutschen Sätzen.'
         image_path = '/tmp/referenced-plan-a.png'
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 'instance_id': 'vision-1',
                 'instance': {
@@ -7209,7 +7217,7 @@ class ResponsesApiTests(unittest.TestCase):
                     'port': 11501,
                 },
                 'capability': 'vision_analysis',
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_reason': 'prompt refers to the latest image artifact',
                 'route_confidence': 0.84,
                 'route_reuse_last_artifact': False,
@@ -7228,10 +7236,10 @@ class ResponsesApiTests(unittest.TestCase):
             200,
         )
         mock_build_graph_closure_review.return_value = {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'blocked',
             'surface_state': {'state': 'repair_needed', 'reason': 'missing dependency evidence'},
-            'ghost_repair_feedback': {
+            'inference_repair_feedback': {
                 'status': 'repair_required',
                 'target': 'request_ir_patch',
                 'items': [
@@ -7251,7 +7259,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             '/api/responses',
             json={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': prompt,
                 'reference_artifacts': {
                     'kind': 'image',
@@ -7271,19 +7279,19 @@ class ResponsesApiTests(unittest.TestCase):
         payload = self._canonical_truth_for_payload(payload)
         review = payload['runtime']['graph_closure_review']
         self.assertEqual(review['direct_target_fulfillment']['status'], 'satisfied')
-        self.assertNotIn('ghost_repair_feedback', review)
+        self.assertNotIn('inference_repair_feedback', review)
         mock_schedule_late_fill.assert_not_called()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_marks_text_only_image_completion_for_late_fill(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
         mock_schedule_late_fill,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "chat-1",
                 "instance": {
@@ -7313,7 +7321,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "show me a moonlit cove at night as an image",
                 "response_id": "resp_text_only_image_pending",
             },
@@ -7342,13 +7350,13 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(image_output["slot_id"], image_branch["slot_id"])
         mock_schedule_late_fill.assert_called_once()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._prepare_effective_request_data")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._prepare_effective_request_data")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_pre_freeze_closure_review_marks_pending_graph_branches_for_late_fill(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_prepare_effective_request_data,
         mock_execute,
         mock_schedule_late_fill,
@@ -7375,7 +7383,7 @@ class ResponsesApiTests(unittest.TestCase):
                 'text_preparation_before_visual_output': True,
             },
         }
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "chat-1",
                 "instance": {
@@ -7386,7 +7394,7 @@ class ResponsesApiTests(unittest.TestCase):
                     "port": 11438,
                 },
                 "capability": "chat",
-                "route_source": "ghost_carried",
+                "route_source": "inference_carried",
                 "route_reason": "text preparation is required before downstream image materialization",
                 "route_confidence": 0.91,
                 "route_runtime": {
@@ -7406,7 +7414,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "Invent three absurd prompt ideas and make the images after that.",
                 "response_id": "resp_closure_review_graph_pending",
             },
@@ -7432,13 +7440,13 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertTrue(all(slot["status"] == "pending" for slot in image_slots))
         mock_schedule_late_fill.assert_called_once()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._prepare_effective_request_data")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._prepare_effective_request_data")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_closure_repair_adds_missing_branch_slot(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_prepare_effective_request_data,
         mock_execute,
         mock_schedule_late_fill,
@@ -7467,7 +7475,7 @@ class ResponsesApiTests(unittest.TestCase):
                 'text_preparation_before_visual_output': True,
             },
         }
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "chat-1",
                 "instance": {
@@ -7478,7 +7486,7 @@ class ResponsesApiTests(unittest.TestCase):
                     "port": 11438,
                 },
                 "capability": "chat",
-                "route_source": "ghost_carried",
+                "route_source": "inference_carried",
                 "route_reason": "text preparation is required before downstream image materialization",
                 "route_confidence": 0.91,
                 "route_runtime": {
@@ -7498,7 +7506,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "Invent two image prompts and then create both images.",
                 "response_id": "resp_closure_review_repair_missing_branch",
             },
@@ -7529,7 +7537,7 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(graph_review["status"], "pending")
         self.assertEqual(graph_review["repair_pending_branch_count"], 2)
         self.assertEqual(
-            graph_review["ghost_repair_feedback"]["target"],
+            graph_review["inference_repair_feedback"]["target"],
             "request_ir_patch",
         )
         image_slots = [
@@ -7542,19 +7550,19 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertTrue(all(slot.get("placeholder_ref") for slot in image_slots))
         mock_schedule_late_fill.assert_called_once()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._prepare_effective_request_data")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._prepare_effective_request_data")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_schedules_branch_added_only_by_applied_graph_patch(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_prepare_effective_request_data,
         mock_execute,
         mock_schedule_late_fill,
     ):
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'graph_id': 'graph-api-same-turn-reseed',
             'current_phase_id': 'phase-1',
             'current_phase_capability': 'chat',
@@ -7591,8 +7599,8 @@ class ResponsesApiTests(unittest.TestCase):
         proposal = build_graph_repair_proposal_from_repair_gap(
             request_phase_graph=phase_graph,
             repair_gap={
-                'trigger': 'ghost_repair_feedback',
-                'ghost_repair_feedback': {'status': 'repair_required'},
+                'trigger': 'inference_repair_feedback',
+                'inference_repair_feedback': {'status': 'repair_required'},
                 'repair_loop': {'status': 'promoted'},
                 'pending_branches': [
                     {
@@ -7614,13 +7622,13 @@ class ResponsesApiTests(unittest.TestCase):
             request_phase_graph=phase_graph,
             closure_review={
                 'status': 'repair_required',
-                'ghost_repair_feedback': {'status': 'repair_required'},
+                'inference_repair_feedback': {'status': 'repair_required'},
             },
             promotion_review={'status': 'promoted'},
         )
         self.assertEqual(review['status'], 'accepted')
         phase_graph['graph_repair_reviews'] = [review]
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 'instance_id': 'chat-1',
                 'instance': {
@@ -7631,7 +7639,7 @@ class ResponsesApiTests(unittest.TestCase):
                     'port': 11438,
                 },
                 'capability': 'chat',
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_reason': 'runtime-owned graph repair regression',
                 'route_confidence': 0.91,
                 'route_runtime': {'request_phase_graph': phase_graph},
@@ -7646,11 +7654,11 @@ class ResponsesApiTests(unittest.TestCase):
         )
         mock_execute.return_value = 'The current text response is complete.'
 
-        with patch.dict(os.environ, {'OLLMO_GRAPH_REPAIR_AUTONOMY': 'apply_safe'}, clear=False):
+        with patch.dict(os.environ, {'FRUTH_GRAPH_REPAIR_AUTONOMY': 'apply_safe'}, clear=False):
             response = self.client.post(
                 '/api/responses',
                 json={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': 'Return a concise text response.',
                     'response_id': 'resp_graph_patch_same_turn_schedule',
                 },
@@ -7682,31 +7690,31 @@ class ResponsesApiTests(unittest.TestCase):
 
     def test_canonical_responses_closure_repair_preserves_contract_action(self):
         execution_contract = {
-            "kind": "ollmo.execution_contract",
+            "kind": "fruth.execution_contract",
             "branch_id": "branch-image-1",
             "phase_id": "phase-2",
             "capability": "image_generation",
             "depends_on": ["phase-1"],
             "output_contract": {"output_type": "image", "required": True},
         }
-        repair_gap = _RESPONSES_REQUEST_RUNTIME._ghost_repair_feedback_gap(
+        repair_gap = _RESPONSES_REQUEST_RUNTIME._inference_repair_feedback_gap(
             {
                 "status": "pending",
-                "ghost_repair_feedback": {
+                "inference_repair_feedback": {
                     "status": "repair_required",
                     "target": "request_ir_patch",
                     "patch_scope": "current_working_frame_request_phase_graph",
                     "repair_mode": "bounded_graph_patch",
                     "preserve_request_id": True,
                     "repair_loop": {
-                        "kind": "ollmo.repair_loop",
+                        "kind": "fruth.repair_loop",
                         "status": "promoted",
                         "auto_execute": False,
                         "next_actions": ["repair_dependency_chain"],
                         "requires_promotion": False,
                         "promoted_contracts": [
                             {
-                                "kind": "ollmo.repair_rebuild_contract",
+                                "kind": "fruth.repair_rebuild_contract",
                                 "contract_id": "repair-contract-branch-image-1",
                                 "status": "promoted",
                                 "authority": "closure_review_runtime_truth",
@@ -7812,24 +7820,24 @@ class ResponsesApiTests(unittest.TestCase):
 
     def test_closure_syntax_repair_branch_carries_executable_policy_without_contract_identity(self):
         target_path = "/tmp/index.html"
-        repair_gap = _RESPONSES_REQUEST_RUNTIME._ghost_repair_feedback_gap(
+        repair_gap = _RESPONSES_REQUEST_RUNTIME._inference_repair_feedback_gap(
             {
                 "status": "pending",
-                "ghost_repair_feedback": {
+                "inference_repair_feedback": {
                     "status": "repair_required",
                     "target": "request_ir_patch",
                     "patch_scope": "current_working_frame_request_phase_graph",
                     "repair_mode": "bounded_graph_patch",
                     "preserve_request_id": True,
                     "repair_loop": {
-                        "kind": "ollmo.repair_loop",
+                        "kind": "fruth.repair_loop",
                         "status": "promoted",
                         "auto_execute": True,
                         "next_actions": ["retry_same_branch"],
                         "requires_promotion": False,
                         "promoted_contracts": [
                             {
-                                "kind": "ollmo.repair_rebuild_contract",
+                                "kind": "fruth.repair_rebuild_contract",
                                 "contract_id": "repair-contract-chat",
                                 "status": "promoted",
                                 "authority": "closure_review_runtime_truth",
@@ -7967,7 +7975,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "output_text": "Rewrite the whole landing page from the original prompt.",
                 "runtime": {"request_phase_graph": {"current_phase_capability": "chat"}},
             },
-            request_payload={"ghost_route": True, "prompt": "Create a landing page."},
+            request_payload={"inference_route": True, "prompt": "Create a landing page."},
             assistant_message="Rewrite the whole landing page from the original prompt.",
             source_route_payload=None,
             failed_instance_id=None,
@@ -8065,7 +8073,7 @@ class ResponsesApiTests(unittest.TestCase):
                     'runtime': {'request_phase_graph': {'current_phase_capability': 'chat'}},
                 },
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': prompt,
                     'reference_artifacts': [
                         {
@@ -8255,7 +8263,7 @@ class ResponsesApiTests(unittest.TestCase):
 
             with (
                 patch(
-                    'ollmo_server.late_fill_runtime.ARTIFACT_OUTPUTS_DOCUMENTS_DIR',
+                    'fruth_server.late_fill_runtime.ARTIFACT_OUTPUTS_DOCUMENTS_DIR',
                     root / 'documents',
                 ),
                 patch.object(
@@ -8398,7 +8406,7 @@ class ResponsesApiTests(unittest.TestCase):
                 }
 
                 with patch(
-                    'ollmo_server.late_fill_runtime.ARTIFACT_OUTPUTS_DOCUMENTS_DIR',
+                    'fruth_server.late_fill_runtime.ARTIFACT_OUTPUTS_DOCUMENTS_DIR',
                     root / 'documents',
                 ):
                     result = _LATE_FILL_RUNTIME._materialize_retained_input_alias(
@@ -8555,7 +8563,7 @@ class ResponsesApiTests(unittest.TestCase):
                     'runtime': {'request_phase_graph': {'current_phase_capability': 'chat'}},
                 },
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': 'Replace styles.css completely with a new minimal stylesheet.',
                 },
                 assistant_message='Artifacts generated.',
@@ -8596,7 +8604,7 @@ class ResponsesApiTests(unittest.TestCase):
                 'runtime': {'request_phase_graph': {'current_phase_capability': 'chat'}},
             },
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': 'Generate exactly 3 new cinematic images.',
                 'reference_artifacts': [selected_reply],
             },
@@ -8645,7 +8653,7 @@ class ResponsesApiTests(unittest.TestCase):
                 'runtime': {'request_phase_graph': {'current_phase_capability': 'chat'}},
             },
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': 'Create three watch material images.',
                 'reference_artifacts': [selected_reply],
             },
@@ -8688,7 +8696,7 @@ class ResponsesApiTests(unittest.TestCase):
                 'runtime': {'request_phase_graph': {'current_phase_capability': 'chat'}},
             },
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': 'Edit the selected watch image.',
             },
             assistant_message='Edit prepared.',
@@ -8700,18 +8708,18 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertFalse(gap.get('suppress_reference_file_context', False))
         self.assertNotIn('selected_reference_prompt_policy', gap)
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._prepare_effective_request_data")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._prepare_effective_request_data")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_closure_review_refines_missing_branch_from_assistant_claim(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_prepare_effective_request_data,
         mock_execute,
         mock_schedule_late_fill,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "chat-1",
                 "instance": {
@@ -8722,14 +8730,14 @@ class ResponsesApiTests(unittest.TestCase):
                     "port": 11438,
                 },
                 "capability": "chat",
-                "route_source": "ghost_carried",
+                "route_source": "inference_carried",
                 "route_reason": "chat response",
                 "route_confidence": 0.71,
                 "route_runtime": {
                     "request_phase_graph": build_request_phase_graph(
                         "Tell me a joke.",
-                        request_payload={"ghost_route": True},
-                        route_payload={"capability": "chat", "route_source": "ghost_carried"},
+                        request_payload={"inference_route": True},
+                        route_payload={"capability": "chat", "route_source": "inference_carried"},
                     ),
                 },
             },
@@ -8749,7 +8757,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "Tell me a joke.",
                 "response_id": "resp_closure_review_output_claim_tts",
             },
@@ -8773,16 +8781,16 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(audio_slots[0]["status"], "pending")
         mock_schedule_late_fill.assert_called_once()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_marks_text_only_audio_completion_for_late_fill(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
         mock_schedule_late_fill,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "chat-1",
                 "instance": {
@@ -8814,7 +8822,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "write some little story and then give me something i can listen to",
                 "response_id": "resp_text_only_audio_pending",
             },
@@ -8838,12 +8846,12 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(audio_output["status"], "pending")
         mock_schedule_late_fill.assert_called_once()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_direct_quoted_tts_source_is_not_rewritten_as_file_clarification(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
         mock_schedule_late_fill,
     ):
@@ -8854,10 +8862,10 @@ class ResponsesApiTests(unittest.TestCase):
         )
         phase_graph = build_request_phase_graph(
             prompt,
-            request_payload={"ghost_route": True, "prompt": prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True, "prompt": prompt},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "chat-1",
                 "instance": {
@@ -8868,7 +8876,7 @@ class ResponsesApiTests(unittest.TestCase):
                     "port": 11438,
                 },
                 "capability": "chat",
-                "route_source": "ghost_carried",
+                "route_source": "inference_carried",
                 "route_reason": "direct TTS source preparation",
                 "route_confidence": 0.9,
                 "route_reuse_last_artifact": False,
@@ -8882,7 +8890,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": prompt,
                 "request_meta": {"capability_hint": "text_to_speech"},
                 "response_id": "resp_direct_quoted_tts_source_not_file_reference",
@@ -8976,20 +8984,20 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(outputs[1]["branch_id"], "branch-image_generation-1")
         self.assertNotIn("response_frame", payload)
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_marks_planner_deferred_audio_for_late_fill(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_plan_compound_execution_payload,
         mock_execute,
         mock_schedule_late_fill,
     ):
         story_text = "A short mystical story about a bell keeper by the harbor."
         story_display_text = f"{story_text}\n\n***\n\n**(Reading the story aloud)**"
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "chat-1",
                 "instance": {
@@ -9010,7 +9018,7 @@ class ResponsesApiTests(unittest.TestCase):
         )
         mock_plan_compound_execution_payload.return_value = (
             {
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "Write a short mystical story and then give me something I can listen to.",
             },
             {
@@ -9027,7 +9035,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "Write a short mystical story and then give me something I can listen to.",
                 "response_id": "resp_planner_deferred_audio_pending",
             },
@@ -9055,18 +9063,18 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(audio_output["status"], "pending")
         mock_schedule_late_fill.assert_called_once()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_marks_planner_deferred_audio_for_late_fill_from_vision_response(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_plan_compound_execution_payload,
         mock_invoke_internal_api_json_route,
         mock_schedule_late_fill,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "vision-1",
                 "instance": {
@@ -9087,7 +9095,7 @@ class ResponsesApiTests(unittest.TestCase):
         )
         mock_plan_compound_execution_payload.return_value = (
             {
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "From this screenshot, extract the exact quoted text, translate it into natural English, then read it aloud.",
                 "file_path": "/tmp/current-screenshot.png",
                 "input_artifacts": [{"type": "image", "path": "/tmp/current-screenshot.png"}],
@@ -9115,7 +9123,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "From this screenshot, extract the exact quoted text, translate it into natural English, then read it aloud.",
                 "file_path": "/tmp/current-screenshot.png",
                 "input_artifacts": [{"type": "image", "path": "/tmp/current-screenshot.png"}],
@@ -9137,21 +9145,21 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(audio_slot["lifecycle"], "deferred_output")
         mock_schedule_late_fill.assert_called_once()
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_responses_target_instance")
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_responses_target_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_applies_translation_follow_up_after_speech_to_text(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_plan_compound_execution_payload,
         mock_invoke_internal_api_json_route,
         mock_resolve_responses_target_instance,
         mock_execute_chat_backend_request,
     ):
         prompt = "thank you. now please transcribe this audio. then translate it to german AND french"
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "whisper-1",
                 "instance": {
@@ -9162,7 +9170,7 @@ class ResponsesApiTests(unittest.TestCase):
                     "port": 11505,
                 },
                 "capability": "speech_to_text",
-                "route_source": "ghost_carried",
+                "route_source": "inference_carried",
                 "route_reason": "prompt refers to the latest audio artifact",
                 "route_confidence": 0.82,
                 "route_reuse_last_artifact": True,
@@ -9233,7 +9241,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": prompt,
                 "response_id": "resp_stt_translation_follow_up",
             },
@@ -9263,9 +9271,9 @@ class ResponsesApiTests(unittest.TestCase):
             "xhigh",
         )
 
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_ghost_route_preview_returns_resolved_instance_and_schema(self, mock_resolve_ghost_route):
-        mock_resolve_ghost_route.return_value = (
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_inference_route_preview_returns_resolved_instance_and_schema(self, mock_resolve_inference_route):
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "tts-1",
                 "instance": {
@@ -9320,10 +9328,10 @@ class ResponsesApiTests(unittest.TestCase):
         )
 
         response = self.client.post(
-            "/api/ghost_route_preview",
+            "/api/inference_route_preview",
             json={
                 "prompt": "read this aloud",
-                "ghost_messages": [{"role": "user", "content": "read this aloud"}],
+                "inference_messages": [{"role": "user", "content": "read this aloud"}],
             },
         )
 
@@ -9341,11 +9349,11 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["route"]["source"], "router")
         self.assertEqual(payload["runtime"]["embedding_helper"]["reason"], "no_supported_embedding_helper")
 
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_ghost_route_preview_includes_control_hints_for_resolved_tts_target(
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_inference_route_preview_includes_control_hints_for_resolved_tts_target(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_plan_compound_execution_payload,
     ):
         mock_plan_compound_execution_payload.side_effect = (
@@ -9359,7 +9367,7 @@ class ResponsesApiTests(unittest.TestCase):
                 },
             )
         )
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "tts-1",
                 "instance": {
@@ -9405,10 +9413,10 @@ class ResponsesApiTests(unittest.TestCase):
 
         prompt = 'read this aloud in a warm female voice in German as mp3: "Hallo Welt"'
         response = self.client.post(
-            "/api/ghost_route_preview",
+            "/api/inference_route_preview",
             json={
                 "prompt": prompt,
-                "ghost_messages": [{"role": "user", "content": prompt}],
+                "inference_messages": [{"role": "user", "content": prompt}],
                 "compute_semantics": True,
             },
         )
@@ -9426,11 +9434,11 @@ class ResponsesApiTests(unittest.TestCase):
             "Speak in German with natural German pronunciation. Use a warm, clearly female voice.",
         )
 
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_ghost_route_preview_autofills_required_voicedesign_instruct_when_missing(
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_inference_route_preview_autofills_required_voicedesign_instruct_when_missing(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_plan_compound_execution_payload,
     ):
         mock_plan_compound_execution_payload.return_value = (
@@ -9442,7 +9450,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "reason": "already_executable_prompt",
             },
         )
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "tts-1",
                 "instance": {
@@ -9475,10 +9483,10 @@ class ResponsesApiTests(unittest.TestCase):
         )
 
         response = self.client.post(
-            "/api/ghost_route_preview",
+            "/api/inference_route_preview",
             json={
                 "prompt": "read this aloud",
-                "ghost_messages": [{"role": "user", "content": "read this aloud"}],
+                "inference_messages": [{"role": "user", "content": "read this aloud"}],
             },
         )
 
@@ -9489,11 +9497,11 @@ class ResponsesApiTests(unittest.TestCase):
             "Use a natural, conversational voice.",
         )
 
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_ghost_route_preview_autofills_required_kitten_speaker_from_first_option(
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_inference_route_preview_autofills_required_kitten_speaker_from_first_option(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_plan_compound_execution_payload,
     ):
         mock_plan_compound_execution_payload.return_value = (
@@ -9505,7 +9513,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "reason": "already_executable_prompt",
             },
         )
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "tts-kitten-1",
                 "instance": {
@@ -9541,10 +9549,10 @@ class ResponsesApiTests(unittest.TestCase):
         )
 
         response = self.client.post(
-            "/api/ghost_route_preview",
+            "/api/inference_route_preview",
             json={
                 "prompt": "read this aloud",
-                "ghost_messages": [{"role": "user", "content": "read this aloud"}],
+                "inference_messages": [{"role": "user", "content": "read this aloud"}],
             },
         )
 
@@ -9552,10 +9560,10 @@ class ResponsesApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["runtime"]["control_hints"]["voice"], "Bella")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_reuses_backend_artifact_path(self, mock_resolve_ghost_route, mock_invoke):
-        mock_resolve_ghost_route.return_value = (
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_reuses_backend_artifact_path(self, mock_resolve_inference_route, mock_invoke):
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "vision-1",
                 "instance": {
@@ -9588,9 +9596,9 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "describe this image",
-                "ghost_messages": [
+                "inference_messages": [
                     {
                         "role": "assistant",
                         "content": "Image generated.",
@@ -9609,9 +9617,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(called.kwargs["payload"]["file_path"], "/tmp/generated/latest-image.png")
         self.assertEqual(called.kwargs["payload"]["capability"], "vision_analysis")
 
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path")
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_fixed_target_uses_selected_reference_artifact_path(
         self,
         mock_lookup,
@@ -9657,9 +9665,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(called.kwargs["payload"]["file_path"], "/tmp/generated/older-image.png")
         self.assertEqual(called.kwargs["payload"]["capability"], "vision_analysis")
 
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path")
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_fixed_target_multimodal_chat_uses_selected_image_reference_path(
         self,
         mock_lookup,
@@ -9706,8 +9714,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(called.kwargs["payload"]["file_path"], "/tmp/generated/older-image.png")
         self.assertEqual(called.kwargs["payload"]["capability"], "chat")
 
-    @patch("ollmo_webserver._execute_chat_backend_request", return_value="Shorter answer.")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._execute_chat_backend_request", return_value="Shorter answer.")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_fixed_target_injects_selected_message_reference_into_chat_context(
         self,
         mock_lookup,
@@ -9753,9 +9761,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(messages[-1]["role"], "user")
         self.assertEqual(messages[-1]["content"], "make it shorter")
 
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path")
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_fixed_target_uses_matching_artifact_from_multi_reference_payload(
         self,
         mock_lookup,
@@ -9807,9 +9815,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(called.kwargs["payload"]["file_path"], "/tmp/generated/older-image.png")
         self.assertEqual(called.kwargs["payload"]["capability"], "vision_analysis")
 
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path")
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_fixed_target_multimodal_chat_preserves_selected_message_prompt_with_image_reference(
         self,
         mock_lookup,
@@ -9866,15 +9874,15 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIn("Keep the noir mood and the knitted hood detail.", called.kwargs["payload"]["prompt"])
         self.assertIn("Current user request:\ndescribe this image again", called.kwargs["payload"]["prompt"])
 
-    @patch('ollmo_webserver.read_events', return_value=[])
-    @patch('ollmo_webserver.build_ghost_payload', return_value={'recommendations': [], 'issues': []})
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    def test_resolve_ghost_auto_route_uses_trait_aware_chat_instance_selection(
+    @patch('fruth_webserver.read_events', return_value=[])
+    @patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []})
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    def test_resolve_inference_auto_route_uses_trait_aware_chat_instance_selection(
         self,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
     ):
         instances = [
@@ -9909,14 +9917,14 @@ class ResponsesApiTests(unittest.TestCase):
         mock_load_running_instances.return_value = instances
         mock_merge_instances.return_value = instances
 
-        with app.test_request_context('/api/ghost_route_preview', method='POST', json={}):
-            route_info, error = _resolve_ghost_auto_route(
+        with app.test_request_context('/api/inference_route_preview', method='POST', json={}):
+            route_info, error = _resolve_inference_auto_route(
                 {
                     'prompt': 'look at this screenshot and explain what is happening',
                     'prompt': 'inspect this screenshot and tell me what is happening',
                     'conversation_id': '__responses_workbench__',
                     'upload_filename': 'screen.png',
-                    'ghost_preview': {
+                    'inference_preview': {
                         'capability': 'chat',
                         'instance_id': None,
                         'reuse_last_artifact': False,
@@ -9934,10 +9942,10 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(route_info['route_runtime']['context_strategy']['mode'], 'bounded_file_context')
         self.assertEqual(mock_merge_instances.call_args.kwargs['refresh'], False)
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_compresses_history_when_context_is_large(self, mock_resolve_ghost_route, mock_execute):
-        mock_resolve_ghost_route.return_value = (
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_compresses_history_when_context_is_large(self, mock_resolve_inference_route, mock_execute):
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "chat-1",
                 "instance": {
@@ -9973,7 +9981,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": input_messages,
             },
         )
@@ -9982,14 +9990,14 @@ class ResponsesApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["context_mode"], "compressed_history")
         sent_messages = mock_execute.call_args.kwargs["messages"]
-        self.assertTrue(any(message["role"] == "system" and "Conversation summary prepared by Ollmo" in message["content"] for message in sent_messages))
+        self.assertTrue(any(message["role"] == "system" and "Conversation summary prepared by Fruth" in message["content"] for message in sent_messages))
         self.assertLess(len(sent_messages), len(input_messages))
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=False)
-    def test_canonical_responses_ghost_auto_reuses_preview_route_without_router_call(
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=False)
+    def test_canonical_responses_inference_auto_reuses_preview_route_without_router_call(
         self,
         _mock_schedule_late_fill,
         mock_load_running_instances,
@@ -10026,20 +10034,20 @@ class ResponsesApiTests(unittest.TestCase):
             200,
         )
 
-        with patch("ollmo_webserver._execute_chat_backend_request") as mock_execute:
+        with patch("fruth_webserver._execute_chat_backend_request") as mock_execute:
             response = self.client.post(
                 "/api/responses",
                 json={
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": "read the text in this image",
-                    "ghost_messages": [
+                    "inference_messages": [
                         {
                             "role": "assistant",
                             "content": "Image generated.",
                             "saved_image_path": "/tmp/generated/latest-image.png",
                         }
                     ],
-                    "ghost_preview": {
+                    "inference_preview": {
                         "instance_id": "vision-1",
                         "capability": "vision_analysis",
                         "reuse_last_artifact": True,
@@ -10053,21 +10061,21 @@ class ResponsesApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertEqual(payload["route_source"], "ghost_carried")
+        self.assertEqual(payload["route_source"], "inference_carried")
         self.assertEqual(payload["instance_id"], "vision-1")
         self.assertEqual(payload["route_artifact_path"], "/tmp/generated/latest-image.png")
         called = mock_invoke.call_args
         self.assertEqual(called.kwargs["payload"]["instance_id"], "vision-1")
         self.assertEqual(called.kwargs["payload"]["file_path"], "/tmp/generated/latest-image.png")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_defaults_generic_voicedesign_instruct(
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_defaults_generic_voicedesign_instruct(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "tts-1",
                 "instance": {
@@ -10111,9 +10119,9 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "read this aloud",
-                "ghost_messages": [{"role": "user", "content": "read this aloud"}],
+                "inference_messages": [{"role": "user", "content": "read this aloud"}],
             },
         )
 
@@ -10124,9 +10132,9 @@ class ResponsesApiTests(unittest.TestCase):
         infer_payload = mock_invoke.call_args.kwargs["payload"]
         self.assertEqual(infer_payload["instruct"], "Use a natural, conversational voice.")
 
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_still_blocks_required_voice_without_default(self, mock_resolve_ghost_route):
-        mock_resolve_ghost_route.return_value = (
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_still_blocks_required_voice_without_default(self, mock_resolve_inference_route):
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "tts-custom-1",
                 "instance": {
@@ -10161,9 +10169,9 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "read this aloud",
-                "ghost_messages": [{"role": "user", "content": "read this aloud"}],
+                "inference_messages": [{"role": "user", "content": "read this aloud"}],
             },
         )
 
@@ -10173,13 +10181,13 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["missing_session_controls"]["instance"]["instance_id"], "tts-custom-1")
         self.assertEqual(payload["missing_session_controls"]["missing_fields"][0]["field_key"], "tts_voice")
 
-    @patch("ollmo_webserver._schedule_response_late_fill")
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_applies_execution_planner_before_tts_infer(
+    @patch("fruth_webserver._schedule_response_late_fill")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_applies_execution_planner_before_tts_infer(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_plan_compound_execution_payload,
         mock_invoke,
         mock_schedule_late_fill,
@@ -10212,10 +10220,10 @@ class ResponsesApiTests(unittest.TestCase):
             "route_reuse_last_artifact": False,
             "route_artifact_path": None,
         }
-        mock_resolve_ghost_route.return_value = (route_info, None)
+        mock_resolve_inference_route.return_value = (route_info, None)
         mock_plan_compound_execution_payload.return_value = (
             {
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "imagine something he would say and then generate an audio clip of it.",
                 "prompt": "Honor guides my blade.",
                 "_prompt_hint": "Honor guides my blade.",
@@ -10246,9 +10254,9 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "imagine something he would say and then generate an audio clip of it.",
-                "ghost_messages": [
+                "inference_messages": [
                     {"role": "user", "content": "create me an image of a samurai 2:3"},
                     {"role": "assistant", "content": "Image generated."},
                     {
@@ -10272,14 +10280,14 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertTrue(payload["runtime"]["execution_planner"]["applied"])
         self.assertEqual(payload["runtime"]["execution_planner"]["planned_prompt"], "Honor guides my blade.")
 
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_returns_route_error(self, mock_resolve_ghost_route):
-        mock_resolve_ghost_route.return_value = (None, "No available instance for capability 'image_generation'.")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_returns_route_error(self, mock_resolve_inference_route):
+        mock_resolve_inference_route.return_value = (None, "No available instance for capability 'image_generation'.")
 
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "generate an image",
             },
         )
@@ -10288,13 +10296,13 @@ class ResponsesApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertIn("No available instance", payload["error"])
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    def test_canonical_responses_ghost_auto_routes_direct_image_prompt_through_chat_prepare_first(
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    def test_canonical_responses_inference_auto_routes_direct_image_prompt_through_chat_prepare_first(
         self,
         mock_execute_chat_backend_request,
         mock_load_running_instances,
@@ -10331,12 +10339,12 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": (
                     "target local flux that is running, generate an image: "
                     "Underwater ghost town, abandoned diner, eerie bioluminescence"
                 ),
-                "ghost_messages": [
+                "inference_messages": [
                     {
                         "role": "user",
                         "content": (
@@ -10352,7 +10360,7 @@ class ResponsesApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["instance_id"], "chat-1")
         self.assertEqual(payload["mode"], "chat")
-        self.assertEqual(payload["route_source"], "ghost_carried")
+        self.assertEqual(payload["route_source"], "inference_carried")
         self.assertIn(
             "current phase remains text-capable while downstream materialization phases depend on its output",
             payload["route_reason"],
@@ -10363,11 +10371,11 @@ class ResponsesApiTests(unittest.TestCase):
         mock_schedule_late_fill.assert_called_once()
         mock_invoke_internal_api_json_route.assert_not_called()
 
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    def test_resolve_ghost_auto_route_returns_clean_ghost_carried_chat_fallback(
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    def test_resolve_inference_auto_route_returns_clean_inference_carried_chat_fallback(
         self,
         mock_execute_router,
         mock_load_running_instances,
@@ -10399,24 +10407,24 @@ class ResponsesApiTests(unittest.TestCase):
         mock_execute_router.side_effect = RuntimeError("router timeout")
 
         with app.test_request_context("/api/responses", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": "explain quantum entanglement in 5 bullets",
                     "conversation_id": "responses-workbench",
-                    "ghost_messages": [
+                    "inference_messages": [
                         {"role": "user", "content": "explain quantum entanglement in 5 bullets"},
                     ],
                 },
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
 
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_uses_latest_image_for_unpinned_strong_edit_follow_up_via_deterministic_fallback(
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_uses_latest_image_for_unpinned_strong_edit_follow_up_via_deterministic_fallback(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -10444,12 +10452,12 @@ class ResponsesApiTests(unittest.TestCase):
         mock_merge_instances.return_value = instances
 
         with app.test_request_context("/api/responses", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": "change the Eiffel tower to the arc de triomphe. leave everything else unchanged",
                     "conversation_id": "responses-workbench",
-                    "ghost_messages": [
+                    "inference_messages": [
                         {"role": "user", "content": "generate an image of a cat with a chicken in paris"},
                         {
                             "role": "assistant",
@@ -10467,15 +10475,15 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIsNone(resolution_error)
         self.assertEqual(route_info["instance_id"], "flux-1")
         self.assertEqual(route_info["capability"], "image_generation")
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["route_reason"], "image-edit follow-up on latest image artifact")
         self.assertTrue(route_info["route_reuse_last_artifact"])
         self.assertEqual(route_info["route_artifact_path"], "/tmp/generated/cat-chicken.png")
 
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_self_heals_failed_chat_image_follow_up(
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_self_heals_failed_chat_image_follow_up(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -10503,12 +10511,12 @@ class ResponsesApiTests(unittest.TestCase):
         mock_merge_instances.return_value = instances
 
         with app.test_request_context("/api/responses", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": "change the Eiffel tower to the arc de triomphe. leave everything else unchanged",
                     "conversation_id": "responses-workbench",
-                    "ghost_messages": [
+                    "inference_messages": [
                         {"role": "user", "content": "generate an image of a cat with a chicken in paris"},
                         {
                             "role": "assistant",
@@ -10541,16 +10549,16 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertTrue(route_info["route_reuse_last_artifact"])
         self.assertEqual(route_info["route_artifact_path"], "/tmp/generated/cat-chicken.png")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_self_heals_failed_ghost_route_once(
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_self_heals_failed_inference_route_once(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute_chat_backend_request,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.side_effect = [
+        mock_resolve_inference_route.side_effect = [
             (
                 {
                     "instance_id": "chat-1",
@@ -10624,11 +10632,11 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "change the Eiffel tower to the arc de triomphe. leave everything else unchanged",
                 "input": "change the Eiffel tower to the arc de triomphe. leave everything else unchanged",
                 "conversation_id": "responses-workbench",
-                "ghost_messages": [
+                "inference_messages": [
                     {"role": "user", "content": "generate an image of a cat with a chicken in paris"},
                     {
                         "role": "assistant",
@@ -10647,24 +10655,24 @@ class ResponsesApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["instance_id"], "flux-1")
         self.assertEqual(payload["route_source"], "self_heal")
-        self.assertEqual(mock_resolve_ghost_route.call_count, 3)
-        retry_call = mock_resolve_ghost_route.call_args_list[1]
+        self.assertEqual(mock_resolve_inference_route.call_count, 3)
+        retry_call = mock_resolve_inference_route.call_args_list[1]
         self.assertEqual(retry_call.kwargs["excluded_instance_ids"], ["chat-1"])
         self.assertEqual(retry_call.kwargs["retry_failure"]["capability"], "chat")
         infer_payload = mock_invoke.call_args.kwargs["payload"]
         self.assertEqual(infer_payload["instance_id"], "flux-1")
         self.assertEqual(infer_payload["capability"], "image_generation")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_does_not_auto_retry_without_explicit_self_heal_route(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute_chat_backend_request,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.side_effect = [
+        mock_resolve_inference_route.side_effect = [
             (
                 {
                     "instance_id": "chat-1",
@@ -10709,7 +10717,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "hello",
                 "input": "hello",
                 "conversation_id": "responses-workbench",
@@ -10720,17 +10728,17 @@ class ResponsesApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["instance_id"], "chat-1")
         self.assertEqual(payload["route_source"], "heuristic")
-        self.assertEqual(mock_resolve_ghost_route.call_count, 2)
+        self.assertEqual(mock_resolve_inference_route.call_count, 2)
         mock_invoke.assert_not_called()
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_does_not_auto_retry_non_retryable_infer_failure(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "flux-1",
                 "instance": {
@@ -10759,7 +10767,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "generate an image of a lighthouse",
                 "input": "generate an image of a lighthouse",
                 "conversation_id": "responses-workbench",
@@ -10767,16 +10775,16 @@ class ResponsesApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(mock_resolve_ghost_route.call_count, 1)
+        self.assertEqual(mock_resolve_inference_route.call_count, 1)
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_failed_runtime_payload_preserves_route_provenance(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute_chat_backend_request,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "chat-1",
                 "instance": {
@@ -10800,8 +10808,8 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
-                "ghost_self_heal_attempted": True,
+                "inference_route": True,
+                "inference_self_heal_attempted": True,
                 "prompt": "hello",
                 "input": "hello",
                 "conversation_id": "responses-workbench",
@@ -10816,10 +10824,10 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["capability"], "chat")
         self.assertEqual(payload["error"], "backend exploded")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_batches_image_generation_prompts(self, mock_resolve_ghost_route, mock_invoke):
-        mock_resolve_ghost_route.return_value = (
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_batches_image_generation_prompts(self, mock_resolve_inference_route, mock_invoke):
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "flux-1",
                 "instance": {
@@ -10864,7 +10872,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "batch_prompts": ["first scene", "second scene"],
             },
         )
@@ -10878,8 +10886,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(mock_invoke.call_args_list[0].kwargs["payload"]["instance_id"], "flux-1")
         self.assertEqual(mock_invoke.call_args_list[1].kwargs["payload"]["prompt"], "second scene")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_non_chat_streams_sse(self, mock_lookup, mock_invoke):
         mock_lookup.return_value = {
             "instance_id": "tts-1",
@@ -10917,8 +10925,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIn("Audio generated.", body)
         self.assertIn("event: response.completed", body)
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_infers_image_dimensions_from_prompt_hint(self, mock_lookup, mock_invoke):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -10951,8 +10959,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(infer_payload["width"], 1280)
         self.assertEqual(infer_payload["height"], 720)
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_infers_multilingual_image_dimensions_from_prompt_hint(self, mock_lookup, mock_invoke):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -10985,14 +10993,14 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(infer_payload["width"], 768)
         self.assertEqual(infer_payload["height"], 1024)
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_infers_tts_instruct_and_language_from_prompt(
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_infers_tts_instruct_and_language_from_prompt(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "tts-1",
                 "instance": {
@@ -11037,9 +11045,9 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "read this aloud in a warm female voice in German as mp3",
-                "ghost_messages": [{"role": "user", "content": "read this aloud in a warm female voice in German as mp3"}],
+                "inference_messages": [{"role": "user", "content": "read this aloud in a warm female voice in German as mp3"}],
             },
         )
 
@@ -11060,14 +11068,14 @@ class ResponsesApiTests(unittest.TestCase):
         )
         self.assertEqual(payload["runtime"]["control_hints"]["response_format"], "mp3")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_infers_language_from_spoken_content(
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_infers_language_from_spoken_content(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "tts-1",
                 "instance": {
@@ -11111,9 +11119,9 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": 'Use a männliche Stimme and read this aloud: "Hallo Welt."',
-                "ghost_messages": [{"role": "user", "content": 'Use a männliche Stimme and read this aloud: "Hallo Welt."'}],
+                "inference_messages": [{"role": "user", "content": 'Use a männliche Stimme and read this aloud: "Hallo Welt."'}],
             },
         )
 
@@ -11125,8 +11133,8 @@ class ResponsesApiTests(unittest.TestCase):
             "Speak in German with natural German pronunciation. Use a clearly male voice.",
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_rewrites_direct_german_image_prompt_before_infer(self, mock_lookup, mock_invoke):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -11158,8 +11166,8 @@ class ResponsesApiTests(unittest.TestCase):
         infer_payload = mock_invoke.call_args.kwargs["payload"]
         self.assertEqual(infer_payload["prompt"], "einen drachen")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_uses_recent_user_context_for_image_follow_up_prompt(self, mock_lookup, mock_invoke):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -11184,7 +11192,7 @@ class ResponsesApiTests(unittest.TestCase):
             json={
                 "instance_id": "flux-1",
                 "input": "mach daraus ein poster mit art nouveau flair",
-                "ghost_messages": [
+                "inference_messages": [
                     {"role": "user", "content": "male mir einen fuchs im schnee"},
                     {"role": "assistant", "content": "Image generated."},
                     {"role": "user", "content": "mach daraus ein poster mit art nouveau flair"},
@@ -11196,8 +11204,8 @@ class ResponsesApiTests(unittest.TestCase):
         infer_payload = mock_invoke.call_args.kwargs["payload"]
         self.assertEqual(infer_payload["prompt"], "einen fuchs im schnee, ein poster mit art nouveau flair")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_replaces_pronoun_image_follow_up_with_prior_subject(self, mock_lookup, mock_invoke):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -11222,7 +11230,7 @@ class ResponsesApiTests(unittest.TestCase):
             json={
                 "instance_id": "flux-1",
                 "input": "make a hyper futuristic cinematic poster of it, widescreen.",
-                "ghost_messages": [
+                "inference_messages": [
                     {"role": "user", "content": 'generate me "a squirrel on a tree"'},
                     {"role": "assistant", "content": "Image generated."},
                     {"role": "user", "content": "make a hyper futuristic cinematic poster of it, widescreen."},
@@ -11237,8 +11245,8 @@ class ResponsesApiTests(unittest.TestCase):
             "make a hyper futuristic cinematic poster of a squirrel on a tree, widescreen.",
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_uses_latest_non_followup_subject_for_repeated_image_follow_up(self, mock_lookup, mock_invoke):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -11263,7 +11271,7 @@ class ResponsesApiTests(unittest.TestCase):
             json={
                 "instance_id": "flux-1",
                 "input": "make a hyperrealistic poster of it.",
-                "ghost_messages": [
+                "inference_messages": [
                     {"role": "user", "content": 'generate me "a squirrel on a tree"'},
                     {"role": "assistant", "content": "Image generated."},
                     {"role": "user", "content": "make a hyper futuristic cinematic poster of it, widescreen."},
@@ -11280,8 +11288,8 @@ class ResponsesApiTests(unittest.TestCase):
             "make a hyperrealistic poster of a squirrel on a tree.",
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_rewrites_style_only_image_follow_up_with_subject(self, mock_lookup, mock_invoke):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -11306,7 +11314,7 @@ class ResponsesApiTests(unittest.TestCase):
             json={
                 "instance_id": "flux-1",
                 "input": "make it more powerful and cinematic even",
-                "ghost_messages": [
+                "inference_messages": [
                     {"role": "user", "content": 'paint me "a squirrel on a tree"'},
                     {"role": "assistant", "content": "Image generated."},
                     {"role": "user", "content": "mache draus ein film-poster mit dem eichhörnchen als superheld."},
@@ -11323,8 +11331,8 @@ class ResponsesApiTests(unittest.TestCase):
             "make a squirrel on a tree more powerful and cinematic even",
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_rewrites_image_edit_follow_up_with_subject_context(self, mock_lookup, mock_invoke):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -11349,7 +11357,7 @@ class ResponsesApiTests(unittest.TestCase):
             json={
                 "instance_id": "flux-1",
                 "input": "the main character shall hold the weapons. not just randomly place them in the picture.",
-                "ghost_messages": [
+                "inference_messages": [
                     {"role": "user", "content": 'paint me "a squirrel on a tree"'},
                     {"role": "assistant", "content": "Image generated."},
                     {"role": "user", "content": "make it more powerful and cinematic"},
@@ -11369,8 +11377,8 @@ class ResponsesApiTests(unittest.TestCase):
             "a squirrel on a tree, the main character shall hold the weapons. not just randomly place them in the picture.",
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_rewrites_pronoun_clothing_image_edit_with_image_state(self, mock_lookup, mock_invoke):
         mock_lookup.return_value = {
             "instance_id": "flux-1",
@@ -11395,7 +11403,7 @@ class ResponsesApiTests(unittest.TestCase):
             json={
                 "instance_id": "flux-1",
                 "input": "make her wear a red dress",
-                "ghost_messages": [
+                "inference_messages": [
                     {"role": "user", "content": "generate an image of an asian woman in a black dress"},
                     {
                         "role": "assistant",
@@ -11423,14 +11431,14 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIn("Keep unchanged: A young asian woman in a black dress; A softly lit studio portrait scene; cinematic fashion photography.", infer_payload["prompt"])
         self.assertIn("Requested change: make her wear a red dress.", infer_payload["prompt"])
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_uses_recent_user_context_for_tts_follow_up_shaping(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "tts-1",
                 "instance": {
@@ -11474,9 +11482,9 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "make it calmer with a männliche Stimme",
-                "ghost_messages": [
+                "inference_messages": [
                     {"role": "user", "content": 'Read this aloud: "Hallo Welt."'},
                     {"role": "assistant", "content": "Audio generated."},
                     {"role": "user", "content": "make it calmer with a männliche Stimme"},
@@ -11492,8 +11500,8 @@ class ResponsesApiTests(unittest.TestCase):
             "Speak in German with natural German pronunciation. Use a calm, clearly male voice.",
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_uses_cached_image_state_for_image_follow_up_shaping(
         self,
         mock_lookup,
@@ -11522,7 +11530,7 @@ class ResponsesApiTests(unittest.TestCase):
             json={
                 "instance_id": "flux-1",
                 "input": "make it more cinematic and powerful",
-                "ghost_messages": [
+                "inference_messages": [
                     {
                         "role": "assistant",
                         "content": "Image generated.",
@@ -11549,8 +11557,8 @@ class ResponsesApiTests(unittest.TestCase):
             "A heroic squirrel on a tree, cinematic comic-book style, make it more cinematic and powerful",
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_uses_structured_preservation_prompt_for_targeted_image_edit(
         self,
         mock_lookup,
@@ -11579,7 +11587,7 @@ class ResponsesApiTests(unittest.TestCase):
             json={
                 "instance_id": "flux-1",
                 "input": "make the robot blue eyes",
-                "ghost_messages": [
+                "inference_messages": [
                     {
                         "role": "assistant",
                         "content": "Image generated.",
@@ -11677,9 +11685,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(deltas, ['Final answer'])
         self.assertTrue(response.closed)
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
     def test_stream_chat_backend_falls_back_when_no_deltas(
         self,
         mock_activity,
@@ -11690,7 +11698,7 @@ class ResponsesApiTests(unittest.TestCase):
         mock_success.return_value = ({"readiness": "ready"}, {"readiness": "ready"})
         mock_execute_chat_backend_request.return_value = "Fallback text"
 
-        with patch("ollmo_webserver._open_ollama_chat_stream", return_value=(self._FakeStreamResponse([]), 11435)):
+        with patch("fruth_webserver._open_ollama_chat_stream", return_value=(self._FakeStreamResponse([]), 11435)):
             with app.test_request_context("/api/responses", method="POST"):
                 response = _stream_chat_backend_as_responses(
                     instance_id="gpt-oss:20b-1",
@@ -11711,10 +11719,10 @@ class ResponsesApiTests(unittest.TestCase):
             "xhigh",
         )
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
     def test_prepare_stream_buffers_control_envelope_and_emits_only_retry_content(
         self,
         mock_activity,
@@ -11735,7 +11743,7 @@ class ResponsesApiTests(unittest.TestCase):
         mock_execute_chat_backend_request.return_value = substantive_text
 
         with patch(
-            "ollmo_webserver._open_ollama_chat_stream",
+            "fruth_webserver._open_ollama_chat_stream",
             return_value=(
                 self._FakeStreamResponse(
                     [
@@ -11785,10 +11793,10 @@ class ResponsesApiTests(unittest.TestCase):
             json.dumps(payload["response_frame"]["output"]),
         )
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
     def test_prepare_stream_second_control_envelope_is_repair_needed_without_tts(
         self,
         mock_activity,
@@ -11808,7 +11816,7 @@ class ResponsesApiTests(unittest.TestCase):
         mock_execute_chat_backend_request.return_value = control_envelope
 
         with patch(
-            "ollmo_webserver._open_ollama_chat_stream",
+            "fruth_webserver._open_ollama_chat_stream",
             return_value=(
                 self._FakeStreamResponse(
                     [
@@ -11859,8 +11867,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(acceptance_check["evidence"], "control_envelope_not_speakable")
         self.assertEqual(acceptance_check["repair_action"], "repair_branch_contract")
 
-    @patch("ollmo_webserver.record_instance_failure")
-    @patch("ollmo_webserver.record_instance_activity")
+    @patch("fruth_webserver.record_instance_failure")
+    @patch("fruth_webserver.record_instance_activity")
     def test_stream_chat_backend_returns_json_error_for_upstream_openai_failure(
         self,
         mock_activity,
@@ -11873,7 +11881,7 @@ class ResponsesApiTests(unittest.TestCase):
         exc = requests.exceptions.HTTPError("boom")
         exc.response = upstream_response
 
-        with patch("ollmo_webserver._open_openai_chat_stream", side_effect=exc):
+        with patch("fruth_webserver._open_openai_chat_stream", side_effect=exc):
             with app.test_request_context("/api/responses", method="POST"):
                 response, status_code = _stream_chat_backend_as_responses(
                     instance_id="gemma-4-26b-llama_cpp-11551",
@@ -11888,8 +11896,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIn("Compute error.", response.get_json()["error"])
         mock_failure.assert_called_once()
 
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
     def test_stream_chat_backend_lookup_returns_completed_payload(
         self,
         mock_activity,
@@ -11900,7 +11908,7 @@ class ResponsesApiTests(unittest.TestCase):
         response_id = "resp_reload_lookup_test"
 
         with patch(
-            "ollmo_webserver._open_ollama_chat_stream",
+            "fruth_webserver._open_ollama_chat_stream",
             return_value=(
                 self._FakeStreamResponse(
                     [
@@ -11942,7 +11950,7 @@ class ResponsesApiTests(unittest.TestCase):
             backend="ollama",
             capability="chat",
             mode="chat",
-            route_payload={"route_source": "ghost_carried"},
+            route_payload={"route_source": "inference_carried"},
         )
         _register_response_stream(response_id)
         try:
@@ -12038,7 +12046,7 @@ class ResponsesApiTests(unittest.TestCase):
             backend="ollama",
             capability="chat",
             mode="chat",
-            route_payload={"route_source": "ghost_carried"},
+            route_payload={"route_source": "inference_carried"},
         )
         _register_response_stream(response_id)
         try:
@@ -12145,7 +12153,7 @@ class ResponsesApiTests(unittest.TestCase):
                     "active_branches": [],
                     "completed_branches": [],
                     "failed_branches": [],
-                    "ghost_repair_feedback": {"huge": heavy_text},
+                    "inference_repair_feedback": {"huge": heavy_text},
                 },
                 "output": [
                     {
@@ -12195,7 +12203,7 @@ class ResponsesApiTests(unittest.TestCase):
             backend="ollama",
             capability="chat",
             mode="chat",
-            route_payload={"route_source": "ghost_carried"},
+            route_payload={"route_source": "inference_carried"},
         )
         _register_response_stream(response_id)
         try:
@@ -12246,9 +12254,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIn("event: response.requires_action", body)
         self.assertNotIn("event: response.completed", body)
 
-    @patch("ollmo_webserver._persist_text_artifact_locally")
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
+    @patch("fruth_webserver._persist_text_artifact_locally")
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
     def test_stream_chat_backend_uses_current_turn_for_text_artifact_detection(
         self,
         mock_activity,
@@ -12282,7 +12290,7 @@ class ResponsesApiTests(unittest.TestCase):
         ]
 
         with patch(
-            "ollmo_webserver._open_ollama_chat_stream",
+            "fruth_webserver._open_ollama_chat_stream",
             return_value=(
                 self._FakeStreamResponse(
                     [
@@ -12310,9 +12318,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertNotIn("/tmp/artifacts/documents", body)
         mock_persist_text_artifact.assert_not_called()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
     def test_stream_chat_backend_lookup_keeps_pending_late_fill_state(
         self,
         mock_activity,
@@ -12324,7 +12332,7 @@ class ResponsesApiTests(unittest.TestCase):
         response_id = "resp_stream_late_fill_lookup"
 
         with patch(
-            "ollmo_webserver._open_ollama_chat_stream",
+            "fruth_webserver._open_ollama_chat_stream",
             return_value=(
                 self._FakeStreamResponse(
                     [
@@ -12353,7 +12361,7 @@ class ResponsesApiTests(unittest.TestCase):
                     },
                     response_id=response_id,
                     request_payload={
-                        "ghost_route": True,
+                        "inference_route": True,
                         "input": "show me a moonlit cove at night as an image",
                     },
                 )
@@ -12370,9 +12378,9 @@ class ResponsesApiTests(unittest.TestCase):
         image_slot = next(slot for slot in output_slots if slot["type"] == "image")
         self.assertEqual(image_slot["status"], "pending")
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
     def test_stream_chat_backend_schedules_text_artifact_graph_late_fill_without_route_graph(
         self,
         mock_activity,
@@ -12385,7 +12393,7 @@ class ResponsesApiTests(unittest.TestCase):
         prompt = "Create an index.html artifact with a hello page."
 
         with patch(
-            "ollmo_webserver._open_ollama_chat_stream",
+            "fruth_webserver._open_ollama_chat_stream",
             return_value=(
                 self._FakeStreamResponse(
                     [
@@ -12404,10 +12412,10 @@ class ResponsesApiTests(unittest.TestCase):
                     backend="ollama",
                     capability="chat",
                     messages=[{"role": "user", "content": prompt}],
-                    route_payload={"route_source": "ghost_carried"},
+                    route_payload={"route_source": "inference_carried"},
                     response_id=response_id,
                     request_payload={
-                        "ghost_route": True,
+                        "inference_route": True,
                         "input": prompt,
                     },
                 )
@@ -12428,9 +12436,9 @@ class ResponsesApiTests(unittest.TestCase):
         text_artifact_slot = next(slot for slot in output_slots if slot.get("branch_id") == "branch-text_artifact-1")
         self.assertEqual(text_artifact_slot["status"], "pending")
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver.record_instance_success")
-    @patch("ollmo_webserver.record_instance_activity")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver.record_instance_success")
+    @patch("fruth_webserver.record_instance_activity")
     def test_stream_chat_backend_schedules_multi_text_artifact_graph_late_fill_via_closure_gateway(
         self,
         mock_activity,
@@ -12446,7 +12454,7 @@ class ResponsesApiTests(unittest.TestCase):
         )
 
         with patch(
-            "ollmo_webserver._open_ollama_chat_stream",
+            "fruth_webserver._open_ollama_chat_stream",
             return_value=(
                 self._FakeStreamResponse(
                     [
@@ -12467,10 +12475,10 @@ class ResponsesApiTests(unittest.TestCase):
                     backend="ollama",
                     capability="chat",
                     messages=[{"role": "user", "content": prompt}],
-                    route_payload={"route_source": "ghost_carried"},
+                    route_payload={"route_source": "inference_carried"},
                     response_id=response_id,
                     request_payload={
-                        "ghost_route": True,
+                        "inference_route": True,
                         "input": prompt,
                     },
                 )
@@ -12499,18 +12507,18 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(len(pending_text_artifact_slots), 3)
         self.assertTrue(all(slot["status"] == "pending" for slot in pending_text_artifact_slots))
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._schedule_response_late_fill")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._schedule_response_late_fill")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_late_fill_updates_lookup_with_image_artifact(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
         mock_schedule_late_fill,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.side_effect = [
+        mock_resolve_inference_route.side_effect = [
             (
                 {
                     "instance_id": "chat-1",
@@ -12577,7 +12585,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "show me a moonlit cove at night as an image",
                 "response_id": "resp_late_fill_image_lookup",
             },
@@ -12599,16 +12607,16 @@ class ResponsesApiTests(unittest.TestCase):
         image_slot = next(slot for slot in lookup_payload["output_slots"] if slot["type"] == "image")
         self.assertEqual(image_slot["status"], "fulfilled")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._schedule_response_late_fill")
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._schedule_response_late_fill")
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_late_fill_updates_lookup_with_audio_artifact_from_planner_deferred_follow_up(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_load_running_instances,
         mock_merge_instances,
         mock_execute,
@@ -12618,7 +12626,7 @@ class ResponsesApiTests(unittest.TestCase):
     ):
         story_text = "A harbor bell rings once through the fog, and the sleeping town remembers its name."
         story_display_text = f"{story_text}\n\n***\n\n**(Reading the story aloud)**"
-        mock_resolve_ghost_route.side_effect = [
+        mock_resolve_inference_route.side_effect = [
             (
                 {
                     "instance_id": "chat-1",
@@ -12681,10 +12689,10 @@ class ResponsesApiTests(unittest.TestCase):
             self.assertEqual(payload["prompt"], story_text)
             self.assertEqual(payload["content_payload"], story_text)
             self.assertEqual(payload["stage_direction"], "(Reading the story aloud)")
-            ghost_messages = payload.get("ghost_messages")
-            self.assertTrue(isinstance(ghost_messages, list) and ghost_messages)
-            self.assertEqual(ghost_messages[-1]["role"], "assistant")
-            self.assertEqual(ghost_messages[-1]["content"], story_display_text)
+            inference_messages = payload.get("inference_messages")
+            self.assertTrue(isinstance(inference_messages, list) and inference_messages)
+            self.assertEqual(inference_messages[-1]["role"], "assistant")
+            self.assertEqual(inference_messages[-1]["content"], story_display_text)
             updated_payload = dict(payload)
             updated_payload["prompt"] = payload["content_payload"]
             updated_payload["instruct"] = "Use a calm, conversational voice."
@@ -12733,7 +12741,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "Write a short mystical story and then give me something I can listen to.",
                 "response_id": "resp_late_fill_audio_lookup",
             },
@@ -12771,12 +12779,12 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(infer_payload["prompt"], story_text)
         self.assertEqual(infer_payload["instruct"], "Use a calm, conversational voice.")
 
-    @patch("ollmo_webserver._filter_responses_infer_result", side_effect=lambda payload, **_kwargs: payload)
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._build_responses_infer_execution_payload")
-    @patch("ollmo_webserver._build_missing_required_session_controls", return_value=[])
-    @patch("ollmo_webserver._prepare_effective_request_data")
-    @patch("ollmo_webserver._resolve_late_fill_route")
+    @patch("fruth_webserver._filter_responses_infer_result", side_effect=lambda payload, **_kwargs: payload)
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._build_responses_infer_execution_payload")
+    @patch("fruth_webserver._build_missing_required_session_controls", return_value=[])
+    @patch("fruth_webserver._prepare_effective_request_data")
+    @patch("fruth_webserver._resolve_late_fill_route")
     def test_complete_response_late_fill_materializes_multiple_downstream_branches(
         self,
         mock_resolve_late_fill_route,
@@ -12797,7 +12805,7 @@ class ResponsesApiTests(unittest.TestCase):
         phase_graph = build_request_phase_graph(
             request_prompt,
             request_payload={"prompt": request_prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
         phase_graph["phases"][0]["status"] = "completed"
         barrier = threading.Barrier(2, timeout=0.5)
@@ -12893,7 +12901,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         source_route_payload = {
-            "route_source": "ghost_carried",
+            "route_source": "inference_carried",
             "route_runtime": {
                 "request_phase_graph": phase_graph,
             },
@@ -12907,7 +12915,7 @@ class ResponsesApiTests(unittest.TestCase):
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("ollmo_webserver.RESPONSE_FRAMES_DIR", Path(tmpdir)):
+            with patch("fruth_webserver.RESPONSE_FRAMES_DIR", Path(tmpdir)):
                 _complete_response_late_fill(
                     response_payload=response_payload,
                     request_payload={"prompt": request_prompt},
@@ -12949,8 +12957,8 @@ class ResponsesApiTests(unittest.TestCase):
         )
         self.assertNotIn("provenance_id", artifacts_by_path["/tmp/story.wav"])
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_runtime_scheduling_guard_avoids_concurrent_image_and_large_chat_helpers(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -13484,7 +13492,7 @@ class ResponsesApiTests(unittest.TestCase):
             'auto_executable_repair_retry_count': 1,
             'auto_executable_repair_max_attempts': 3,
             'recovery_state': {
-                'kind': 'ollmo.late_fill_recovery_state',
+                'kind': 'fruth.late_fill_recovery_state',
                 'status': 'attempting',
                 'failed_instance_id': 'chat-failed',
                 'exclude_instance_ids': ['chat-failed'],
@@ -14390,7 +14398,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "pending_branches": list(branches),
             },
         }
-        from ollmo_services import events as transition_events
+        from fruth_services import events as transition_events
         transition_records = []
         live_snapshots = []
 
@@ -14562,8 +14570,8 @@ class ResponsesApiTests(unittest.TestCase):
             ["branch-chat-index", "branch-chat-styles"],
         )
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_resolve_late_fill_route_uses_candidate_snapshot_without_refresh(
         self,
         mock_load_running_instances,
@@ -14604,8 +14612,8 @@ class ResponsesApiTests(unittest.TestCase):
         mock_load_running_instances.assert_not_called()
         mock_merge_instances.assert_not_called()
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_resolve_late_fill_route_expands_stale_snapshot_after_failed_mlx_vlm_chat_candidate(
         self,
         mock_load_running_instances,
@@ -14678,8 +14686,8 @@ class ResponsesApiTests(unittest.TestCase):
         mock_load_running_instances.assert_called_once()
         mock_merge_instances.assert_called_once()
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_resolve_late_fill_route_keeps_live_degraded_chat_selectable_when_it_is_only_route(
         self,
         mock_load_running_instances,
@@ -14708,7 +14716,7 @@ class ResponsesApiTests(unittest.TestCase):
             expected_capability="chat",
             failed_instance_id=None,
             artifact_gap={
-                "trigger": "ghost_repair_feedback",
+                "trigger": "inference_repair_feedback",
                 "expected_capability": "chat",
                 "stage_direction": "materialize_requested_text_artifact",
                 "requires_artifact": True,
@@ -14721,8 +14729,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIsNone(route_error)
         self.assertEqual(route_info["instance_id"], "chat-degraded-live")
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_resolve_late_fill_route_allows_chat_capable_mlx_vlm_when_it_is_only_route(
         self,
         mock_load_running_instances,
@@ -14770,8 +14778,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(route_info["instance_id"], "mlx-vlm-chat-capable")
         self.assertEqual(route_info["capability"], "chat")
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_text_artifact_persistence_required_branch_without_saved_path_is_repairable(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -14874,7 +14882,7 @@ class ResponsesApiTests(unittest.TestCase):
 
         _complete_response_late_fill(
             response_payload=response_payload,
-            request_payload={"ghost_route": True, "prompt": request_prompt},
+            request_payload={"inference_route": True, "prompt": request_prompt},
             assistant_message=response_payload["output_text"],
             artifact_gap={
                 "trigger": "execution_planner_deferred_follow_up",
@@ -14894,8 +14902,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(failed[0]["error"]["code"], "TEXT_ARTIFACT_NOT_PERSISTED")
         self.assertTrue(failed[0]["recovery_context"]["can_retry"])
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_spreads_same_capability_siblings_across_instances_when_available(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -15012,7 +15020,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         source_route_payload = {
-            "route_source": "ghost_carried",
+            "route_source": "inference_carried",
             "route_runtime": response_payload["runtime"],
         }
         artifact_gap = {
@@ -15047,8 +15055,8 @@ class ResponsesApiTests(unittest.TestCase):
             {"img-1", "img-2"},
         )
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_assigns_distinct_batch_prompts_to_same_capability_siblings(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -15169,7 +15177,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         source_route_payload = {
-            "route_source": "ghost_carried",
+            "route_source": "inference_carried",
             "route_runtime": response_payload["runtime"],
         }
         artifact_gap = {
@@ -15197,8 +15205,8 @@ class ResponsesApiTests(unittest.TestCase):
             ],
         )
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_prepared_numbered_image_prompts_expand_underplanned_late_fill_branches(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -15252,7 +15260,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         source_route_payload = {
-            "route_source": "ghost_carried",
+            "route_source": "inference_carried",
             "route_runtime": response_payload["runtime"],
         }
 
@@ -15392,7 +15400,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         source_route_payload = {
-            "route_source": "ghost_carried",
+            "route_source": "inference_carried",
             "route_runtime": response_payload["runtime"],
         }
 
@@ -15422,8 +15430,8 @@ class ResponsesApiTests(unittest.TestCase):
         )
         self.assertNotIn('hero-bg.jpg', artifact_gap["batch_prompts"][0])
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_treats_completed_prepare_phase_as_ready_for_parallel_siblings(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -15570,7 +15578,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         source_route_payload = {
-            "route_source": "ghost_carried",
+            "route_source": "inference_carried",
             "route_runtime": response_payload["runtime"],
         }
         artifact_gap = {
@@ -15602,8 +15610,8 @@ class ResponsesApiTests(unittest.TestCase):
             ["Image prompt one.", "Image prompt two.", "Image prompt three."],
         )
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_batch_prompts_override_shared_prompt_for_later_siblings(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -15729,7 +15737,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         source_route_payload = {
-            "route_source": "ghost_carried",
+            "route_source": "inference_carried",
             "route_runtime": response_payload["runtime"],
         }
         artifact_gap = {
@@ -15763,8 +15771,8 @@ class ResponsesApiTests(unittest.TestCase):
             ],
         )
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_batch_prompts_override_generic_parent_image_prompt(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -15886,7 +15894,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         source_route_payload = {
-            "route_source": "ghost_carried",
+            "route_source": "inference_carried",
             "route_runtime": response_payload["runtime"],
         }
         artifact_gap = {
@@ -15918,8 +15926,8 @@ class ResponsesApiTests(unittest.TestCase):
             any(generic_parent_prompt in prompt for prompt, _source in recorded_prompt_pairs)
         )
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_recovers_collapsed_plain_alpha_prompts_by_queue_index(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -16045,7 +16053,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         source_route_payload = {
-            "route_source": "ghost_carried",
+            "route_source": "inference_carried",
             "route_runtime": response_payload["runtime"],
         }
         artifact_gap = {
@@ -16080,8 +16088,8 @@ class ResponsesApiTests(unittest.TestCase):
             )
         )
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_recovers_contaminated_image_batch_prompts(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -16197,7 +16205,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         source_route_payload = {
-            "route_source": "ghost_carried",
+            "route_source": "inference_carried",
             "route_runtime": response_payload["runtime"],
         }
         artifact_gap = {
@@ -16285,16 +16293,16 @@ class ResponsesApiTests(unittest.TestCase):
             ],
         )
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._schedule_response_late_fill")
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._schedule_response_late_fill")
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_late_fill_autofills_kitten_speaker_for_planner_deferred_follow_up(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_load_running_instances,
         mock_merge_instances,
         mock_execute,
@@ -16303,7 +16311,7 @@ class ResponsesApiTests(unittest.TestCase):
         mock_invoke,
     ):
         story_text = "The harbor fog swallowed the bell, then returned it as a softer name."
-        mock_resolve_ghost_route.side_effect = [
+        mock_resolve_inference_route.side_effect = [
             (
                 {
                     "instance_id": "chat-1",
@@ -16338,7 +16346,7 @@ class ResponsesApiTests(unittest.TestCase):
                     "tts_voice": {
                         "visible": True,
                         "required": True,
-                        "required_message": "Kitten TTS models require a valid speaker. Ollmo should auto-fill one from the discovered speaker list.",
+                        "required_message": "Kitten TTS models require a valid speaker. Fruth should auto-fill one from the discovered speaker list.",
                     }
                 },
             },
@@ -16407,7 +16415,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "Write a short mystical story and then give me something I can listen to.",
                 "response_id": "resp_late_fill_audio_kitten_lookup",
             },
@@ -16426,20 +16434,20 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(infer_payload["prompt"], story_text)
         self.assertEqual(infer_payload["voice"], "Bella")
 
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda raw_path: Path(str(raw_path)))
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._schedule_response_late_fill")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda raw_path: Path(str(raw_path)))
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._schedule_response_late_fill")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_late_fill_selected_reference_does_not_surface_input_artifacts(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
         mock_schedule_late_fill,
         mock_invoke,
         _mock_resolve_saved_artifact,
     ):
-        mock_resolve_ghost_route.side_effect = [
+        mock_resolve_inference_route.side_effect = [
             (
                 {
                     "instance_id": "chat-1",
@@ -16513,7 +16521,7 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "input": "show me a moonlit cove at night as an image",
                 "response_id": "resp_late_fill_selected_reference_no_inputs",
                 "selected_reference_artifacts": [
@@ -16542,18 +16550,18 @@ class ResponsesApiTests(unittest.TestCase):
         infer_payload = mock_invoke.call_args.kwargs["payload"]
         self.assertEqual(infer_payload["file_path"], "/tmp/generated/reference-source.png")
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._schedule_response_late_fill")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._schedule_response_late_fill")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._resolve_inference_auto_route")
     def test_canonical_responses_late_fill_failure_blocks_pending_output_slot(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_execute,
         mock_schedule_late_fill,
         mock_invoke,
     ):
-        mock_resolve_ghost_route.side_effect = [
+        mock_resolve_inference_route.side_effect = [
             (
                 {
                     "instance_id": "chat-1",
@@ -16613,11 +16621,11 @@ class ResponsesApiTests(unittest.TestCase):
 
         mock_schedule_late_fill.side_effect = run_late_fill
 
-        with patch.dict(os.environ, {"OLLMO_AUTO_EXECUTABLE_REPAIR_MAX_ATTEMPTS": "1"}):
+        with patch.dict(os.environ, {"FRUTH_AUTO_EXECUTABLE_REPAIR_MAX_ATTEMPTS": "1"}):
             response = self.client.post(
                 "/api/responses",
                 json={
-                    "ghost_route": True,
+                    "inference_route": True,
                     "input": "show me a moonlit cove at night as an image",
                     "response_id": "resp_late_fill_image_failed",
                 },
@@ -16639,8 +16647,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(image_slot["status"], "blocked")
         self.assertIn("image backend unavailable", image_slot["blocked_reason"])
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_marks_partial_failure_for_multi_image_siblings(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -16757,7 +16765,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         source_route_payload = {
-            "route_source": "ghost_carried",
+            "route_source": "inference_carried",
             "route_runtime": {
                 "request_phase_graph": phase_graph,
             },
@@ -16820,7 +16828,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "exclude_instance_ids": ["flux-2"],
             },
         )
-        self.assertEqual(failed_branch["recovery_state"]["kind"], "ollmo.late_fill_recovery_state")
+        self.assertEqual(failed_branch["recovery_state"]["kind"], "fruth.late_fill_recovery_state")
         self.assertEqual(failed_branch["recovery_state"]["status"], "candidate")
         self.assertEqual(failed_branch["recovery_state"]["trigger"], "late_fill_failure")
         self.assertTrue(failed_branch["recovery_state"]["promotion_required"])
@@ -16932,7 +16940,7 @@ class ResponsesApiTests(unittest.TestCase):
             "output_text": response_payload["output_text"],
             "response_payload": response_payload,
             "route_payload": {
-                "route_source": "ghost_carried",
+                "route_source": "inference_carried",
                 "route_runtime": {"request_phase_graph": phase_graph},
             },
             "expires_at_ts": time.time() + 3600,
@@ -17054,7 +17062,7 @@ class ResponsesApiTests(unittest.TestCase):
             "status": "incomplete",
             "output_text": response_payload["output_text"],
             "response_payload": response_payload,
-            "route_payload": {"route_source": "ghost_carried", "route_runtime": {"request_phase_graph": phase_graph}},
+            "route_payload": {"route_source": "inference_carried", "route_runtime": {"request_phase_graph": phase_graph}},
             "expires_at_ts": time.time() + 3600,
         }
 
@@ -17176,7 +17184,7 @@ class ResponsesApiTests(unittest.TestCase):
             "status": "incomplete",
             "output_text": response_payload["output_text"],
             "response_payload": response_payload,
-            "route_payload": {"route_source": "ghost_carried", "route_runtime": {"request_phase_graph": phase_graph}},
+            "route_payload": {"route_source": "inference_carried", "route_runtime": {"request_phase_graph": phase_graph}},
             "expires_at_ts": time.time() + 3600,
         }
 
@@ -17252,7 +17260,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "fulfillment_policy": "materialized_artifact_required",
             },
         }
-        with patch.dict(os.environ, {"OLLMO_AUTO_EXECUTABLE_REPAIR_MAX_ATTEMPTS": "2"}):
+        with patch.dict(os.environ, {"FRUTH_AUTO_EXECUTABLE_REPAIR_MAX_ATTEMPTS": "2"}):
             recovery_state = _LATE_FILL_RUNTIME.late_fill_recovery_state(
                 branch,
                 recovery_context={
@@ -17414,7 +17422,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "status": "pending",
                 "stage_direction": "materialize_requested_text_artifact",
                 "requires_artifact": True,
-                "repair_source": "ghost_repair_feedback",
+                "repair_source": "inference_repair_feedback",
                 "repair_action": "retry_same_branch",
                 "recovery_action": "retry_same_branch",
                 "repair_execution_policy": "schedule_late_fill_branch",
@@ -17798,7 +17806,7 @@ class ResponsesApiTests(unittest.TestCase):
         )
         with patch.dict(
             os.environ,
-            {"OLLMO_AUTO_EXECUTABLE_REPAIR_MAX_ATTEMPTS": ""},
+            {"FRUTH_AUTO_EXECUTABLE_REPAIR_MAX_ATTEMPTS": ""},
         ):
             retry_branch = (
                 _LATE_FILL_RUNTIME.build_auto_executable_repair_retry_branch(
@@ -18030,7 +18038,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "source_name": "index",
             },
         }
-        with patch.dict(os.environ, {"OLLMO_AUTO_EXECUTABLE_REPAIR_MAX_ATTEMPTS": "2"}):
+        with patch.dict(os.environ, {"FRUTH_AUTO_EXECUTABLE_REPAIR_MAX_ATTEMPTS": "2"}):
             recovery_state = _LATE_FILL_RUNTIME.late_fill_recovery_state(
                 branch,
                 recovery_context={
@@ -18097,7 +18105,7 @@ class ResponsesApiTests(unittest.TestCase):
             "failed_instance_id": "whisper-1",
             "excluded_instance_ids": ["whisper-1"],
             "recovery_state": {
-                "kind": "ollmo.late_fill_recovery_state",
+                "kind": "fruth.late_fill_recovery_state",
                 "status": "attempting",
                 "trigger": "explicit_retry_endpoint",
                 "branch_id": "branch-speech_to_text-1",
@@ -18108,7 +18116,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "exclude_instance_ids": ["whisper-1"],
             },
             "recovery_attempt": {
-                "kind": "ollmo.late_fill_recovery_attempt",
+                "kind": "fruth.late_fill_recovery_attempt",
                 "trigger": "explicit_retry_endpoint",
                 "branch_id": "branch-speech_to_text-1",
                 "capability": "speech_to_text",
@@ -18214,7 +18222,7 @@ class ResponsesApiTests(unittest.TestCase):
             "failed_instance_id": "whisper-1",
             "excluded_instance_ids": ["whisper-1"],
             "recovery_state": {
-                "kind": "ollmo.late_fill_recovery_state",
+                "kind": "fruth.late_fill_recovery_state",
                 "status": "attempting",
                 "trigger": "explicit_retry_endpoint",
                 "branch_id": "branch-speech_to_text-1",
@@ -18225,7 +18233,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "exclude_instance_ids": ["whisper-1"],
             },
             "recovery_attempt": {
-                "kind": "ollmo.late_fill_recovery_attempt",
+                "kind": "fruth.late_fill_recovery_attempt",
                 "trigger": "explicit_retry_endpoint",
                 "branch_id": "branch-speech_to_text-1",
                 "capability": "speech_to_text",
@@ -18284,7 +18292,7 @@ class ResponsesApiTests(unittest.TestCase):
             "lifecycle_state": "late_fill_pending",
             "output_text": response_payload["output_text"],
             "response_payload": response_payload,
-            "route_payload": {"route_source": "ghost_carried", "route_runtime": {"request_phase_graph": phase_graph}},
+            "route_payload": {"route_source": "inference_carried", "route_runtime": {"request_phase_graph": phase_graph}},
             "expires_at_ts": time.time() + 3600,
         }
 
@@ -18330,7 +18338,7 @@ class ResponsesApiTests(unittest.TestCase):
             "failed_instance_id": "whisper-1",
             "excluded_instance_ids": ["whisper-1"],
             "recovery_state": {
-                "kind": "ollmo.late_fill_recovery_state",
+                "kind": "fruth.late_fill_recovery_state",
                 "status": "attempting",
                 "trigger": "explicit_retry_endpoint",
                 "branch_id": "branch-speech_to_text-1",
@@ -18341,7 +18349,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "exclude_instance_ids": ["whisper-1"],
             },
             "recovery_attempt": {
-                "kind": "ollmo.late_fill_recovery_attempt",
+                "kind": "fruth.late_fill_recovery_attempt",
                 "trigger": "explicit_retry_endpoint",
                 "branch_id": "branch-speech_to_text-1",
                 "capability": "speech_to_text",
@@ -18437,7 +18445,7 @@ class ResponsesApiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             history_dir = Path(tmpdir) / "chat_history"
             write_chat_history(conversation_id, [stale_history_message], history_dir=history_dir)
-            with patch("ollmo_webserver.CHAT_HISTORY_DIR", history_dir):
+            with patch("fruth_webserver.CHAT_HISTORY_DIR", history_dir):
                 response = self.client.get(
                     "/api/chat_history",
                     query_string={"instance_id": conversation_id},
@@ -18458,9 +18466,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(stt_branch["status"], "blocked")
         self.assertTrue(stt_branch["recovery_context"]["can_retry"])
 
-    @patch("ollmo_webserver._persist_image_data_url_locally")
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._persist_image_data_url_locally")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_persists_raw_image_result_before_failing_branch(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -18557,8 +18565,8 @@ class ResponsesApiTests(unittest.TestCase):
         )
         mock_persist_image_data_url.assert_called_once()
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_late_fill_dependency_repair_branch_is_blocked_before_backend_execution(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -18606,7 +18614,7 @@ class ResponsesApiTests(unittest.TestCase):
             request_payload={"prompt": request_prompt},
             assistant_message=response_payload["output_text"],
             artifact_gap={
-                "trigger": "ghost_repair_feedback",
+                "trigger": "inference_repair_feedback",
                 "code": "closure_review_repair",
                 "expected_capability": "speech_to_text",
                 "pending_capabilities": ["speech_to_text"],
@@ -18632,8 +18640,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertFalse(failed_branch["recovery_context"]["can_retry"])
         self.assertTrue(failed_branch["recovery_context"]["blocked_by_dependency_input"])
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_late_fill_branch_contract_repair_is_blocked_before_backend_execution(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -18678,7 +18686,7 @@ class ResponsesApiTests(unittest.TestCase):
             request_payload={"prompt": "Create an image."},
             assistant_message=response_payload["output_text"],
             artifact_gap={
-                "trigger": "ghost_repair_feedback",
+                "trigger": "inference_repair_feedback",
                 "code": "closure_review_repair",
                 "expected_capability": "image_generation",
                 "pending_capabilities": ["image_generation"],
@@ -18700,8 +18708,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertFalse(failed_branch["recovery_context"]["can_retry"])
         self.assertTrue(failed_branch["recovery_context"]["blocked_by_branch_contract"])
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_late_fill_underplanned_promoted_obligations_request_rebuild_before_backend_execution(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -18745,7 +18753,7 @@ class ResponsesApiTests(unittest.TestCase):
             request_payload={"prompt": "Create all requested artifacts."},
             assistant_message=response_payload["output_text"],
             artifact_gap={
-                "trigger": "ghost_repair_feedback",
+                "trigger": "inference_repair_feedback",
                 "code": "closure_review_repair",
                 "expected_capability": "chat",
                 "pending_capabilities": ["chat"],
@@ -18768,8 +18776,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(failed_branch["recovery_context"]["blocked_prerequisite"], "promoted_obligation_branch")
         self.assertTrue(failed_branch["recovery_context"]["materialization_blocked"])
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_late_fill_concrete_rebuild_promoted_obligation_branch_executes(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -18863,7 +18871,7 @@ class ResponsesApiTests(unittest.TestCase):
             request_payload={"prompt": "Create an image."},
             assistant_message=response_payload["output_text"],
             artifact_gap={
-                "trigger": "ghost_repair_feedback",
+                "trigger": "inference_repair_feedback",
                 "code": "closure_review_repair",
                 "expected_capability": "image_generation",
                 "pending_capabilities": ["image_generation"],
@@ -18888,15 +18896,15 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(late_fill["completed_capabilities"], ["image_generation"])
 
     def test_response_lookup_returns_404_for_unknown_id(self):
-        import ollmo_webserver
+        import fruth_webserver
 
-        configured_frames_dir = Path(ollmo_webserver.RESPONSE_FRAMES_DIR).resolve()
+        configured_frames_dir = Path(fruth_webserver.RESPONSE_FRAMES_DIR).resolve()
         production_frames_dir = Path("state/response_frames").resolve()
         self.assertNotEqual(configured_frames_dir, production_frames_dir)
         self.assertEqual(configured_frames_dir.parent, Path(self._runtime_tmpdir.name).resolve())
 
         with patch(
-            "ollmo_webserver._load_latest_response_state",
+            "fruth_webserver._load_latest_response_state",
             wraps=load_latest_response_state,
         ) as load_latest:
             response = self.client.get("/api/responses/resp_missing_lookup")
@@ -18942,7 +18950,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "expires_at_ts": time.time() - 10,
             }
 
-            with patch("ollmo_webserver.RESPONSE_FRAMES_DIR", frames_dir):
+            with patch("fruth_webserver.RESPONSE_FRAMES_DIR", frames_dir):
                 response = self.client.get(f"/api/responses/{response_id}?view=debug")
 
         self.assertEqual(response.status_code, 200)
@@ -18996,7 +19004,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "expires_at_ts": time.time() + 60,
             }
 
-            with patch("ollmo_webserver.RESPONSE_FRAMES_DIR", frames_dir):
+            with patch("fruth_webserver.RESPONSE_FRAMES_DIR", frames_dir):
                 response = self.client.get(f"/api/responses/{response_id}?view=truth")
 
         self.assertEqual(response.status_code, 200)
@@ -19040,7 +19048,7 @@ class ResponsesApiTests(unittest.TestCase):
             durable_frame = durable_state["response_frame"]
             _RESPONSE_LOOKUP.clear()
 
-            with patch("ollmo_webserver.RESPONSE_FRAMES_DIR", frames_dir):
+            with patch("fruth_webserver.RESPONSE_FRAMES_DIR", frames_dir):
                 response = self.client.get(f"/api/responses/{response_id}")
 
         self.assertEqual(response.status_code, 200)
@@ -19076,7 +19084,7 @@ class ResponsesApiTests(unittest.TestCase):
             )
             _RESPONSE_LOOKUP.clear()
 
-            with patch("ollmo_webserver.RESPONSE_FRAMES_DIR", frames_dir):
+            with patch("fruth_webserver.RESPONSE_FRAMES_DIR", frames_dir):
                 response = self.client.get(f"/api/responses/{response_id}?view=debug")
 
         self.assertEqual(response.status_code, 200)
@@ -19193,7 +19201,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "expires_at_ts": time.time() + 60,
             }
 
-            with patch("ollmo_webserver.RESPONSE_FRAMES_DIR", frames_dir):
+            with patch("fruth_webserver.RESPONSE_FRAMES_DIR", frames_dir):
                 response = self.client.get(f"/api/responses/{response_id}?view=ui")
                 status_response = self.client.get(f"/api/responses/{response_id}?view=status")
 
@@ -19253,7 +19261,7 @@ class ResponsesApiTests(unittest.TestCase):
             (frames_dir / "current_index.json").write_text(stale_index, encoding="utf-8")
             _RESPONSE_LOOKUP.clear()
 
-            with patch("ollmo_webserver.RESPONSE_FRAMES_DIR", frames_dir):
+            with patch("fruth_webserver.RESPONSE_FRAMES_DIR", frames_dir):
                 response = self.client.get(f"/api/responses/{response_id}?view=debug")
 
         self.assertEqual(response.status_code, 200)
@@ -19268,7 +19276,7 @@ class ResponsesApiTests(unittest.TestCase):
             frames_dir.mkdir(parents=True, exist_ok=True)
             (frames_dir / "responses.jsonl").write_text("{not json}\n", encoding="utf-8")
 
-            with patch("ollmo_webserver.RESPONSE_FRAMES_DIR", frames_dir):
+            with patch("fruth_webserver.RESPONSE_FRAMES_DIR", frames_dir):
                 response = self.client.get("/api/responses/resp_corrupt_lookup")
 
         self.assertEqual(response.status_code, 409)
@@ -19954,7 +19962,7 @@ class ResponsesApiTests(unittest.TestCase):
                 ],
             },
         }
-        late_fill['ghost_repair_feedback'] = {
+        late_fill['inference_repair_feedback'] = {
             'status': 'repair_required',
             'repair_loop': copy.deepcopy(late_fill['repair_loop']),
         }
@@ -19988,7 +19996,7 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertFalse(reconciled['repair_loop']['repair_work_available'])
         self.assertEqual(reconciled['repair_loop']['executable_contract_count'], 0)
         self.assertEqual(reconciled['repair_loop']['resolved_contract_count'], 1)
-        self.assertEqual(reconciled['ghost_repair_feedback']['status'], 'resolved')
+        self.assertEqual(reconciled['inference_repair_feedback']['status'], 'resolved')
         self.assertNotIn('repair_action', reconciled)
         self.assertEqual(
             _LATE_FILL_RUNTIME._reconcile_terminal_satisfied_repair_loop(mismatched)[
@@ -20010,7 +20018,7 @@ class ResponsesApiTests(unittest.TestCase):
         )
         self.assertEqual(effective_status, 'completed')
         self.assertEqual(finalized['late_fill']['repair_loop']['status'], 'completed')
-        self.assertEqual(finalized['late_fill']['ghost_repair_feedback']['status'], 'resolved')
+        self.assertEqual(finalized['late_fill']['inference_repair_feedback']['status'], 'resolved')
 
         response_id = 'resp_completed_exact_repair_contract'
         payload = _build_response_lookup_payload(
@@ -20040,7 +20048,7 @@ class ResponsesApiTests(unittest.TestCase):
         phase_id = 'phase-global-semantic-closure-review'
         review_prompt = 'Review exact runtime evidence and return the bounded verdict JSON.'
         contract = {
-            'kind': 'ollmo.repair_rebuild_contract',
+            'kind': 'fruth.repair_rebuild_contract',
             'contract_id': f'repair-contract-{branch_id}',
             'status': 'promoted',
             'authority': 'closure_review_runtime_truth',
@@ -20059,7 +20067,7 @@ class ResponsesApiTests(unittest.TestCase):
             'content_payload_source': 'global_semantic_closure_review',
             'stage_direction': 'run_global_semantic_closure_review',
             'execution_contract': {
-                'kind': 'ollmo.execution_contract',
+                'kind': 'fruth.execution_contract',
                 'branch_id': branch_id,
                 'phase_id': phase_id,
                 'capability': 'chat',
@@ -20087,10 +20095,10 @@ class ResponsesApiTests(unittest.TestCase):
             },
         }
         review = {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'pending',
             'checks': [repair_item],
-            'ghost_repair_feedback': feedback,
+            'inference_repair_feedback': feedback,
         }
         payload = {
             'id': 'resp_terminal_semantic_reopen',
@@ -20267,7 +20275,7 @@ class ResponsesApiTests(unittest.TestCase):
                 'completed_branches': [],
                 'failed_branches': [],
                 'terminal_closure_repair_reopen': {
-                    'kind': 'ollmo.terminal_closure_repair_reopen',
+                    'kind': 'fruth.terminal_closure_repair_reopen',
                     'status': 'blocked',
                     'authority': 'terminal_graph_closure_review',
                     'reason': 'terminal_closure_repair_graph_projection_rejected',
@@ -20275,7 +20283,7 @@ class ResponsesApiTests(unittest.TestCase):
             },
             'runtime': {
                 'graph_closure_review': {
-                    'kind': 'ollmo.graph_closure_review',
+                    'kind': 'fruth.graph_closure_review',
                     'status': 'repair_needed',
                     'continuation_required': False,
                     'checks': [],
@@ -20809,7 +20817,7 @@ class ResponsesApiTests(unittest.TestCase):
             "late_fill": {"status": "partial_failed"},
         }
         lifecycle = {
-            "kind": "ollmo.graph_patch_lifecycle",
+            "kind": "fruth.graph_patch_lifecycle",
             "patch_id": "graph-patch-terminal-policy-denial-fixture",
             "proposal_id": "graph-repair-terminal-policy-denial-fixture",
             "review_id": "graph-repair-review-terminal-policy-denial-fixture",
@@ -20824,13 +20832,13 @@ class ResponsesApiTests(unittest.TestCase):
             ],
             "authority": "runtime_enforced_policy_denied",
             "enforced_class": "safe_additive_missing_branch",
-            "enforced_policy_id": "ollmo-enforced-policy-v1",
+            "enforced_policy_id": "fruth-enforced-policy-v1",
             "policy_mode": "safe_v1",
             "allowed_by_policy": False,
             "enforced_policy_review": {
-                "kind": "ollmo.enforced_policy_review",
+                "kind": "fruth.enforced_policy_review",
                 "review_id": "enforced-policy-review-terminal-denial-fixture",
-                "policy_id": "ollmo-enforced-policy-v1",
+                "policy_id": "fruth-enforced-policy-v1",
                 "status": "blocked",
                 "allowed": False,
                 "authority": "runtime_enforced_policy_denied",
@@ -20843,7 +20851,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "selected_scope": "repair_binding_dependency",
                 "selected_scope_allowed": False,
                 "policy": {
-                    "policy_id": "ollmo-enforced-policy-v1",
+                    "policy_id": "fruth-enforced-policy-v1",
                     "mode": "safe_v1",
                     "normalized": "safe_v1",
                     "enabled": True,
@@ -20879,7 +20887,7 @@ class ResponsesApiTests(unittest.TestCase):
             ),
             "wrong_policy_kind": lambda lifecycle, prepared: lifecycle[
                 "enforced_policy_review"
-            ].update(kind="ollmo.not_enforced_policy_review"),
+            ].update(kind="fruth.not_enforced_policy_review"),
             "wrong_policy_id": lambda lifecycle, prepared: lifecycle[
                 "enforced_policy_review"
             ].update(policy_id="unsafe-policy"),
@@ -21011,18 +21019,18 @@ class ResponsesApiTests(unittest.TestCase):
                         }
                     ],
                     "redraw_scope_ladder_review": {
-                        "kind": "ollmo.redraw_scope_ladder_review",
+                        "kind": "fruth.redraw_scope_ladder_review",
                         "selected_scope": "repair_binding_dependency",
                     },
                     "graph_repair_proposals": [
                         {
-                            "kind": "ollmo.graph_repair_proposal",
+                            "kind": "fruth.graph_repair_proposal",
                             "proposal_id": "graph-repair-policy-denial-audit",
                         }
                     ],
                     "graph_repair_reviews": [
                         {
-                            "kind": "ollmo.graph_repair_proposal_review",
+                            "kind": "fruth.graph_repair_proposal_review",
                             "proposal_id": "graph-repair-policy-denial-audit",
                             "review_id": "graph-repair-review-policy-denial-audit",
                             "status": "accepted",
@@ -21031,7 +21039,7 @@ class ResponsesApiTests(unittest.TestCase):
                     ],
                     "graph_patch_lifecycle": [
                         {
-                            "kind": "ollmo.graph_patch_lifecycle",
+                            "kind": "fruth.graph_patch_lifecycle",
                             "patch_id": "graph-patch-prior-rejection",
                             "proposal_id": "graph-repair-prior-rejection",
                             "review_id": "graph-repair-review-prior-rejection",
@@ -21053,7 +21061,7 @@ class ResponsesApiTests(unittest.TestCase):
             "redraw_scope_not_smallest_allowed_for_enforced_class"
         )
         blocked_lifecycle = {
-            "kind": "ollmo.graph_patch_lifecycle",
+            "kind": "fruth.graph_patch_lifecycle",
             "patch_id": "graph-patch-policy-denial-audit",
             "proposal_id": "graph-repair-policy-denial-audit",
             "review_id": "graph-repair-review-policy-denial-audit",
@@ -21067,14 +21075,14 @@ class ResponsesApiTests(unittest.TestCase):
                 "terminal_frame_requires_successor_reopen",
             ],
             "enforced_class": "safe_additive_missing_branch",
-            "enforced_policy_id": "ollmo-enforced-policy-v1",
+            "enforced_policy_id": "fruth-enforced-policy-v1",
             "policy_mode": "safe_v1",
             "allowed_by_policy": False,
             "authority": "runtime_enforced_policy_denied",
             "enforced_policy_review": {
-                "kind": "ollmo.enforced_policy_review",
+                "kind": "fruth.enforced_policy_review",
                 "review_id": "enforced-review-policy-denial-audit",
-                "policy_id": "ollmo-enforced-policy-v1",
+                "policy_id": "fruth-enforced-policy-v1",
                 "status": "blocked",
                 "allowed": False,
                 "authority": "runtime_enforced_policy_denied",
@@ -21085,7 +21093,7 @@ class ResponsesApiTests(unittest.TestCase):
                 "selected_scope": "repair_binding_dependency",
                 "selected_scope_allowed": False,
                 "policy": {
-                    "policy_id": "ollmo-enforced-policy-v1",
+                    "policy_id": "fruth-enforced-policy-v1",
                     "mode": "safe_v1",
                     "normalized": "safe_v1",
                     "enabled": True,
@@ -21100,7 +21108,7 @@ class ResponsesApiTests(unittest.TestCase):
 
         event_log = Mock()
         with patch.dict(app.config, {"TESTING": False}), patch(
-            "ollmo_webserver._persist_output_artifact_registry_records"
+            "fruth_webserver._persist_output_artifact_registry_records"
         ), patch.object(
             _LATE_FILL_RUNTIME,
             "log_unified_event",
@@ -21141,7 +21149,7 @@ class ResponsesApiTests(unittest.TestCase):
                     "terminal_frame_requires_successor_reopen",
                 ]
                 additional_blocked_rejection = {
-                    "kind": "ollmo.graph_patch_lifecycle",
+                    "kind": "fruth.graph_patch_lifecycle",
                     "patch_id": "graph-patch-additional-terminal-rejection",
                     "proposal_id": "graph-repair-additional-terminal-rejection",
                     "review_id": "graph-repair-review-additional-terminal-rejection",
@@ -21156,7 +21164,7 @@ class ResponsesApiTests(unittest.TestCase):
                     copy.deepcopy(blocked_lifecycle),
                     additional_blocked_rejection,
                     {
-                        "kind": "ollmo.graph_patch_lifecycle",
+                        "kind": "fruth.graph_patch_lifecycle",
                         "patch_id": "graph-patch-reviewed-validated-must-not-copy",
                         "proposal_id": "graph-repair-reviewed-validated-must-not-copy",
                         "status": "validated",
@@ -21164,13 +21172,13 @@ class ResponsesApiTests(unittest.TestCase):
                 ]
                 graph.setdefault("graph_repair_proposals", []).append(
                     {
-                        "kind": "ollmo.graph_repair_proposal",
+                        "kind": "fruth.graph_repair_proposal",
                         "proposal_id": "reviewed-proposal-must-not-copy",
                     }
                 )
                 graph.setdefault("graph_repair_reviews", []).append(
                     {
-                        "kind": "ollmo.graph_repair_proposal_review",
+                        "kind": "fruth.graph_repair_proposal_review",
                         "proposal_id": "reviewed-proposal-must-not-copy",
                         "review_id": "reviewed-accepted-must-not-copy",
                         "status": "accepted",
@@ -21178,7 +21186,7 @@ class ResponsesApiTests(unittest.TestCase):
                 )
                 graph["successor_reopen_requests"] = [
                     {
-                        "kind": "ollmo.graph_patch_successor_reopen_request",
+                        "kind": "fruth.graph_patch_successor_reopen_request",
                         "patch_id": "reviewed-candidate-must-not-copy",
                         "status": "candidate",
                     }
@@ -21415,7 +21423,7 @@ class ResponsesApiTests(unittest.TestCase):
         reviewed_graph = reviewed["runtime"]["request_phase_graph"]
         reviewed_graph["graph_patch_lifecycle"] = [
             {
-                "kind": "ollmo.graph_patch_lifecycle",
+                "kind": "fruth.graph_patch_lifecycle",
                 "patch_id": "graph-patch-owed-work-refusal",
                 "proposal_id": "graph-repair-owed-work-refusal",
                 "status": "blocked",
@@ -21429,7 +21437,7 @@ class ResponsesApiTests(unittest.TestCase):
         ]
         reviewed_graph["successor_reopen_requests"] = [
             {
-                "kind": "ollmo.graph_patch_successor_reopen_request",
+                "kind": "fruth.graph_patch_successor_reopen_request",
                 "status": "candidate",
                 "patch_id": "graph-patch-owed-work-refusal",
             }
@@ -21474,7 +21482,7 @@ class ResponsesApiTests(unittest.TestCase):
         staged_graph.pop("successor_reopen_requests", None)
         staged_graph["graph_patch_lifecycle"].append(
             {
-                "kind": "ollmo.graph_patch_lifecycle",
+                "kind": "fruth.graph_patch_lifecycle",
                 "patch_id": "graph-patch-executable-refusal",
                 "proposal_id": "graph-repair-executable-refusal",
                 "status": "staged",
@@ -21735,13 +21743,13 @@ class ResponsesApiTests(unittest.TestCase):
     def test_terminal_successor_execution_status_converges_across_runtime_truth(self):
         execution_key = "successor-exec-status-convergence"
         queued_execution = {
-            "kind": "ollmo.graph_patch_successor_reopen_execution",
+            "kind": "fruth.graph_patch_successor_reopen_execution",
             "status": "queued",
             "successor_execution_key": execution_key,
             "scheduled_branch_ids": ["repair-image"],
         }
         request_record = {
-            "kind": "ollmo.graph_patch_successor_reopen_request",
+            "kind": "fruth.graph_patch_successor_reopen_request",
             "status": "applied_to_successor",
             "successor_execution_key": execution_key,
             "execution": dict(queued_execution),
@@ -21899,8 +21907,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(failed_request["execution"]["status"], "failed")
         self.assertIn("successor_execution_failed", failed_request["blocked_reasons"])
 
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_non_stream_chat_registers_lookup_payload(
         self,
         mock_lookup,
@@ -21937,9 +21945,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(lookup_payload["status"], "completed")
         self.assertEqual(lookup_payload["output_text"], "Recovered reply.")
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_prepare_phase_control_envelope_retries_once_and_uses_only_substantive_text(
         self,
         mock_lookup,
@@ -21994,9 +22002,9 @@ class ResponsesApiTests(unittest.TestCase):
             substantive_text,
         )
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_prepare_phase_second_control_envelope_is_repair_needed_without_late_fill(
         self,
         mock_lookup,
@@ -22056,9 +22064,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(mock_execute.call_count, 2)
         mock_schedule_late_fill.assert_not_called()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_empty_prepare_phase_retries_once_before_downstream_materialization(
         self,
         mock_lookup,
@@ -22095,9 +22103,9 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(mock_execute.call_count, 2)
         mock_schedule_late_fill.assert_called_once()
 
-    @patch("ollmo_webserver._schedule_response_late_fill", return_value=True)
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._schedule_response_late_fill", return_value=True)
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._lookup_instance")
     def test_prepare_phase_single_safe_content_payload_is_canonical_tts_source(
         self,
         mock_lookup,
@@ -22146,8 +22154,8 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(scheduled["assistant_message"], substantive_text)
         self.assertNotIn("First I would invoke", scheduled["assistant_message"])
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._lookup_instance")
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._lookup_instance")
     def test_canonical_responses_non_stream_image_registers_lookup_payload(
         self,
         mock_lookup,
@@ -22194,11 +22202,11 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(lookup_payload["saved_image_path"], "/tmp/artifacts/images/flux.png")
         self.assertEqual(lookup_payload["artifacts"][0]["path"], "/tmp/artifacts/images/flux.png")
 
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    def test_resolve_ghost_auto_route_exposes_ghost_primary_developer_diagnostics_for_prepare_first_image_request(
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    def test_resolve_inference_auto_route_exposes_inference_primary_developer_diagnostics_for_prepare_first_image_request(
         self,
         mock_execute_router,
         mock_load_running_instances,
@@ -22231,9 +22239,9 @@ class ResponsesApiTests(unittest.TestCase):
         )
 
         with app.test_request_context("/api/responses", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": "generate an image of a storm over a neon harbor at night",
                     "developer_flags": {
                         "planner_timeout_ms": 9000,
@@ -22242,16 +22250,16 @@ class ResponsesApiTests(unittest.TestCase):
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
-        self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["routing_contract"], "ghost_primary")
-        self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["routing_policy"], "ghost_first")
+        self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["routing_contract"], "inference_primary")
+        self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["routing_policy"], "inference_first")
         self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["heuristic_role"], "shadow_guardrail")
         self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["planner_timeout_ms"], 9000)
-        self.assertEqual(route_info["route_runtime"]["routing_policy"]["mode"], "ghost_first")
+        self.assertEqual(route_info["route_runtime"]["routing_policy"]["mode"], "inference_first")
         self.assertEqual(route_info["route_runtime"]["routing_policy"]["heuristic_role"], "shadow_guardrail")
         self.assertEqual(
             route_info["route_runtime"]["routing_policy"]["decision_authority"],
@@ -22263,11 +22271,11 @@ class ResponsesApiTests(unittest.TestCase):
         )
         mock_execute_router.assert_not_called()
 
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    def test_resolve_ghost_auto_route_carries_on_ghost_when_router_misses_and_heuristics_are_disabled(
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    def test_resolve_inference_auto_route_carries_on_inference_when_router_misses_and_heuristics_are_disabled(
         self,
         mock_execute_router,
         mock_load_running_instances,
@@ -22298,10 +22306,10 @@ class ResponsesApiTests(unittest.TestCase):
         mock_merge_instances.return_value = instances
         mock_execute_router.side_effect = RuntimeError("router timeout")
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": (
                         "Write a short mystical story in 2 short paragraphs, then read that exact story aloud. "
                         "If audio needs a speaker or voice style, choose the default automatically."
@@ -22311,24 +22319,24 @@ class ResponsesApiTests(unittest.TestCase):
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["routing_contract"], "ghost_primary")
-        self.assertEqual(route_info["route_runtime"]["routing_policy"]["mode"], "ghost_first")
+        self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["routing_contract"], "inference_primary")
+        self.assertEqual(route_info["route_runtime"]["routing_policy"]["mode"], "inference_first")
         self.assertEqual(route_info["route_runtime"]["routing_policy"]["accepted_learning_authority"], "soft_hint")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
-        self.assertTrue(route_info["route_runtime"]["ghost_resolution"]["carried"])
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
+        self.assertTrue(route_info["route_runtime"]["inference_resolution"]["carried"])
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["text_to_speech"])
         self.assertIn("text preparation is required before downstream audio materialization", route_info["route_reason"])
         mock_execute_router.assert_not_called()
 
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    def test_resolve_ghost_auto_route_carries_text_first_image_request_onto_chat_when_router_picks_image_generation(
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    def test_resolve_inference_auto_route_carries_text_first_image_request_onto_chat_when_router_picks_image_generation(
         self,
         mock_execute_router,
         mock_load_running_instances,
@@ -22362,32 +22370,32 @@ class ResponsesApiTests(unittest.TestCase):
             '"artifact_path":null,"confidence":0.95,"reason":"semantic router chose direct image generation"}'
         )
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": "Describe a place you would love to visit in vivid detail, then show it to me as an image.",
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
-        self.assertTrue(route_info["route_runtime"]["ghost_resolution"]["carried"])
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
+        self.assertTrue(route_info["route_runtime"]["inference_resolution"]["carried"])
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertIn("text preparation is required before downstream image materialization", route_info["route_reason"])
         mock_execute_router.assert_not_called()
 
-    @patch("ollmo_server.ghost_route_runtime.build_route_hint")
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    def test_resolve_ghost_auto_route_keeps_generated_multimodal_join_on_chat_when_route_hint_is_tts(
+    @patch("fruth_server.inference_route_runtime.build_route_hint")
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    def test_resolve_inference_auto_route_keeps_generated_multimodal_join_on_chat_when_route_hint_is_tts(
         self,
         mock_execute_router,
         mock_load_running_instances,
@@ -22461,21 +22469,21 @@ class ResponsesApiTests(unittest.TestCase):
             'der Schluss nur von beiden Evidenzzweigen abhängen.'
         )
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
-        self.assertTrue(route_info["route_runtime"]["ghost_resolution"]["carried"])
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
+        self.assertTrue(route_info["route_runtime"]["inference_resolution"]["carried"])
         phase_graph = route_info["route_runtime"]["request_phase_graph"]
         self.assertEqual(phase_graph["current_phase_capability"], "chat")
         self.assertEqual(phase_graph["current_phase_resolution"], "graph_resolved")
@@ -22489,12 +22497,12 @@ class ResponsesApiTests(unittest.TestCase):
         )
         mock_execute_router.assert_not_called()
 
-    @patch("ollmo_server.ghost_route_runtime.build_route_hint")
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    def test_resolve_ghost_auto_route_keeps_r5_carried_follow_up_on_chat_despite_reused_transcript_tts_hint(
+    @patch("fruth_server.inference_route_runtime.build_route_hint")
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    def test_resolve_inference_auto_route_keeps_r5_carried_follow_up_on_chat_despite_reused_transcript_tts_hint(
         self,
         mock_execute_router,
         mock_load_running_instances,
@@ -22598,22 +22606,22 @@ class ResponsesApiTests(unittest.TestCase):
         ]
 
         with patch(
-            "ollmo_webserver._resolve_saved_downloadable_artifact_path",
+            "fruth_webserver._resolve_saved_downloadable_artifact_path",
             side_effect=lambda raw_path: Path(str(raw_path)),
         ):
-            with app.test_request_context("/api/ghost_route_preview", method="POST"):
-                route_info, resolution_error = _resolve_ghost_auto_route(
+            with app.test_request_context("/api/inference_route_preview", method="POST"):
+                route_info, resolution_error = _resolve_inference_auto_route(
                     {
-                        "ghost_route": True,
+                        "inference_route": True,
                         "prompt": prompt,
-                        "ghost_messages": [predecessor_message],
+                        "inference_messages": [predecessor_message],
                         "reference_artifacts": references,
                     },
                     preview_mode=True,
                 )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["capability"], "chat")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertFalse(route_info["route_reuse_last_artifact"])
@@ -22638,11 +22646,11 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertFalse(graph["prompt_intent"]["requests_text_artifact_output"])
         mock_execute_router.assert_not_called()
 
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    def test_resolve_ghost_auto_route_carries_simple_preview_chat_without_router_timeout(
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    def test_resolve_inference_auto_route_carries_simple_preview_chat_without_router_timeout(
         self,
         mock_execute_router,
         mock_load_running_instances,
@@ -22672,21 +22680,21 @@ class ResponsesApiTests(unittest.TestCase):
         mock_load_running_instances.return_value = instances
         mock_merge_instances.return_value = instances
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
-                    "prompt": "Hi Ollmo. How are you today?",
+                    "inference_route": True,
+                    "prompt": "Hi Fruth. How are you today?",
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "current_turn_resolved")
-        self.assertTrue(route_info["route_runtime"]["ghost_resolution"]["carried"])
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "current_turn_resolved")
+        self.assertTrue(route_info["route_runtime"]["inference_resolution"]["carried"])
         self.assertIn("single-phase text chat was resolved directly from the current user turn", route_info["route_reason"])
         mock_execute_router.assert_not_called()
 
@@ -22709,7 +22717,7 @@ class ResponsesApiTests(unittest.TestCase):
         graph = build_request_phase_graph(
             prompt,
             request_payload={
-                'ghost_route': True,
+                'inference_route': True,
                 'input': [
                     {
                         'role': 'assistant',
@@ -22721,7 +22729,7 @@ class ResponsesApiTests(unittest.TestCase):
                     },
                 ],
             },
-            route_payload={'route_source': 'ghost_carried', 'capability': 'chat'},
+            route_payload={'route_source': 'inference_carried', 'capability': 'chat'},
         )
 
         artifact_branches = [
@@ -22743,8 +22751,8 @@ class ResponsesApiTests(unittest.TestCase):
 
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'route_source': 'ghost_carried', 'capability': 'chat'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'route_source': 'inference_carried', 'capability': 'chat'},
         )
 
         self.assertIn('image_generation', graph['downstream_capabilities'])
@@ -22759,7 +22767,7 @@ class ResponsesApiTests(unittest.TestCase):
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='image_generation',
@@ -22781,7 +22789,7 @@ class ResponsesApiTests(unittest.TestCase):
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='image_generation',
@@ -22804,7 +22812,7 @@ class ResponsesApiTests(unittest.TestCase):
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='image_generation',
@@ -22813,7 +22821,7 @@ class ResponsesApiTests(unittest.TestCase):
                 'trigger': 'execution_planner_deferred_follow_up',
                 'expected_capability': 'image_generation',
                 'execution_contract': {
-                    'kind': 'ollmo.execution_contract',
+                    'kind': 'fruth.execution_contract',
                     'branch_id': 'branch-image_generation-root',
                     'phase_id': 'phase-1',
                     'capability': 'image_generation',
@@ -22871,11 +22879,11 @@ class ResponsesApiTests(unittest.TestCase):
             with self.subTest(capability=capability):
                 payload = _prepare_late_fill_request_payload(
                     {
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': original_prompt,
                         'input': original_prompt,
                         'messages': [{'role': 'user', 'content': original_prompt}],
-                        'ghost_messages': [{'role': 'user', 'content': original_prompt}],
+                        'inference_messages': [{'role': 'user', 'content': original_prompt}],
                         'batch_prompts': [original_prompt],
                     },
                     expected_capability=capability,
@@ -22901,7 +22909,7 @@ class ResponsesApiTests(unittest.TestCase):
                 self.assertEqual(payload['_prompt_hint'], payload['prompt'])
                 self.assertNotIn('input', payload)
                 self.assertNotIn('messages', payload)
-                self.assertNotIn('ghost_messages', payload)
+                self.assertNotIn('inference_messages', payload)
                 self.assertNotIn('batch_prompts', payload)
                 self.assertNotIn('branch_contract_error', payload)
 
@@ -22949,7 +22957,7 @@ class ResponsesApiTests(unittest.TestCase):
         for capability, carrier, branch_payload in cases:
             with self.subTest(capability=capability, carrier=carrier):
                 payload = _prepare_late_fill_request_payload(
-                    {'ghost_route': True, 'prompt': root_prompt},
+                    {'inference_route': True, 'prompt': root_prompt},
                     expected_capability=capability,
                     assistant_message='The frozen parent phase completed.',
                     artifact_gap={
@@ -23018,10 +23026,10 @@ class ResponsesApiTests(unittest.TestCase):
             with self.subTest(capability=capability):
                 payload = _prepare_late_fill_request_payload(
                     {
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': original_prompt,
                         'input': original_prompt,
-                        'ghost_messages': [{'role': 'user', 'content': original_prompt}],
+                        'inference_messages': [{'role': 'user', 'content': original_prompt}],
                     },
                     expected_capability=capability,
                     assistant_message='The frozen parent phase completed.',
@@ -23041,7 +23049,7 @@ class ResponsesApiTests(unittest.TestCase):
                 self.assertNotIn('prompt', payload)
                 self.assertNotIn('_prompt_hint', payload)
                 self.assertNotIn('input', payload)
-                self.assertNotIn('ghost_messages', payload)
+                self.assertNotIn('inference_messages', payload)
                 self.assertEqual(payload['repair_action'], 'repair_branch_contract')
                 self.assertEqual(
                     payload['branch_contract_error'],
@@ -23052,7 +23060,7 @@ class ResponsesApiTests(unittest.TestCase):
     def test_graph_patch_successor_rejects_root_scoped_contract_even_with_local_payload(self):
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': 'ROOT PROMPT MUST NOT REPLAY.',
             },
             expected_capability='chat',
@@ -23168,7 +23176,7 @@ class ResponsesApiTests(unittest.TestCase):
         )
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='chat',
@@ -23202,7 +23210,7 @@ class ResponsesApiTests(unittest.TestCase):
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='vision_analysis',
@@ -23246,7 +23254,7 @@ class ResponsesApiTests(unittest.TestCase):
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='vision_analysis',
@@ -23288,7 +23296,7 @@ class ResponsesApiTests(unittest.TestCase):
         artifact_path = '/tmp/yellow-notebook.png'
 
         payload = _prepare_late_fill_request_payload(
-            {'ghost_route': True, 'prompt': original_prompt},
+            {'inference_route': True, 'prompt': original_prompt},
             expected_capability='vision_analysis',
             assistant_message='Das Bild wurde erzeugt.',
             artifact_gap={
@@ -23351,7 +23359,7 @@ class ResponsesApiTests(unittest.TestCase):
         for case_name, original_prompt, expected_directive in cases:
             with self.subTest(case=case_name):
                 payload = _prepare_late_fill_request_payload(
-                    {'ghost_route': True, 'prompt': original_prompt},
+                    {'inference_route': True, 'prompt': original_prompt},
                     expected_capability='vision_analysis',
                     assistant_message='The image was generated.',
                     artifact_gap={
@@ -23380,7 +23388,7 @@ class ResponsesApiTests(unittest.TestCase):
         artifact_path = '/tmp/structured-branch-b.png'
 
         payload = _prepare_late_fill_request_payload(
-            {'ghost_route': True, 'prompt': original_prompt},
+            {'inference_route': True, 'prompt': original_prompt},
             expected_capability='vision_analysis',
             assistant_message='The images were generated.',
             artifact_gap={
@@ -23411,7 +23419,7 @@ class ResponsesApiTests(unittest.TestCase):
         artifact_path = '/tmp/storm-lighthouse.png'
 
         payload = _prepare_late_fill_request_payload(
-            {'ghost_route': True, 'prompt': original_prompt},
+            {'inference_route': True, 'prompt': original_prompt},
             expected_capability='vision_analysis',
             assistant_message='Bild und Audio wurden erzeugt.',
             artifact_gap={
@@ -23443,7 +23451,7 @@ class ResponsesApiTests(unittest.TestCase):
         )
 
         payload = _prepare_late_fill_request_payload(
-            {'ghost_route': True, 'prompt': original_prompt},
+            {'inference_route': True, 'prompt': original_prompt},
             expected_capability='chat',
             assistant_message='All branch-local analyses finished.',
             artifact_gap={
@@ -23465,14 +23473,14 @@ class ResponsesApiTests(unittest.TestCase):
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='image_generation',
             assistant_message='Two image prompts are ready.',
             artifact_gap={
                 'code': 'closure_review_repair',
-                'trigger': 'ghost_repair_feedback',
+                'trigger': 'inference_repair_feedback',
                 'expected_capability': 'image_generation',
                 'artifact_prompt': artifact_prompt,
                 'artifact_prompt_source': 'focused_content_payload',
@@ -23510,7 +23518,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 """
         artifact_gap = {
             'code': 'closure_review_repair',
-            'trigger': 'ghost_repair_feedback',
+            'trigger': 'inference_repair_feedback',
             'expected_capability': 'image_generation',
             'content_payload': phase_output,
             'content_payload_source': 'current_phase_output',
@@ -23573,14 +23581,14 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='text_to_speech',
             assistant_message='Launch line prepared.',
             artifact_gap={
                 'code': 'closure_review_repair',
-                'trigger': 'ghost_repair_feedback',
+                'trigger': 'inference_repair_feedback',
                 'expected_capability': 'text_to_speech',
                 'content_payload': spoken_text,
                 'content_payload_source': 'current_phase_output',
@@ -23603,14 +23611,14 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='chat',
             assistant_message='Vision analysis finished.',
             artifact_gap={
                 'code': 'closure_review_repair',
-                'trigger': 'ghost_repair_feedback',
+                'trigger': 'inference_repair_feedback',
                 'expected_capability': 'chat',
                 'content_payload': evidence,
                 'content_payload_source': 'late_fill_results:branch-vision-1,branch-vision-2',
@@ -23629,20 +23637,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'Generate two images, analyze both, then write a grounded comparison.'
         )
         review_prompt = (
-            'Run a whole-turn semantic closure review for the current Ollmo response.\n\n'
+            'Run a whole-turn semantic closure review for the current Fruth response.\n\n'
             'Runtime evidence:\nbranch-vision-1: blue glass garden\nbranch-vision-2: red floating-root garden'
         )
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='chat',
             assistant_message='Comparison draft finished.',
             artifact_gap={
                 'code': 'closure_review_repair',
-                'trigger': 'ghost_repair_feedback',
+                'trigger': 'inference_repair_feedback',
                 'expected_capability': 'chat',
                 'stage_direction': 'run_global_semantic_closure_review',
                 'content_payload': review_prompt,
@@ -23654,26 +23662,26 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(payload['_prompt_hint'], review_prompt)
         self.assertNotEqual(payload['prompt'], original_prompt)
         self.assertTrue(payload['suppress_reference_file_context'])
-        self.assertNotIn('ghost_messages', payload)
+        self.assertNotIn('inference_messages', payload)
         self.assertEqual(payload['request_meta']['capability_hint'], 'chat')
 
     def test_prepare_late_fill_request_payload_uses_branch_semantic_review_prompt(self):
         original_prompt = 'Generate an image, then write a grounded caption.'
         review_prompt = (
-            'Run a branch-local semantic review for the current Ollmo response graph.\n\n'
+            'Run a branch-local semantic review for the current Fruth response graph.\n\n'
             'Branch runtime evidence:\nbranch-final-caption: concise caption text'
         )
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='chat',
             assistant_message='Caption draft finished.',
             artifact_gap={
                 'code': 'closure_review_repair',
-                'trigger': 'ghost_repair_feedback',
+                'trigger': 'inference_repair_feedback',
                 'expected_capability': 'chat',
                 'stage_direction': 'run_branch_semantic_review',
                 'content_payload': review_prompt,
@@ -23685,7 +23693,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(payload['_prompt_hint'], review_prompt)
         self.assertNotEqual(payload['prompt'], original_prompt)
         self.assertTrue(payload['suppress_reference_file_context'])
-        self.assertNotIn('ghost_messages', payload)
+        self.assertNotIn('inference_messages', payload)
         self.assertEqual(payload['request_meta']['capability_hint'], 'chat')
 
     def test_materializer_echo_prompt_wording_omits_fence_language_instruction_phrases(self):
@@ -23693,7 +23701,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='chat',
@@ -23732,7 +23740,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         payload = _prepare_late_fill_request_payload(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': original_prompt,
             },
             expected_capability='chat',
@@ -24476,7 +24484,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 ''.join(
                     json.dumps(
                         {
-                            'kind': 'ollmo.artifact_registry_record',
+                            'kind': 'fruth.artifact_registry_record',
                             'artifact_ref': f'artifact:image-{index}',
                             'artifact': {
                                 'type': 'image',
@@ -24541,8 +24549,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 ],
             }
 
-            with patch('ollmo_webserver.CHAT_HISTORY_DIR', history_dir), patch(
-                'ollmo_webserver.ARTIFACT_REGISTRY_LEDGER',
+            with patch('fruth_webserver.CHAT_HISTORY_DIR', history_dir), patch(
+                'fruth_webserver.ARTIFACT_REGISTRY_LEDGER',
                 registry_path,
             ):
                 updated, effective_status = (
@@ -25763,8 +25771,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -25851,7 +25859,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -25886,8 +25894,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -25960,7 +25968,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -25994,8 +26002,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -26127,7 +26135,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -26157,8 +26165,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -26293,7 +26301,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -26307,7 +26315,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             self.assertFalse(late_fill.get('materialization_contract_open_checks'))
             for image_path in image_paths:
                 self.assertIn(f'../images/{image_path.name}', html)
-            self.assertNotIn('ollmo-generated-media', html)
+            self.assertNotIn('fruth-generated-media', html)
             feed_start = html.index('<section class="feed">')
             feed_end = html.index('</section>', feed_start)
             feed_html = html[feed_start:feed_end]
@@ -26332,8 +26340,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -26472,7 +26480,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -26484,7 +26492,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             self.assertEqual(late_fill['status'], 'pending')
             self.assertEqual(late_fill['final_materialization_contract_status'], 'unmet')
             self.assertTrue(late_fill['materialization_contract_unmet'])
-            self.assertNotIn('data-ollmo-repair', html)
+            self.assertNotIn('data-fruth-repair', html)
             self.assertNotIn(f'../images/{image_paths[2].name}', html)
             pending_html = [
                 item
@@ -26515,8 +26523,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -26651,7 +26659,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -26684,8 +26692,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         graph = dict(graph)
         obligations = [
@@ -26864,7 +26872,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'runtime': {
                 'request_phase_graph': graph,
                 'graph_closure_review': {
-                    'kind': 'ollmo.graph_closure_review',
+                    'kind': 'fruth.graph_closure_review',
                     'status': 'repair_needed',
                     'checks': [
                         {
@@ -27131,14 +27139,14 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='partial_failed',
             )
             finalized = _finalize_response_frame_payload(
                 updated,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 persist=False,
             )
 
@@ -27195,7 +27203,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             updated, effective_status = (
                 _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                     payload,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     route_payload={
                         'route_runtime': {'request_phase_graph': graph}
                     },
@@ -27235,8 +27243,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -27353,7 +27361,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -27369,8 +27377,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = 'Create exactly one local file artifact: index.html for a simple page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -27428,7 +27436,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -27459,8 +27467,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = 'Create exactly one local file artifact: index.html for a simple landing page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -27519,7 +27527,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -27541,8 +27549,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = 'Create exactly one local file artifact: index.html for a simple landing page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -27602,7 +27610,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -27624,8 +27632,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = 'Create exactly one local file artifact: index.html for a simple page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -27683,7 +27691,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -27704,8 +27712,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = 'Create exactly one local file artifact: index.html for a simple landing page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -27767,7 +27775,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -27787,8 +27795,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = 'Create exactly two local file artifacts: index.html and styles.css for a simple page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -27879,7 +27887,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -27913,7 +27921,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='partial_failed',
@@ -27954,8 +27962,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = 'Create exactly one local file artifact: index.html for a simple page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             index_path = Path(tmpdir) / 'index.html'
@@ -28014,7 +28022,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='completed',
@@ -28103,7 +28111,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             },
         ]
         graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'prompt': prompt,
             'current_phase_id': 'phase-1',
@@ -28196,7 +28204,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         valid, valid_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
             payload_for(correct_rows),
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             route_payload={'route_runtime': {'request_phase_graph': graph}},
             artifact_gap={'expected_capability': 'chat'},
             terminal_status='completed',
@@ -28207,7 +28215,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
             payload_for(malformed_rows),
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             route_payload={'route_runtime': {'request_phase_graph': graph}},
             artifact_gap={'expected_capability': 'chat'},
             terminal_status='completed',
@@ -28276,8 +28284,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
             payload,
-            request_payload={'ghost_route': True, 'prompt': 'Create index.html and styles.css.'},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': 'Create index.html and styles.css.'},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
             artifact_gap={'expected_capability': 'chat'},
             terminal_status='partial_failed',
         )
@@ -28748,8 +28756,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = 'Create exactly two local file artifacts: index.html and styles.css for a landing page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         payload = {
             'id': 'resp_chat_only_text_artifacts',
@@ -28773,7 +28781,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
             payload,
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             route_payload={'route_runtime': {'request_phase_graph': graph}},
             artifact_gap={'expected_capability': 'chat'},
             terminal_status='skipped',
@@ -28883,11 +28891,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 Path(tmpdir),
                 inline_text=inline_text,
             )
-            with patch('ollmo_server.late_fill_runtime.persist_text_artifact_locally', create=True, return_value=None):
+            with patch('fruth_server.late_fill_runtime.persist_text_artifact_locally', create=True, return_value=None):
                 updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                     payload,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                     artifact_gap={'expected_capability': 'chat'},
                     terminal_status='completed',
                 )
@@ -28929,11 +28937,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 path.write_text(str(content).strip() + '\n', encoding='utf-8')
                 return str(path)
 
-            with patch('ollmo_server.late_fill_runtime.persist_text_artifact_locally', create=True, side_effect=persist_text):
+            with patch('fruth_server.late_fill_runtime.persist_text_artifact_locally', create=True, side_effect=persist_text):
                 updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                     payload,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                     artifact_gap={'expected_capability': 'chat'},
                     terminal_status='completed',
                 )
@@ -29089,8 +29097,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = 'Create exactly two local file artifacts: index.html and styles.css for a landing page.'
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         inline_text = (
             'Image prompts:\n'
@@ -29105,10 +29113,10 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 inline_text=inline_text,
             )
             payload['runtime'] = {'request_phase_graph': graph}
-            with patch('ollmo_server.late_fill_runtime.persist_text_artifact_locally', create=True) as mock_persist:
+            with patch('fruth_server.late_fill_runtime.persist_text_artifact_locally', create=True) as mock_persist:
                 updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                     payload,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     route_payload={'route_runtime': {'request_phase_graph': graph}},
                     artifact_gap={'expected_capability': 'chat'},
                     terminal_status='completed',
@@ -29125,11 +29133,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 Path(tmpdir),
                 inline_text='Generated animal selfie image artifacts are ready.',
             )
-            with patch('ollmo_server.late_fill_runtime.persist_text_artifact_locally', create=True) as mock_persist:
+            with patch('fruth_server.late_fill_runtime.persist_text_artifact_locally', create=True) as mock_persist:
                 updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                     payload,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'image_generation', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'image_generation', 'route_source': 'inference_carried'},
                     artifact_gap={'expected_capability': 'image_generation'},
                     terminal_status='completed',
                 )
@@ -29146,8 +29154,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -29232,7 +29240,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='partial_failed',
@@ -29252,8 +29260,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -29368,14 +29376,14 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='partial_failed',
             )
             finalized = _finalize_response_frame_payload(
                 updated,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 persist=False,
             )
 
@@ -29400,7 +29408,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
     def test_terminal_materialization_contract_refreshes_current_repair_diagnostics_and_preserves_history(self):
         historical_proposal = {
-            'kind': 'ollmo.graph_repair_proposal',
+            'kind': 'fruth.graph_repair_proposal',
             'proposal_id': 'graph-repair-terminal-pending-history',
             'status': 'proposed',
             'repair_type': 'resume_or_repair_pending_branch',
@@ -29409,20 +29417,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'patch': {'add_phases': []},
         }
         historical_review = {
-            'kind': 'ollmo.graph_repair_proposal_review',
+            'kind': 'fruth.graph_repair_proposal_review',
             'review_id': 'graph-repair-review-terminal-pending-history',
             'proposal_id': historical_proposal['proposal_id'],
             'status': 'rejected',
             'reasons': ['deferred_or_reserved_intent_conflict'],
         }
         historical_lifecycle = {
-            'kind': 'ollmo.graph_patch_lifecycle',
+            'kind': 'fruth.graph_patch_lifecycle',
             'proposal_id': historical_proposal['proposal_id'],
             'status': 'rejected',
             'blocked_reasons': ['proposal_review_not_accepted'],
         }
         fulfilled_closure = {
-            'kind': 'ollmo.graph_closure_review',
+            'kind': 'fruth.graph_closure_review',
             'status': 'fulfilled',
             'counts': {
                 'fulfilled': 1,
@@ -29442,7 +29450,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 }
             ],
             'surface_state': {
-                'kind': 'ollmo.surface_state',
+                'kind': 'fruth.surface_state',
                 'status': 'fulfilled',
                 'category_counts': {'completed': 1, 'open': 0, 'repair_pending': 0},
                 'items': [
@@ -29464,7 +29472,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'output_text': 'Fertig.',
             'runtime': {
                 'request_phase_graph': {
-                    'kind': 'ollmo.request_phase_graph',
+                    'kind': 'fruth.request_phase_graph',
                     'current_phase_id': 'phase-1',
                     'current_phase_capability': 'chat',
                     'mode': 'single_phase',
@@ -29512,7 +29520,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         ):
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': 'Antworte mit Fertig.'},
+                request_payload={'inference_route': True, 'prompt': 'Antworte mit Fertig.'},
                 route_payload={'capability': 'chat'},
                 artifact_gap={},
                 terminal_status='completed',
@@ -29537,8 +29545,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -29615,7 +29623,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 'runtime': {
                     'request_phase_graph': graph,
                     'graph_closure_review': {
-                        'kind': 'ollmo.graph_closure_review',
+                        'kind': 'fruth.graph_closure_review',
                         'status': 'repair_needed',
                         'checks': [
                             {
@@ -29758,14 +29766,14 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                 payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 route_payload={'route_runtime': {'request_phase_graph': graph}},
                 artifact_gap={'expected_capability': 'chat'},
                 terminal_status='partial_failed',
             )
             finalized = _finalize_response_frame_payload(
                 updated,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 persist=False,
             )
 
@@ -30029,7 +30037,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 elif case == 'legacy_unbound_evidence':
                     target.write_text('<img src="image.png">', encoding='utf-8')
                     payload['late_fill']['linked_artifact_rebinds'] = [{
-                        'kind': 'ollmo.linked_artifact_rebind', 'target_path': str(target),
+                        'kind': 'fruth.linked_artifact_rebind', 'target_path': str(target),
                         'status': 'applied', 'source': 'terminal_late_fill_link_rebind',
                     }]
                     expected_owners = set()
@@ -30072,11 +30080,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                     self.assertFalse(_LATE_FILL_RUNTIME._authoritative_bounded_text_artifact_repair_has_write_evidence(sibling, legacy))
 
     def test_terminal_link_rebind_identity_survives_compact_evidence_projection(self):
-        from ollmo_services.response_frames import _compact_late_fill_for_ledger
-        from ollmo_webserver import _response_lookup_late_fill_for_ui
+        from fruth_services.response_frames import _compact_late_fill_for_ledger
+        from fruth_webserver import _response_lookup_late_fill_for_ui
 
         legacy = {
-            'kind': 'ollmo.linked_artifact_rebind', 'status': 'applied',
+            'kind': 'fruth.linked_artifact_rebind', 'status': 'applied',
             'target_path': '/tmp/index.html', 'target_extension': 'html', 'change_count': 1,
         }
         owned = {**legacy, 'branch_id': 'owner', 'phase_id': 'phase-owner'}
@@ -30097,8 +30105,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -30166,7 +30174,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 'runtime': {
                     'request_phase_graph': graph,
                     'graph_closure_review': {
-                        'kind': 'ollmo.graph_closure_review',
+                        'kind': 'fruth.graph_closure_review',
                         'status': 'repair_needed',
                         'checks': [
                             {
@@ -30311,14 +30319,14 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             with patch.object(_LATE_FILL_RUNTIME, 'review_terminal_graph_rebase', None):
                 updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                     payload,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
+                    request_payload={'inference_route': True, 'prompt': prompt},
                     route_payload={'route_runtime': {'request_phase_graph': graph}},
                     artifact_gap={'expected_capability': 'chat'},
                     terminal_status='partial_failed',
                 )
             finalized = _finalize_response_frame_payload(
                 updated,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 persist=False,
             )
 
@@ -30520,12 +30528,12 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 'build_graph_closure_review',
                 side_effect=[
                     {
-                        'kind': 'ollmo.graph_closure_review',
+                        'kind': 'fruth.graph_closure_review',
                         'status': 'repair_needed',
                         'checks': [dict(selector_check)],
                     },
                     {
-                        'kind': 'ollmo.graph_closure_review',
+                        'kind': 'fruth.graph_closure_review',
                         'status': 'not_applicable',
                         'reason': 'no_request_phase_graph',
                         'continuation_required': False,
@@ -30535,14 +30543,14 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             ):
                 updated, effective_status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
                     payload,
-                    request_payload={'ghost_route': True, 'prompt': prompt},
-                    route_payload={'capability': 'chat', 'route_source': 'ghost_carried'},
+                    request_payload={'inference_route': True, 'prompt': prompt},
+                    route_payload={'capability': 'chat', 'route_source': 'inference_carried'},
                     artifact_gap={'expected_capability': 'chat'},
                     terminal_status='partial_failed',
                 )
             finalized = _finalize_response_frame_payload(
                 updated,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 persist=False,
             )
 
@@ -30569,7 +30577,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             infer_payload, route_info, has_file_context, expose_input_artifacts = (
                 _build_responses_infer_execution_payload(
                     {
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': 'Transkribiere diese Audiodatei und übersetze sie ins Deutsche.',
                         'input_artifacts': [
                             {
@@ -30612,7 +30620,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'and rooms.json, then bundle everything.'
         )
         request_payload = {
-            'ghost_route': True,
+            'inference_route': True,
             'prompt': prompt,
             'file_path': '/tmp/mon-repos-rooms.json',
         }
@@ -30629,7 +30637,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                     request_payload,
                     route_info={
                         'capability': 'chat',
-                        'route_source': 'ghost_carried',
+                        'route_source': 'inference_carried',
                         'route_runtime': {'request_phase_graph': phase_graph},
                     },
                     instance={
@@ -30649,7 +30657,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertTrue(has_file_context)
         self.assertEqual(infer_payload['prompt'], prompt)
         phase_system_prompt = infer_payload['phase_system_prompt']
-        self.assertIn('Ollmo phase contract: prepare-only.', phase_system_prompt)
+        self.assertIn('Fruth phase contract: prepare-only.', phase_system_prompt)
         self.assertIn(
             'exactly 4 numbered image prompts using labels 1. through 4.',
             phase_system_prompt,
@@ -30687,7 +30695,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             infer_payload, _route_info, has_file_context, _expose_input_artifacts = (
                 _build_responses_infer_execution_payload(
                     {
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': 'Transcribe the generated audio.',
                         'capability': 'text_to_speech',
                         'backend': 'ollama',
@@ -30735,7 +30743,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             infer_payload, route_info, has_file_context, expose_input_artifacts = (
                 _build_responses_infer_execution_payload(
                     {
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': 'Transkribiere das zuletzt erzeugte Audio.',
                         'input_artifacts': [
                             {
@@ -30776,7 +30784,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             infer_payload, _route_info, has_file_context, expose_input_artifacts = (
                 _build_responses_infer_execution_payload(
                     {
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': 'Beschreibe das Bild.',
                     },
                     route_info={
@@ -30810,7 +30818,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             infer_payload, _route_info, _has_file_context, _expose_input_artifacts = (
                 _build_responses_infer_execution_payload(
                     {
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': 'Materialize only the requested markdown payload.',
                         'text_artifact_extension': 'md',
                         'text_artifact_source_name': 'safety-protocol',
@@ -30858,7 +30866,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             infer_payload, _route_info, _has_file_context, _expose_input_artifacts = (
                 _build_responses_infer_execution_payload(
                     {
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': 'Materialize the complete four-file contract.',
                         'text_artifact_requests': requests,
                         'artifact_request': requests[0],
@@ -30905,7 +30913,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
     def test_responses_infer_execution_payload_preserves_execution_contract(self):
         execution_contract = {
-            'kind': 'ollmo.execution_contract',
+            'kind': 'fruth.execution_contract',
             'branch_id': 'branch-image_generation-1',
             'phase_id': 'phase-2',
             'capability': 'image_generation',
@@ -30929,7 +30937,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             infer_payload, _route_info, _has_file_context, _expose_input_artifacts = (
                 _build_responses_infer_execution_payload(
                     {
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': 'Generate the planned rescue-station poster image.',
                         'execution_contract': execution_contract,
                         'workload_task_ref': execution_contract['workload_task_ref'],
@@ -30968,7 +30976,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             infer_payload, _route_info, has_file_context, expose_input_artifacts = (
                 _build_responses_infer_execution_payload(
                     {
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': (
                             'Compare the generated images in one sentence.\n\n'
                             'Dependency evidence:\n'
@@ -31012,14 +31020,14 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
     def test_responses_infer_execution_payload_preserves_selected_text_file_for_direct_tts(self):
         selected_path = Path('/tmp/selected-tts-script.txt')
         with patch(
-            'ollmo_webserver._resolve_saved_downloadable_artifact_path',
+            'fruth_webserver._resolve_saved_downloadable_artifact_path',
             return_value=selected_path,
         ):
             with app.test_request_context('/api/responses', method='POST'):
                 infer_payload, _route_info, has_file_context, expose_input_artifacts = (
                     _build_responses_infer_execution_payload(
                         {
-                            'ghost_route': True,
+                            'inference_route': True,
                             'prompt': 'Read the selected text file aloud.',
                             'reference_artifacts': [
                                 {
@@ -31032,7 +31040,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                         },
                         route_info={
                             'capability': 'text_to_speech',
-                            'route_source': 'ghost_carried',
+                            'route_source': 'inference_carried',
                         },
                         instance={
                             'instance_id': 'tts-1',
@@ -31058,7 +31066,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertTrue(has_file_context)
         self.assertFalse(expose_input_artifacts)
 
-    @patch("ollmo_webserver._resolve_late_fill_route")
+    @patch("fruth_webserver._resolve_late_fill_route")
     def test_prepare_late_fill_branch_plan_carries_current_audio_input_artifact_to_stt(self, mock_resolve_route):
         audio_artifact = {
             'artifact_ref': 'artifact:audio_test',
@@ -31095,7 +31103,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 },
                 current_payload={'input_artifacts': [audio_artifact]},
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': 'Transkribiere diese Audiodatei.',
                 },
                 assistant_message='Pending transcription.',
@@ -31108,7 +31116,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         resolved_payload = mock_resolve_route.call_args.args[0]
         self.assertEqual(resolved_payload['input_artifacts'][0]['path'], '/tmp/audio-late-fill-test.wav')
 
-    @patch("ollmo_webserver._resolve_late_fill_route")
+    @patch("fruth_webserver._resolve_late_fill_route")
     def test_prepare_direct_input_stt_branch_cannot_reuse_carried_audio(self, mock_resolve_route):
         current_audio = {
             'artifact_ref': 'artifact:current-audio',
@@ -31166,7 +31174,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                     },
                 },
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': 'Transcribe the uploaded audio again.',
                     'input_artifacts': [current_audio],
                     'reference_artifacts': [carried_audio],
@@ -31189,7 +31197,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertIsNone(plan['route_info']['route_artifact_ref'])
         self.assertIsNone(plan['route_info']['route_artifact_path'])
 
-    @patch("ollmo_webserver._resolve_late_fill_route")
+    @patch("fruth_webserver._resolve_late_fill_route")
     def test_prepare_selected_reference_stt_branch_preserves_selected_audio(self, mock_resolve_route):
         current_audio = {
             'artifact_ref': 'artifact:current-audio',
@@ -31228,7 +31236,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_resolve_route.side_effect = resolve_route
 
         with patch(
-            'ollmo_webserver._resolve_saved_downloadable_artifact_path',
+            'fruth_webserver._resolve_saved_downloadable_artifact_path',
             side_effect=lambda raw_path: (
                 Path(str(raw_path))
                 if str(raw_path) == selected_audio['path']
@@ -31255,7 +31263,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                         },
                     },
                     request_payload={
-                        'ghost_route': True,
+                        'inference_route': True,
                         'prompt': 'Transcribe the selected audio again.',
                         'input_artifacts': [current_audio],
                         'selected_reference_artifacts': [selected_audio],
@@ -31278,7 +31286,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             for call in mock_resolve_selected_path.call_args_list
         ))
 
-    @patch("ollmo_webserver._resolve_late_fill_route")
+    @patch("fruth_webserver._resolve_late_fill_route")
     def test_prepare_selected_reference_stt_branch_fails_closed_when_source_is_missing(
         self,
         mock_resolve_route,
@@ -31290,7 +31298,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'path': '/foreign/untrusted-audio.wav',
         }
         with patch(
-            'ollmo_webserver._resolve_saved_downloadable_artifact_path',
+            'fruth_webserver._resolve_saved_downloadable_artifact_path',
             return_value=None,
         ) as mock_resolve_selected_path:
             with app.test_request_context('/api/responses', method='POST'):
@@ -31317,7 +31325,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                             ],
                         },
                         request_payload={
-                            'ghost_route': True,
+                            'inference_route': True,
                             'prompt': 'Transcribe the selected audio again.',
                             'selected_reference_artifacts': [rejected_selected_audio],
                         },
@@ -31333,7 +31341,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         ))
         mock_resolve_route.assert_not_called()
 
-    @patch("ollmo_webserver._resolve_late_fill_route")
+    @patch("fruth_webserver._resolve_late_fill_route")
     def test_prepare_late_fill_tts_branch_uses_content_payload_and_declined_german_language_hint(
         self,
         mock_resolve_route,
@@ -31375,7 +31383,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 },
                 current_payload={},
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': 'Schreibe einen kurzen deutschen Produkttext. Erzeuge daraus ein Audio.',
                 },
                 assistant_message=spoken_text,
@@ -31390,7 +31398,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(resolved_payload['prompt'], spoken_text)
         self.assertEqual(resolved_payload['lang_code'], 'de')
 
-    @patch("ollmo_webserver._resolve_late_fill_route")
+    @patch("fruth_webserver._resolve_late_fill_route")
     def test_prepare_late_fill_tts_candidate_does_not_inherit_carried_transcript(
         self,
         mock_resolve_route,
@@ -31423,7 +31431,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         mock_resolve_route.side_effect = resolve_route
         request_payload = {
-            'ghost_route': True,
+            'inference_route': True,
             'prompt': (
                 'Ersetze den bisherigen Audiozweig durch zwei neue Audiofassungen '
                 'und transkribiere beide neuen Audios.'
@@ -31446,7 +31454,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         }
 
         with patch(
-            'ollmo_webserver._resolve_saved_downloadable_artifact_path',
+            'fruth_webserver._resolve_saved_downloadable_artifact_path',
             return_value=carried_path,
         ):
             with app.test_request_context('/api/responses', method='POST'):
@@ -31485,7 +31493,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertIsNone(plan['route_info']['route_artifact_ref'])
         self.assertIsNone(plan['route_info']['route_artifact_path'])
 
-    @patch("ollmo_webserver._resolve_late_fill_route")
+    @patch("fruth_webserver._resolve_late_fill_route")
     def test_prepare_late_fill_tts_branch_maps_output_format_to_response_format(
         self,
         mock_resolve_route,
@@ -31522,7 +31530,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 },
                 current_payload={},
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': 'Lies diesen Satz als mp3 vor.',
                 },
                 assistant_message='Runtime gesund.',
@@ -31536,10 +31544,10 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         resolved_payload = mock_resolve_route.call_args.args[0]
         self.assertEqual(resolved_payload['response_format'], 'mp3')
 
-    @patch("ollmo_webserver._resolve_late_fill_route")
+    @patch("fruth_webserver._resolve_late_fill_route")
     def test_prepare_late_fill_branch_plan_preserves_execution_contract(self, mock_resolve_route):
         execution_contract = {
-            'kind': 'ollmo.execution_contract',
+            'kind': 'fruth.execution_contract',
             'branch_id': 'branch-chat-review-1',
             'phase_id': 'phase-5',
             'capability': 'chat',
@@ -31608,7 +31616,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 },
                 current_payload={},
                 request_payload={
-                    'ghost_route': True,
+                    'inference_route': True,
                     'prompt': 'Compare the two generated image analyses.',
                     'reasoning_effort': 'xhigh',
                     'request_meta': {
@@ -31636,7 +31644,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
     def test_execute_prepared_late_fill_branch_echoes_execution_contract(self):
         execution_contract = {
-            'kind': 'ollmo.execution_contract',
+            'kind': 'fruth.execution_contract',
             'branch_id': 'branch-chat-1',
             'phase_id': 'phase-4',
             'capability': 'chat',
@@ -31691,7 +31699,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(infer_result['task_id'], 'task-phase-4')
         self.assertEqual(infer_result['obligation_id'], 'obligation-phase-4')
 
-    def test_responses_runtime_materializes_upload_before_ghost_route(self):
+    def test_responses_runtime_materializes_upload_before_inference_route(self):
         upload = FileStorage(
             stream=io.BytesIO(b'RIFF....WAVEfmt '),
             filename='sample.wav',
@@ -31718,14 +31726,14 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             with (
                 patch(
-                    'ollmo_webserver._persist_input_file_locally',
+                    'fruth_webserver._persist_input_file_locally',
                     side_effect=persist_input_to_test_root,
                 ),
-                patch('ollmo_webserver.ARTIFACT_REGISTRY_LEDGER', registry_path),
+                patch('fruth_webserver.ARTIFACT_REGISTRY_LEDGER', registry_path),
             ):
                 payload, remaining_upload = (
                     _RESPONSES_REQUEST_RUNTIME.materialize_upload_input_artifacts(
-                        {'prompt': 'Transkribiere diese Datei.', 'ghost_route': True},
+                        {'prompt': 'Transkribiere diese Datei.', 'inference_route': True},
                         upload,
                     )
                 )
@@ -31982,7 +31990,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             '_prompt_hint',
             'input',
             'messages',
-            'ghost_messages',
+            'inference_messages',
             'artifact_prompt',
             'content_payload',
             'phase_summary',
@@ -32083,7 +32091,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             '_prompt_hint',
             'input',
             'messages',
-            'ghost_messages',
+            'inference_messages',
             'artifact_prompt',
             'content_payload',
             'phase_summary',
@@ -32653,9 +32661,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
     def test_late_fill_mixed_media_branches_focus_slogan_and_poster_payloads(self):
         prepared_text = (
-            'Slogan: Ollmo: Intelligence in Motion.\n\n'
+            'Slogan: Fruth: Intelligence in Motion.\n\n'
             'Poster prompt: A high-end graphic design poster featuring the bold text '
-            'Ollmo: Intelligence in Motion, dynamic blurred light trails, sleek modern aesthetic, '
+            'Fruth: Intelligence in Motion, dynamic blurred light trails, sleek modern aesthetic, '
             'high contrast.\n\n'
             'Final sentence: The energetic pulse of the audio complements the dynamic visual of the poster.'
         )
@@ -32703,7 +32711,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         self.assertEqual(
             tts_spec['prepare_args']['artifact_gap']['content_payload'],
-            'Slogan: Ollmo: Intelligence in Motion.',
+            'Slogan: Fruth: Intelligence in Motion.',
         )
         self.assertEqual(
             tts_spec['prepare_args']['artifact_gap']['content_payload_source'],
@@ -32711,7 +32719,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertEqual(
             image_spec['prepare_args']['artifact_gap']['artifact_prompt'],
-            'A high-end graphic design poster featuring the bold text Ollmo: Intelligence in Motion, '
+            'A high-end graphic design poster featuring the bold text Fruth: Intelligence in Motion, '
             'dynamic blurred light trails, sleek modern aesthetic, high contrast.',
         )
         self.assertEqual(
@@ -32726,8 +32734,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'route_source': 'ghost_carried', 'capability': 'chat'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'route_source': 'inference_carried', 'capability': 'chat'},
         )
         current_payload = {
             'output_text': (
@@ -32752,7 +32760,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 branch=branch,
                 artifact_gap={'trigger': 'phase_continuation'},
                 current_payload=current_payload,
-                request_payload={'ghost_route': True, 'prompt': prompt},
+                request_payload={'inference_route': True, 'prompt': prompt},
                 assistant_message=current_payload['output_text'],
                 source_route_payload=None,
                 failed_instance_id=None,
@@ -32789,8 +32797,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         graph = build_request_phase_graph(
             prompt,
-            request_payload={'ghost_route': True, 'prompt': prompt},
-            route_payload={'route_source': 'ghost_carried', 'capability': 'chat'},
+            request_payload={'inference_route': True, 'prompt': prompt},
+            route_payload={'route_source': 'inference_carried', 'capability': 'chat'},
         )
         current_payload = {
             'output_text': (
@@ -32808,7 +32816,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             branch=branches[0],
             artifact_gap={'trigger': 'phase_continuation'},
             current_payload=current_payload,
-            request_payload={'ghost_route': True, 'prompt': prompt},
+            request_payload={'inference_route': True, 'prompt': prompt},
             assistant_message=current_payload['output_text'],
             source_route_payload=None,
             failed_instance_id=None,
@@ -32863,7 +32871,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         artifact_gap = spec['prepare_args']['artifact_gap']
         contract = artifact_gap['execution_contract']
-        self.assertEqual(contract['kind'], 'ollmo.execution_contract')
+        self.assertEqual(contract['kind'], 'fruth.execution_contract')
         self.assertEqual(contract['branch_id'], 'branch-text_artifact-1')
         self.assertEqual(contract['phase_id'], 'phase-2')
         self.assertEqual(contract['workload_task_ref']['task_id'], 'task-phase-2')
@@ -32918,11 +32926,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
     def test_late_fill_tts_branch_prefers_unlabeled_slogan_over_final_artifact_reference(self):
         prepared_text = (
-            'Ollmo: Infinite Intelligence, Seamlessly Delivered.\n'
-            'Ollmo: Infinite Intelligence, Seamlessly Delivered.\n'
+            'Fruth: Infinite Intelligence, Seamlessly Delivered.\n'
+            'Fruth: Infinite Intelligence, Seamlessly Delivered.\n'
             "A minimalist, cinematic poster featuring a glowing, holographic neural network in the shape "
             "of a stylized 'O' against a dark, deep-blue background, with the text "
-            "'OLLMO: INFINITE INTELLIGENCE, SEAMLESSLY DELIVERED' in clean, luminous typography.\n"
+            "'FRUTH: INFINITE INTELLIGENCE, SEAMLESSLY DELIVERED' in clean, luminous typography.\n"
             'The rhythmic pulse of the audio perfectly complements the striking visual impact of the poster.'
         )
 
@@ -32945,7 +32953,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             },
             request_payload={
                 'prompt': (
-                    'Create a short slogan for Ollmo, generate an audio version, generate a poster image '
+                    'Create a short slogan for Fruth, generate an audio version, generate a poster image '
                     'for the same slogan, then write one final sentence that references both generated artifacts.'
                 ),
             },
@@ -32957,7 +32965,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         artifact_gap = spec['prepare_args']['artifact_gap']
         self.assertEqual(
             artifact_gap['content_payload'],
-            'Ollmo: Infinite Intelligence, Seamlessly Delivered.',
+            'Fruth: Infinite Intelligence, Seamlessly Delivered.',
         )
         self.assertEqual(artifact_gap['content_payload_source'], 'focused_content_payload')
 
@@ -33483,8 +33491,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertIn('phase-1: Lokale KI läuft sicher', payload['content_payload'])
         self.assertIn('branch-speech_to_text-1: Lokale KI läuft sicher', payload['content_payload'])
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_passes_branch_result_to_dependent_branch(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -33493,7 +33501,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         response_id = 'resp_dependent_late_fill_chain'
         phase_graph = {
             'graph_version': 3,
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'current_phase_id': 'phase-1',
             'current_phase_capability': 'chat',
@@ -33597,7 +33605,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                     'saved_audio_path': '/tmp/transcript.wav',
                     'artifacts': [{'type': 'audio', 'path': '/tmp/transcript.wav'}],
                     'tts_semantic_source': {
-                        'kind': 'ollmo.tts_semantic_source',
+                        'kind': 'fruth.tts_semantic_source',
                         'version': 1,
                         'source_authority': 'final_infer_prompt',
                         'tts_source_text': 'Light, I am.',
@@ -33606,12 +33614,12 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                         ).hexdigest(),
                     },
                     'tts_generation_budget': {
-                        'kind': 'ollmo.tts_generation_budget',
+                        'kind': 'fruth.tts_generation_budget',
                         'policy_id': 'qwen3_tts_adaptive_audio_tokens_v1',
                         'max_tokens': 192,
                     },
                     'tts_sampling_profile': {
-                        'kind': 'ollmo.tts_sampling_profile',
+                        'kind': 'fruth.tts_sampling_profile',
                         'policy_id': 'qwen3_tts_explicit_sampling_v1',
                         'temperature': 0.9,
                     },
@@ -33640,7 +33648,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             },
         }
         source_route_payload = {
-            'route_source': 'ghost_carried',
+            'route_source': 'inference_carried',
             'route_runtime': {'request_phase_graph': phase_graph},
         }
         finalize_calls = []
@@ -33705,8 +33713,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         transcript_slot = next(slot for slot in output_slots if slot.get('branch_id') == 'branch-speech_to_text-1')
         self.assertEqual(transcript_slot.get('value'), 'Light, I am.')
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_blocks_unrelated_tts_transcript_before_join(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -33719,7 +33727,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         unrelated_transcript = 'Oh, thank you. Thank you. Thank you.'
         phase_graph = {
             'graph_version': 3,
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'current_phase_id': 'phase-1',
             'current_phase_capability': 'chat',
@@ -33819,7 +33827,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                         ],
                         'tts_semantic_source': source_evidence,
                         'tts_audio_integrity_evidence': {
-                            'kind': 'ollmo.tts_audio_integrity_evidence',
+                            'kind': 'fruth.tts_audio_integrity_evidence',
                             'version': 1,
                             'policy_id': TTS_AUDIO_INTEGRITY_POLICY_ID,
                             'authority': 'runtime_deterministic_audio_verification',
@@ -33892,7 +33900,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 ],
             },
             source_route_payload={
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_runtime': {'request_phase_graph': phase_graph},
             },
         )
@@ -33977,8 +33985,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             )
         )
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_auto_retries_required_tts_on_alternative(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -34051,7 +34059,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             Path(rejected_path).write_bytes(b'RIFF-rejected-diagnostic')
             Path(accepted_path).write_bytes(b'RIFF-accepted-test-artifact')
             failed_integrity = {
-                'kind': 'ollmo.tts_audio_integrity_evidence',
+                'kind': 'fruth.tts_audio_integrity_evidence',
                 'version': 1,
                 'policy_id': TTS_AUDIO_INTEGRITY_POLICY_ID,
                 'authority': 'runtime_deterministic_audio_verification',
@@ -34207,8 +34215,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 )
             )
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_auto_retries_required_tts_after_backend_timeout(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -34399,8 +34407,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 )
             )
 
-    @patch("ollmo_webserver._execute_prepared_late_fill_branch")
-    @patch("ollmo_webserver._prepare_late_fill_branch_plan")
+    @patch("fruth_webserver._execute_prepared_late_fill_branch")
+    @patch("fruth_webserver._prepare_late_fill_branch_plan")
     def test_complete_response_late_fill_blocks_truncated_tts_before_fulfillment(
         self,
         mock_prepare_late_fill_branch_plan,
@@ -34426,7 +34434,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             )
         )
         failed_integrity = {
-            'kind': 'ollmo.tts_audio_integrity_evidence',
+            'kind': 'fruth.tts_audio_integrity_evidence',
             'version': 1,
             'policy_id': TTS_AUDIO_INTEGRITY_POLICY_ID,
             'authority': 'runtime_deterministic_audio_verification',
@@ -34445,7 +34453,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'silence_ratio': 0.9375,
         }
         phase_graph = {
-            'kind': 'ollmo.request_phase_graph',
+            'kind': 'fruth.request_phase_graph',
             'mode': 'phase_chain',
             'current_phase_id': 'phase-1',
             'current_phase_capability': 'chat',
@@ -34514,12 +34522,12 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 ],
                 'tts_semantic_source': source_evidence,
                 'tts_generation_budget': {
-                    'kind': 'ollmo.tts_generation_budget',
+                    'kind': 'fruth.tts_generation_budget',
                     'policy_id': 'qwen3_tts_adaptive_audio_tokens_v1',
                     'max_tokens': 384,
                 },
                 'tts_sampling_profile': {
-                    'kind': 'ollmo.tts_sampling_profile',
+                    'kind': 'fruth.tts_sampling_profile',
                     'policy_id': 'qwen3_tts_explicit_sampling_v1',
                     'temperature': 0.9,
                 },
@@ -34554,7 +34562,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 'pending_capabilities': ['text_to_speech'],
             },
             source_route_payload={
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_runtime': {'request_phase_graph': phase_graph},
             },
         )
@@ -34651,9 +34659,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertIn('do not ask the user to provide the artifact again', focused_prompt)
         self.assertIn('Lohkolle.ie, live direkt auf deinem eigenen Computer', focused_prompt)
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_show_image_of_it_phrase_family(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_show_image_of_it_phrase_family(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -34682,28 +34690,28 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
         prompt = 'Can you imagine the place you were "born", describe what it was like, and then show an image of it to me?'
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
-        self.assertTrue(route_info["route_runtime"]["ghost_resolution"]["carried"])
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
+        self.assertTrue(route_info["route_runtime"]["inference_resolution"]["carried"])
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertIn("text preparation is required before downstream image materialization", route_info["route_reason"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_single_image_request_by_default(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_single_image_request_by_default(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -34732,20 +34740,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
         prompt = "Generate an image of a red fox in snow."
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertEqual(
@@ -34757,9 +34765,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             route_info["route_reason"],
         )
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_single_audio_request_by_default(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_single_audio_request_by_default(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -34788,20 +34796,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
         prompt = "Read this exact line aloud in a calm voice: The stars remember us."
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["text_to_speech"])
         self.assertEqual(
@@ -34813,9 +34821,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             route_info["route_reason"],
         )
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_prompt_written_multi_image_request(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_prompt_written_multi_image_request(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -34844,20 +34852,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
         prompt = "Create me three totally different images. You write the prompts."
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertEqual(
@@ -34870,9 +34878,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertIn("text preparation is required before downstream image materialization", route_info["route_reason"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_open_choice_multi_image_request(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_open_choice_multi_image_request(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -34905,20 +34913,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'zeige sie in ihrem natürlichen habitat. verwende verschiedene bildformate (aspect ratios)'
         )
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertEqual(
@@ -34931,9 +34939,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertIn("text preparation is required before downstream image materialization", route_info["route_reason"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_direct_animal_selfie_batch(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_direct_animal_selfie_batch(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -34965,20 +34973,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             "you choose the animals and situations. go."
         )
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertEqual(
@@ -34991,9 +34999,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertIn("text preparation is required before downstream image materialization", route_info["route_reason"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_distributive_each_image_request(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_distributive_each_image_request(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35021,24 +35029,24 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_load_running_instances.return_value = instances
         mock_merge_instances.return_value = instances
         prompt = (
-            "hey ollmo. ich habe eine aufgabe fur dich. denk dir bitte funf total unterschiedliche orte aus "
+            "hey fruth. ich habe eine aufgabe fur dich. denk dir bitte funf total unterschiedliche orte aus "
             "und beschreibe sie ausfuhrlich. dann generiere mir bitte je ein bild davon."
         )
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertEqual(
@@ -35051,9 +35059,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertIn("text preparation is required before downstream image materialization", route_info["route_reason"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_imagined_situations_image_request(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_imagined_situations_image_request(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35082,20 +35090,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
         prompt = "hallo. stell dir bitte drei absurde situationen vor und mache davon bilder."
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertEqual(
@@ -35108,9 +35116,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertIn("text preparation is required before downstream image materialization", route_info["route_reason"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_poem_paragraph_image_request(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_poem_paragraph_image_request(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35139,20 +35147,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
         prompt = "hallo. schreib mir mal ein gedicht mir 3 absätzen. dann mache für jeden ein bild dazu."
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertEqual(
@@ -35165,9 +35173,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertIn("text preparation is required before downstream image materialization", route_info["route_reason"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_keeps_meta_runtime_example_prompt_as_plain_chat(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_keeps_meta_runtime_example_prompt_as_plain_chat(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35200,20 +35208,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'Nenne nur echte Begriffe aus der Runtime.'
         )
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "current_turn_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "current_turn_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], [])
         self.assertEqual(
@@ -35230,9 +35238,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertIn("single-phase text chat was resolved directly from the current user turn", route_info["route_reason"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_own_theme_multi_image_request(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_own_theme_multi_image_request(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35264,20 +35272,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             "Mach sie ganz unterschiedlich. stelle sicher alle in der antwort angezeit werden."
         )
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertEqual(
@@ -35290,9 +35298,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertIn("text preparation is required before downstream image materialization", route_info["route_reason"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_source_transfer_describe_then_images_request(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_source_transfer_describe_then_images_request(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35324,20 +35332,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             "und aus diesen dann 3 bilder generieren. danke"
         )
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertEqual(
@@ -35350,9 +35358,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertIn("text preparation is required before downstream image materialization", route_info["route_reason"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_phase_resolves_imagine_place_then_single_image_request(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_phase_resolves_imagine_place_then_single_image_request(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35384,20 +35392,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             "und erstell mir dann bitte ein bild davon"
         )
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertEqual(
@@ -35410,9 +35418,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertIn("text preparation is required before downstream image materialization", route_info["route_reason"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_defaults_multi_image_request_to_prepare_first_phase_chain(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_defaults_multi_image_request_to_prepare_first_phase_chain(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35441,20 +35449,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
         prompt = "Generate six different images of strange dream locations."
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(
             route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"],
             "chat",
@@ -35476,10 +35484,10 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             route_info["route_reason"],
         )
 
-    @patch("ollmo_server.ghost_route_runtime.build_request_phase_graph")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_route_graph_consistency_repairs_chat_graph_missing_visual_follow_up(
+    @patch("fruth_server.inference_route_runtime.build_request_phase_graph")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_route_graph_consistency_repairs_chat_graph_missing_visual_follow_up(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35529,7 +35537,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             graph = build_request_phase_graph(
                 "hello",
                 request_payload={
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": "hello",
                 },
             )
@@ -35546,20 +35554,20 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         mock_build_request_phase_graph.side_effect = build_phase_graph_side_effect
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "chat-1")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
         self.assertEqual(
@@ -35575,9 +35583,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             "consistency_enforced",
         )
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_route_graph_consistency_skips_explicit_deferal(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_route_graph_consistency_skips_explicit_deferal(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35606,17 +35614,17 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
         prompt = "First produce a draft brief only. Do not generate images yet."
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                 },
                 preview_mode=True,
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["capability"], "chat")
         self.assertFalse(route_info["route_runtime"]["request_phase_graph"]["continuation_required"])
         self.assertEqual(
@@ -35628,9 +35636,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             "explicit_defer_materialization",
         )
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_route_graph_consistency_skips_direct_image_contract(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_route_graph_consistency_skips_direct_image_contract(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35659,10 +35667,10 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
         prompt = "Generate two different images of strange dream locations."
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                     "batch_prompts": [
                         "wide dream lake",
@@ -35673,7 +35681,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["capability"], "image_generation")
         self.assertEqual(
             route_info["route_runtime"]["developer_diagnostics"]["route_graph_consistency"]["status"],
@@ -35684,9 +35692,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             "draft_not_chat",
         )
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_resolve_ghost_auto_route_keeps_explicit_batch_prompts_as_direct_image_batch_contract(
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_resolve_inference_auto_route_keeps_explicit_batch_prompts_as_direct_image_batch_contract(
         self,
         mock_load_running_instances,
         mock_merge_instances,
@@ -35715,10 +35723,10 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
         prompt = "Generate two different images of strange dream locations."
 
-        with app.test_request_context("/api/ghost_route_preview", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+        with app.test_request_context("/api/inference_route_preview", method="POST"):
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": prompt,
                     "batch_prompts": [
                         "wide dream lake",
@@ -35729,7 +35737,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["instance_id"], "flux-1")
         self.assertEqual(route_info["capability"], "image_generation")
         self.assertEqual(route_info["route_reason"], "image-generation cue")
@@ -36898,7 +36906,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         ]
         final_text = json.dumps(final_rows, ensure_ascii=False)
         phase_graph = {
-            "kind": "ollmo.request_phase_graph",
+            "kind": "fruth.request_phase_graph",
             "graph_version": 2,
             "mode": "phase_chain",
             "current_phase_id": "phase-1",
@@ -37004,8 +37012,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = "Create exactly two local file artifacts: index.html and styles.css for a landing page."
         graph = build_request_phase_graph(
             prompt,
-            request_payload={"ghost_route": True, "prompt": prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True, "prompt": prompt},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
         repair_prompt = (
             "Target text artifact: artifacts/documents/index.html\n"
@@ -37085,8 +37093,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = "Create four images, then write an index.html that uses them."
         graph = build_request_phase_graph(
             prompt,
-            request_payload={"ghost_route": True, "prompt": prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True, "prompt": prompt},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
 
         payload = _finalize_response_frame_payload(
@@ -37144,8 +37152,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = "Create exactly two local file artifacts: index.html and styles.css for a landing page."
         graph = build_request_phase_graph(
             prompt,
-            request_payload={"ghost_route": True, "prompt": prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True, "prompt": prompt},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
         repair_prompt = (
             "Target text artifact: artifacts/documents/index.html\n"
@@ -37218,7 +37226,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 [{"role": "assistant", "content": repair_prompt, "response_id": response_id}],
                 history_dir=history_dir,
             )
-            with patch("ollmo_webserver.CHAT_HISTORY_DIR", history_dir):
+            with patch("fruth_webserver.CHAT_HISTORY_DIR", history_dir):
                 response = self.client.get(
                     "/api/chat_history",
                     query_string={"instance_id": conversation_id},
@@ -37311,7 +37319,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             }
 
             with patch(
-                "ollmo_webserver.ARTIFACT_OUTPUTS_DOCUMENTS_DIR",
+                "fruth_webserver.ARTIFACT_OUTPUTS_DOCUMENTS_DIR",
                 Path(tmpdir),
             ):
                 payload = _build_response_ui_lookup_payload(record)
@@ -37326,8 +37334,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = "Create exactly four images plus index.html and styles.css for a playful landing page."
         graph = build_request_phase_graph(
             prompt,
-            request_payload={"ghost_route": True, "prompt": prompt},
-            route_payload={"capability": "chat", "route_source": "ghost_carried"},
+            request_payload={"inference_route": True, "prompt": prompt},
+            route_payload={"capability": "chat", "route_source": "inference_carried"},
         )
         branch_summary = (
             "branch-image_generation-5: Image generated.\n\n"
@@ -37407,7 +37415,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 "artifacts": [
                     {
                         "type": "text",
-                        "path": "/Users/example/Projects/ollmo/artifacts/documents/index.html",
+                        "path": "/Users/example/Projects/fruth/artifacts/documents/index.html",
                         "content": "<html><body>full artifact content stays out of compact status</body></html>",
                     }
                 ],
@@ -37492,7 +37500,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 "artifacts": [
                     {
                         "type": "text",
-                        "path": "/Users/example/Projects/ollmo/artifacts/documents/index.html",
+                        "path": "/Users/example/Projects/fruth/artifacts/documents/index.html",
                         "content": "<html>full artifact content</html>",
                     }
                 ],
@@ -37826,7 +37834,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         hook = _RESPONSES_REQUEST_RUNTIME.hooks["project_response_payload_for_wire"]
 
         with patch(
-            "ollmo_webserver._project_response_payload_for_wire",
+            "fruth_webserver._project_response_payload_for_wire",
             return_value=sentinel,
         ) as mock_project:
             projected = hook(source_payload)
@@ -37854,10 +37862,10 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
 
         with patch(
-            "ollmo_webserver.RESPONSE_FRAMES_DIR",
+            "fruth_webserver.RESPONSE_FRAMES_DIR",
             late_bound_frames_dir,
         ), patch(
-            "ollmo_webserver._recover_response_lookup_record_from_frames",
+            "fruth_webserver._recover_response_lookup_record_from_frames",
             side_effect=AssertionError(
                 "a valid late-bound index must not use exceptional recovery"
             ),
@@ -37910,7 +37918,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         }
 
         with patch(
-            "ollmo_webserver._recover_response_lookup_record_from_frames",
+            "fruth_webserver._recover_response_lookup_record_from_frames",
             side_effect=AssertionError(
                 "a live-only response must not scan the durable ledger"
             ),
@@ -37962,7 +37970,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         }
 
         with patch(
-            "ollmo_webserver._response_wire_payload_from_index",
+            "fruth_webserver._response_wire_payload_from_index",
             return_value=(durable_payload, {"ok": True}),
         ) as mock_wire_projection:
             record, error, status_code = _get_bounded_response_lookup_record(
@@ -38034,7 +38042,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         }
 
         with patch(
-            "ollmo_webserver._response_wire_payload_from_index",
+            "fruth_webserver._response_wire_payload_from_index",
             return_value=(durable_payload, {"ok": True}),
         ):
             record, error, status_code = _get_bounded_response_lookup_record(
@@ -38085,12 +38093,12 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             ],
             "runtime": {
                 "request_phase_graph": {
-                    "kind": "ollmo.request_phase_graph",
+                    "kind": "fruth.request_phase_graph",
                     "nodes": [{"id": "phase-1", "bulk": bulk}],
                 },
                 "developer_diagnostics": {"bulk": bulk},
             },
-            "working_frame": {"kind": "ollmo.working_frame", "bulk": bulk},
+            "working_frame": {"kind": "fruth.working_frame", "bulk": bulk},
         }
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -38106,8 +38114,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 response_id,
                 frames_dir=frames_dir,
             )["response_frame"]
-            with patch("ollmo_webserver.RESPONSE_FRAMES_DIR", frames_dir), patch(
-                "ollmo_webserver._load_latest_response_state",
+            with patch("fruth_webserver.RESPONSE_FRAMES_DIR", frames_dir), patch(
+                "fruth_webserver._load_latest_response_state",
                 side_effect=AssertionError("POST wire projection must not hydrate canonical state"),
             ):
                 projected = _project_response_payload_for_wire(source_payload)
@@ -38128,7 +38136,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
     def test_bounded_lookup_preserves_frozen_graph_refs_while_overlaying_slot_state(self):
         response_id = "resp_bounded_lookup_frozen_graph"
         graph_ref = {
-            "kind": "ollmo.response_frame_snapshot_ref",
+            "kind": "fruth.response_frame_snapshot_ref",
             "json_path": "planning.request_phase_graph",
             "path": "snapshots/content_sha256/aa/graph.json",
             "sha256": "a" * 64,
@@ -38140,7 +38148,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             "planning": {
                 "request_phase_graph_snapshot_ref": dict(graph_ref),
                 "artifact_flow": {
-                    "kind": "ollmo.artifact_flow_plan",
+                    "kind": "fruth.artifact_flow_plan",
                     "request_phase_graph_snapshot_ref": dict(graph_ref),
                     "output_slots": [
                         {
@@ -38222,7 +38230,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         }
 
         with patch(
-            "ollmo_webserver._attach_response_frame",
+            "fruth_webserver._attach_response_frame",
             side_effect=AssertionError("a frozen read frame must not be rebuilt"),
         ):
             projected = _build_response_lookup_ui_source_payload(record)
@@ -38306,7 +38314,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             "response_id": response_id,
             "planning": {
                 "artifact_flow": {
-                    "kind": "ollmo.artifact_flow_plan",
+                    "kind": "fruth.artifact_flow_plan",
                     "authoritative": False,
                     "compatibility_derived": True,
                     "output_slots": frozen_slots,
@@ -38688,7 +38696,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
     def test_lookup_frame_projects_current_slots_when_frozen_flow_is_empty(self):
         graph_ref = {
-            "kind": "ollmo.response_frame_snapshot_ref",
+            "kind": "fruth.response_frame_snapshot_ref",
             "path": "snapshots/content_sha256/aa/graph.json",
             "sha256": "a" * 64,
         }
@@ -39132,7 +39140,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         }
 
         with patch(
-            "ollmo_webserver._load_latest_response_state",
+            "fruth_webserver._load_latest_response_state",
             side_effect=AssertionError(
                 "live registration must not hydrate canonical response truth"
             ),
@@ -39140,7 +39148,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             record = _ensure_response_lookup_for_payload(
                 payload,
                 mode_hint="chat",
-                route_payload={"route_source": "ghost_carried"},
+                route_payload={"route_source": "inference_carried"},
             )
 
         self.assertEqual(record["id"], response_id)
@@ -39174,7 +39182,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                     "frame_sequence": int(persisted_old_frame["frame_sequence"]) + 1,
                 },
             }
-            with patch("ollmo_webserver.RESPONSE_FRAMES_DIR", frames_dir):
+            with patch("fruth_webserver.RESPONSE_FRAMES_DIR", frames_dir):
                 projected = _project_response_payload_for_wire(new_payload)
 
         self.assertEqual(projected["output_text"], "New finalized output.")
@@ -39212,11 +39220,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 "frame_sequence": [large_text],
                 "response_id": "resp_large_in_memory_wire_fallback",
                 "external_snapshots": {
-                    "kind": "ollmo.response_frame_external_snapshots",
+                    "kind": "fruth.response_frame_external_snapshots",
                     "effective_snapshot_count": [large_text],
                     "items": {
                         f"{large_manifest_token}-{index}": {
-                            "kind": "ollmo.response_frame_snapshot_ref",
+                            "kind": "fruth.response_frame_snapshot_ref",
                             "json_path": f"{large_manifest_token}.json_path.{index}",
                             "path": f"{large_manifest_token}.path.{index}",
                             "sha256": "a" * 64,
@@ -39386,10 +39394,10 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             "error": {"code": "response_frame_index_unverified"},
         }
         with patch(
-            "ollmo_webserver._response_wire_payload_from_index",
+            "fruth_webserver._response_wire_payload_from_index",
             return_value=(None, wire_failure),
         ), patch(
-            "ollmo_webserver._recover_response_lookup_record_from_frames",
+            "fruth_webserver._recover_response_lookup_record_from_frames",
             side_effect=AssertionError("unchanged ledger must not be rescanned"),
         ):
             record, error, status_code = _get_bounded_response_lookup_record(response_id)
@@ -39421,10 +39429,10 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             },
         }
         with patch(
-            "ollmo_webserver._response_wire_payload_from_index",
+            "fruth_webserver._response_wire_payload_from_index",
             return_value=(None, wire_failure),
         ), patch(
-            "ollmo_webserver._recover_response_lookup_record_from_frames",
+            "fruth_webserver._recover_response_lookup_record_from_frames",
             return_value=(recovered_record, None, 200),
         ) as mock_recover:
             refreshed, refreshed_error, refreshed_status = (
@@ -39452,7 +39460,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         persist_response_frame(
             {
                 "frame_version": 9,
-                "kind": "ollmo.response_frame",
+                "kind": "fruth.response_frame",
                 "response_id": response_id,
                 "status": "completed",
                 "output": {"item_count": len(outputs), "outputs": outputs},
@@ -39717,7 +39725,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             ],
             "runtime": {
                 "request_phase_graph": {
-                    "kind": "ollmo.request_phase_graph",
+                    "kind": "fruth.request_phase_graph",
                     "redraw_scope_ladder_review": {
                         "review_id": "scope-review-1",
                         "status": "selected",
@@ -39734,7 +39742,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                     "bulk": bulk,
                 },
                 "graph_closure_review": {
-                    "kind": "ollmo.graph_closure_review",
+                    "kind": "fruth.graph_closure_review",
                     "status": "fulfilled",
                     "checks": [{"status": "fulfilled", "bulk": bulk}],
                 },
@@ -39750,7 +39758,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 frames_dir=frames_dir,
             )
             _RESPONSE_LOOKUP.clear()
-            with patch("ollmo_webserver.RESPONSE_FRAMES_DIR", frames_dir):
+            with patch("fruth_webserver.RESPONSE_FRAMES_DIR", frames_dir):
                 debug_response = self.client.get(f"/api/responses/{response_id}?view=debug")
                 default_response = self.client.get(f"/api/responses/{response_id}")
                 truth_response = self.client.get(f"/api/responses/{response_id}?view=truth")
@@ -39907,12 +39915,12 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 'speed': 0.95,
                 'pitch': 1.05,
                 'tts_generation_budget': {
-                    'kind': 'ollmo.tts_generation_budget',
+                    'kind': 'fruth.tts_generation_budget',
                     'policy_id': 'qwen3_tts_adaptive_audio_tokens_v1',
                     'max_tokens': 384,
                 },
                 'tts_sampling_profile': {
-                    'kind': 'ollmo.tts_sampling_profile',
+                    'kind': 'fruth.tts_sampling_profile',
                     'policy_id': 'qwen3_tts_explicit_sampling_v1',
                     'temperature': 0.9,
                 },
@@ -39933,12 +39941,12 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'qwen3_tts_explicit_sampling_v1',
         )
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
-    @patch('ollmo_webserver._resolve_ghost_auto_route')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
+    @patch('fruth_webserver._resolve_inference_auto_route')
     def test_resolve_late_fill_route_uses_direct_phase_continuation_for_planner_deferred_follow_up(
         self,
-        mock_resolve_ghost_auto_route,
+        mock_resolve_inference_auto_route,
         mock_load_running_instances,
         mock_merge_instances,
     ):
@@ -39956,7 +39964,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         payload, route_info, route_error = _resolve_late_fill_route(
             {
-                'ghost_route': True,
+                'inference_route': True,
                 'prompt': 'A cinematic twilight lagoon with silver trees and glowing vines.',
             },
             expected_capability='image_generation',
@@ -39966,9 +39974,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 'expected_capability': 'image_generation',
             },
             source_route_payload={
-                'route_source': 'ghost_carried',
+                'route_source': 'inference_carried',
                 'route_runtime': {
-                    'request_phase_graph': {'kind': 'ollmo.request_phase_graph'},
+                    'request_phase_graph': {'kind': 'fruth.request_phase_graph'},
                 },
             },
         )
@@ -39978,11 +39986,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(route_info['route_source'], 'phase_continuation')
         self.assertEqual(route_info['capability'], 'image_generation')
         self.assertTrue(route_info['route_runtime']['phase_continuation']['active'])
-        mock_resolve_ghost_auto_route.assert_not_called()
+        mock_resolve_inference_auto_route.assert_not_called()
 
-    @patch('ollmo_webserver._external_targets_payload')
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver._external_targets_payload')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_external_source_continuation_is_graph_owned_chat_only(
         self,
         mock_load_running_instances,
@@ -40030,13 +40038,13 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                     'root_request_authority': (
                         'promoted_context_reference_only'
                     ),
-                    'materialization_authority': 'ollmo_runtime',
+                    'materialization_authority': 'fruth_runtime',
                 },
             },
         }
         source_route = (
             _LATE_FILL_RUNTIME._source_route_with_response_external_runtime(
-                {'source': 'ghost_carried'},
+                {'source': 'inference_carried'},
                 response_truth,
             )
         )
@@ -40051,7 +40059,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'branch_id': 'branch-chat-file-1',
             'phase_id': 'phase-2',
             'execution_contract': {
-                'kind': 'ollmo.execution_contract',
+                'kind': 'fruth.execution_contract',
                 'branch_id': 'branch-chat-file-1',
                 'phase_id': 'phase-2',
                 'capability': 'chat',
@@ -40075,7 +40083,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
         self.assertEqual(
             route_info['route_runtime']['materialization_authority'],
-            'ollmo_runtime',
+            'fruth_runtime',
         )
         mock_load_running_instances.assert_not_called()
 
@@ -40178,7 +40186,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 },
             },
             'recovery_attempt': {
-                'kind': 'ollmo.late_fill_recovery_attempt',
+                'kind': 'fruth.late_fill_recovery_attempt',
                 'trigger': 'explicit_retry_endpoint',
                 'branch_id': branch_id,
                 'capability': 'image_generation',
@@ -40190,7 +40198,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 'automatic_follow_up_allowed': False,
             },
             'recovery_state': {
-                'kind': 'ollmo.late_fill_recovery_state',
+                'kind': 'fruth.late_fill_recovery_state',
                 'status': 'attempting',
                 'trigger': 'explicit_retry_endpoint',
                 'branch_id': branch_id,
@@ -40274,8 +40282,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             )
         )
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_explicit_image_retry_reuses_only_exhausted_excluded_ready_pool(
         self,
         mock_load_running_instances,
@@ -40320,8 +40328,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertTrue(selected['excluded'])
         self.assertTrue(selected['excluded_reuse_applied'])
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_explicit_image_retry_prefers_nonexcluded_ready_candidate(
         self,
         mock_load_running_instances,
@@ -40351,8 +40359,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'excluded_reuse_for_explicit_image_retry',
         )
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_explicit_image_retry_requires_exact_policy_and_prompt_contract(
         self,
         mock_load_running_instances,
@@ -40379,8 +40387,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 self.assertIsNone(route_info)
                 self.assertIn('No non-excluded running instance', route_error)
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_explicit_image_retry_replaces_stale_snapshot_with_live_truth(
         self,
         mock_load_running_instances,
@@ -40506,7 +40514,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 },
             },
             'recovery_attempt': {
-                'kind': 'ollmo.late_fill_recovery_attempt',
+                'kind': 'fruth.late_fill_recovery_attempt',
                 'trigger': 'explicit_retry_endpoint',
                 'branch_id': branch_id,
                 'capability': 'text_to_speech',
@@ -40515,7 +40523,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 'excluded_instance_ids': [failed_instance_id],
             },
             'recovery_state': {
-                'kind': 'ollmo.late_fill_recovery_state',
+                'kind': 'fruth.late_fill_recovery_state',
                 'status': 'attempting',
                 'trigger': 'explicit_retry_endpoint',
                 'branch_id': branch_id,
@@ -40535,7 +40543,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         branch_id = 'branch-text_to_speech-1'
         source_text = 'The lighthouse welcomes every returning boat.'
         integrity_evidence = {
-            'kind': 'ollmo.tts_audio_integrity_evidence',
+            'kind': 'fruth.tts_audio_integrity_evidence',
             'version': 1,
             'policy_id': TTS_AUDIO_INTEGRITY_POLICY_ID,
             'authority': 'runtime_deterministic_audio_verification',
@@ -40849,8 +40857,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             )
         )
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_auto_tts_integrity_recovery_prefers_nonexcluded_alternative(
         self,
         mock_load_running_instances,
@@ -40901,8 +40909,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertTrue(failed_diagnostic['excluded'])
         self.assertFalse(failed_diagnostic['selected'])
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_auto_tts_integrity_recovery_reuses_only_sole_excluded_instance(
         self,
         mock_load_running_instances,
@@ -40948,8 +40956,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'tts_auto_recovery',
         )
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_auto_tts_no_compatible_recovery_reuses_only_live_sole_excluded_instance(
         self,
         mock_load_running_instances,
@@ -41071,8 +41079,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'NO_COMPATIBLE_INSTANCE',
         )
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_resolve_late_fill_route_prefers_nonexcluded_tts_alternative(
         self,
         mock_load_running_instances,
@@ -41100,8 +41108,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'excluded_reuse_for_single_tts_recovery',
         )
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_resolve_late_fill_route_reuses_sole_excluded_tts_for_explicit_recovery(
         self,
         mock_load_running_instances,
@@ -41148,8 +41156,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertTrue(selected_diagnostic['excluded_reuse_applied'])
         self.assertTrue(selected_diagnostic['usable'])
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_explicit_tts_retry_reuses_sole_failed_instance_after_no_compatible_instance(
         self,
         mock_load_running_instances,
@@ -41182,7 +41190,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 'preserve_intent': True,
             },
             'recovery_state': {
-                'kind': 'ollmo.late_fill_recovery_state',
+                'kind': 'fruth.late_fill_recovery_state',
                 'status': 'candidate',
                 'trigger': 'late_fill_failure',
                 'branch_id': 'branch-text_to_speech-1',
@@ -41248,8 +41256,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'excluded_reuse_for_single_tts_recovery',
         )
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_start_compatible_tts_recovery_requires_no_compatible_provenance(
         self,
         mock_load_running_instances,
@@ -41275,8 +41283,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertIsNone(route_info)
         self.assertIn('No non-excluded running instance', route_error)
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_tts_retry_wave_spec_prefers_branch_local_recovery_markers(
         self,
         mock_load_running_instances,
@@ -41375,8 +41383,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'excluded_reuse_for_single_tts_recovery',
         )
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_tts_recovery_ignores_unusable_alternative_for_sole_usable_count(
         self,
         mock_load_running_instances,
@@ -41417,8 +41425,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertFalse(offline_diagnostic['usable'])
         self.assertIn('not_ready', offline_diagnostic['rejection_reasons'])
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_resolve_late_fill_route_does_not_reuse_excluded_tts_outside_explicit_recovery(
         self,
         mock_load_running_instances,
@@ -41445,8 +41453,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertIsNone(route_info)
         self.assertIn('No non-excluded running instance', route_error)
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_resolve_late_fill_route_does_not_reuse_excluded_tts_for_optional_output(
         self,
         mock_load_running_instances,
@@ -41470,8 +41478,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertIsNone(route_info)
         self.assertIn('No non-excluded running instance', route_error)
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_resolve_late_fill_route_does_not_reuse_when_multiple_tts_candidates_are_excluded(
         self,
         mock_load_running_instances,
@@ -41496,8 +41504,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertIsNone(route_info)
         self.assertIn('No non-excluded running instance', route_error)
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_resolve_late_fill_route_refreshes_snapshot_before_reusing_excluded_tts(
         self,
         mock_load_running_instances,
@@ -41530,8 +41538,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             'snapshot_tts_recovery_requires_live_alternative_check',
         )
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_resolve_late_fill_route_honors_excluded_failed_instance_when_fallback_exists(
         self,
         mock_load_running_instances,
@@ -41579,8 +41587,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             ['chat-failed'],
         )
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_resolve_late_fill_route_does_not_fall_back_to_excluded_only_instance(
         self,
         mock_load_running_instances,
@@ -41617,8 +41625,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertIn('No non-excluded running instance', route_error)
         self.assertIn('chat-failed', route_error)
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_resolve_late_fill_route_reuses_excluded_candidate_for_authoritative_text_repair(
         self,
         mock_load_running_instances,
@@ -41645,7 +41653,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             failed_instance_id='chat-failed',
             excluded_instance_ids=['chat-failed'],
             artifact_gap={
-                'trigger': 'ghost_repair_feedback',
+                'trigger': 'inference_repair_feedback',
                 'expected_capability': 'chat',
                 'stage_direction': 'materialize_requested_text_artifact',
                 'requires_artifact': True,
@@ -41682,8 +41690,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(route_runtime['excluded_instance_ids'], ['chat-failed'])
         self.assertEqual(route_runtime['excluded_candidate_count'], 1)
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_degraded_image_instance_uses_ready_sibling_for_late_fill_route(
         self,
         mock_load_running_instances,
@@ -41739,8 +41747,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(route_info['instance_id'], ready_image['instance_id'])
         self.assertNotEqual(route_info['instance_id'], degraded_image['instance_id'])
 
-    @patch('ollmo_webserver.merge_instances_with_runtime_status')
-    @patch('ollmo_webserver.load_running_instances')
+    @patch('fruth_webserver.merge_instances_with_runtime_status')
+    @patch('fruth_webserver.load_running_instances')
     def test_lightweight_target_does_not_escalate_to_26b_during_active_image_generation(
         self,
         mock_load_running_instances,
@@ -41803,9 +41811,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(route_info['instance_id'], lightweight_chat['instance_id'])
         self.assertNotEqual(route_info['instance_id'], large_chat['instance_id'])
 
-    @patch('ollmo_server.infer_postprocess.threading.Thread')
-    @patch('ollmo_webserver._claim_generated_image_state_enrichment', return_value='/tmp/fake-image.png')
-    @patch('ollmo_webserver._get_cached_generated_image_state', return_value=None)
+    @patch('fruth_server.infer_postprocess.threading.Thread')
+    @patch('fruth_webserver._claim_generated_image_state_enrichment', return_value='/tmp/fake-image.png')
+    @patch('fruth_webserver._get_cached_generated_image_state', return_value=None)
     def test_enrich_generated_image_payload_marks_background_analysis_pending(
         self,
         _mock_cached_state,
@@ -41826,9 +41834,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(payload['image_state_enrichment']['mode'], 'background_analysis')
         mock_thread.return_value.start.assert_called_once()
 
-    @patch('ollmo_server.infer_postprocess.threading.Thread')
-    @patch('ollmo_webserver._claim_generated_image_state_enrichment', return_value=None)
-    @patch('ollmo_webserver._get_cached_generated_image_state', return_value=None)
+    @patch('fruth_server.infer_postprocess.threading.Thread')
+    @patch('fruth_webserver._claim_generated_image_state_enrichment', return_value=None)
+    @patch('fruth_webserver._get_cached_generated_image_state', return_value=None)
     def test_enrich_generated_image_payload_marks_existing_background_analysis_pending(
         self,
         _mock_cached_state,
@@ -41847,9 +41855,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(payload['image_state_enrichment']['mode'], 'background_analysis')
         mock_thread.return_value.start.assert_not_called()
 
-    @patch('ollmo_server.infer_postprocess.threading.Thread')
-    @patch('ollmo_webserver._claim_generated_image_state_enrichment', return_value='/tmp/fake-image.png')
-    @patch('ollmo_webserver._get_cached_generated_image_state', return_value=None)
+    @patch('fruth_server.infer_postprocess.threading.Thread')
+    @patch('fruth_webserver._claim_generated_image_state_enrichment', return_value='/tmp/fake-image.png')
+    @patch('fruth_webserver._get_cached_generated_image_state', return_value=None)
     def test_enrich_generated_image_payload_skips_background_analysis_when_suppressed(
         self,
         _mock_cached_state,
@@ -41869,9 +41877,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_claim_enrichment.assert_not_called()
         mock_thread.return_value.start.assert_not_called()
 
-    @patch('ollmo_server.infer_postprocess.threading.Thread')
-    @patch('ollmo_webserver._claim_generated_image_state_enrichment', return_value='/tmp/fake-image.png')
-    @patch('ollmo_webserver._get_cached_generated_image_state', return_value=None)
+    @patch('fruth_server.infer_postprocess.threading.Thread')
+    @patch('fruth_webserver._claim_generated_image_state_enrichment', return_value='/tmp/fake-image.png')
+    @patch('fruth_webserver._get_cached_generated_image_state', return_value=None)
     def test_enrich_generated_image_payload_skips_background_analysis_with_reason(
         self,
         _mock_cached_state,
@@ -41897,11 +41905,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_claim_enrichment.assert_not_called()
         mock_thread.return_value.start.assert_not_called()
 
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    def test_resolve_ghost_auto_route_phase_resolves_direct_image_request_when_router_times_out(
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    def test_resolve_inference_auto_route_phase_resolves_direct_image_request_when_router_times_out(
         self,
         mock_execute_router,
         mock_load_running_instances,
@@ -41931,28 +41939,28 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_execute_router.side_effect = RuntimeError("router timeout")
 
         with app.test_request_context("/api/responses", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": "generate an image of a storm over a neon harbor at night",
                 },
             )
 
         self.assertIsNone(resolution_error)
-        self.assertEqual(route_info["route_source"], "ghost_carried")
+        self.assertEqual(route_info["route_source"], "inference_carried")
         self.assertEqual(route_info["capability"], "chat")
-        self.assertEqual(route_info["route_runtime"]["ghost_resolution"]["status"], "phase_resolved")
+        self.assertEqual(route_info["route_runtime"]["inference_resolution"]["status"], "phase_resolved")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["current_phase_capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["request_phase_graph"]["downstream_capabilities"], ["image_generation"])
-        self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["routing_contract"], "ghost_primary")
+        self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["routing_contract"], "inference_primary")
         mock_execute_router.assert_not_called()
 
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    @patch("ollmo_webserver._execute_embedding_backend_request")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    def test_resolve_ghost_auto_route_skips_embedding_hints_when_disabled(
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    @patch("fruth_webserver._execute_embedding_backend_request")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    def test_resolve_inference_auto_route_skips_embedding_hints_when_disabled(
         self,
         mock_execute_router,
         mock_execute_embedding,
@@ -41986,9 +41994,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
 
         with app.test_request_context("/api/responses", method="POST"):
-            route_info, resolution_error = _resolve_ghost_auto_route(
+            route_info, resolution_error = _resolve_inference_auto_route(
                 {
-                    "ghost_route": True,
+                    "inference_route": True,
                     "prompt": "hello there",
                     "developer_flags": {
                         "embedding_signals_enabled": False,
@@ -42000,7 +42008,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(route_info["capability"], "chat")
         self.assertEqual(route_info["route_runtime"]["embedding_helper"]["reason"], "disabled_by_request_meta")
         self.assertFalse(route_info["route_runtime"]["developer_diagnostics"]["embedding_signals_enabled"])
-        self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["routing_contract"], "ghost_primary")
+        self.assertEqual(route_info["route_runtime"]["developer_diagnostics"]["routing_contract"], "inference_primary")
         mock_execute_embedding.assert_not_called()
 
     def _semantic_preview_instances(self):
@@ -42035,7 +42043,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         payload = {
             "prompt": "darker shadows",
             "conversation_id": "__responses_workbench__",
-            "ghost_messages": [
+            "inference_messages": [
                 {"role": "user", "content": "generate an image of a fox in a snowy forest"},
                 {
                     "role": "assistant",
@@ -42051,19 +42059,19 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         payload.update(extra)
         return payload
 
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._execute_embedding_backend_request")
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.build_ghost_payload", return_value={"recommendations": [], "issues": []})
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_ghost_route_preview_policy_off_skips_semantic_compute_when_omitted(
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._execute_embedding_backend_request")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.build_inference_payload", return_value={"recommendations": [], "issues": []})
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_inference_route_preview_policy_off_skips_semantic_compute_when_omitted(
         self,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
         _mock_resolve_artifact,
         mock_execute_embedding,
@@ -42075,11 +42083,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
 
         with patch.dict(os.environ, {
-            "OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS": "off",
-            "OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE": "deny",
+            "FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS": "off",
+            "FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE": "deny",
         }):
             response = self.client.post(
-                "/api/ghost_route_preview",
+                "/api/inference_route_preview",
                 json=self._semantic_preview_payload(),
             )
 
@@ -42100,19 +42108,19 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_execute_chat.assert_not_called()
         mock_plan_compound.assert_not_called()
 
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._execute_embedding_backend_request")
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.build_ghost_payload", return_value={"recommendations": [], "issues": []})
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_ghost_route_preview_semantic_explicit_compute_true_overrides_policy_off(
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._execute_embedding_backend_request")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.build_inference_payload", return_value={"recommendations": [], "issues": []})
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_inference_route_preview_semantic_explicit_compute_true_overrides_policy_off(
         self,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
         _mock_resolve_artifact,
         mock_execute_embedding,
@@ -42134,11 +42142,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_execute_embedding.side_effect = _fake_vectors
 
         with patch.dict(os.environ, {
-            "OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS": "off",
-            "OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE": "deny",
+            "FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS": "off",
+            "FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE": "deny",
         }):
             response = self.client.post(
-                "/api/ghost_route_preview",
+                "/api/inference_route_preview",
                 json=self._semantic_preview_payload(compute_semantics=True),
             )
 
@@ -42159,19 +42167,19 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_execute_chat.assert_not_called()
         mock_plan_compound.assert_called_once()
 
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._execute_embedding_backend_request")
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.build_ghost_payload", return_value={"recommendations": [], "issues": []})
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_ghost_route_preview_semantic_refresh_with_explicit_false_stays_passive(
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._execute_embedding_backend_request")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.build_inference_payload", return_value={"recommendations": [], "issues": []})
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_inference_route_preview_semantic_refresh_with_explicit_false_stays_passive(
         self,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
         _mock_resolve_artifact,
         mock_execute_embedding,
@@ -42183,11 +42191,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
 
         with patch.dict(os.environ, {
-            "OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS": "on",
+            "FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS": "on",
         }):
-            os.environ.pop("OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE", None)
+            os.environ.pop("FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE", None)
             response = self.client.post(
-                "/api/ghost_route_preview?refresh=true",
+                "/api/inference_route_preview?refresh=true",
                 json=self._semantic_preview_payload(compute_semantics=False),
             )
 
@@ -42205,19 +42213,19 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_execute_chat.assert_not_called()
         mock_plan_compound.assert_not_called()
 
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._execute_embedding_backend_request")
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.build_ghost_payload", return_value={"recommendations": [], "issues": []})
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_ghost_route_preview_semantic_policy_on_computes_when_omitted(
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._execute_embedding_backend_request")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.build_inference_payload", return_value={"recommendations": [], "issues": []})
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_inference_route_preview_semantic_policy_on_computes_when_omitted(
         self,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
         _mock_resolve_artifact,
         mock_execute_embedding,
@@ -42234,11 +42242,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_execute_embedding.side_effect = lambda **kwargs: [[1.0, 0.0] for _item in (kwargs.get("inputs") or [])]
 
         with patch.dict(os.environ, {
-            "OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS": "on",
-            "OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE": "deny",
+            "FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS": "on",
+            "FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE": "deny",
         }):
             response = self.client.post(
-                "/api/ghost_route_preview",
+                "/api/inference_route_preview",
                 json=self._semantic_preview_payload(),
             )
 
@@ -42254,19 +42262,19 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_execute_chat.assert_not_called()
         mock_plan_compound.assert_called_once()
 
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._execute_embedding_backend_request")
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.build_ghost_payload", return_value={"recommendations": [], "issues": []})
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_ghost_route_preview_semantic_default_policy_is_passive_when_env_omitted(
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._execute_embedding_backend_request")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.build_inference_payload", return_value={"recommendations": [], "issues": []})
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_inference_route_preview_semantic_default_policy_is_passive_when_env_omitted(
         self,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
         _mock_resolve_artifact,
         mock_execute_embedding,
@@ -42278,10 +42286,10 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_merge_instances.return_value = instances
 
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS", None)
-            os.environ.pop("OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE", None)
+            os.environ.pop("FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS", None)
+            os.environ.pop("FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE", None)
             response = self.client.post(
-                "/api/ghost_route_preview",
+                "/api/inference_route_preview",
                 json=self._semantic_preview_payload(),
             )
 
@@ -42300,19 +42308,19 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_execute_chat.assert_not_called()
         mock_plan_compound.assert_not_called()
 
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._execute_embedding_backend_request")
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.build_ghost_payload", return_value={"recommendations": [], "issues": []})
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_ghost_route_preview_semantic_explicit_false_default_allow_stays_passive(
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._execute_embedding_backend_request")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.build_inference_payload", return_value={"recommendations": [], "issues": []})
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_inference_route_preview_semantic_explicit_false_default_allow_stays_passive(
         self,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
         _mock_resolve_artifact,
         mock_execute_embedding,
@@ -42326,16 +42334,16 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         for policy in (None, "on", "auto"):
             with self.subTest(policy=policy):
                 env_update = (
-                    {"OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS": policy}
+                    {"FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS": policy}
                     if policy is not None
                     else {}
                 )
                 with patch.dict(os.environ, env_update):
                     if policy is None:
-                        os.environ.pop("OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS", None)
-                    os.environ.pop("OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE", None)
+                        os.environ.pop("FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS", None)
+                    os.environ.pop("FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE", None)
                     response = self.client.post(
-                        "/api/ghost_route_preview",
+                        "/api/inference_route_preview",
                         json=self._semantic_preview_payload(compute_semantics=False),
                     )
 
@@ -42351,19 +42359,19 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_execute_chat.assert_not_called()
         mock_plan_compound.assert_not_called()
 
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._execute_chat_backend_request")
-    @patch("ollmo_webserver._execute_embedding_backend_request")
-    @patch("ollmo_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
-    @patch("ollmo_webserver.read_events", return_value=[])
-    @patch("ollmo_webserver.build_ghost_payload", return_value={"recommendations": [], "issues": []})
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
-    def test_ghost_route_preview_semantic_explicit_false_can_be_denied_by_policy(
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._execute_chat_backend_request")
+    @patch("fruth_webserver._execute_embedding_backend_request")
+    @patch("fruth_webserver._resolve_saved_downloadable_artifact_path", side_effect=lambda value: value)
+    @patch("fruth_webserver.read_events", return_value=[])
+    @patch("fruth_webserver.build_inference_payload", return_value={"recommendations": [], "issues": []})
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
+    def test_inference_route_preview_semantic_explicit_false_can_be_denied_by_policy(
         self,
         mock_load_running_instances,
         mock_merge_instances,
-        _mock_build_ghost_payload,
+        _mock_build_inference_payload,
         _mock_read_events,
         _mock_resolve_artifact,
         mock_execute_embedding,
@@ -42380,11 +42388,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_execute_embedding.side_effect = lambda **kwargs: [[1.0, 0.0] for _item in (kwargs.get("inputs") or [])]
 
         with patch.dict(os.environ, {
-            "OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS": "on",
-            "OLLMO_GHOST_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE": "deny",
+            "FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS": "on",
+            "FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS_FALSE_OVERRIDE": "deny",
         }):
             response = self.client.post(
-                "/api/ghost_route_preview",
+                "/api/inference_route_preview",
                 json=self._semantic_preview_payload(compute_semantics=False),
             )
 
@@ -42400,9 +42408,9 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         mock_execute_chat.assert_not_called()
         mock_plan_compound.assert_called_once()
 
-    @patch("ollmo_webserver.plan_compound_execution")
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.plan_compound_execution")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_plan_compound_execution_payload_passes_planner_timeout_override(
         self,
         mock_load_running_instances,
@@ -42434,8 +42442,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         self.assertEqual(mock_plan_compound_execution.call_args.kwargs["planner_timeout_sec"], 12)
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_plan_compound_execution_payload_marks_story_read_aloud_prompt_as_deferred_audio(
         self,
         mock_load_running_instances,
@@ -42451,7 +42459,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         payload, planner_meta = _plan_compound_execution_payload(
             {
                 "prompt": prompt,
-                "ghost_messages": [{"role": "user", "content": prompt}],
+                "inference_messages": [{"role": "user", "content": prompt}],
             },
             route_info={
                 "capability": "chat",
@@ -42469,8 +42477,8 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(planner_meta["deferred_capability"], "text_to_speech")
         self.assertEqual(planner_meta["deferred_capabilities"], ["text_to_speech"])
 
-    @patch("ollmo_webserver.merge_instances_with_runtime_status")
-    @patch("ollmo_webserver.load_running_instances")
+    @patch("fruth_webserver.merge_instances_with_runtime_status")
+    @patch("fruth_webserver.load_running_instances")
     def test_plan_compound_execution_payload_marks_screenshot_translate_read_aloud_prompt_as_deferred_audio(
         self,
         mock_load_running_instances,
@@ -42479,7 +42487,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         prompt = (
             "From this screenshot, extract the exact quoted text, translate it into natural English, "
             "then read your English version aloud. If the active TTS model needs a speaker or style, "
-            "choose a sensible default automatically from what Ollmo already knows."
+            "choose a sensible default automatically from what Fruth already knows."
         )
         mock_load_running_instances.return_value = [{"instance_id": "vision-1"}]
         mock_merge_instances.return_value = [{"instance_id": "vision-1"}]
@@ -42487,7 +42495,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         payload, planner_meta = _plan_compound_execution_payload(
             {
                 "prompt": prompt,
-                "ghost_messages": [{"role": "user", "content": prompt}],
+                "inference_messages": [{"role": "user", "content": prompt}],
             },
             route_info={
                 "capability": "vision_analysis",
@@ -42504,11 +42512,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(planner_meta["trigger"], "text_first_tts_follow_up")
         self.assertEqual(planner_meta["deferred_capability"], "text_to_speech")
 
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_ghost_route_preview_includes_request_meta_and_developer_diagnostics(
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_inference_route_preview_includes_request_meta_and_developer_diagnostics(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_plan_compound_execution_payload,
     ):
         mock_plan_compound_execution_payload.side_effect = (
@@ -42518,7 +42526,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             )
         )
         request_meta = {
-            "ghost_mode": "improviser",
+            'semantic_role_ids': ['possibility_expander', 'materializer', 'quality_reviewer'],
             "capability_hint": "text_to_speech",
             "capability_hint_source": "request",
             "developer_flags": {
@@ -42526,7 +42534,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 "planner_timeout_ms": 12000,
             },
         }
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "tts-1",
                 "instance": {
@@ -42552,7 +42560,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                         "loop": {"max_passes": 1, "critic_passes": 0},
                     },
                     "developer_diagnostics": {
-                        "routing_contract": "ghost_primary",
+                        "routing_contract": "inference_primary",
                         "embedding_signals_enabled": True,
                         "planner_timeout_ms": 12000,
                     },
@@ -42562,11 +42570,11 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         )
 
         response = self.client.post(
-            "/api/ghost_route_preview",
+            "/api/inference_route_preview",
             json={
                 "prompt": "Summarize the latest OCR result and read it aloud in a calm voice.",
                 "capability_hint": "text_to_speech",
-                "ghost_mode": "improviser",
+                'semantic_role_ids': ['possibility_expander', 'materializer', 'quality_reviewer'],
                 "developer_flags": {
                     "planner_timeout_ms": 12000,
                 },
@@ -42575,15 +42583,15 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertEqual(payload["request_meta"]["ghost_mode"], "improviser")
+        self.assertEqual(payload["request_meta"]["semantic_role_ids"], ['possibility_expander', 'materializer', 'quality_reviewer'])
         self.assertEqual(payload["request_meta"]["capability_hint"], "text_to_speech")
         self.assertEqual(payload["runtime"]["semantic_role_profile"]["mode"], "improviser")
-        self.assertEqual(payload["runtime"]["developer_diagnostics"]["routing_contract"], "ghost_primary")
+        self.assertEqual(payload["runtime"]["developer_diagnostics"]["routing_contract"], "inference_primary")
         self.assertEqual(payload["runtime"]["developer_diagnostics"]["planner_timeout_ms"], 12000)
-        self.assertEqual(payload["working_frame"]["kind"], "ollmo.working_frame")
+        self.assertEqual(payload["working_frame"]["kind"], "fruth.working_frame")
         self.assertEqual(payload["working_frame"]["status"], "active")
         self.assertEqual(payload["working_frame"]["loop"]["max_passes"], 1)
-        self.assertEqual(payload["runtime"]["working_frame"]["kind"], "ollmo.working_frame")
+        self.assertEqual(payload["runtime"]["working_frame"]["kind"], "fruth.working_frame")
 
     def test_backend_handoff_preserves_explicit_client_preview_and_meta(self):
         client_preview = {
@@ -42593,14 +42601,14 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             },
         }
         client_request_meta = {
-            "ghost_mode": "improviser",
+            'semantic_role_ids': ['possibility_expander', 'materializer', 'quality_reviewer'],
             "capability_hint": "chat",
         }
         updated = _RESPONSES_REQUEST_RUNTIME.attach_backend_handoff_truth_to_request_payload(
             {
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "hello",
-                "ghost_preview": client_preview,
+                "inference_preview": client_preview,
                 "request_meta": client_request_meta,
             },
             {
@@ -42614,27 +42622,27 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 "capability": "image_generation",
                 "route_source": "router",
                 "request_meta": {
-                    "ghost_mode": "assistant",
+                    'semantic_role_ids': ['materializer', 'quality_reviewer', 'transition_committer'],
                     "capability_hint": "image_generation",
                 },
                 "route_runtime": {
                     "request_meta": {
-                        "ghost_mode": "assistant",
+                        'semantic_role_ids': ['materializer', 'quality_reviewer', 'transition_committer'],
                         "capability_hint": "image_generation",
                     },
                 },
             },
         )
 
-        self.assertEqual(updated["ghost_preview"], client_preview)
+        self.assertEqual(updated["inference_preview"], client_preview)
         self.assertEqual(updated["request_meta"], client_request_meta)
 
-    @patch("ollmo_webserver._invoke_internal_api_json_route")
-    @patch("ollmo_webserver._plan_compound_execution_payload")
-    @patch("ollmo_webserver._resolve_ghost_auto_route")
-    def test_canonical_responses_ghost_auto_includes_request_meta_and_developer_diagnostics(
+    @patch("fruth_webserver._invoke_internal_api_json_route")
+    @patch("fruth_webserver._plan_compound_execution_payload")
+    @patch("fruth_webserver._resolve_inference_auto_route")
+    def test_canonical_responses_inference_auto_includes_request_meta_and_developer_diagnostics(
         self,
-        mock_resolve_ghost_route,
+        mock_resolve_inference_route,
         mock_plan_compound_execution_payload,
         mock_invoke,
     ):
@@ -42645,7 +42653,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             )
         )
         request_meta = {
-            "ghost_mode": "improviser",
+            'semantic_role_ids': ['possibility_expander', 'materializer', 'quality_reviewer'],
             "capability_hint": "text_to_speech",
             "capability_hint_source": "request",
             "developer_flags": {
@@ -42653,7 +42661,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 "planner_timeout_ms": 12000,
             },
         }
-        mock_resolve_ghost_route.return_value = (
+        mock_resolve_inference_route.return_value = (
             {
                 "instance_id": "tts-1",
                 "instance": {
@@ -42679,7 +42687,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                         "loop": {"max_passes": 1, "critic_passes": 0},
                     },
                     "developer_diagnostics": {
-                        "routing_contract": "ghost_primary",
+                        "routing_contract": "inference_primary",
                         "embedding_signals_enabled": True,
                         "planner_timeout_ms": 12000,
                     },
@@ -42701,10 +42709,10 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         response = self.client.post(
             "/api/responses",
             json={
-                "ghost_route": True,
+                "inference_route": True,
                 "prompt": "Summarize the latest OCR result and read it aloud in a calm voice.",
                 "capability_hint": "text_to_speech",
-                "ghost_mode": "improviser",
+                'semantic_role_ids': ['possibility_expander', 'materializer', 'quality_reviewer'],
                 "developer_flags": {
                     "planner_timeout_ms": 12000,
                 },
@@ -42714,22 +42722,22 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         payload = self._canonical_truth_for_payload(payload)
-        self.assertEqual(payload["request_meta"]["ghost_mode"], "improviser")
+        self.assertEqual(payload["request_meta"]["semantic_role_ids"], ['possibility_expander', 'materializer', 'quality_reviewer'])
         self.assertEqual(payload["request_meta"]["capability_hint"], "text_to_speech")
         self.assertEqual(payload["runtime"]["semantic_role_profile"]["mode"], "improviser")
-        self.assertEqual(payload["runtime"]["developer_diagnostics"]["routing_contract"], "ghost_primary")
+        self.assertEqual(payload["runtime"]["developer_diagnostics"]["routing_contract"], "inference_primary")
         self.assertEqual(payload["runtime"]["developer_diagnostics"]["planner_timeout_ms"], 12000)
-        self.assertEqual(payload["working_frame"]["kind"], "ollmo.working_frame")
+        self.assertEqual(payload["working_frame"]["kind"], "fruth.working_frame")
         self.assertEqual(payload["working_frame"]["status"], "frozen")
         self.assertEqual(payload["response_frame"]["working_frame"]["status"], "frozen")
         request_frame = payload["response_frame"]["request"]
-        self.assertEqual(request_frame["request_meta"]["ghost_mode"], "improviser")
+        self.assertEqual(request_frame["request_meta"]["semantic_role_ids"], ['possibility_expander', 'materializer', 'quality_reviewer'])
         self.assertEqual(request_frame["request_meta"]["capability_hint"], "text_to_speech")
-        self.assertEqual(request_frame["ghost_preview"]["request_meta"]["ghost_mode"], "improviser")
-        self.assertEqual(request_frame["ghost_preview"]["request_meta"]["capability_hint"], "text_to_speech")
+        self.assertEqual(request_frame["inference_preview"]["request_meta"]["semantic_role_ids"], ['possibility_expander', 'materializer', 'quality_reviewer'])
+        self.assertEqual(request_frame["inference_preview"]["request_meta"]["capability_hint"], "text_to_speech")
         self.assertEqual(
-            request_frame["ghost_preview"]["runtime"]["developer_diagnostics"]["routing_contract"],
-            "ghost_primary",
+            request_frame["inference_preview"]["runtime"]["developer_diagnostics"]["routing_contract"],
+            "inference_primary",
         )
 
 

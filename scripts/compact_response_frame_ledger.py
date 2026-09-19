@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit or explicitly compact historical Response Frame Ghost previews."""
+"""Audit or explicitly compact historical Response Frame interpretive inference previews."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ollmo_services.response_frame_ledger_maintenance import (
+from fruth_services.response_frame_ledger_maintenance import (
     compact_response_frame_ledger,
 )
 
@@ -22,7 +22,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             'Audit response-frame sidecar integrity and compact oversized '
-            'historical request.ghost_preview payloads through the existing '
+            'historical request.inference_preview payloads through the existing '
             'SHA-256 content-addressed snapshot store.'
         )
     )
@@ -93,16 +93,16 @@ def _human_summary(report: Mapping[str, Any]) -> str:
         f"ledger_line_count={_number(preflight.get('ledger_line_count'))}",
         f"response_count={_number(preflight.get('response_count'))}",
         (
-            'inline_ghost_preview_frame_count='
-            f"{_number(preflight.get('inline_ghost_preview_frame_count'))}"
+            'inline_inference_preview_frame_count='
+            f"{_number(preflight.get('inline_inference_preview_frame_count'))}"
         ),
         (
-            'eligible_ghost_preview_frame_count='
-            f"{_number(preflight.get('eligible_ghost_preview_frame_count'))}"
+            'eligible_inference_preview_frame_count='
+            f"{_number(preflight.get('eligible_inference_preview_frame_count'))}"
         ),
         (
-            'inline_ghost_preview_bytes='
-            f"{_number(preflight.get('inline_ghost_preview_bytes'))}"
+            'inline_inference_preview_bytes='
+            f"{_number(preflight.get('inline_inference_preview_bytes'))}"
         ),
         (
             'estimated_reclaimable_inline_bytes='

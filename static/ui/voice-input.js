@@ -1,4 +1,4 @@
-const VOICE_INPUT_PREFERENCES_STORAGE_KEY = 'ollmo_voice_input_preferences_v1';
+const VOICE_INPUT_PREFERENCES_STORAGE_KEY = 'fruth_voice_input_preferences_v1';
 
 function sanitizeVoiceInputPreferenceTarget(rawValue) {
     if (!rawValue || typeof rawValue !== 'object') return null;
@@ -178,7 +178,7 @@ function buildVoiceInputPreferenceCandidateLabel(candidate) {
     return `${base} • unavailable`;
 }
 
-function populateVoiceInputPreferenceSelect(select, candidates, selectedTarget, emptyLabel = 'Ollmo default speech helper') {
+function populateVoiceInputPreferenceSelect(select, candidates, selectedTarget, emptyLabel = 'Fruth default speech helper') {
     if (!select) return;
     const normalizedSelected = sanitizeVoiceInputPreferenceTarget(selectedTarget);
     const selectedValue = serializeVoiceInputPreferenceTarget(normalizedSelected);
@@ -245,7 +245,7 @@ function renderVoiceInputPreferences() {
         elements.voiceInputPrimaryTarget,
         candidates,
         preferences.primaryTarget,
-        'Ollmo default speech helper'
+        'Fruth default speech helper'
     );
     populateVoiceInputPreferenceSelect(
         elements.voiceInputFallbackTarget,
@@ -587,7 +587,7 @@ function updateVoiceInputButtonState() {
     } else if (plan.instance) {
         elements.voiceInputBtn.title = `Record voice and transcribe with ${formatVoiceInputSpeechLabel(plan.instance)}.`;
     } else if (plan.candidate) {
-        elements.voiceInputBtn.title = `Record voice input. Ollmo will start ${buildVoiceInputPreferenceCandidateLabel(plan.candidate)} automatically.`;
+        elements.voiceInputBtn.title = `Record voice input. Fruth will start ${buildVoiceInputPreferenceCandidateLabel(plan.candidate)} automatically.`;
     } else {
         elements.voiceInputBtn.title = 'No runnable speech_to_text helper is available for voice input.';
     }

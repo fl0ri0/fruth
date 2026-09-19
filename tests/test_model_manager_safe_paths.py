@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from ollmo_runtime.ollama_model_manager import (
+from fruth_runtime.ollama_model_manager import (
     build_ollama_env,
     list_local_model_entries,
     safe_log_fragment,
@@ -22,14 +22,14 @@ class SafeLogFragmentTests(unittest.TestCase):
     def test_empty_fallback(self):
         self.assertEqual(safe_log_fragment(""), "model")
 
-    @patch("ollmo_runtime.ollama_model_manager.OLLAMA_LIBRARY_DIR_CANDIDATES", [Path("/opt/homebrew/lib")])
+    @patch("fruth_runtime.ollama_model_manager.OLLAMA_LIBRARY_DIR_CANDIDATES", [Path("/opt/homebrew/lib")])
     @patch("pathlib.Path.exists", return_value=True)
     def test_build_ollama_env_adds_library_paths_and_host(self, _mock_exists):
         with patch.dict(
             os.environ,
             {
-                'OLLMO_GRAPH_REBASE_OPERATOR_TOKEN': 'must-not-reach-model',
-                'OLLMO_GRAPH_REBASE_OPERATOR_IDENTITY': 'must-not-reach-model',
+                'FRUTH_GRAPH_REBASE_OPERATOR_TOKEN': 'must-not-reach-model',
+                'FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY': 'must-not-reach-model',
             },
             clear=True,
         ):
@@ -39,11 +39,11 @@ class SafeLogFragmentTests(unittest.TestCase):
         self.assertEqual(env["OLLAMA_LIBRARY_PATH"], "/opt/homebrew/lib")
         self.assertEqual(env["DYLD_LIBRARY_PATH"], "/opt/homebrew/lib")
         self.assertEqual(env["DYLD_FALLBACK_LIBRARY_PATH"], "/opt/homebrew/lib")
-        self.assertNotIn('OLLMO_GRAPH_REBASE_OPERATOR_TOKEN', env)
-        self.assertNotIn('OLLMO_GRAPH_REBASE_OPERATOR_IDENTITY', env)
+        self.assertNotIn('FRUTH_GRAPH_REBASE_OPERATOR_TOKEN', env)
+        self.assertNotIn('FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY', env)
 
-    @patch("ollmo_runtime.ollama_model_manager._fetch_model_metadata")
-    @patch("ollmo_runtime.ollama_model_manager.subprocess.run")
+    @patch("fruth_runtime.ollama_model_manager._fetch_model_metadata")
+    @patch("fruth_runtime.ollama_model_manager.subprocess.run")
     def test_list_local_model_entries_uses_provider_embedding_capability(
         self,
         mock_run,
@@ -60,8 +60,8 @@ class SafeLogFragmentTests(unittest.TestCase):
         self.assertEqual(entries[0]["capability"], "embedding")
         self.assertEqual(entries[0]["provider_capabilities"], ["embedding"])
 
-    @patch("ollmo_runtime.ollama_model_manager.requests.post")
-    @patch("ollmo_runtime.ollama_model_manager.time.sleep")
+    @patch("fruth_runtime.ollama_model_manager.requests.post")
+    @patch("fruth_runtime.ollama_model_manager.time.sleep")
     def test_wait_for_embedding_model_loaded_accepts_embed_response(self, _mock_sleep, mock_post):
         mock_response = Mock()
         mock_response.raise_for_status.return_value = None
@@ -74,12 +74,12 @@ class SafeLogFragmentTests(unittest.TestCase):
         self.assertIn("/api/embed", mock_post.call_args.args[0])
 
     @patch("pathlib.Path.mkdir")
-    @patch("ollmo_runtime.ollama_model_manager.open", create=True)
-    @patch("ollmo_runtime.ollama_model_manager.wait_for_embedding_model_loaded", return_value=True)
-    @patch("ollmo_runtime.ollama_model_manager.is_port_listening", return_value=True)
-    @patch("ollmo_runtime.ollama_model_manager.find_free_port", return_value=11435)
-    @patch("ollmo_runtime.ollama_model_manager.allocate_instance_id", return_value="embeddinggemma:latest-1")
-    @patch("ollmo_runtime.ollama_model_manager.subprocess.Popen")
+    @patch("fruth_runtime.ollama_model_manager.open", create=True)
+    @patch("fruth_runtime.ollama_model_manager.wait_for_embedding_model_loaded", return_value=True)
+    @patch("fruth_runtime.ollama_model_manager.is_port_listening", return_value=True)
+    @patch("fruth_runtime.ollama_model_manager.find_free_port", return_value=11435)
+    @patch("fruth_runtime.ollama_model_manager.allocate_instance_id", return_value="embeddinggemma:latest-1")
+    @patch("fruth_runtime.ollama_model_manager.subprocess.Popen")
     def test_start_model_persists_resolved_embedding_capability(
         self,
         mock_popen,

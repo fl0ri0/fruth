@@ -49,8 +49,8 @@ def preflight(root: Path, destination: Path, paths: list[str]) -> None:
     ancestor = destination.parent
     while not ancestor.exists():
         ancestor = ancestor.parent
-    if destination.parent.resolve() != root / '.ollmo_archiv':
-        raise ValueError('Archive base must be a real repo-local .ollmo_archiv directory')
+    if destination.parent.resolve() != root / '.fruth_archiv':
+        raise ValueError('Archive base must be a real repo-local .fruth_archiv directory')
     total = 0
     for relative in paths:
         source = root / relative

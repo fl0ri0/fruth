@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_services.response_artifact_bundles import bundle_response_artifacts
+from fruth_services.response_artifact_bundles import bundle_response_artifacts
 
 
 class ResponseArtifactBundleTests(unittest.TestCase):
@@ -1100,7 +1100,7 @@ class ResponseArtifactBundleTests(unittest.TestCase):
                     'response_frame': {
                         'request': {
                             'current_predecessor_context': {
-                                'kind': 'ollmo.current_predecessor_context',
+                                'kind': 'fruth.current_predecessor_context',
                                 'status': 'authorized',
                                 'authorization': (
                                     'canonical_same_conversation_predecessor'
@@ -1171,7 +1171,7 @@ class ResponseArtifactBundleTests(unittest.TestCase):
                     'response_frame': {
                         'request': {
                             'current_predecessor_context': {
-                                'kind': 'ollmo.current_predecessor_context',
+                                'kind': 'fruth.current_predecessor_context',
                                 'status': 'authorized',
                                 'authorization': (
                                     'canonical_same_conversation_predecessor'

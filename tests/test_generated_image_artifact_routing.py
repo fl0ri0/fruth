@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from ollmo_g.request_meta import extract_request_meta
-from ollmo_g.request_phase_graph import build_request_phase_graph
-from ollmo_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
-from ollmo_services.responses import build_canonical_response_artifacts
+from fruth_inference.request_meta import extract_request_meta
+from fruth_inference.request_phase_graph import build_request_phase_graph
+from fruth_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
+from fruth_services.responses import build_canonical_response_artifacts
 from tests.fake_backends import FakeBackendHarness
 from tests.fake_backends.fixtures import write_text
 
@@ -50,8 +50,8 @@ WEB_PROMPT = (
 def _graph(prompt):
     return build_request_phase_graph(
         prompt,
-        request_payload={"prompt": prompt, "ghost_route": True},
-        route_payload={"capability": "chat", "route_source": "ghost_carried"},
+        request_payload={"prompt": prompt, "inference_route": True},
+        route_payload={"capability": "chat", "route_source": "inference_carried"},
     )
 
 
@@ -260,7 +260,7 @@ def test_named_source_requires_its_exact_owed_graph_target(semantics, fault):
 @pytest.mark.parametrize("status", ["pending", "planned", "blocked", "failed", "active", "deferred"])
 @pytest.mark.parametrize("capability,output_type", [("image_generation", "image"), ("text_to_speech", "audio")])
 def test_terminal_materialization_retains_open_media_obligation(status, capability, output_type):
-    from ollmo_server.late_fill_runtime import LateFillRuntimeOwner
+    from fruth_server.late_fill_runtime import LateFillRuntimeOwner
 
     check = {"branch_id": "branch-image_generation-1", "phase_id": "phase-2",
              "role": "final_output", "capability": capability, "output_type": output_type,
@@ -271,7 +271,7 @@ def test_terminal_materialization_retains_open_media_obligation(status, capabili
 
 @pytest.mark.parametrize("status", ["fulfilled", "waived", "superseded", "reserved", "candidate"])
 def test_terminal_materialization_does_not_reopen_closed_or_optional_media(status):
-    from ollmo_server.late_fill_runtime import LateFillRuntimeOwner
+    from fruth_server.late_fill_runtime import LateFillRuntimeOwner
 
     check = {"capability": "image_generation", "output_type": "image", "role": "final_output",
              "obligation_id": "obligation-phase-2",
@@ -298,7 +298,7 @@ def test_html_reference_cannot_fulfill_a_requested_png(semantics, tmp_path):
         "artifacts": artifacts,
     }
     review = semantics.build_graph_closure_review(
-        payload["output_text"], request_payload={"prompt": WEB_PROMPT, "ghost_route": True},
+        payload["output_text"], request_payload={"prompt": WEB_PROMPT, "inference_route": True},
         artifact_payload=payload,
     )
     image_checks = _image_items(review["checks"])
@@ -307,11 +307,11 @@ def test_html_reference_cannot_fulfill_a_requested_png(semantics, tmp_path):
     assert not (tmp_path / "image.png").exists()
     # Exercise final closure too: text files and a successful CSS binding must
     # not erase the missing promoted media obligation.
-    import ollmo_webserver
+    import fruth_webserver
 
     with _GeneratedWebHarness() as harness:
-        finalized, status = ollmo_webserver._LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
-            payload, request_payload={"prompt": WEB_PROMPT, "ghost_route": True},
+        finalized, status = fruth_webserver._LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
+            payload, request_payload={"prompt": WEB_PROMPT, "inference_route": True},
             route_payload={"capability": "chat", "route_runtime": {"request_phase_graph": graph}},
             artifact_gap={}, terminal_status="completed",
         )
@@ -326,7 +326,7 @@ class _GeneratedWebHarness(FakeBackendHarness):
 
     The inherited harness supplies fake instances, routing, target selection,
     request preparation and provider I/O, plus temporary storage and disabled
-    background scheduler/log hooks. It does not exercise live Ghost routing.
+    background scheduler/log hooks. It does not exercise live interpretive inference routing.
     """
 
     def _build_instances(self):
@@ -337,9 +337,9 @@ class _GeneratedWebHarness(FakeBackendHarness):
             instance["runtime_status"].update(process_alive=True, port_listening=True)
         return instances
 
-    def _resolve_ghost_auto_route(self, data, *args, **kwargs):
-        route, error = super()._resolve_ghost_auto_route(data, *args, **kwargs)
-        if data.get("ghost_route") and not data.get("capability"):
+    def _resolve_inference_auto_route(self, data, *args, **kwargs):
+        route, error = super()._resolve_inference_auto_route(data, *args, **kwargs)
+        if data.get("inference_route") and not data.get("capability"):
             graph = _graph(data["prompt"])
             route["route_runtime"]["request_phase_graph"] = graph
         return route, error
@@ -438,7 +438,7 @@ def test_generated_png_provider_executes_before_web_materialization(semantics, p
     each executed result is supplied as its ordinary callback evidence.
     """
     import hashlib
-    import ollmo_webserver
+    import fruth_webserver
     import struct
     import zlib
 
@@ -446,7 +446,7 @@ def test_generated_png_provider_executes_before_web_materialization(semantics, p
         graph = _graph(prompt)
         response = {"id": "offline_generated_web", "output_text": "Image prompt: An orange sailboat on a blue lake.",
                     "runtime": {"request_phase_graph": graph}}
-        request = {"prompt": prompt, "ghost_route": True}
+        request = {"prompt": prompt, "inference_route": True}
         route = {"capability": "chat", "route_runtime": {"request_phase_graph": graph}}
         response = semantics.truth_gate_response_output_claims(
             response, request_payload=request, route_payload=route,
@@ -456,7 +456,7 @@ def test_generated_png_provider_executes_before_web_materialization(semantics, p
         gap = semantics.build_planner_deferred_follow_up_gap_spec(
             response["output_text"], route_payload=route,
         )
-        plan = ollmo_webserver._prepare_late_fill_branch_plan(
+        plan = fruth_webserver._prepare_late_fill_branch_plan(
             expected_capability="image_generation", artifact_gap={**gap, **image_branch},
             current_payload=response, request_payload=request,
             assistant_message=response["output_text"], source_route_payload=route,
@@ -464,34 +464,34 @@ def test_generated_png_provider_executes_before_web_materialization(semantics, p
         )
         assert plan["capability"] == "image_generation"
         assert plan["infer_payload"]["prompt"] != WEB_PROMPT
-        execution = ollmo_webserver._execute_prepared_late_fill_branch(plan)
+        execution = fruth_webserver._execute_prepared_late_fill_branch(plan)
         assert harness.calls["image_generation"] == 1
         assert Path(execution["infer_result"]["saved_image_path"]).is_file()
         assert execution["execution_contract"]["branch_id"] == image_branch["branch_id"]
         assert execution["execution_contract"]["phase_id"] == image_branch["phase_id"]
         response = _record_executed_branch(
-            ollmo_webserver._LATE_FILL_RUNTIME, response, execution,
+            fruth_webserver._LATE_FILL_RUNTIME, response, execution,
         )
         image_artifacts = response["artifacts"]
         assert len([item for item in image_artifacts if item["type"] == "image"]) == 1, image_artifacts
         for branch in graph["downstream_branches"]:
             if branch.get("role") != "text_artifact_output":
                 continue
-            plan = ollmo_webserver._prepare_late_fill_branch_plan(
+            plan = fruth_webserver._prepare_late_fill_branch_plan(
                 expected_capability="chat", artifact_gap={**gap, **branch},
                 current_payload=response, request_payload=request,
                 assistant_message=response["output_text"], source_route_payload=route,
                 failed_instance_id=None,
             )
-            execution = ollmo_webserver._execute_prepared_late_fill_branch(plan)
+            execution = fruth_webserver._execute_prepared_late_fill_branch(plan)
             assert execution["execution_contract"]["branch_id"] == branch["branch_id"]
             response = _record_executed_branch(
-                ollmo_webserver._LATE_FILL_RUNTIME, response, execution,
+                fruth_webserver._LATE_FILL_RUNTIME, response, execution,
             )
         assert harness.calls["image_generation"] == 1
         assert harness.calls["chat_materialization"] == 2
         assert len([p for p in harness.artifacts_dir.rglob("*") if p.is_file()]) == 3
-        finalized, status = ollmo_webserver._LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
+        finalized, status = fruth_webserver._LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
             response, request_payload=request, route_payload=route, artifact_gap=gap,
             terminal_status="completed",
         )
@@ -572,7 +572,7 @@ def test_ready_image_capability_does_not_turn_a_reference_into_generation():
     with _GeneratedWebHarness() as harness:
         assert harness.instances["image_generation"]["runtime_status"]["process_alive"] is True
         payload, status = harness.post_response({
-            "response_id": "offline_image_reference_only", "ghost_route": True, "prompt": prompt,
+            "response_id": "offline_image_reference_only", "inference_route": True, "prompt": prompt,
         })
         assert status == 200
         payload, status = harness.get_response("offline_image_reference_only", view="truth")
@@ -606,7 +606,7 @@ def test_background_color_does_not_create_hero_closure_work(semantics, tmp_path,
                              {"type": "text", "path": str(css), "extension": "css", "name": "styles"},
                              {"type": "image", "path": str(image)}]}
     review = semantics.build_graph_closure_review(
-        payload["output_text"], request_payload={"prompt": prompt, "ghost_route": True}, artifact_payload=payload,
+        payload["output_text"], request_payload={"prompt": prompt, "inference_route": True}, artifact_payload=payload,
     )
     checks = [c for c in review["checks"] if c.get("check_kind") == "linked_artifact_binding"]
     assert len(checks) == int(expects_hero or missing_link)

@@ -17,7 +17,7 @@ from scripts.self_attack_convergence import (
 )
 from scripts.run_graph_rebase_shadow_corpus import atomic_write_json, utc_now, CorpusError
 
-KIND = 'ollmo.production_ledger.convergence.v1'
+KIND = 'fruth.production_ledger.convergence.v1'
 TERMINAL = {'completed', 'failed', 'partial_failed', 'cancelled', 'repair_needed'}
 INPUT_COUNTS = ('pending_branch_count', 'active_branch_count', 'completed_branch_count', 'failed_branch_count', 'late_fill_status')
 
@@ -64,7 +64,7 @@ def index_history(state_dir):
                 if not rid:continue
                 indexed[rid].append(dict(role=message.get('role'),message_timestamp=message.get('timestamp'),
                     request_created_at=snapshot.get('created_at'),settings=snapshot.get('settings'),
-                    retained_ghost_preview=snapshot.get('ghost_preview'),
+                    retained_inference_preview=snapshot.get('inference_preview'),
                     request_id=snapshot.get('request_id'),conversation_id=snapshot.get('conversation_id'),
                     evidence=evidence_ref(path,pointer=f'/messages/{i}',sha256=digest)))
         except (ValueError,OSError) as exc:errors.append(dict(path=str(path),error=str(exc)))
@@ -178,7 +178,7 @@ def lock_waits(batches):
 
 
 def expand_exact_frames(items):
-    from ollmo_services.response_frames import _effective_snapshot_manifest, _expand_frame_snapshot_manifest
+    from fruth_services.response_frames import _effective_snapshot_manifest, _expand_frame_snapshot_manifest
     known={};expanded=[];errors=[]
     for item in items:
         frame=item['frame'];relation=frame.get('frame_relation') or {}
@@ -194,7 +194,7 @@ def expand_exact_frames(items):
 
 
 def hydrate_response(rid, items, frames_dir, output):
-    from ollmo_services.response_frames import _canonical_response_payload_from_frame
+    from fruth_services.response_frames import _canonical_response_payload_from_frame
     expanded,errors=expand_exact_frames(items);paths=[];frame_index=[]
     folder=output/'captures'/rid;folder.mkdir(parents=True,exist_ok=True)
     for item,frame in expanded:
@@ -223,7 +223,7 @@ def configuration(frame, history):
     request=frame.get('request') or {}
     controls=frame.get('controls') or {}
     fields=dict(frame_version=frame.get('frame_version'),recorded_controls=controls,
-                request_controls={k:request[k] for k in ('ghost_mode','developer_flags','ghost_preferences') if k in request})
+                request_controls={k:request[k] for k in ('semantic_role_ids','developer_flags','inference_preferences') if k in request})
     return dict(fingerprint=stable_digest(fields),**fields,
                 request_day=(request_start(history).get('at') or 'unknown')[:10],
                 runtime_build_identity=None,
@@ -238,7 +238,7 @@ def frame_status(frame):
 def instrumentation_summary(items, analysis):
     """Describe observed coverage, never infer an instrumentation epoch by date."""
     unique = {r['event_id']: r for r in items if isinstance(r, dict)
-              and r.get('schema') == 'ollmo.causal_event.v1' and isinstance(r.get('event_id'), str)}
+              and r.get('schema') == 'fruth.causal_event.v1' and isinstance(r.get('event_id'), str)}
     boots = sorted({r['process_boot_id'] for r in unique.values() if r.get('process_boot_id')})
     gaps = [r for r in unique.values() if r.get('record_kind') == 'coverage_gap']
     dropped = {}
@@ -366,7 +366,7 @@ def summarize_response(rid, items, history, events, monitor, output, frames_dir)
     counts['necessary_wait']+=len(lock_records);counts['unknown_wait']+=len(unknown_waits)
     report['causal_classification_counts']={key:counts[key] for key in (*CLASSES,'unknown_wait')}
     report['unknowns']={key:'unknown: no complete invocation/trigger/input/authority/evidence/consumption witness retained'
-        for key in ('Ghost_internal_order','actual_lens_passes','attention_trigger_relevance','aspiration_doubt_commitment_triggers',
+        for key in ('Inference_internal_order','actual_lens_passes','attention_trigger_relevance','aspiration_doubt_commitment_triggers',
                     'promotion_trigger_completeness','repair_rebase_trigger_completeness','missed_wakeup','over_trigger','avoidable_serialization','redundant_repeat','defensive_repeat','superseded_execution_cost')}
     atomic_write_json(path,report)
     return dict(response_id=rid,details_path=str(path),source_population=report['source_population'],
@@ -392,7 +392,7 @@ def render_production(result):
     a=result['aggregate'];lines=['# Production-ledger convergence audit','',
         '**Knobs may change strategy, never truth.** Every semantic movement should be explainable by the change that made it newly relevant.','',
         f"Audited {a['ordinary_responses']} ordinary production response identities ({a['ordinary_frames']} ledger frames). {a['self_attack_responses']} explicit corpus responses are indexed separately, excluded from production timing totals. {a['history_bound_user_turns']} ordinary responses have a saved user request witness.",'',
-        'Existing production state provides stronger evidence than capture-only analysis: response-bound request snapshots, typed retry events, and event-identified finalization step timers. It still does not generally identify individual Ghost/lens calls or their complete causal inputs. That is a limit on the audit, not a defect in Ollmo’s truth model.','',
+        'Existing production state provides stronger evidence than capture-only analysis: response-bound request snapshots, typed retry events, and event-identified finalization step timers. It still does not generally identify individual interpretive inference/lens calls or their complete causal inputs. That is a limit on the audit, not a defect in Fruth’s truth model.','',
         '## Slowest retained ordinary turns','',
         'Sorted by saved request snapshot to the last recorded terminal-owner checkpoint (or a labeled Late Fill completion boundary). This approximates a user’s elapsed turn span, not exact browser-visible latency or continuously busy runtime. Reopen/external pauses may be included. Missing endpoints remain unknown; assistant message timestamps and uncorrelated logs are not substitutes.','',
         '| Response | Request day / config | Elapsed span (min) | Boundary | Final ledger lifecycle | Details |',
@@ -445,7 +445,7 @@ def run_production_audit(frames_dir, output, *, repo=None):
     if ledger_meta.get('missing'):raise CorpusError('Production response ledger not found')
     history,history_files,history_errors=index_history(state_dir);input_errors+=history_errors
     event_rows,event_meta,errors=read_jsonl(state_dir/'events.jsonl');input_errors+=errors
-    monitor_rows,monitor_meta,errors=read_jsonl(state_dir/'ollmo_run_monitor/reports.jsonl');input_errors+=errors
+    monitor_rows,monitor_meta,errors=read_jsonl(state_dir/'fruth_run_monitor/reports.jsonl');input_errors+=errors
     events=defaultdict(list);monitors=defaultdict(list);unbound=Counter()
     for event,evidence,_ in event_rows:
         if event.get('response_id'):events[event['response_id']].append(dict(record=event,evidence=evidence))
@@ -459,8 +459,8 @@ def run_production_audit(frames_dir, output, *, repo=None):
         path=raw_dir/(str(evidence['line']).zfill(6)+'.json');path.write_bytes(raw)
         grouped[rid].append(dict(frame=frame,evidence=evidence,raw_copy=str(path)))
     del raw_rows
-    source_files=[Path(__file__),Path(__file__).with_name('self_attack_convergence.py'),Path(__file__).with_name('ollmo_self_attack.py'),
-                  repo/'ollmo_services/response_frames.py']
+    source_files=[Path(__file__),Path(__file__).with_name('self_attack_convergence.py'),Path(__file__).with_name('fruth_self_attack.py'),
+                  repo/'fruth_services/response_frames.py']
     source_hashes={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in source_files if p.is_file()}
     source_id=stable_digest(source_hashes)
     input_id=stable_digest([ledger_meta,event_meta,monitor_meta,history_files])
@@ -507,7 +507,7 @@ def run_production_audit(frames_dir, output, *, repo=None):
     if prior.is_file():
         p,digest=read_json(prior)
         comparison.update(sha256=digest,prior_aggregate=p.get('aggregate'),description=
-            'The earlier self-attack audit measured batch tails and recorded unchanged projections without proving semantic redundancy. Production state adds response-bound request times, explicit retry reasons and event-identified finalization steps, so some of those costs can now be attributed to persistence/readiness owners and some repeats to changed runtime state. Individual lens/Ghost input and trigger provenance remains largely unknown.')
+            'The earlier self-attack audit measured batch tails and recorded unchanged projections without proving semantic redundancy. Production state adds response-bound request times, explicit retry reasons and event-identified finalization steps, so some of those costs can now be attributed to persistence/readiness owners and some repeats to changed runtime state. Individual lens/interpretive inference input and trigger provenance remains largely unknown.')
     auxiliary=auxiliary_evidence(repo,[],set(ordinary),output/'auxiliary-evidence.json')
     latest=ledger_meta.copy();now=(frames_dir/'responses.jsonl').stat()
     latest['unchanged_through_audit']=(now.st_size,now.st_mtime_ns)==(ledger_meta['bytes'],ledger_meta['mtime_ns'])

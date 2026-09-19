@@ -1,9 +1,9 @@
 import unittest
 
-from ollmo_runtime.registry import read_registry_entries
-from ollmo_runtime.lifecycle import list_running_instances
-from ollmo_services.file_inputs import file_kind_from_name
-from ollmo_services.inference import InferArtifacts, InferContext
+from fruth_runtime.registry import read_registry_entries
+from fruth_runtime.lifecycle import list_running_instances
+from fruth_services.file_inputs import file_kind_from_name
+from fruth_services.inference import InferArtifacts, InferContext
 
 
 class LayerPackageTests(unittest.TestCase):

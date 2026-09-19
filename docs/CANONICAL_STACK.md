@@ -2,7 +2,7 @@
 
 For a practical repo-navigation view, read [Architecture Map](ARCHITECTURE_MAP.md). This note focuses on the layered model and canonical boundaries.
 
-The stack is the implementation body for Ollmo's deeper state model:
+The stack is the implementation body for Fruth's deeper state model:
 
 ```text
 Intent -> possibility space -> relevance -> promoted contracts -> runtime truth -> review -> freeze
@@ -10,7 +10,7 @@ Intent -> possibility space -> relevance -> promoted contracts -> runtime truth 
 
 Each layer exists to make that loop executable, inspectable, persistent, and available to external clients.
 
-`ollmo` is now organized around five primary layers:
+`fruth` is now organized around five primary layers:
 
 ## 1. `runtime core`
 
@@ -20,7 +20,7 @@ Authoritative local runtime substrate.
 - `model_ports.json` as source of truth
 - `state/runtime_status.json` as the dynamic runtime-status registry beside the stable model registry
 - `state/llama_cpp_catalog.json` as the durable source catalog for pulled/registered llama.cpp models
-- `ollmo_core/backend_fabric.py` as the normalized backend discovery/lifecycle contract layer above backend-specific runtime managers
+- `fruth_core/backend_fabric.py` as the normalized backend discovery/lifecycle contract layer above backend-specific runtime managers
 - `state/chat_history/` as the canonical durable history store for active UI conversations, including the Responses workbench, lineage rotation state, and the persisted message/request payloads that rebuild the frontend timeline
 - `artifacts/` as the canonical user-visible artifact tree, with generated outputs stored in typed buckets under `artifacts/`, saved request inputs under `artifacts/inputs/`, and audit/report outputs under `artifacts/audits/`
 - Ollama + MLX + llama.cpp runtime handling
@@ -30,18 +30,18 @@ Authoritative local runtime substrate.
 
 Primary package surface:
 
-- `ollmo_runtime/ollama_model_manager.py`
-- `ollmo_runtime/llama_cpp_model_manager.py`
-- `ollmo_runtime/mlx_model_manager.py`
-- `ollmo_runtime/registry.py`
-- `ollmo_runtime/lifecycle.py`
-- `ollmo_runtime/status.py`
-- `ollmo_core/backend_fabric.py`
+- `fruth_runtime/ollama_model_manager.py`
+- `fruth_runtime/llama_cpp_model_manager.py`
+- `fruth_runtime/mlx_model_manager.py`
+- `fruth_runtime/registry.py`
+- `fruth_runtime/lifecycle.py`
+- `fruth_runtime/status.py`
+- `fruth_core/backend_fabric.py`
 
 Compatibility backbone:
 
-- `ollmo_core/registry.py`
-- `ollmo_core/lifecycle.py`
+- `fruth_core/registry.py`
+- `fruth_core/lifecycle.py`
 
 ## 2. `service layer`
 
@@ -56,21 +56,21 @@ Runtime-adjacent product services built on top of the substrate.
 - infer history/cache
 - transport and artifact helpers
 - OCR/PDF helpers
-- Ghost runtime intelligence:
+- Interpretive inference runtime intelligence:
   - request phase graph derivation plus Auto routing from merged per-instance runtime truth
-  - pure candidate normalization and promotion review through `ollmo_g/candidate_contracts.py`
+  - pure candidate normalization and promotion review through `fruth_inference/candidate_contracts.py`
   - `candidate_graph` plus `promotion_review` as the general possibility-to-contract layer for outputs, workload tasks, context, references, evidence, repairs, continuations, and learning hints
   - deterministic `review_criteria` as runtime/closure checks, with `semantic_review_criteria` reserved for demand-gated semantic review
   - current-turn-only intake hygiene for fresh turns, with old history/artifacts admitted only as explicit reference or continuation context
-  - capability-safe Ghost preference boundaries for Auto routing
-  - file-backed semantic roles projected into advisory `semantic_role_profile`; compatibility `ghost_mode` handling is an API-edge alias only
+  - capability-safe interpretive inference preference boundaries for Auto routing
+  - file-backed semantic roles projected into advisory `semantic_role_profile`; explicit `semantic_role_ids` select advisory orientation only
   - post-route detail-fill / control-hint extraction
   - resolver/detail-fill and graph closure review aware of late fill with successor-frame updates
   - branch-local continuation: downstream branches consume their own payloads, prompts, dependency artifacts, and evidence instead of rerunning the full root prompt
   - artifact dossiers as the read-side evidence surface for durable artifact identity, provenance, enrichments, linked messages/responses, and availability
   - structured text/file artifact envelopes such as `output_obligations[].content` are unwrapped to the payload content before persistence
-  - route preview/runtime metadata plus archive/diagnostic Ghost memory and bounded self-observation support
-  - Ghost-owned image/audio requests now default to prepare-first on chat with downstream materialization branches; plain chat may still end at phase 1
+  - route preview/runtime metadata plus archive/diagnostic interpretive inference memory and bounded self-observation support
+  - interpretive inference-owned image/audio requests now default to prepare-first on chat with downstream materialization branches; plain chat may still end at phase 1
   - local backend model calls execute selected phases or materialize branches; graph/runtime truth decides fulfillment
   - visible file/artifact claims are truth-gated against runtime outputs before freeze
 
@@ -85,42 +85,42 @@ and the [current owner map](ARCHITECTURE_MAP.md#durable-state-continuation-and-o
 
 Primary package surface:
 
-- `ollmo_services/inference.py`
-- `ollmo_services/responses.py`
-- `ollmo_services/response_frames.py`
-- `ollmo_services/frame_planning.py`
-- `ollmo_services/control_snapshots.py`
-- `ollmo_services/settings_artifacts.py`
-- `ollmo_orchestration/working_frame.py`
-- `ollmo_services/file_inputs.py`
-- `ollmo_services/scoped_file_tools.py`
-- `ollmo_services/scoped_command_tools.py`
-- `ollmo_services/history.py`
-- `ollmo_services/transports.py`
-- `ollmo_services/ocr_pdf.py`
-- `ollmo_services/chat_history.py`
-- `ollmo_services/events.py`
-- `ollmo_g/payload.py`
-- `ollmo_g/semantic_role_profile.py`
-- `ollmo_g/ghost_mode_compat.py`
-- `ollmo_g/semantic_roles/registry.py`
-- `ollmo_g/semantic_roles/*.md`
-- `ollmo_g/router.py`
-- `ollmo_g/control_hints.py`
-- `ollmo_g/request_phase_graph.py`
-- `ollmo_g/candidate_contracts.py`
-- `ollmo_g/execution_planner.py`
-- `ollmo_g/memory.py`
+- `fruth_services/inference.py`
+- `fruth_services/responses.py`
+- `fruth_services/response_frames.py`
+- `fruth_services/frame_planning.py`
+- `fruth_services/control_snapshots.py`
+- `fruth_services/settings_artifacts.py`
+- `fruth_orchestration/working_frame.py`
+- `fruth_services/file_inputs.py`
+- `fruth_services/scoped_file_tools.py`
+- `fruth_services/scoped_command_tools.py`
+- `fruth_services/history.py`
+- `fruth_services/transports.py`
+- `fruth_services/ocr_pdf.py`
+- `fruth_services/chat_history.py`
+- `fruth_services/events.py`
+- `fruth_inference/payload.py`
+- `fruth_inference/semantic_role_profile.py`
+- `fruth_inference/semantic_roles/registry.py`
+- `fruth_inference/semantic_roles/registry.py`
+- `fruth_inference/semantic_roles/*.md`
+- `fruth_inference/router.py`
+- `fruth_inference/control_hints.py`
+- `fruth_inference/request_phase_graph.py`
+- `fruth_inference/candidate_contracts.py`
+- `fruth_inference/execution_planner.py`
+- `fruth_inference/memory.py`
 
 Compatibility backbone:
 
-- `ollmo_core/inference.py`
-- `ollmo_core/file_inputs.py`
-- `ollmo_core/history.py`
-- `ollmo_core/transports.py`
-- `ollmo_core/ocr_pdf.py`
+- `fruth_core/inference.py`
+- `fruth_core/file_inputs.py`
+- `fruth_core/history.py`
+- `fruth_core/transports.py`
+- `fruth_core/ocr_pdf.py`
 
-## 3. `ollmo ui`
+## 3. `fruth ui`
 
 Operator control room.
 
@@ -135,21 +135,21 @@ Operator control room.
 
 Primary implementation:
 
-- `ollmo_webserver.py`
-- `ollmo_server/infer_runtime.py` for infer request-shaping/execution ownership
-- `ollmo_server/infer_postprocess.py` for generated-image infer post-processing ownership
-- `ollmo_server/responses_runtime.py` for mutable Responses lookup/stream/late fill in-flight ownership
-- `ollmo_server/responses_request_runtime.py` for canonical `/api/responses` orchestration and batch-image dimension shaping ownership
-- `ollmo_server/request_intake_runtime.py` for request-intake normalization, explicit-target recovery, selected-reference extraction, and Ghost preference coercion ownership
-- `ollmo_server/response_semantics_runtime.py` for selected-reference semantics, prepare-phase contracts, semantic phase payloads, graph closure review construction, resolver deferred-gap shaping under `execution_planner`, and late fill state ownership
-- `ollmo_server/model_control_runtime.py` for backend-fabric, available-models, and lifecycle route-body ownership
-- `ollmo_server/infer_support_runtime.py` for input-artifact persistence, generic file/audio/PDF intake support, infer-history support, and cached PDF lookup/logging ownership
-- `ollmo_server/late_fill_runtime.py` for late fill branch resolver/executor ownership
-- `ollmo_server/ghost_route_runtime.py` for Ghost route-manifest/context/auto-route plus route-support ownership
-- `ollmo_server/ghost_route_runtime.py` also owns current-turn-only route-context hygiene and backend chat-message normalization for fresh turns
-- `ollmo_server/backend_transport_runtime.py` for provider request/stream/media adapter ownership
-- `ollmo_server/chat_runtime.py` for chat lifecycle and chat-streaming orchestration ownership
-- `ollmo_webUI.html` as the page shell, root state, startup wiring, and remaining inline conversation-timeline glue
+- `fruth_webserver.py`
+- `fruth_server/infer_runtime.py` for infer request-shaping/execution ownership
+- `fruth_server/infer_postprocess.py` for generated-image infer post-processing ownership
+- `fruth_server/responses_runtime.py` for mutable Responses lookup/stream/late fill in-flight ownership
+- `fruth_server/responses_request_runtime.py` for canonical `/api/responses` orchestration and batch-image dimension shaping ownership
+- `fruth_server/request_intake_runtime.py` for request-intake normalization, explicit-target recovery, selected-reference extraction, and interpretive inference preference coercion ownership
+- `fruth_server/response_semantics_runtime.py` for selected-reference semantics, prepare-phase contracts, semantic phase payloads, graph closure review construction, resolver deferred-gap shaping under `execution_planner`, and late fill state ownership
+- `fruth_server/model_control_runtime.py` for backend-fabric, available-models, and lifecycle route-body ownership
+- `fruth_server/infer_support_runtime.py` for input-artifact persistence, generic file/audio/PDF intake support, infer-history support, and cached PDF lookup/logging ownership
+- `fruth_server/late_fill_runtime.py` for late fill branch resolver/executor ownership
+- `fruth_server/inference_route_runtime.py` for interpretive inference route-manifest/context/auto-route plus route-support ownership
+- `fruth_server/inference_route_runtime.py` also owns current-turn-only route-context hygiene and backend chat-message normalization for fresh turns
+- `fruth_server/backend_transport_runtime.py` for provider request/stream/media adapter ownership
+- `fruth_server/chat_runtime.py` for chat lifecycle and chat-streaming orchestration ownership
+- `fruth_webUI.html` as the page shell, root state, startup wiring, and remaining inline conversation-timeline glue
 - `static/ui/messages.js`
 - `static/ui/conversations.js`
 - `static/ui/settings-history.js`
@@ -172,15 +172,15 @@ Current frontend history contract:
 
 Executable command/operator surface.
 
-- `scripts/ollmoctl.py`
+- `scripts/fruthctl.py`
 - `scripts/startup_model_manager.py`
 - `scripts/sync_model_providers.py`
 - `scripts/cleanup_model_providers.py`
 - `scripts/mlx_whisper_server.py`
 - optional diagnostics/utilities such as `scripts/model_provider_overview.py` and `scripts/probe_provider_concurrency.py`
-- `scripts/ollmoctl.py ghost` as the CLI surface for runtime-intelligence summaries
+- `scripts/fruthctl.py inference` as the CLI surface for runtime-intelligence summaries
 
-The provider sync/cleanup scripts are operator entrypoints. Their external-client implementation lives under `ollmo_integrations/`.
+The provider sync/cleanup scripts are operator entrypoints. Their external-client implementation lives under `fruth_integrations/`.
 
 ## 5. External Integrations
 
@@ -193,16 +193,16 @@ Consumers and client tunnels for the local runtime substrate.
 
 Primary implementation:
 
-- `ollmo_integrations/downstream_sync.py`
-- `ollmo_integrations/registry.py`
-- `ollmo_integrations/adapter_manifest.py`
-- `ollmo_integrations/provider_sync.py`
-- `ollmo_integrations/provider_unsync.py`
-- `ollmo_integrations/codex/config_sync.py`
-- `ollmo_integrations/codex/provider_cleanup.py`
-- `ollmo_integrations/codex/provider_unsync.py`
-- `GHOST.md` as the canonical Ghost runtime-policy source
-- `OLLMO_FOR_AGENTS.md` as the human/operator and external-client guide
+- `fruth_integrations/downstream_sync.py`
+- `fruth_integrations/registry.py`
+- `fruth_integrations/adapter_manifest.py`
+- `fruth_integrations/provider_sync.py`
+- `fruth_integrations/provider_unsync.py`
+- `fruth_integrations/codex/config_sync.py`
+- `fruth_integrations/codex/provider_cleanup.py`
+- `fruth_integrations/codex/provider_unsync.py`
+- `FRUTH_INFERENCE.md` as the canonical interpretive inference runtime-policy source
+- `FRUTH_FOR_AGENTS.md` as the human/operator and external-client guide
 
 Operator entrypoints:
 
@@ -212,8 +212,8 @@ Operator entrypoints:
 
 Adapter contract note:
 
-- Codex sync remains OpenAI-compatible and targets Ollmo control-plane `/v1` provider URLs.
-- shared external-client orchestration should live under `ollmo_integrations/` instead of being folded into general startup.
+- Codex sync remains OpenAI-compatible and targets Fruth control-plane `/v1` provider URLs.
+- shared external-client orchestration should live under `fruth_integrations/` instead of being folded into general startup.
 
 ## Output Layout
 
@@ -232,12 +232,12 @@ User-visible artifacts now live under:
 
 Mutable/frozen request-state note:
 
-- live request orchestration now uses `ollmo_orchestration/working_frame.py`
+- live request orchestration now uses `fruth_orchestration/working_frame.py`
 - the live working frame keeps explicit `possibility_space`, `candidate_graph`, `promotion_review`, and `closure` state while a request remains fluid
-- final frozen snapshots still persist through `ollmo_services/response_frames.py`
+- final frozen snapshots still persist through `fruth_services/response_frames.py`
 - graph-patch reopen after a terminal frame is represented as successor/reopen truth with parent-frame lineage, not as mutation of the old frozen frame
 - canonical Responses payloads may expose `runtime.graph_closure_review`, which records pre-freeze fulfillment/pending/blocked truth for the request phase graph
-- Archive/diagnostic Ghost memory surfaces can still read recent frozen working-frame outcomes from `state/response_frames/responses.jsonl` together with event-derived learnings and self-observations, while active self-learning keeps retained sidecars under `state/self_learning/retained_sidecars/`; live routing no longer consumes a separate derived memory chain
+- Archive/diagnostic interpretive inference memory surfaces can still read recent frozen working-frame outcomes from `state/response_frames/responses.jsonl` together with event-derived learnings and self-observations, while active self-learning keeps retained sidecars under `state/self_learning/retained_sidecars/`; live routing no longer consumes a separate derived memory chain
 
 Naming policy:
 
@@ -252,11 +252,11 @@ Default startup should favor the canonical stack:
 2. Start the current Flask UI/API.
 3. Leave external client projections untouched unless the operator explicitly runs a sync command.
 
-External integration sync belongs to explicit operator hooks such as `./ollmo sync`, not to start/stop/restart lifecycle points.
+External integration sync belongs to explicit operator hooks such as `./fruth sync`, not to start/stop/restart lifecycle points.
 
 Startup selection should stay capability-aware and runnable-only:
 
-- interactive startup surfaces should offer only sources Ollmo can actually launch now
+- interactive startup surfaces should offer only sources Fruth can actually launch now
 - cached-only discovery entries remain visible through `/api/available_models` and backend-fabric views, but they are not start choices until the required backend contract is available
 
 Canonical project environment:
@@ -267,16 +267,16 @@ The current HTTP control-plane implementation is Flask.
 
 ## Current Boundary
 
-The canonical stack above is the implemented Ollmo 0.1 runtime boundary.
+The canonical stack above is the implemented Fruth 0.1 runtime boundary.
 
-Ghost note:
+Interpretive inference note:
 
-- Ghost is part of the current canonical stack
-- Ghost is not the whole of Ollmo; it is the semantic/current-turn interpretation layer inside the larger runtime/control-plane substrate
-- Ghost owns intent anchoring and graph derivation; the resolver and late fill continue open graph obligations; runtime closure review decides what is real before freeze
-- file-backed semantic roles now live in `ollmo_g/semantic_roles/*.md` and compile into advisory orientation frames via `semantic_role_profile`; compatibility `ghost_mode` hints remain API-edge aliases and must not shape resolver patience, branch topology, payloads, or runtime truth outside the decision contract
+- The interpretive inference layer is part of the current canonical stack
+- The interpretive inference layer is not the whole of Fruth; it is the semantic/current-turn interpretation layer inside the larger runtime/control-plane substrate
+- The interpretive inference layer owns intent anchoring and graph derivation; the resolver and late fill continue open graph obligations; runtime closure review decides what is real before freeze
+- file-backed semantic roles now live in `fruth_inference/semantic_roles/*.md` and compile into advisory orientation frames via `semantic_role_profile`; explicit `semantic_role_ids` remain advisory and must not shape resolver patience, branch topology, payloads, or runtime truth outside the decision contract
 - its job is provider-neutral runtime intelligence inside the control plane:
   - route from live per-instance truth
-  - freeze every Ghost-owned request into `request_phase_graph`
+  - freeze every interpretive inference-owned request into `request_phase_graph`
   - surface route/runtime metadata back to the UI and clients
   - stay short of full orchestration

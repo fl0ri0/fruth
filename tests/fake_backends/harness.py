@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-import ollmo_webserver
-from ollmo_services.response_frames import load_latest_response_state
-from ollmo_services.responses import build_canonical_response_payload
+import fruth_webserver
+from fruth_services.response_frames import load_latest_response_state
+from fruth_services.responses import build_canonical_response_payload
 
 from .fixtures import (
     TEXT_ARTIFACT_CONTENT,
@@ -32,7 +32,7 @@ class FakeTranscriptionError(ValueError):
 
 
 class FakeBackendHarness:
-    """Patch Ollmo's response route to deterministic temp-root fake backends."""
+    """Patch Fruth's response route to deterministic temp-root fake backends."""
 
     def __init__(self, *, root: Path | None = None) -> None:
         self._persistent_root = root
@@ -62,7 +62,7 @@ class FakeBackendHarness:
         self.logs_dir = self.root / "logs"
         self.runtime_registry_path = self.root / "model_ports.json"
         self.runtime_status_path = self.state_dir / "runtime_status.json"
-        self.ghost_preferences_path = self.state_dir / "ghost_preferences.json"
+        self.inference_preferences_path = self.state_dir / "inference_preferences.json"
         for directory in (
             self.documents_dir,
             self.web_dir,
@@ -81,72 +81,72 @@ class FakeBackendHarness:
         )
         self.instances = self._build_instances()
 
-        self._prior_testing = ollmo_webserver.app.config.get("TESTING")
-        self._prior_lookup = dict(ollmo_webserver._RESPONSE_LOOKUP)
-        self._prior_in_flight = set(ollmo_webserver._RESPONSE_LATE_FILL_IN_FLIGHT)
-        ollmo_webserver._RESPONSE_LOOKUP.clear()
-        ollmo_webserver._RESPONSE_LATE_FILL_IN_FLIGHT.clear()
-        ollmo_webserver.app.config["TESTING"] = False
+        self._prior_testing = fruth_webserver.app.config.get("TESTING")
+        self._prior_lookup = dict(fruth_webserver._RESPONSE_LOOKUP)
+        self._prior_in_flight = set(fruth_webserver._RESPONSE_LATE_FILL_IN_FLIGHT)
+        fruth_webserver._RESPONSE_LOOKUP.clear()
+        fruth_webserver._RESPONSE_LATE_FILL_IN_FLIGHT.clear()
+        fruth_webserver.app.config["TESTING"] = False
 
         self._stack = ExitStack()
-        self._stack.enter_context(patch.object(ollmo_webserver, "CONFIG_FILE_NAME", str(self.runtime_registry_path)))
-        self._stack.enter_context(patch.object(ollmo_webserver, "RUNTIME_STATUS_PATH", self.runtime_status_path))
-        self._stack.enter_context(patch.object(ollmo_webserver, "RESPONSE_FRAMES_DIR", self.response_frames_dir))
-        self._stack.enter_context(patch.object(ollmo_webserver, "ARTIFACT_REGISTRY_LEDGER", self.registry_path))
-        self._stack.enter_context(patch.object(ollmo_webserver, "CHAT_HISTORY_DIR", self.chat_history_dir))
-        self._stack.enter_context(patch.object(ollmo_webserver, "GHOST_PREFERENCES_PATH", self.ghost_preferences_path))
+        self._stack.enter_context(patch.object(fruth_webserver, "CONFIG_FILE_NAME", str(self.runtime_registry_path)))
+        self._stack.enter_context(patch.object(fruth_webserver, "RUNTIME_STATUS_PATH", self.runtime_status_path))
+        self._stack.enter_context(patch.object(fruth_webserver, "RESPONSE_FRAMES_DIR", self.response_frames_dir))
+        self._stack.enter_context(patch.object(fruth_webserver, "ARTIFACT_REGISTRY_LEDGER", self.registry_path))
+        self._stack.enter_context(patch.object(fruth_webserver, "CHAT_HISTORY_DIR", self.chat_history_dir))
+        self._stack.enter_context(patch.object(fruth_webserver, "INFERENCE_PREFERENCES_PATH", self.inference_preferences_path))
         self._stack.enter_context(patch.object(
-            ollmo_webserver, "_resolve_saved_downloadable_artifact_path",
-            lambda path: ollmo_webserver._resolve_saved_artifact_path(
+            fruth_webserver, "_resolve_saved_downloadable_artifact_path",
+            lambda path: fruth_webserver._resolve_saved_artifact_path(
                 path, allowed_roots={self.artifacts_dir.resolve()}),
         ))
-        self._stack.enter_context(patch.object(ollmo_webserver, "load_running_instances", self._load_running_instances))
+        self._stack.enter_context(patch.object(fruth_webserver, "load_running_instances", self._load_running_instances))
         self._stack.enter_context(
-            patch.object(ollmo_webserver, "merge_instances_with_runtime_status", self._merge_instances_with_runtime_status)
+            patch.object(fruth_webserver, "merge_instances_with_runtime_status", self._merge_instances_with_runtime_status)
         )
         self._stack.enter_context(
-            patch.object(ollmo_webserver, "_resolve_responses_target_instance", self._resolve_responses_target_instance)
+            patch.object(fruth_webserver, "_resolve_responses_target_instance", self._resolve_responses_target_instance)
         )
-        self._stack.enter_context(patch.object(ollmo_webserver, "_resolve_ghost_auto_route", self._resolve_ghost_auto_route))
+        self._stack.enter_context(patch.object(fruth_webserver, "_resolve_inference_auto_route", self._resolve_inference_auto_route))
         self._stack.enter_context(
-            patch.object(ollmo_webserver, "_prepare_effective_request_data", self._prepare_effective_request_data)
-        )
-        self._stack.enter_context(
-            patch.object(ollmo_webserver, "_execute_chat_backend_request", self._execute_chat_backend_request)
+            patch.object(fruth_webserver, "_prepare_effective_request_data", self._prepare_effective_request_data)
         )
         self._stack.enter_context(
-            patch.object(ollmo_webserver, "_invoke_internal_api_json_route", self._invoke_internal_api_json_route)
+            patch.object(fruth_webserver, "_execute_chat_backend_request", self._execute_chat_backend_request)
         )
         self._stack.enter_context(
-            patch.object(ollmo_webserver, "_execute_embedding_backend_request", self._execute_embedding_backend_request)
+            patch.object(fruth_webserver, "_invoke_internal_api_json_route", self._invoke_internal_api_json_route)
+        )
+        self._stack.enter_context(
+            patch.object(fruth_webserver, "_execute_embedding_backend_request", self._execute_embedding_backend_request)
         )
         self._stack.enter_context(
             patch.object(
-                ollmo_webserver,
+                fruth_webserver,
                 "_persist_generated_text_artifact_if_requested",
                 self._persist_generated_text_artifact_if_requested,
             )
         )
-        self._stack.enter_context(patch.object(ollmo_webserver, "_schedule_response_late_fill", self._schedule_noop))
+        self._stack.enter_context(patch.object(fruth_webserver, "_schedule_response_late_fill", self._schedule_noop))
         self._stack.enter_context(
-            patch.object(ollmo_webserver, "_schedule_post_response_substrate_hygiene", self._schedule_noop)
+            patch.object(fruth_webserver, "_schedule_post_response_substrate_hygiene", self._schedule_noop)
         )
-        self._stack.enter_context(patch.object(ollmo_webserver, "_log_unified_event", self._log_noop))
-        self._stack.enter_context(patch.object(ollmo_webserver, "read_events", lambda *args, **kwargs: []))
+        self._stack.enter_context(patch.object(fruth_webserver, "_log_unified_event", self._log_noop))
+        self._stack.enter_context(patch.object(fruth_webserver, "read_events", lambda *args, **kwargs: []))
         self._stack.enter_context(
-            patch.object(ollmo_webserver, "build_ghost_payload", lambda *args, **kwargs: {"recommendations": [], "issues": []})
+            patch.object(fruth_webserver, "build_inference_payload", lambda *args, **kwargs: {"recommendations": [], "issues": []})
         )
-        self.client = ollmo_webserver.app.test_client()
+        self.client = fruth_webserver.app.test_client()
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         if self._stack is not None:
             self._stack.close()
-        ollmo_webserver.app.config["TESTING"] = self._prior_testing
-        ollmo_webserver._RESPONSE_LOOKUP.clear()
-        ollmo_webserver._RESPONSE_LOOKUP.update(self._prior_lookup)
-        ollmo_webserver._RESPONSE_LATE_FILL_IN_FLIGHT.clear()
-        ollmo_webserver._RESPONSE_LATE_FILL_IN_FLIGHT.update(self._prior_in_flight)
+        fruth_webserver.app.config["TESTING"] = self._prior_testing
+        fruth_webserver._RESPONSE_LOOKUP.clear()
+        fruth_webserver._RESPONSE_LOOKUP.update(self._prior_lookup)
+        fruth_webserver._RESPONSE_LATE_FILL_IN_FLIGHT.clear()
+        fruth_webserver._RESPONSE_LATE_FILL_IN_FLIGHT.update(self._prior_in_flight)
         if self._tmpdir is not None:
             self._tmpdir.cleanup()
 
@@ -159,17 +159,17 @@ class FakeBackendHarness:
         response = self.client.get(f"/api/responses/{response_id}", query_string=query_string)
         return response.get_json(), response.status_code
 
-    def ghost_preview(
+    def inference_preview(
         self,
         payload: dict[str, Any],
         *,
         query_string: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], int]:
-        response = self.client.post("/api/ghost_route_preview", json=payload, query_string=query_string)
+        response = self.client.post("/api/inference_route_preview", json=payload, query_string=query_string)
         return response.get_json(), response.status_code
 
     def clear_response_lookup(self) -> None:
-        ollmo_webserver._RESPONSE_LOOKUP.clear()
+        fruth_webserver._RESPONSE_LOOKUP.clear()
 
     def registry_records(self) -> list[dict[str, Any]]:
         if not self.registry_path.exists():
@@ -204,7 +204,7 @@ class FakeBackendHarness:
         response_payload = dict(payload)
         if "object" not in response_payload:
             response_payload["object"] = "response"
-        finalized = ollmo_webserver._finalize_response_frame_payload(
+        finalized = fruth_webserver._finalize_response_frame_payload(
             response_payload,
             request_payload=request_payload or {"prompt": "fake frozen response"},
             persist=True,
@@ -316,7 +316,7 @@ class FakeBackendHarness:
             "route_runtime": {
                 "truth_source": "fake_backend_harness",
                 "request_phase_graph": {
-                    "kind": "ollmo.request_phase_graph",
+                    "kind": "fruth.request_phase_graph",
                     "current_phase_id": "phase-1",
                     "phases": [
                         {
@@ -341,7 +341,7 @@ class FakeBackendHarness:
             },
         }
 
-    def _resolve_ghost_auto_route(self, data: Any, *args: Any, **kwargs: Any) -> tuple[dict[str, Any] | None, str | None]:
+    def _resolve_inference_auto_route(self, data: Any, *args: Any, **kwargs: Any) -> tuple[dict[str, Any] | None, str | None]:
         preview = bool(kwargs.get("preview_mode"))
         compute_semantics = bool(kwargs.get("compute_semantics"))
         capability = self._capability_from_payload(data)
@@ -513,9 +513,9 @@ class FakeBackendHarness:
             }
         elif capability == "speech_to_text":
             file_path = str(request_payload.get("file_path") or "").strip()
-            references = ollmo_webserver._extract_selected_reference_artifacts(request_payload)
+            references = fruth_webserver._extract_selected_reference_artifacts(request_payload)
             has_audio_reference = any(item.get("type") == "audio" for item in references)
-            suppressed = ollmo_webserver.parse_bool(
+            suppressed = fruth_webserver.parse_bool(
                 request_payload.get("suppress_reference_file_context"), default=False)
             if direct_audio_dependency is not None and (not file_path or not has_audio_reference or suppressed):
                 return {"error": "Direct audio dependency input binding missing."}, 400
@@ -526,11 +526,11 @@ class FakeBackendHarness:
                     # Only the provider/codec is fake; JSON never supplies authority.
                     with tempfile.TemporaryDirectory(dir=self.root) as directory:
                         copied = Path(directory) / "input.wav"
-                        resolved = ollmo_webserver._resolve_saved_downloadable_artifact_path(file_path)
+                        resolved = fruth_webserver._resolve_saved_downloadable_artifact_path(file_path)
                         if not resolved:
                             raise ValueError('Selected audio reference is invalid: source file unavailable.')
                         shutil.copyfile(resolved, copied)
-                        input_evidence = ollmo_webserver._INFER_RUNTIME.verify_selected_audio_input(
+                        input_evidence = fruth_webserver._INFER_RUNTIME.verify_selected_audio_input(
                             references, source_path=Path(file_path), temp_path=copied,
                             direct_audio_dependency=direct_audio_dependency,
                             execution_contract=request_payload.get("execution_contract"),

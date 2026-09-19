@@ -4,12 +4,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from ollmo_runtime import llama_cpp_model_manager
+from fruth_runtime import llama_cpp_model_manager
 
 
 class LlamaCppModelManagerTests(unittest.TestCase):
-    @patch('ollmo_runtime.llama_cpp_model_manager.resolve_llama_cli_bin')
-    @patch('ollmo_runtime.llama_cpp_model_manager.resolve_llama_server_bin')
+    @patch('fruth_runtime.llama_cpp_model_manager.resolve_llama_cli_bin')
+    @patch('fruth_runtime.llama_cpp_model_manager.resolve_llama_server_bin')
     def test_runtime_probe_reports_runnable_when_server_binary_exists(
         self,
         mock_server_bin,
@@ -25,8 +25,8 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertTrue(payload['detection']['server_detected'])
         self.assertTrue(payload['detection']['cli_detected'])
 
-    @patch('ollmo_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
-    @patch('ollmo_runtime.llama_cpp_model_manager._local_gguf_entries')
+    @patch('fruth_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
+    @patch('fruth_runtime.llama_cpp_model_manager._local_gguf_entries')
     def test_list_local_gguf_models_returns_catalog_entries(
         self,
         mock_local_entries,
@@ -42,10 +42,10 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertEqual(items[0]['model_source'], 'local_gguf')
         self.assertEqual(items[0]['model_path'], '/Users/example/Models/llama.cpp/gemma-3-1b-it-Q4_K_M.gguf')
 
-    @patch('ollmo_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
-    @patch('ollmo_runtime.llama_cpp_model_manager._read_catalog_entries', return_value=[])
-    @patch('ollmo_runtime.llama_cpp_model_manager._local_gguf_entries', return_value=[])
-    @patch('ollmo_runtime.llama_cpp_model_manager._huggingface_hub_cache_root')
+    @patch('fruth_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
+    @patch('fruth_runtime.llama_cpp_model_manager._read_catalog_entries', return_value=[])
+    @patch('fruth_runtime.llama_cpp_model_manager._local_gguf_entries', return_value=[])
+    @patch('fruth_runtime.llama_cpp_model_manager._huggingface_hub_cache_root')
     def test_list_available_llama_cpp_models_rediscovers_cached_hf_repo_without_catalog(
         self,
         mock_cache_root,
@@ -85,8 +85,8 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertIn('image', items[0]['inputs'])
         self.assertEqual(items[0]['backend_metadata']['source'], 'llama_cpp_hf_cache_scan')
 
-    @patch('ollmo_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
-    @patch('ollmo_runtime.llama_cpp_model_manager._local_gguf_entries')
+    @patch('fruth_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
+    @patch('fruth_runtime.llama_cpp_model_manager._local_gguf_entries')
     def test_list_local_gguf_models_keeps_multimodal_family_text_only_without_mmproj(
         self,
         mock_local_entries,
@@ -197,9 +197,9 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertEqual(defaults['batch_size'], 512)
         self.assertEqual(defaults['ubatch_size'], 192)
 
-    @patch('ollmo_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
-    @patch('ollmo_runtime.llama_cpp_model_manager._resolve_cached_hf_launch_artifacts')
-    @patch('ollmo_runtime.llama_cpp_model_manager._read_catalog_entries')
+    @patch('fruth_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
+    @patch('fruth_runtime.llama_cpp_model_manager._resolve_cached_hf_launch_artifacts')
+    @patch('fruth_runtime.llama_cpp_model_manager._read_catalog_entries')
     def test_list_llama_cpp_catalog_models_preserves_multimodal_truth_for_gemma4(
         self,
         mock_read_catalog,
@@ -234,9 +234,9 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertIn('vision_analysis', items[0]['supported_capabilities'])
         self.assertIn('image', items[0]['inputs'])
 
-    @patch('ollmo_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
-    @patch('ollmo_runtime.llama_cpp_model_manager._resolve_cached_hf_launch_artifacts', return_value=None)
-    @patch('ollmo_runtime.llama_cpp_model_manager._read_catalog_entries')
+    @patch('fruth_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
+    @patch('fruth_runtime.llama_cpp_model_manager._resolve_cached_hf_launch_artifacts', return_value=None)
+    @patch('fruth_runtime.llama_cpp_model_manager._read_catalog_entries')
     def test_list_llama_cpp_catalog_models_marks_uncached_hf_repo_as_non_runnable(
         self,
         mock_read_catalog,
@@ -262,9 +262,9 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertIn('cannot be started locally', items[0]['disabled_reason'])
         self.assertIn('Pull the model first', items[0]['disabled_reason'])
 
-    @patch('ollmo_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
-    @patch('ollmo_runtime.llama_cpp_model_manager._huggingface_hub_cache_root')
-    @patch('ollmo_runtime.llama_cpp_model_manager._read_catalog_entries')
+    @patch('fruth_runtime.llama_cpp_model_manager.describe_llama_cpp_runtime_probe')
+    @patch('fruth_runtime.llama_cpp_model_manager._huggingface_hub_cache_root')
+    @patch('fruth_runtime.llama_cpp_model_manager._read_catalog_entries')
     def test_list_llama_cpp_catalog_models_includes_size_from_hf_cache_snapshot(
         self,
         mock_read_catalog,
@@ -300,9 +300,9 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertAlmostEqual(items[0]['size_gb'], round((5 * 1024 * 1024) / (1024 ** 3), 2))
 
-    @patch('ollmo_runtime.llama_cpp_model_manager._upsert_catalog_entry')
-    @patch('ollmo_runtime.llama_cpp_model_manager.resolve_hf_cli_bin')
-    @patch('ollmo_runtime.llama_cpp_model_manager.subprocess.run')
+    @patch('fruth_runtime.llama_cpp_model_manager._upsert_catalog_entry')
+    @patch('fruth_runtime.llama_cpp_model_manager.resolve_hf_cli_bin')
+    @patch('fruth_runtime.llama_cpp_model_manager.subprocess.run')
     def test_pull_llama_cpp_model_uses_hf_cli_for_hf_repo_and_persists_catalog(
         self,
         mock_run,
@@ -346,7 +346,7 @@ class LlamaCppModelManagerTests(unittest.TestCase):
 
         self.assertEqual(resolved, str(hf_path))
 
-    @patch('ollmo_runtime.llama_cpp_model_manager.list_llama_cpp_instances', return_value=[])
+    @patch('fruth_runtime.llama_cpp_model_manager.list_llama_cpp_instances', return_value=[])
     def test_remove_llama_cpp_model_removes_hf_cache_and_catalog_entry(
         self,
         _mock_list_instances,
@@ -364,7 +364,7 @@ class LlamaCppModelManagerTests(unittest.TestCase):
             )
 
             with patch.object(llama_cpp_model_manager, 'CATALOG_PATH', catalog_path):
-                with patch('ollmo_runtime.llama_cpp_model_manager._huggingface_hub_cache_root', return_value=cache_root):
+                with patch('fruth_runtime.llama_cpp_model_manager._huggingface_hub_cache_root', return_value=cache_root):
                     success, message = llama_cpp_model_manager.remove_llama_cpp_model(
                         'ggml-org/gemma-4-E4B-it-GGUF',
                         model_source='hf_repo',
@@ -378,7 +378,7 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertFalse(repo_exists)
         self.assertEqual(catalog_contents, '[]')
 
-    @patch('ollmo_runtime.llama_cpp_model_manager.list_llama_cpp_instances', return_value=[])
+    @patch('fruth_runtime.llama_cpp_model_manager.list_llama_cpp_instances', return_value=[])
     def test_remove_llama_cpp_model_removes_local_gguf_and_mmproj(
         self,
         _mock_list_instances,
@@ -410,7 +410,7 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertFalse(mmproj_exists)
         self.assertEqual(catalog_contents, '[]')
 
-    @patch('ollmo_runtime.llama_cpp_model_manager.list_llama_cpp_instances', return_value=[])
+    @patch('fruth_runtime.llama_cpp_model_manager.list_llama_cpp_instances', return_value=[])
     def test_remove_llama_cpp_model_clears_stale_catalog_entry_when_cache_is_missing(
         self,
         _mock_list_instances,
@@ -424,7 +424,7 @@ class LlamaCppModelManagerTests(unittest.TestCase):
             )
 
             with patch.object(llama_cpp_model_manager, 'CATALOG_PATH', catalog_path):
-                with patch('ollmo_runtime.llama_cpp_model_manager._huggingface_hub_cache_root', return_value=cache_root):
+                with patch('fruth_runtime.llama_cpp_model_manager._huggingface_hub_cache_root', return_value=cache_root):
                     success, message = llama_cpp_model_manager.remove_llama_cpp_model(
                         'ggml-org/gemma-4-26B-A4B-it-GGUF',
                         model_source='hf_repo',
@@ -436,13 +436,13 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertIn('removed catalog entry', message)
         self.assertEqual(catalog_contents, '[]')
 
-    @patch('ollmo_runtime.llama_cpp_model_manager._register_instance')
-    @patch('ollmo_runtime.llama_cpp_model_manager._wait_for_server_ready')
-    @patch('ollmo_runtime.llama_cpp_model_manager._llama_cpp_launch_defaults')
-    @patch('ollmo_runtime.llama_cpp_model_manager._next_free_port')
-    @patch('ollmo_runtime.llama_cpp_model_manager._prune_stale_llama_cpp_entries')
-    @patch('ollmo_runtime.llama_cpp_model_manager.resolve_llama_server_bin')
-    @patch('ollmo_runtime.llama_cpp_model_manager.subprocess.Popen')
+    @patch('fruth_runtime.llama_cpp_model_manager._register_instance')
+    @patch('fruth_runtime.llama_cpp_model_manager._wait_for_server_ready')
+    @patch('fruth_runtime.llama_cpp_model_manager._llama_cpp_launch_defaults')
+    @patch('fruth_runtime.llama_cpp_model_manager._next_free_port')
+    @patch('fruth_runtime.llama_cpp_model_manager._prune_stale_llama_cpp_entries')
+    @patch('fruth_runtime.llama_cpp_model_manager.resolve_llama_server_bin')
+    @patch('fruth_runtime.llama_cpp_model_manager.subprocess.Popen')
     def test_start_llama_cpp_instance_uses_local_gguf_model_path(
         self,
         mock_popen,
@@ -507,14 +507,14 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertIn('auto', cmd)
         mock_register.assert_called_once()
 
-    @patch('ollmo_runtime.llama_cpp_model_manager._register_instance')
-    @patch('ollmo_runtime.llama_cpp_model_manager._wait_for_server_ready')
-    @patch('ollmo_runtime.llama_cpp_model_manager._llama_cpp_launch_defaults')
-    @patch('ollmo_runtime.llama_cpp_model_manager._latest_hf_snapshot_dir')
-    @patch('ollmo_runtime.llama_cpp_model_manager._next_free_port')
-    @patch('ollmo_runtime.llama_cpp_model_manager._prune_stale_llama_cpp_entries')
-    @patch('ollmo_runtime.llama_cpp_model_manager.resolve_llama_server_bin')
-    @patch('ollmo_runtime.llama_cpp_model_manager.subprocess.Popen')
+    @patch('fruth_runtime.llama_cpp_model_manager._register_instance')
+    @patch('fruth_runtime.llama_cpp_model_manager._wait_for_server_ready')
+    @patch('fruth_runtime.llama_cpp_model_manager._llama_cpp_launch_defaults')
+    @patch('fruth_runtime.llama_cpp_model_manager._latest_hf_snapshot_dir')
+    @patch('fruth_runtime.llama_cpp_model_manager._next_free_port')
+    @patch('fruth_runtime.llama_cpp_model_manager._prune_stale_llama_cpp_entries')
+    @patch('fruth_runtime.llama_cpp_model_manager.resolve_llama_server_bin')
+    @patch('fruth_runtime.llama_cpp_model_manager.subprocess.Popen')
     def test_start_llama_cpp_instance_uses_cached_hf_repo_locally_when_snapshot_exists(
         self,
         mock_popen,
@@ -581,14 +581,14 @@ class LlamaCppModelManagerTests(unittest.TestCase):
         self.assertIn('--ubatch-size', cmd)
         mock_register.assert_called_once()
 
-    @patch('ollmo_runtime.llama_cpp_model_manager._register_instance')
-    @patch('ollmo_runtime.llama_cpp_model_manager._wait_for_server_ready')
-    @patch('ollmo_runtime.llama_cpp_model_manager._llama_cpp_launch_defaults')
-    @patch('ollmo_runtime.llama_cpp_model_manager._latest_hf_snapshot_dir', return_value=None)
-    @patch('ollmo_runtime.llama_cpp_model_manager._next_free_port')
-    @patch('ollmo_runtime.llama_cpp_model_manager._prune_stale_llama_cpp_entries')
-    @patch('ollmo_runtime.llama_cpp_model_manager.resolve_llama_server_bin')
-    @patch('ollmo_runtime.llama_cpp_model_manager.subprocess.Popen')
+    @patch('fruth_runtime.llama_cpp_model_manager._register_instance')
+    @patch('fruth_runtime.llama_cpp_model_manager._wait_for_server_ready')
+    @patch('fruth_runtime.llama_cpp_model_manager._llama_cpp_launch_defaults')
+    @patch('fruth_runtime.llama_cpp_model_manager._latest_hf_snapshot_dir', return_value=None)
+    @patch('fruth_runtime.llama_cpp_model_manager._next_free_port')
+    @patch('fruth_runtime.llama_cpp_model_manager._prune_stale_llama_cpp_entries')
+    @patch('fruth_runtime.llama_cpp_model_manager.resolve_llama_server_bin')
+    @patch('fruth_runtime.llama_cpp_model_manager.subprocess.Popen')
     def test_start_llama_cpp_instance_rejects_uncached_hf_repo(
         self,
         mock_popen,
@@ -635,14 +635,14 @@ class LlamaCppModelManagerTests(unittest.TestCase):
 
         mock_popen.assert_not_called()
 
-    @patch('ollmo_runtime.llama_cpp_model_manager._register_instance')
-    @patch('ollmo_runtime.llama_cpp_model_manager._wait_for_server_ready')
-    @patch('ollmo_runtime.llama_cpp_model_manager._llama_cpp_launch_defaults')
-    @patch('ollmo_runtime.llama_cpp_model_manager._next_free_port')
-    @patch('ollmo_runtime.llama_cpp_model_manager._prune_stale_llama_cpp_entries')
-    @patch('ollmo_runtime.llama_cpp_model_manager._resolve_model_source')
-    @patch('ollmo_runtime.llama_cpp_model_manager.resolve_llama_server_bin')
-    @patch('ollmo_runtime.llama_cpp_model_manager.subprocess.Popen')
+    @patch('fruth_runtime.llama_cpp_model_manager._register_instance')
+    @patch('fruth_runtime.llama_cpp_model_manager._wait_for_server_ready')
+    @patch('fruth_runtime.llama_cpp_model_manager._llama_cpp_launch_defaults')
+    @patch('fruth_runtime.llama_cpp_model_manager._next_free_port')
+    @patch('fruth_runtime.llama_cpp_model_manager._prune_stale_llama_cpp_entries')
+    @patch('fruth_runtime.llama_cpp_model_manager._resolve_model_source')
+    @patch('fruth_runtime.llama_cpp_model_manager.resolve_llama_server_bin')
+    @patch('fruth_runtime.llama_cpp_model_manager.subprocess.Popen')
     def test_start_llama_cpp_instance_archives_existing_log_before_launch(
         self,
         mock_popen,

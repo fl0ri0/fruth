@@ -1,7 +1,7 @@
 """The object of a format/cardinality constraint must retain its own polarity."""
 import pytest
 
-from ollmo_g.intent import analyze_prompt_intent
+from fruth_inference.intent import analyze_prompt_intent
 
 
 @pytest.mark.parametrize('prompt', [

@@ -1,16 +1,18 @@
 from copy import deepcopy
+from http.client import IncompleteRead
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
-from scripts.ollmo_self_attack import (
+from scripts.fruth_self_attack import (
     CaptureClient, PRIORITIES, check_expectations, evaluate_capture, isolated_profile,
     materialize_corpus, minimize_failure, run_profile, signatures,
 )
 from scripts.self_attack_checks import audit_history, audit_truth, compare_profiles
 from scripts.self_attack_knobs import build_profiles, discover_knobs
-from scripts.run_graph_rebase_shadow_corpus import HttpResult
+from scripts.run_graph_rebase_shadow_corpus import HttpResult, JsonHttpClient
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,7 +38,7 @@ def test_oracle_never_uses_prose_and_missing_graph_cannot_pass():
     value['runtime']['graph_closure_review']['status'] = 'blocked'
     value['output_text'] = 'PASS! Every requirement fulfilled!'
     assert 'false_closure' in codes(value)
-    value['runtime']['request_phase_graph'] = {'kind': 'ollmo.request_phase_graph'}
+    value['runtime']['request_phase_graph'] = {'kind': 'fruth.request_phase_graph'}
     assert 'runtime.request_phase_graph.intent_obligations' in audit_truth(value)['missing']
 
 
@@ -64,7 +66,7 @@ def test_stopped_branch_and_sibling_evidence_cannot_be_accepted():
 def test_advisory_surfaces_cannot_claim_authority(kind):
     value = truth()
     value['runtime']['request_phase_graph']['decision_contract'] = {
-        f'{kind}_review': {'kind': f'ollmo.{kind}_review', 'authority': 'runtime_authority'}}
+        f'{kind}_review': {'kind': f'fruth.{kind}_review', 'authority': 'runtime_authority'}}
     assert 'advisory_runtime_authority' in codes(value)
 
 
@@ -157,7 +159,7 @@ def sample_corpus():
 
 
 def test_reducer_preserves_signature_requires_repetition_and_removes_noise():
-    profile = {'id': 'profile', 'settings': {'ghost_mode': 'worker'}, 'request': {'ghost_mode': 'worker'}, 'environment': {}}
+    profile = {'id': 'profile', 'settings': {'semantic_role_ids': ['materializer', 'quality_reviewer', 'transition_committer']}, 'request': {'semantic_role_ids': ['materializer', 'quality_reviewer', 'transition_committer']}, 'environment': {}}
     calls = []
     def replay(corpus, controls, attempt):
         calls.append(deepcopy(corpus))
@@ -221,7 +223,7 @@ def test_capture_retains_truth_read_without_spending_budget_on_duplicate_get(tmp
 
 
 def test_settled_capture_survives_debug_companion_timeout_with_fresh_truth(tmp_path, monkeypatch):
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     now = [0.0]
     monkeypatch.setattr(command.time, 'monotonic', lambda: now[0])
     payload = truth()
@@ -310,8 +312,45 @@ def test_companion_transport_exception_is_recorded_and_retried(tmp_path):
     assert json.loads(next((tmp_path / 'response').glob('*.json')).read_text())['source'] == 'settled'
 
 
+@pytest.mark.parametrize('recovers', [True, False])
+def test_truncated_companion_body_uses_bounded_retry_and_requires_complete_truth(tmp_path, recovers):
+    payload = truth()
+    responses = []
+    for value in ({'id': 'response'}, payload, payload):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.read.return_value = json.dumps(value).encode()
+        responses.append(response)
+    responses[1].read.side_effect = IncompleteRead(b'{"id":"response"', 200)
+    if not recovers:
+        responses[2].read.side_effect = IncompleteRead(b'{"id":"response"', 200)
+    transport = JsonHttpClient('http://127.0.0.1:5011')
+    transport._opener = MagicMock()
+    transport._opener.open.side_effect = responses
+
+    CaptureClient(transport, tmp_path).get('/api/responses/response?view=debug', timeout=30)
+
+    requests = [call.args[0] for call in transport._opener.open.call_args_list]
+    assert [request.get_method() for request in requests] == ['GET', 'GET', 'GET']
+    assert [request.full_url.rsplit('=', 1)[-1] for request in requests] == ['debug', 'truth', 'truth']
+    failures = [json.loads(p.read_text()) for p in (tmp_path / 'truth-fetch-failures').glob('*.json')]
+    assert sorted(f['attempt'] for f in failures) == ([1] if recovers else [1, 2])
+    assert all(f['max_attempts'] == 2 and f['http_status'] == 0
+               and 'IncompleteRead' in f['error'] for f in failures)
+    captures = [json.loads(p.read_text()) for p in (tmp_path / 'response').glob('*.json')]
+    if recovers:
+        assert len(captures) == 1 and captures[0]['source'] == 'settled'
+        assert captures[0]['payload'] == payload
+    else:
+        assert captures == []
+    manifest = {'cases': [dict(case_id='root', category='repair_rebase_intent',
+                              state='settled_terminal', response_id='response')]}
+    assert evaluate_capture(manifest, tmp_path)[0]['missing'] == ([] if recovers else ['settled_full_truth'])
+
+
 def test_companion_retry_cannot_exceed_sequence_deadline(tmp_path, monkeypatch):
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     now, calls = [0.0], []
     monkeypatch.setattr(command.time, 'monotonic', lambda: now[0])
     class Client:
@@ -347,7 +386,7 @@ def test_fresh_unsettled_truth_stays_observation_even_after_debug(tmp_path, chan
 
 
 def test_truth_returning_after_capture_deadline_stays_missing(tmp_path, monkeypatch):
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     now = [0.0]
     monkeypatch.setattr(command.time, 'monotonic', lambda: now[0])
     class Client:
@@ -370,10 +409,10 @@ def test_real_owner_probes_cover_all_five_boundaries_without_llm_authority():
     from tests.fake_backends.self_attack import SelfAttackBackend
     from tests.fake_backends.self_attack_probes import probe_boundaries
     with SelfAttackBackend():
-        result = probe_boundaries({'ghost_mode': 'explorer'})
+        result = probe_boundaries({'semantic_role_ids': ['possibility_expander', 'structural_planner', 'integrator']})
     assert {c['category'] for c in result['checks']} == {k for k, _ in PRIORITIES}
     assert all(c['status'] == 'passed' for c in result['checks'])
-    assert result['effective_controls']['semantic_role_profile']['mode'] == 'explorer'
+    assert result['effective_controls']['semantic_role_profile']['mode'] == 'explicit_roles'
 
 
 def test_all_discovered_profiles_preserve_all_five_owner_boundaries():
@@ -389,22 +428,22 @@ def test_all_discovered_profiles_preserve_all_five_owner_boundaries():
 
 
 def test_actual_two_turn_shadow_execution_captures_frames_and_restores_controls(tmp_path, monkeypatch):
-    monkeypatch.setenv('OLLMO_GRAPH_REBASE_AUTONOMY', 'shadow')
-    profile = {'id': 'off', 'settings': {'OLLMO_GRAPH_REBASE_AUTONOMY': 'off'}, 'request': {},
-               'environment': {'OLLMO_GRAPH_REBASE_AUTONOMY': 'off'}}
+    monkeypatch.setenv('FRUTH_GRAPH_REBASE_AUTONOMY', 'shadow')
+    profile = {'id': 'off', 'settings': {'FRUTH_GRAPH_REBASE_AUTONOMY': 'off'}, 'request': {},
+               'environment': {'FRUTH_GRAPH_REBASE_AUTONOMY': 'off'}}
     result = run_profile(sample_corpus(), profile, tmp_path / 'run', mode='fake', base_url='', cycles=400, namespace='unit')
     assert result['runner_status'] == 0
     assert len(result['cases']) == 2
     assert all(not c['missing'] for c in result['cases'])
     assert result['probes']['effective_controls']['rebase']['normalized'] == 'off'
     import os
-    assert os.environ['OLLMO_GRAPH_REBASE_AUTONOMY'] == 'shadow'
+    assert os.environ['FRUTH_GRAPH_REBASE_AUTONOMY'] == 'shadow'
     manifest = json.loads((tmp_path / 'run/manifest.json').read_text())
     assert manifest['cases'][0]['conversation_id'] == manifest['cases'][1]['conversation_id']
-    assert 'ghost_messages' in manifest['cases'][1]['dispatch_request']
+    assert 'inference_messages' in manifest['cases'][1]['dispatch_request']
     assert 'metadata' not in manifest['cases'][1]['dispatch_request']
     # Rechecking captured evidence must never dispatch another backend request.
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     prior = {'mode': 'fake', 'runs': [result], 'owner_tests': {k: {'status': 'passed'} for k, _ in PRIORITIES},
              'coverage': {'profiles_available': 1, 'profiles_selected': 1, 'design': 'test', 'inventory_only': 0}}
     (tmp_path / 'run/progress.json').write_text(json.dumps(prior))
@@ -417,7 +456,7 @@ def test_actual_two_turn_shadow_execution_captures_frames_and_restores_controls(
 
 
 def test_command_persists_reproducible_failures_and_replays_resolved_cases(tmp_path, monkeypatch):
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     from scripts.self_attack_checks import finding
     inventory = {'source_digest': 'test', 'controls': []}
     baseline = {'id': 'baseline', 'settings': {}, 'request': {}, 'environment': {}}
@@ -451,19 +490,19 @@ def test_command_persists_reproducible_failures_and_replays_resolved_cases(tmp_p
 def test_persisted_profile_cannot_inject_a_request_or_environment_control():
     from scripts.self_attack_knobs import validate_saved_profile
     from scripts.run_graph_rebase_shadow_corpus import CorpusError
-    inventory = {'controls': [dict(name='ghost_mode', values=['worker'], scope='request', disposition='sweep')]}
-    rebound = validate_saved_profile({'id': '../escape', 'settings': {'ghost_mode': 'worker'},
+    inventory = {'controls': [dict(name='semantic_role_ids', values=[['materializer', 'quality_reviewer', 'transition_committer']], scope='request', disposition='sweep')]}
+    rebound = validate_saved_profile({'id': '../escape', 'settings': {'semantic_role_ids': ['materializer', 'quality_reviewer', 'transition_committer']},
                                      'request': {'instance_id': 'untrusted'}, 'environment': {'PATH': '/invalid'}}, inventory)
-    assert rebound['request'] == {'ghost_mode': 'worker'}
+    assert rebound['request'] == {'semantic_role_ids': ['materializer', 'quality_reviewer', 'transition_committer']}
     assert rebound['environment'] == {} and '/' not in rebound['id']
     with pytest.raises(CorpusError):
-        validate_saved_profile({'settings': {'OLLMO_GRAPH_REBASE_OPERATOR_TOKEN': 'untrusted'}}, inventory)
+        validate_saved_profile({'settings': {'FRUTH_GRAPH_REBASE_OPERATOR_TOKEN': 'untrusted'}}, inventory)
 
 
 def test_isolated_worker_applies_startup_controls_before_runtime_import(tmp_path):
-    from scripts.ollmo_self_attack import isolated_group
-    profile = {'id': 'workers-16', 'settings': {'OLLMO_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS': 16},
-               'request': {}, 'environment': {'OLLMO_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS': '16'}}
+    from scripts.fruth_self_attack import isolated_group
+    profile = {'id': 'workers-16', 'settings': {'FRUTH_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS': 16},
+               'request': {}, 'environment': {'FRUTH_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS': '16'}}
     corpus = sample_corpus()
     corpus['cases'] = corpus['cases'][:1]
     result = isolated_group(corpus, profile, tmp_path / 'startup', mode='fake', base_url='',
@@ -491,7 +530,7 @@ def test_invalid_evidence_cannot_hide_behind_absent_result_status():
 
 
 def test_incomplete_classification_preserves_missing_evidence(tmp_path):
-    from scripts.ollmo_self_attack import explain_incomplete
+    from scripts.fruth_self_attack import explain_incomplete
     cases = [dict(case_id='one', state='observing', missing=['settled_full_truth'], findings=[]),
              dict(case_id='two', state='settled_terminal', missing=['scenario_not_exercised:exact_source_binding'], findings=[])]
     explain_incomplete(cases, tmp_path, error='profile_budget_exhausted_120s')
@@ -530,13 +569,13 @@ def test_provider_binding_rejects_sibling_path_and_changed_bytes():
 
 
 def test_live_requires_complete_fake_evidence_before_any_execution(tmp_path):
-    from scripts.ollmo_self_attack import main
+    from scripts.fruth_self_attack import main
     with pytest.raises(SystemExit):
         main(['--mode', 'live', '--output', str(tmp_path / 'live')])
 
 
 def test_report_does_not_count_regression_replays_as_sweep_profiles():
-    from scripts.ollmo_self_attack import render_report
+    from scripts.fruth_self_attack import render_report
     case = dict(case_id='one', category='aspiration_promotion', capture_path='/capture', missing=[], findings=[])
     run = dict(profile={'id': 'baseline'}, cases=[case], runner_status=0, probes={})
     report = render_report(dict(verdict='incomplete', mode='fake', runs=[run, run], owner_tests={}, regressions=[],
@@ -562,7 +601,7 @@ def test_canonical_output_fulfillment_owns_the_late_fill_evidence_gate():
 
 def live_budget_command(tmp_path, monkeypatch, *, corpus=None):
     """Synthetic transport for budget tests; never contacts a live model."""
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     inventory = discover_knobs(ROOT)
     profiles = build_profiles(inventory, live=True, seed=0)[:2]
     monkeypatch.setattr(command, 'discover_knobs', lambda root: inventory)
@@ -605,7 +644,7 @@ def test_high_risk_live_gate_is_diverse_dependency_closed_and_still_incomplete(t
     available = {(k, repr(v)) for p in profiles for k, v in p['settings'].items()}
     assert values == available
     assert chosen == diverse_live_profiles(profiles, 6)
-    assert [p['id'] for p in chosen[:2]] == ['baseline', '836058e8fbf2']
+    assert [p['id'] for p in chosen[:2]] == ['baseline', '5331e9ce7633']
     observed = {}
     def execute(corpus, profile, output, **kwargs):
         observed[profile['id']] = corpus['cases']
@@ -659,7 +698,7 @@ def representative_report_fixture():
     (lambda r: r['owner_tests']['aspiration_promotion'].update(status='failed'), 'failed'),
 ])
 def test_representative_verdict_requires_exact_selected_evidence(mutation, expected):
-    from scripts.ollmo_self_attack import verdict_scopes
+    from scripts.fruth_self_attack import verdict_scopes
     result = representative_report_fixture()
     mutation(result)
     before = deepcopy(result)
@@ -671,7 +710,7 @@ def test_representative_verdict_requires_exact_selected_evidence(mutation, expec
 
 
 def test_full_live_pass_and_failure_remain_independent_of_fake():
-    from scripts.ollmo_self_attack import verdict_scopes
+    from scripts.fruth_self_attack import verdict_scopes
     result = representative_report_fixture()
     result['selected_live_cases'] = result['coverage'].pop('case_selection')
     result['coverage']['profiles_available'] = 1
@@ -683,7 +722,7 @@ def test_full_live_pass_and_failure_remain_independent_of_fake():
 
 
 def test_combined_report_keeps_full_verdict_when_representative_passes():
-    from scripts.ollmo_self_attack import verdict_scopes, render_report
+    from scripts.fruth_self_attack import verdict_scopes, render_report
     result = representative_report_fixture()
     live_scopes = verdict_scopes(result)
     result.update(mode='fake', verdict='passed', overall_verdict='incomplete',
@@ -697,7 +736,7 @@ def test_combined_report_keeps_full_verdict_when_representative_passes():
 
 
 def test_refresh_completed_report_preserves_evidence_without_execution(tmp_path, monkeypatch):
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     result = representative_report_fixture()
     result.pop('fake_conformance_verdict')
     proof = tmp_path / 'fake-results.json'
@@ -734,7 +773,7 @@ def test_live_defaults_preserve_corpus_profiles_and_completed_resume_does_not_di
     result = json.loads((tmp_path / 'live/results.json').read_text())
     assert config['corpus'] == raw
     assert config['profiles'] == profiles
-    assert [p['id'] for p in profiles] == ['baseline', '836058e8fbf2']
+    assert [p['id'] for p in profiles] == ['baseline', '5331e9ce7633']
     assert result['live_budget']['limits'] == dict(main_seconds=3600, confirmation_seconds=900,
                                                  sequence_seconds=1200, replay_seconds=300, attempt_cap=4)
     assert all(v['captured'] == 4 for v in result['coverage']['boundaries'].values())
@@ -816,7 +855,7 @@ def test_hard_deadline_kills_diagnostic_subprocess_without_waiting_for_its_own_t
 
 
 def test_sequence_ceiling_and_expired_resume_never_spawn_another_worker(tmp_path, monkeypatch):
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     budget = command.LiveBudget(tmp_path, main_seconds=3600, confirmation_seconds=900, attempt_cap=4)
     profile = dict(id='baseline', settings={}, request={}, environment={})
     windows = []
@@ -838,7 +877,7 @@ def test_sequence_ceiling_and_expired_resume_never_spawn_another_worker(tmp_path
 
 
 def test_live_attempt_counter_and_deadlines_survive_restart(tmp_path):
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     budget = command.LiveBudget(tmp_path, main_seconds=3600, confirmation_seconds=900, attempt_cap=1)
     budget.begin_confirmation()
     assert budget.reserve_attempt('original') is None
@@ -916,7 +955,7 @@ def test_capture_client_refuses_post_after_observation_deadline(tmp_path):
         def post(self, *a, **kw):
             pytest.fail('Expired observer reached the transport')
     client = CaptureClient(Transport(), tmp_path, deadline=0)
-    from scripts.ollmo_self_attack import LiveBudgetExpired
+    from scripts.fruth_self_attack import LiveBudgetExpired
     with pytest.raises(LiveBudgetExpired):
         client.post('/api/responses', {}, timeout=300)
 
@@ -924,7 +963,7 @@ def test_capture_client_refuses_post_after_observation_deadline(tmp_path):
 @pytest.mark.parametrize('option,value', [('--live-main-budget', 'nan'), ('--live-confirmation-budget', 'inf'),
                                          ('--live-sequence-timeout', '0'), ('--live-attempt-cap', '-1')])
 def test_invalid_live_limits_are_rejected(option, value):
-    from scripts.ollmo_self_attack import main
+    from scripts.fruth_self_attack import main
     with pytest.raises(SystemExit) as exc:
         main([option, value])
     assert exc.value.code == 2
@@ -968,7 +1007,7 @@ def test_zero_live_attempt_cap_never_replays_saved_regression(tmp_path, monkeypa
 
 
 def test_live_handoff_preserves_ambiguous_response_ids_and_is_get_only(tmp_path, monkeypatch):
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     from scripts.run_graph_rebase_shadow_corpus import build_manifest, atomic_write_json, load_manifest
     source, dest = tmp_path / 'source', tmp_path / 'dest'
     source.mkdir()
@@ -1008,7 +1047,7 @@ def test_live_handoff_preserves_ambiguous_response_ids_and_is_get_only(tmp_path,
 
 
 def test_detached_launch_disconnects_stdio_records_handles_and_deduplicates(tmp_path, monkeypatch):
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     launches = []
     class Process:
         pid = 7654321
@@ -1033,9 +1072,9 @@ def test_detached_launch_disconnects_stdio_records_handles_and_deduplicates(tmp_
 
 def test_hard_deadline_is_not_swallowed_by_http_transport_error_handling(tmp_path):
     import time
-    import scripts.ollmo_self_attack as command
+    import scripts.fruth_self_attack as command
     from scripts.run_graph_rebase_shadow_corpus import JsonHttpClient
-    client = JsonHttpClient('http://127.0.0.1:5001')
+    client = JsonHttpClient('http://127.0.0.1:5011')
     class Opener:
         def open(self, *a, **kw):
             time.sleep(3)

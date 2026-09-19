@@ -3,8 +3,8 @@ import os
 import unittest
 from unittest.mock import patch
 
-from ollmo_server.responses_request_runtime import ResponsesRequestRuntimeOwner
-from ollmo_services.enforced_policy import (
+from fruth_server.responses_request_runtime import ResponsesRequestRuntimeOwner
+from fruth_services.enforced_policy import (
     ENFORCED_POLICY_REVIEW_KIND,
     build_enforced_policy_review,
     describe_enforced_policy,
@@ -12,12 +12,12 @@ from ollmo_services.enforced_policy import (
     enforced_policy_allows_application,
     normalize_enforced_policy_mode,
 )
-from ollmo_services.graph_rebase import (
+from fruth_services.graph_rebase import (
     build_graph_rebase_lifecycle,
     build_graph_rebase_proposal,
     validate_graph_rebase_proposal,
 )
-from ollmo_services.graph_repair import (
+from fruth_services.graph_repair import (
     GRAPH_REPAIR_PROPOSAL_KIND,
     PROPOSAL_ALLOWED_USE,
     PROPOSAL_FORBIDDEN_USE,
@@ -63,7 +63,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
 
     def _scope_review(self, selected_scope, *, evidence_refs=None, artifact_identity=None):
         return {
-            'kind': 'ollmo.redraw_scope_ladder_review',
+            'kind': 'fruth.redraw_scope_ladder_review',
             'review_id': f'redraw-scope-{selected_scope}',
             'status': 'selected',
             'selected_scope': selected_scope,
@@ -107,13 +107,13 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
         return validate_graph_repair_proposal(
             proposal or self._repair_proposal(),
             request_phase_graph=graph,
-            closure_review={'status': 'repair_required', 'ghost_repair_feedback': {'status': 'repair_required'}},
+            closure_review={'status': 'repair_required', 'inference_repair_feedback': {'status': 'repair_required'}},
             promotion_review={'status': 'promoted'},
         )
 
     def _rebase_base_graph(self):
         graph = self._base_graph()
-        graph['kind'] = 'ollmo.request_phase_graph'
+        graph['kind'] = 'fruth.request_phase_graph'
         graph['intent_obligations'] = [
             {'obligation_id': 'intent-phase-1', 'phase_id': 'phase-1', 'required': True}
         ]
@@ -209,7 +209,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
         self.assertTrue(product_default['enabled'])
 
         explicit_off = describe_enforced_policy_from_env(
-            {'OLLMO_APPLY_ENFORCED_POLICY': 'off'}
+            {'FRUTH_APPLY_ENFORCED_POLICY': 'off'}
         )
         self.assertEqual(explicit_off['mode'], 'off')
         self.assertEqual(explicit_off['source'], 'environment')
@@ -217,7 +217,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
         self.assertFalse(explicit_off['enabled'])
 
         invalid = describe_enforced_policy_from_env(
-            {'OLLMO_APPLY_ENFORCED_POLICY': 'anything-else'}
+            {'FRUTH_APPLY_ENFORCED_POLICY': 'anything-else'}
         )
         self.assertEqual(invalid['mode'], 'off')
         self.assertEqual(invalid['source'], 'environment')
@@ -230,7 +230,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
         graph['redraw_scope_ladder_review'] = self._scope_review('add_missing_branch')
         review = self._accepted_repair_review(graph)
 
-        with patch.dict(os.environ, {'OLLMO_APPLY_ENFORCED_POLICY': 'off'}):
+        with patch.dict(os.environ, {'FRUTH_APPLY_ENFORCED_POLICY': 'off'}):
             lifecycle = build_graph_patch_lifecycle(
                 request_phase_graph=graph,
                 proposal_review=review,
@@ -253,7 +253,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
                 'placeholder_ref': 'pending-output-repair-image',
             }
         ]
-        graph['ollmo'] = {
+        graph['fruth'] = {
             'work_tree': {
                 'nodes': [
                     {
@@ -293,7 +293,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
         self.assertEqual(phase['placeholder_ref'], 'pending-output-repair-image')
         self.assertEqual(patched['output_slots'][0]['placeholder_ref'], 'pending-output-repair-image')
         self.assertEqual(
-            patched['ollmo']['work_tree']['nodes'][0]['placeholder_ref'],
+            patched['fruth']['work_tree']['nodes'][0]['placeholder_ref'],
             'pending-output-repair-image',
         )
         lifecycle_record = patched['graph_patch_lifecycle'][0]
@@ -333,7 +333,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
         graph['redraw_scope_ladder_review'] = self._scope_review('observe')
         review = self._accepted_repair_review(graph, proposal=proposal)
 
-        with patch.dict(os.environ, {'OLLMO_APPLY_ENFORCED_POLICY': 'safe_v1'}):
+        with patch.dict(os.environ, {'FRUTH_APPLY_ENFORCED_POLICY': 'safe_v1'}):
             blocked = build_graph_patch_lifecycle(
                 request_phase_graph=graph,
                 proposal_review=review,
@@ -345,7 +345,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
 
         graph['redraw_scope_ladder_review'] = self._scope_review('repair_binding_dependency')
         review = self._accepted_repair_review(graph, proposal=proposal)
-        with patch.dict(os.environ, {'OLLMO_APPLY_ENFORCED_POLICY': 'safe_v1'}):
+        with patch.dict(os.environ, {'FRUTH_APPLY_ENFORCED_POLICY': 'safe_v1'}):
             lifecycle = build_graph_patch_lifecycle(
                 request_phase_graph=graph,
                 proposal_review=review,
@@ -364,7 +364,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
         graph['redraw_scope_ladder_review'] = self._scope_review('add_missing_branch')
         review = self._accepted_repair_review(graph)
 
-        with patch.dict(os.environ, {'OLLMO_APPLY_ENFORCED_POLICY': 'safe_v1'}):
+        with patch.dict(os.environ, {'FRUTH_APPLY_ENFORCED_POLICY': 'safe_v1'}):
             lifecycle = build_graph_patch_lifecycle(
                 request_phase_graph=graph,
                 proposal_review=review,
@@ -404,7 +404,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
 
         proposal = self._repair_proposal(evidence_refs=['runtime:degraded_liveness_only'])
         review = self._accepted_repair_review(graph, proposal=proposal)
-        with patch.dict(os.environ, {'OLLMO_APPLY_ENFORCED_POLICY': 'safe_v1'}):
+        with patch.dict(os.environ, {'FRUTH_APPLY_ENFORCED_POLICY': 'safe_v1'}):
             blocked = build_graph_patch_lifecycle(
                 request_phase_graph=graph,
                 proposal_review=review,
@@ -417,7 +417,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
         allowed = build_enforced_policy_review(
             autonomy_level='apply_enforced',
             lifecycle={
-                'kind': 'ollmo.graph_patch_lifecycle',
+                'kind': 'fruth.graph_patch_lifecycle',
                 'repair_class': 'artifact_binding_repair_branch',
                 'enforced_class': 'duplicate_artifact_alias_canonicalization',
                 'source_evidence_refs': ['artifact_identity:duplicate_ref:artifact://a'],
@@ -442,7 +442,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
         conflict = build_enforced_policy_review(
             autonomy_level='apply_enforced',
             lifecycle={
-                'kind': 'ollmo.graph_patch_lifecycle',
+                'kind': 'fruth.graph_patch_lifecycle',
                 'repair_class': 'artifact_binding_repair_branch',
                 'enforced_class': 'duplicate_artifact_alias_canonicalization',
                 'source_evidence_refs': ['artifact_identity:duplicate_ref:artifact://a'],
@@ -470,7 +470,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
             ('partial_subtree_rebase', 'partial_subtree_rebase_enforced_v1_audit_only'),
         ):
             review = self._accepted_rebase_review(requested_rebase_class=requested_class)
-            with patch.dict(os.environ, {'OLLMO_APPLY_ENFORCED_POLICY': 'safe_v1'}):
+            with patch.dict(os.environ, {'FRUTH_APPLY_ENFORCED_POLICY': 'safe_v1'}):
                 lifecycle = build_graph_rebase_lifecycle(
                     request_phase_graph=base,
                     rebase_review=review,
@@ -492,7 +492,7 @@ class ApplyEnforcedPolicyTests(unittest.TestCase):
             'runtime': {'request_phase_graph': graph},
         }
 
-        with patch.dict(os.environ, {'OLLMO_APPLY_ENFORCED_POLICY': 'safe_v1'}):
+        with patch.dict(os.environ, {'FRUTH_APPLY_ENFORCED_POLICY': 'safe_v1'}):
             updated = self._runtime_owner()._attach_graph_patch_lifecycle(
                 payload,
                 graph_repair_autonomy='apply_enforced',

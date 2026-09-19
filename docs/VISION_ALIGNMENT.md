@@ -1,22 +1,22 @@
 # VISION ALIGNMENT
 
-Ollmo is a local-first AI runtime substrate for turning model output into
+Fruth is a local-first AI runtime substrate for turning model output into
 durable, inspectable work.
 
-Models can propose, reason, and generate. Ollmo records what the runtime can
+Models can propose, reason, and generate. Fruth records what the runtime can
 prove happened: which work became required, which outputs exist, which work
 remains open, and why.
 
 This is execution truth, not a guarantee that every model statement is
 factually correct. The quality of generated content still depends on the
-models and capabilities involved. Ollmo provides the state, evidence, and
+models and capabilities involved. Fruth provides the state, evidence, and
 review structure around that work.
 
 ## Frozen Moments, Fluid State
 
 A normal chat often reduces a turn to prompt in, answer out.
 
-Ollmo treats a response as a frozen moment inside a larger, fluid work state.
+Fruth treats a response as a frozen moment inside a larger, fluid work state.
 
 Between two visible replies, the runtime may contain:
 
@@ -121,13 +121,15 @@ Different branches may be handled by different compatible runtime
 capabilities or model instances. Their outputs still belong to one connected
 response state.
 
-A branch may also remain pending or be materialized later. Continuation does
-not erase the earlier state; it carries the same work forward with visible
-lineage.
+Late fill carries already-promoted obligations as explicit pending work and
+binds their later materialized results and evidence back into the same response.
+Output slots make that owed work visible while it is unfinished; branch state
+records its progress, fulfillment or failure. Continuation preserves earlier
+frozen state and carries the same work forward with visible lineage.
 
 ## Move Between Scales
 
-Ollmo should not inspect branches in isolation and forget the request that
+Fruth should not inspect branches in isolation and forget the request that
 gave them meaning.
 
 Discovery may move from the surface request toward deeper intent, and from the
@@ -169,7 +171,7 @@ Depending on runtime truth, that may mean:
 - superseding it with a justified replacement
 - freezing the state honestly as blocked
 
-Ollmo should resolve blocks gently, not violently. It should preserve the
+Fruth should resolve blocks gently, not violently. It should preserve the
 user's intent and change only the smallest scope that the evidence requires.
 
 The goal is not to force every branch into success. The goal is to make the
@@ -192,7 +194,7 @@ For example:
 - producing fewer artifacts than the promoted contract requires is not full
   fulfillment
 
-Ollmo records concrete outputs and their relationships so they can be
+Fruth records concrete outputs and their relationships so they can be
 inspected, referenced, continued, and recovered.
 
 ## Closure Before Freeze
@@ -217,7 +219,7 @@ If proof is missing, the response remains open, blocked, or repair-needed. It
 must not report fulfillment merely because a model says it is done.
 
 Closure does not establish universal factual truth. It establishes what the
-Ollmo runtime can prove about the execution and materialization of the work.
+Fruth runtime can prove about the execution and materialization of the work.
 
 ## The Response Frame
 
@@ -243,7 +245,7 @@ The reply summarizes the moment. The response preserves the work.
 
 ## Authority Boundaries
 
-Ollmo keeps proposal and authority separate.
+Fruth keeps proposal and authority separate.
 
 - Models propose structure and produce candidate results.
 - Planning opens and shapes the possibility space.
@@ -261,7 +263,7 @@ for the current response.
 
 ## North Star
 
-Ollmo should not become a pile of unrelated special cases.
+Fruth should not become a pile of unrelated special cases.
 
 It should keep sharpening one repeated logic:
 
@@ -297,7 +299,7 @@ visible block
 
 This is the concrete form of the original music image.
 
-The model provides movement. Ollmo provides the recording surface, the state,
+The model provides movement. Fruth provides the recording surface, the state,
 and the boundary at which one moment can be preserved.
 
 The music continues between frozen moments. A response frame is the truthful

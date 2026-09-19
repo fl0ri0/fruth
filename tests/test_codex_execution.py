@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_integrations.codex.execution import (
+from fruth_integrations.codex.execution import (
     CODEX_EXECUTABLE_ENV,
     CodexAccessState,
     CodexDiscovery,
@@ -21,7 +21,7 @@ from ollmo_integrations.codex.execution import (
     execute_codex_text,
     probe_codex_access,
 )
-from ollmo_runtime.child_process_env import GRAPH_REBASE_OPERATOR_ENV_KEYS
+from fruth_runtime.child_process_env import GRAPH_REBASE_OPERATOR_ENV_KEYS
 
 
 FAKE_CODEX_SOURCE = r'''
@@ -95,8 +95,8 @@ if capture_path:
         'operator_env_present': [
             key
             for key in (
-                'OLLMO_GRAPH_REBASE_OPERATOR_TOKEN',
-                'OLLMO_GRAPH_REBASE_OPERATOR_IDENTITY',
+                'FRUTH_GRAPH_REBASE_OPERATOR_TOKEN',
+                'FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY',
                 'GRAPH_REBASE_OPERATOR_TOKEN',
                 'GRAPH_REBASE_OPERATOR_IDENTITY',
             )

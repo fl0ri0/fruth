@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_services import events, response_frames as rf, state_flow as sf
+from fruth_services import events, response_frames as rf, state_flow as sf
 
 
 def records(tmp_path):
@@ -14,7 +14,7 @@ def records(tmp_path):
 
 
 def test_disabled_does_not_inspect_or_write(monkeypatch):
-    monkeypatch.delenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', raising=False)
+    monkeypatch.delenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', raising=False)
     sentinel = object()
     @sf.observe_state('test', 'a', 'b')
     def call(value): return value
@@ -24,7 +24,7 @@ def test_disabled_does_not_inspect_or_write(monkeypatch):
 
 
 def test_no_payloads_and_exact_result_identity(tmp_path, monkeypatch):
-    monkeypatch.setenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
+    monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
     value = {'id': 'resp_test', 'prompt': 'secret prompt', 'artifacts': [{'base64': 'secret bytes'}],
              'output_text': 'secret output', 'runtime': {'anything': ['private']}}
     original = copy.deepcopy(value)
@@ -43,7 +43,7 @@ def test_no_payloads_and_exact_result_identity(tmp_path, monkeypatch):
 
 
 def test_original_exception_survives_sink_failure(tmp_path, monkeypatch):
-    monkeypatch.setenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
+    monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
     error = ValueError('owner failure')
     @sf.observe_state('test')
     def call(): raise error
@@ -55,14 +55,14 @@ def test_original_exception_survives_sink_failure(tmp_path, monkeypatch):
 
 
 def test_initialization_failure_is_observation_only(tmp_path, monkeypatch):
-    monkeypatch.setenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
+    monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
     with patch.object(sf, '_Scope', side_effect=OSError):
         with sf.state_flow_scope():
             assert sf._SCOPE.get() is None
 
 
 def test_independent_of_causal_and_transition_budget(tmp_path, monkeypatch):
-    monkeypatch.setenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
+    monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
     @events.observe_call('response_frame.finalize')
     def call(response_payload):
         with events.measure_operation('work', role='canonical_truth'):
@@ -83,7 +83,7 @@ def test_independent_of_causal_and_transition_budget(tmp_path, monkeypatch):
 
 
 def test_overflow_explicit_and_never_limits_execution(tmp_path, monkeypatch):
-    monkeypatch.setenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
+    monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
     monkeypatch.setattr(sf, 'STATE_FLOW_RECORD_LIMIT', 3)
     calls = []
     @sf.observe_state('test')
@@ -98,7 +98,7 @@ def test_overflow_explicit_and_never_limits_execution(tmp_path, monkeypatch):
 
 
 def test_context_follows_existing_thread_handoff(tmp_path, monkeypatch):
-    monkeypatch.setenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
+    monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
     @sf.observe_state('child')
     def child(): sf.note(child_work=1)
     with sf.state_flow_scope():
@@ -114,12 +114,12 @@ def test_context_follows_existing_thread_handoff(tmp_path, monkeypatch):
 
 
 def test_snapshot_observation_preserves_bytes_and_counts_cas_not_calls(tmp_path, monkeypatch):
-    frame = {'kind': 'ollmo.response_frame', 'response_id': 'resp_test',
+    frame = {'kind': 'fruth.response_frame', 'response_id': 'resp_test',
              'frame_id': 'resp_test:frame-1', 'frame_sequence': 1,
              'runtime': {'request_phase_graph': {'nodes': [{'id': 'p', 'body': 'X' * 80000}]}}}
     original = copy.deepcopy(frame)
     plain = rf.compact_response_frame_for_ledger(frame, frames_dir=tmp_path / 'plain')
-    monkeypatch.setenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path / 'trace'))
+    monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path / 'trace'))
     with sf.state_flow_scope():
         traced = rf.compact_response_frame_for_ledger(frame, frames_dir=tmp_path / 'traced')
         repeated = rf.compact_response_frame_for_ledger(frame, frames_dir=tmp_path / 'traced')
@@ -137,7 +137,7 @@ def test_snapshot_observation_preserves_bytes_and_counts_cas_not_calls(tmp_path,
 
 
 def test_identity_bound_and_failure_fields(tmp_path, monkeypatch):
-    monkeypatch.setenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
+    monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path))
     monkeypatch.setattr(sf, 'STATE_FLOW_IDENTITY_LIMIT', 2)
     with sf.state_flow_scope():
         with sf.transition('test'):
@@ -149,14 +149,14 @@ def test_identity_bound_and_failure_fields(tmp_path, monkeypatch):
 
 def test_two_real_canonical_loads_keep_identity_checks_and_measure_existing_reads(tmp_path, monkeypatch):
     root = tmp_path / 'frames'
-    frame = {'kind': 'ollmo.response_frame', 'frame_version': 9,
+    frame = {'kind': 'fruth.response_frame', 'frame_version': 9,
              'response_id': 'resp_test', 'status': 'completed',
              'current_state': {'id': 'resp_test', 'status': 'completed', 'lifecycle_state': 'completed'},
              'runtime': {'request_phase_graph': {'body': 'evidence ' * 10000}}}
     rf.persist_response_frame(frame, frames_dir=root)
     plain = rf.load_latest_response_state('resp_test', frames_dir=root)
     before = {str(p): p.read_bytes() for p in root.rglob('*') if p.is_file()}
-    monkeypatch.setenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path / 'trace'))
+    monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path / 'trace'))
     with sf.state_flow_scope():
         for _ in range(2):
             assert rf.load_latest_response_state('resp_test', frames_dir=root) == plain
@@ -175,7 +175,7 @@ def test_two_real_canonical_loads_keep_identity_checks_and_measure_existing_read
 
 
 def test_corrupt_sidecar_failure_unchanged_with_observation(tmp_path, monkeypatch):
-    frame = {'kind':'ollmo.response_frame', 'response_id':'resp_test',
+    frame = {'kind':'fruth.response_frame', 'response_id':'resp_test',
              'current_state': {'id':'resp_test','lifecycle_state':'completed'},
              'runtime': {'large': 'evidence ' * 10000}}
     root=tmp_path/'frames'
@@ -183,7 +183,7 @@ def test_corrupt_sidecar_failure_unchanged_with_observation(tmp_path, monkeypatc
     for p in (root/'snapshots').rglob('*.json'):
         p.write_bytes(b'{broken bytes')
     plain=rf.load_latest_response_state('resp_test', frames_dir=root)
-    monkeypatch.setenv('OLLMO_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path/'trace'))
+    monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path/'trace'))
     with sf.state_flow_scope():
         assert rf.load_latest_response_state('resp_test', frames_dir=root)==plain
     assert not plain['ok']

@@ -4,14 +4,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_services.response_frames import build_response_frame
-from ollmo_services.settings_artifacts import (
+from fruth_services.response_frames import build_response_frame
+from fruth_services.settings_artifacts import (
     build_settings_artifact,
     list_settings_artifacts,
     load_settings_artifact,
     persist_settings_artifact,
 )
-from ollmo_webserver import app
+from fruth_webserver import app
 
 
 def _sample_response_frame():
@@ -56,7 +56,7 @@ class SettingsArtifactTests(unittest.TestCase):
             created_at="2026-04-10T13:10:00Z",
         )
 
-        self.assertEqual(artifact["kind"], "ollmo.settings_artifact")
+        self.assertEqual(artifact["kind"], "fruth.settings_artifact")
         self.assertEqual(artifact["artifact_version"], 1)
         self.assertEqual(artifact["label"], "cover preset")
         self.assertEqual(artifact["source"]["response_id"], "resp_settings")
@@ -95,14 +95,14 @@ class SettingsArtifactTests(unittest.TestCase):
 
     def test_build_settings_artifact_rejects_empty_controls(self):
         with self.assertRaises(ValueError):
-            build_settings_artifact({"kind": "ollmo.control_snapshot", "values": {}})
+            build_settings_artifact({"kind": "fruth.control_snapshot", "values": {}})
 
     def test_settings_artifact_api_promotes_lists_and_loads(self):
         app.config["TESTING"] = True
         client = app.test_client()
         frame = _sample_response_frame()
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("ollmo_webserver.SETTINGS_ARTIFACTS_DIR", Path(tmpdir)):
+            with patch("fruth_webserver.SETTINGS_ARTIFACTS_DIR", Path(tmpdir)):
                 post_response = client.post(
                     "/api/settings_artifacts",
                     json={"response_frame": frame, "label": "api preset"},
@@ -128,7 +128,7 @@ class SettingsArtifactTests(unittest.TestCase):
         client = app.test_client()
         response = client.post(
             "/api/settings_artifacts",
-            json={"response_frame": {"kind": "ollmo.response_frame", "response_id": "resp_empty"}},
+            json={"response_frame": {"kind": "fruth.response_frame", "response_id": "resp_empty"}},
         )
 
         self.assertEqual(response.status_code, 400)

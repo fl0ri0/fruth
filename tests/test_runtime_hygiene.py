@@ -4,9 +4,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_core.status import default_runtime_status, read_runtime_status
-from ollmo_runtime.runtime_hygiene import cleanup_runtime_hygiene, finalize_runtime_shutdown
-from ollmo_runtime.runtime_log_hygiene import sweep_stale_global_logs, sweep_stale_runtime_logs
+from fruth_core.status import default_runtime_status, read_runtime_status
+from fruth_runtime.runtime_hygiene import cleanup_runtime_hygiene, finalize_runtime_shutdown
+from fruth_runtime.runtime_log_hygiene import sweep_stale_global_logs, sweep_stale_runtime_logs
 
 
 class RuntimeHygieneTests(unittest.TestCase):
@@ -16,7 +16,7 @@ class RuntimeHygieneTests(unittest.TestCase):
             log_dir.mkdir(parents=True, exist_ok=True)
             active_log = log_dir / 'flask_webserver.log'
             stale_global = log_dir / 'ollama_default_server_11434.log'
-            legacy_log = log_dir / 'ollmo_webserver.log'
+            legacy_log = log_dir / 'fruth_webserver.log'
             unrelated_log = log_dir / 'notes.log'
             active_log.write_text('active web\n', encoding='utf-8')
             stale_global.write_text('stale default\n', encoding='utf-8')
@@ -99,7 +99,7 @@ class RuntimeHygieneTests(unittest.TestCase):
                 }
             ]
 
-            with patch('ollmo_runtime.runtime_hygiene.list_runtime_entries', return_value=live_entries):
+            with patch('fruth_runtime.runtime_hygiene.list_runtime_entries', return_value=live_entries):
                 summary = cleanup_runtime_hygiene(
                     registry_path=Path(tmpdir) / 'model_ports.json',
                     status_path=Path(tmpdir) / 'runtime_status.json',
@@ -112,9 +112,9 @@ class RuntimeHygieneTests(unittest.TestCase):
             self.assertTrue(active_ollama_log.exists())
             self.assertFalse(stale_log.exists())
 
-    @patch('ollmo_core.status._port_listening', return_value=True)
-    @patch('ollmo_core.status._process_alive', return_value=True)
-    @patch('ollmo_runtime.runtime_hygiene.list_runtime_entries')
+    @patch('fruth_core.status._port_listening', return_value=True)
+    @patch('fruth_core.status._process_alive', return_value=True)
+    @patch('fruth_runtime.runtime_hygiene.list_runtime_entries')
     def test_cleanup_runtime_hygiene_refreshes_status_and_archives_stale_logs(
         self,
         mock_list_runtime_entries,
@@ -205,7 +205,7 @@ class RuntimeHygieneTests(unittest.TestCase):
             archived_logs = list((log_dir / 'archive' / 'global').rglob('*.log'))
             self.assertEqual(len(archived_logs), 1)
 
-    @patch('ollmo_core.registry._sync_downstream_integrations')
+    @patch('fruth_core.registry._sync_downstream_integrations')
     def test_finalize_runtime_shutdown_clears_runtime_state_and_archives_logs(self, mock_sync):
         with tempfile.TemporaryDirectory() as tmpdir:
             registry_path = Path(tmpdir) / 'model_ports.json'

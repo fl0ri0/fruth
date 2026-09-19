@@ -1,6 +1,6 @@
 import unittest
 
-from ollmo_g.candidate_contracts import (
+from fruth_inference.candidate_contracts import (
     build_candidate_graph,
     normalize_candidate,
     review_candidate_promotions,
@@ -23,7 +23,7 @@ class CandidateContractTests(unittest.TestCase):
             candidate_type='output',
         )
 
-        self.assertEqual(candidate['kind'], 'ollmo.candidate')
+        self.assertEqual(candidate['kind'], 'fruth.candidate')
         self.assertEqual(candidate['candidate_type'], 'output')
         self.assertEqual(candidate['status'], 'reserved')
         self.assertEqual(candidate['promotion_policy'], 'requires_user_confirmation')
@@ -127,7 +127,7 @@ class CandidateContractTests(unittest.TestCase):
                 }
             ],
             workload_proposal_review={
-                'kind': 'ollmo.workload_proposal_review',
+                'kind': 'fruth.workload_proposal_review',
                 'status': 'rejected',
                 'rejections': [
                     {

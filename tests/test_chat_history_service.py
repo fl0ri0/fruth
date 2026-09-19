@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_services.chat_history import (
+from fruth_services.chat_history import (
     LINEAGE_LOG_FILE_NAME,
     delete_chat_history,
     list_chat_history_index,
@@ -240,7 +240,7 @@ class ChatHistoryServiceTests(unittest.TestCase):
                 history_dir=history_dir,
             )
             frame = {
-                'kind': 'ollmo.response_frame',
+                'kind': 'fruth.response_frame',
                 'response_id': response_id,
                 'artifacts': {
                     'dossiers': {
@@ -709,7 +709,7 @@ class ChatHistoryServiceTests(unittest.TestCase):
             history_dir = Path(tmpdir)
             write_chat_history(
                 '__responses_workbench__--saved',
-                [{'role': 'user', 'content': 'hello from ollmo', 'timestamp': '2026-04-08T10:00:00Z'}],
+                [{'role': 'user', 'content': 'hello from fruth', 'timestamp': '2026-04-08T10:00:00Z'}],
                 history_dir=history_dir,
                 conversation_metadata={
                     'workspace': 'responses',

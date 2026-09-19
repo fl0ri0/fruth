@@ -70,7 +70,7 @@ def get_ocr_mode_copy(model_name: str | None) -> dict[str, str]:
         'hint': 'PDF OCR controls for this vision-analysis model.',
         'label': 'OCR / Document Mode',
         'description': 'These controls are used for PDF OCR/document requests with this vision-analysis model.',
-        'mode_description': 'Choose how Ollmo should process OCR/document prompts for this model.',
+        'mode_description': 'Choose how Fruth should process OCR/document prompts for this model.',
     }
 
 

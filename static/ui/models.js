@@ -23,7 +23,7 @@ async function fetchRunningInstances() {
     try {
         const response = await axios.get(`${state.flaskServerUrl}/api/running_instances`);
         state.runningInstances = response.data || [];
-        syncGhostResolvedTargetWithRunningInstances();
+        syncInferenceResolvedTargetWithRunningInstances();
         renderActiveInstancesList();
         renderModelTabs();
         renderAvailableModelsList();
@@ -83,8 +83,8 @@ async function fetchRunningInstances() {
             await switchToInstance(getDefaultInteractiveInstance().instance_id, { focusInput: false });
         } else {
             state.activeWorkspace = 'responses';
-            state.responsesWorkbench.targetInstanceId = RESPONSES_GHOST_AUTO_ID;
-            clearGhostResolvedTarget();
+            state.responsesWorkbench.targetInstanceId = RESPONSES_INFERENCE_AUTO_ID;
+            clearInferenceResolvedTarget();
             state.currentInstanceId = null;
             renderNoModelSelected();
         }
@@ -124,8 +124,8 @@ async function fetchRunningInstances() {
             updateGlobalModelStatus('Local model status is unavailable. ChatGPT remains ready through Codex.');
         } else {
             state.activeWorkspace = 'responses';
-            state.responsesWorkbench.targetInstanceId = RESPONSES_GHOST_AUTO_ID;
-            clearGhostResolvedTarget();
+            state.responsesWorkbench.targetInstanceId = RESPONSES_INFERENCE_AUTO_ID;
+            clearInferenceResolvedTarget();
             state.currentInstanceId = null;
             renderNoModelSelected();
         }
@@ -744,7 +744,7 @@ async function stopAllModels() {
             }
             await stopModel(instanceId);
         }
-        state.stopAllAwaitingGhostSettle = true;
+        state.stopAllAwaitingMascotSettle = true;
         updateGlobalModelStatus('All models stopped.');
         setTimeout(() => updateGlobalModelStatus(''), 2500);
     } finally {
@@ -775,8 +775,8 @@ function createResponsesWorkbenchTab() {
     tab.dataset.workspace = 'responses';
     tab.innerHTML = `
         <span class="model-tab__indicator"></span>
-        <span class="model-tab__label" title="Route requests through Ollmo">
-            Ollmo
+        <span class="model-tab__label" title="Route requests through Fruth">
+            Fruth
         </span>
     `;
     if (isResponsesWorkbenchActive()) {
@@ -865,7 +865,7 @@ async function switchToResponsesWorkbench({
     updateSessionControlMode();
     updateActiveModelToolbar();
     renderResponsesWorkbenchTargetOptions();
-    showConversationLoadingPlaceholder('Ollmo');
+    showConversationLoadingPlaceholder('Fruth');
     updatePromptPlaceholder();
     updateVoiceInputButtonState();
     updateSendButtonState();
@@ -896,9 +896,9 @@ async function switchToResponsesWorkbench({
     } else if (target) {
         const backendLabel = formatBackendLabel(target.backend);
         const displayModel = target.model || target.instance_id;
-        updateGlobalModelStatus(`Ollmo ready for ${displayModel} (${backendLabel})`);
+        updateGlobalModelStatus(`Fruth ready for ${displayModel} (${backendLabel})`);
     } else {
-        updateGlobalModelStatus('Ollmo needs a running target model.');
+        updateGlobalModelStatus('Fruth needs a running target model.');
     }
     if (focusInput) {
         elements.userInput.focus();

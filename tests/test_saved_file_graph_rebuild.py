@@ -2,8 +2,8 @@
 import copy
 import pytest
 
-from ollmo_g.request_phase_graph import build_request_phase_graph, _guard_unbound_saved_file_consumers
-from ollmo_g.execution_planner import _apply_phase_graph_follow_up_result
+from fruth_inference.request_phase_graph import build_request_phase_graph, _guard_unbound_saved_file_consumers
+from fruth_inference.execution_planner import _apply_phase_graph_follow_up_result
 
 TAIL = ('Read the actually saved sample.json again. Create report.html from the read data. '
         'Use self-contained HTML with embedded CSS. Return exactly these two files.')

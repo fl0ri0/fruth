@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_services.frame_planning import build_artifact_flow_plan
-from ollmo_services.response_artifact_bundles import bundle_response_artifacts
-from ollmo_services.responses import filter_public_response_artifacts
-from ollmo_webserver import _LATE_FILL_RUNTIME
+from fruth_services.frame_planning import build_artifact_flow_plan
+from fruth_services.response_artifact_bundles import bundle_response_artifacts
+from fruth_services.responses import filter_public_response_artifacts
+from fruth_webserver import _LATE_FILL_RUNTIME
 
 
 class CurrentResponseArtifactAuthorityTests(unittest.TestCase):
@@ -96,7 +96,7 @@ class CurrentResponseArtifactAuthorityTests(unittest.TestCase):
                 'repair_work_available_count': 2,
                 'next_actions': ['retry_same_branch', 'rebind_dependency_evidence'],
             },
-            'ghost_repair_feedback': {
+            'inference_repair_feedback': {
                 'status': 'repair_required',
                 'items': [image_contract, styles_contract],
                 'repair_rebuild_contracts': [image_contract, styles_contract],
@@ -110,7 +110,7 @@ class CurrentResponseArtifactAuthorityTests(unittest.TestCase):
             ['contract-styles'],
         )
         self.assertEqual(
-            [item['contract_id'] for item in reconciled['ghost_repair_feedback']['items']],
+            [item['contract_id'] for item in reconciled['inference_repair_feedback']['items']],
             ['contract-styles'],
         )
         self.assertEqual(reconciled['repair_actions'], ['rebind_dependency_evidence'])

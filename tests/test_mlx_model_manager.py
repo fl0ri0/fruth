@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_runtime import mlx_model_manager
+from fruth_runtime import mlx_model_manager
 
 
 class MlxModelManagerTests(unittest.TestCase):
@@ -137,7 +137,7 @@ class MlxModelManagerTests(unittest.TestCase):
         )
 
         self.assertEqual(record["backend_package"], "mlx_whisper_shim")
-        self.assertEqual(record["backend_contract"], "ollmo.scripts.mlx_whisper_server")
+        self.assertEqual(record["backend_contract"], "fruth.scripts.mlx_whisper_server")
         self.assertEqual(record["provider_capabilities"], ["speech_to_text"])
         self.assertEqual(record["backend_metadata"]["shim_kind"], "local_http_compatibility_shim")
         self.assertIn("/v1/audio/transcriptions", record["backend_metadata"]["native_endpoint_paths"])
@@ -232,7 +232,7 @@ class MlxModelManagerTests(unittest.TestCase):
         self.assertEqual(record["provider_capabilities"], ["chat", "vision_analysis"])
         self.assertEqual(record["backend_metadata"]["instance_capabilities"], ["chat", "vision_analysis"])
 
-    @patch("ollmo_runtime.mlx_model_manager._mlx_package_runtime_check")
+    @patch("fruth_runtime.mlx_model_manager._mlx_package_runtime_check")
     def test_mlx_discovery_details_marks_snapshot_cached_only_when_runtime_missing(self, mock_runtime_check):
         mock_runtime_check.return_value = {
             "required_python_module": "mlx_vlm",
@@ -254,7 +254,7 @@ class MlxModelManagerTests(unittest.TestCase):
         self.assertIn("mlx_vlm", details["disabled_reason"])
         self.assertFalse(details["runnable_checks"]["python_resolved"])
 
-    @patch("ollmo_runtime.mlx_model_manager._mlx_package_runtime_check")
+    @patch("fruth_runtime.mlx_model_manager._mlx_package_runtime_check")
     def test_mlx_discovery_details_requires_whisper_shim_script(self, mock_runtime_check):
         mock_runtime_check.return_value = {
             "required_python_module": "mlx_lm",
@@ -277,7 +277,7 @@ class MlxModelManagerTests(unittest.TestCase):
         self.assertIn("Whisper shim script", details["disabled_reason"])
         self.assertFalse(details["runnable_checks"]["server_script_present"])
 
-    @patch("ollmo_runtime.mlx_model_manager._mlx_package_runtime_check")
+    @patch("fruth_runtime.mlx_model_manager._mlx_package_runtime_check")
     def test_mlx_discovery_details_rejects_broken_whisper_runtime_dependency(self, mock_runtime_check):
         mock_runtime_check.return_value = {
             "required_python_module": "mlx_whisper",
@@ -357,7 +357,7 @@ class MlxModelManagerTests(unittest.TestCase):
         self.assertFalse(checks["runtime_dependencies_ready"])
         self.assertIn("Numba needs NumPy", checks["runtime_dependency_error"])
 
-    @patch("ollmo_runtime.mlx_model_manager._mlx_package_runtime_check")
+    @patch("fruth_runtime.mlx_model_manager._mlx_package_runtime_check")
     def test_runtime_variants_mark_broken_whisper_dependency_degraded(self, mock_runtime_check):
         def checks_for(server_kind):
             base = {
@@ -384,8 +384,8 @@ class MlxModelManagerTests(unittest.TestCase):
             any("Numba needs NumPy" in issue for issue in variants["mlx_whisper"]["issues"])
         )
 
-    @patch("ollmo_runtime.mlx_model_manager._python_module_available")
-    @patch("ollmo_runtime.mlx_model_manager._mlx_package_runtime_check")
+    @patch("fruth_runtime.mlx_model_manager._python_module_available")
+    @patch("fruth_runtime.mlx_model_manager._mlx_package_runtime_check")
     def test_mlx_discovery_details_marks_model_cached_only_when_server_kind_lacks_model_support(
         self,
         mock_runtime_check,
@@ -431,11 +431,11 @@ class MlxModelManagerTests(unittest.TestCase):
 
         self.assertEqual(Path(resolved), hf_path)
 
-    @patch("ollmo_runtime.mlx_model_manager.infer_capability", return_value="chat")
-    @patch("ollmo_runtime.mlx_model_manager.read_snapshot_model_metadata", return_value={})
-    @patch("ollmo_runtime.mlx_model_manager._mlx_contract_details", return_value={})
+    @patch("fruth_runtime.mlx_model_manager.infer_capability", return_value="chat")
+    @patch("fruth_runtime.mlx_model_manager.read_snapshot_model_metadata", return_value={})
+    @patch("fruth_runtime.mlx_model_manager._mlx_contract_details", return_value={})
     @patch(
-        "ollmo_runtime.mlx_model_manager._mlx_discovery_details",
+        "fruth_runtime.mlx_model_manager._mlx_discovery_details",
         return_value={"runnable": False, "disabled_reason": "cached", "discovery_state": "cached_only"},
     )
     def test_find_hf_cached_models_skips_llama_cpp_gguf_snapshots_but_keeps_other_hf_cache_entries(
@@ -502,13 +502,13 @@ class MlxModelManagerTests(unittest.TestCase):
         self.assertIn("module_exists", captured["cmd"][2])
         self.assertNotIn("import mlx_lm", captured["cmd"][2])
 
-    @patch("ollmo_runtime.mlx_model_manager.schedule_recent_mlx_instance_reconciliation")
-    @patch("ollmo_runtime.mlx_model_manager.register_mlx_instance")
-    @patch("ollmo_runtime.mlx_model_manager.launch")
-    @patch("ollmo_runtime.mlx_model_manager.wait_for_port")
-    @patch("ollmo_runtime.mlx_model_manager.port_in_use", return_value=False)
-    @patch("ollmo_runtime.mlx_model_manager.find_mlx_snapshots")
-    @patch("ollmo_runtime.mlx_model_manager.prune_stale_mlx_entries")
+    @patch("fruth_runtime.mlx_model_manager.schedule_recent_mlx_instance_reconciliation")
+    @patch("fruth_runtime.mlx_model_manager.register_mlx_instance")
+    @patch("fruth_runtime.mlx_model_manager.launch")
+    @patch("fruth_runtime.mlx_model_manager.wait_for_port")
+    @patch("fruth_runtime.mlx_model_manager.port_in_use", return_value=False)
+    @patch("fruth_runtime.mlx_model_manager.find_mlx_snapshots")
+    @patch("fruth_runtime.mlx_model_manager.prune_stale_mlx_entries")
     def test_start_mlx_model_registers_and_schedules_monitor(
         self,
         _mock_prune,
@@ -544,13 +544,13 @@ class MlxModelManagerTests(unittest.TestCase):
             "prompt_cache_size": 10,
         })
 
-    @patch("ollmo_runtime.mlx_model_manager.schedule_recent_mlx_instance_reconciliation")
-    @patch("ollmo_runtime.mlx_model_manager.register_mlx_instance")
-    @patch("ollmo_runtime.mlx_model_manager.launch_vlm_server")
-    @patch("ollmo_runtime.mlx_model_manager.wait_for_port")
-    @patch("ollmo_runtime.mlx_model_manager.port_in_use", return_value=False)
-    @patch("ollmo_runtime.mlx_model_manager.find_mlx_snapshots")
-    @patch("ollmo_runtime.mlx_model_manager.prune_stale_mlx_entries")
+    @patch("fruth_runtime.mlx_model_manager.schedule_recent_mlx_instance_reconciliation")
+    @patch("fruth_runtime.mlx_model_manager.register_mlx_instance")
+    @patch("fruth_runtime.mlx_model_manager.launch_vlm_server")
+    @patch("fruth_runtime.mlx_model_manager.wait_for_port")
+    @patch("fruth_runtime.mlx_model_manager.port_in_use", return_value=False)
+    @patch("fruth_runtime.mlx_model_manager.find_mlx_snapshots")
+    @patch("fruth_runtime.mlx_model_manager.prune_stale_mlx_entries")
     def test_start_mlx_model_prefers_snapshot_vision_capability_over_chat_guess(
         self,
         _mock_prune,
@@ -604,13 +604,13 @@ class MlxModelManagerTests(unittest.TestCase):
             "quantized_kv_start": 5000,
         })
 
-    @patch("ollmo_runtime.mlx_model_manager.schedule_recent_mlx_instance_reconciliation")
-    @patch("ollmo_runtime.mlx_model_manager.register_mlx_instance")
-    @patch("ollmo_runtime.mlx_model_manager.launch_vlm_server")
-    @patch("ollmo_runtime.mlx_model_manager.wait_for_port")
-    @patch("ollmo_runtime.mlx_model_manager.port_in_use", return_value=False)
-    @patch("ollmo_runtime.mlx_model_manager.find_mlx_snapshots")
-    @patch("ollmo_runtime.mlx_model_manager.prune_stale_mlx_entries")
+    @patch("fruth_runtime.mlx_model_manager.schedule_recent_mlx_instance_reconciliation")
+    @patch("fruth_runtime.mlx_model_manager.register_mlx_instance")
+    @patch("fruth_runtime.mlx_model_manager.launch_vlm_server")
+    @patch("fruth_runtime.mlx_model_manager.wait_for_port")
+    @patch("fruth_runtime.mlx_model_manager.port_in_use", return_value=False)
+    @patch("fruth_runtime.mlx_model_manager.find_mlx_snapshots")
+    @patch("fruth_runtime.mlx_model_manager.prune_stale_mlx_entries")
     def test_start_mlx_model_uses_conservative_vlm_defaults_for_gemma4(
         self,
         _mock_prune,
@@ -649,8 +649,8 @@ class MlxModelManagerTests(unittest.TestCase):
         mock_schedule.assert_called_once_with(instance)
         mock_launch_vlm_server.assert_called_once_with(11508, launch_defaults={})
 
-    @patch("ollmo_runtime.mlx_model_manager.resolve_mlx_python", return_value="/opt/mlx/venv/bin/python")
-    @patch("ollmo_runtime.mlx_model_manager.subprocess.Popen")
+    @patch("fruth_runtime.mlx_model_manager.resolve_mlx_python", return_value="/opt/mlx/venv/bin/python")
+    @patch("fruth_runtime.mlx_model_manager.subprocess.Popen")
     def test_launch_vlm_server_applies_turboquant_launch_defaults(self, mock_popen, _mock_python):
         process = unittest.mock.Mock()
         process.pid = 1234
@@ -678,8 +678,8 @@ class MlxModelManagerTests(unittest.TestCase):
         self.assertIn("--max-kv-size", cmd)
         self.assertIn("8192", cmd)
 
-    @patch("ollmo_runtime.mlx_model_manager.resolve_mlx_python", return_value="/opt/mlx/venv/bin/python")
-    @patch("ollmo_runtime.mlx_model_manager.subprocess.Popen")
+    @patch("fruth_runtime.mlx_model_manager.resolve_mlx_python", return_value="/opt/mlx/venv/bin/python")
+    @patch("fruth_runtime.mlx_model_manager.subprocess.Popen")
     def test_launch_vlm_server_archives_existing_log_before_launch(self, mock_popen, _mock_python):
         process = unittest.mock.Mock()
         process.pid = 5678
@@ -706,8 +706,8 @@ class MlxModelManagerTests(unittest.TestCase):
             self.assertIn("OLD VLM FAILURE", archived_logs[0].read_text(encoding="utf-8"))
             self.assertTrue((log_dir / "archive" / "runtime" / "manifest.jsonl").exists())
 
-    @patch("ollmo_runtime.mlx_model_manager.resolve_mlx_python", return_value="/opt/mlx-audio/venv/bin/python")
-    @patch("ollmo_runtime.mlx_model_manager.subprocess.Popen")
+    @patch("fruth_runtime.mlx_model_manager.resolve_mlx_python", return_value="/opt/mlx-audio/venv/bin/python")
+    @patch("fruth_runtime.mlx_model_manager.subprocess.Popen")
     def test_launch_audio_server_omits_removed_workers_argument(self, mock_popen, _mock_python):
         process = unittest.mock.Mock()
         process.pid = 2468
@@ -725,8 +725,8 @@ class MlxModelManagerTests(unittest.TestCase):
         self.assertIn("11503", cmd)
         self.assertNotIn("--workers", cmd)
 
-    @patch("ollmo_runtime.mlx_model_manager.resolve_mlx_python", return_value="/opt/mlx/venv/bin/python")
-    @patch("ollmo_runtime.mlx_model_manager.subprocess.Popen")
+    @patch("fruth_runtime.mlx_model_manager.resolve_mlx_python", return_value="/opt/mlx/venv/bin/python")
+    @patch("fruth_runtime.mlx_model_manager.subprocess.Popen")
     def test_launch_mlx_lm_applies_prompt_cache_launch_defaults(self, mock_popen, _mock_python):
         process = unittest.mock.Mock()
         process.pid = 4321
@@ -749,9 +749,9 @@ class MlxModelManagerTests(unittest.TestCase):
         self.assertIn("--prompt-cache-size", cmd)
         self.assertIn("--prompt-cache-bytes", cmd)
 
-    @patch("ollmo_runtime.mlx_model_manager.remove_instance_status")
-    @patch("ollmo_runtime.mlx_model_manager.remove_mlx_instance")
-    @patch("ollmo_runtime.mlx_model_manager.port_in_use", return_value=False)
+    @patch("fruth_runtime.mlx_model_manager.remove_instance_status")
+    @patch("fruth_runtime.mlx_model_manager.remove_mlx_instance")
+    @patch("fruth_runtime.mlx_model_manager.port_in_use", return_value=False)
     def test_reconcile_recent_mlx_instance_removes_dead_entry(
         self,
         _mock_port_in_use,
@@ -771,9 +771,9 @@ class MlxModelManagerTests(unittest.TestCase):
         mock_remove_instance.assert_called_once_with("mlx-community__Qwen3.5-27B-4bit-mlx-11506")
         mock_remove_status.assert_called_once_with("mlx-community__Qwen3.5-27B-4bit-mlx-11506")
 
-    @patch("ollmo_runtime.mlx_model_manager.remove_instance_status")
-    @patch("ollmo_runtime.mlx_model_manager.remove_mlx_instance")
-    @patch("ollmo_runtime.mlx_model_manager.port_in_use", return_value=True)
+    @patch("fruth_runtime.mlx_model_manager.remove_instance_status")
+    @patch("fruth_runtime.mlx_model_manager.remove_mlx_instance")
+    @patch("fruth_runtime.mlx_model_manager.port_in_use", return_value=True)
     def test_reconcile_recent_mlx_instance_keeps_live_entry(
         self,
         _mock_port_in_use,

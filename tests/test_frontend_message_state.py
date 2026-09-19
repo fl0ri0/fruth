@@ -34,7 +34,7 @@ class FrontendMessageStateTests(unittest.TestCase):
         )
 
     def test_compact_work_indicator_styles_are_available(self):
-        css_source = Path("static/ui/ollmo.css").read_text()
+        css_source = Path("static/ui/fruth.css").read_text()
 
         self.assertIn('.chat-message-work-compact', css_source)
         self.assertIn('.chat-message-work-compact + .chat-message__body', css_source)
@@ -462,7 +462,7 @@ class FrontendMessageStateTests(unittest.TestCase):
         self.assertIn('responseFrameSequence: Number.isFinite(Number(normalized.response_frame_sequence))', history_source)
 
     def test_backend_history_hydration_copies_response_truth_fields(self):
-        webserver_source = Path("ollmo_webserver.py").read_text()
+        webserver_source = Path("fruth_webserver.py").read_text()
 
         self.assertIn("hydrated['status_semantics'] = dict(status_semantics)", webserver_source)
         self.assertIn("hydrated['surface_state'] = dict(surface_state)", webserver_source)
@@ -486,7 +486,7 @@ class FrontendMessageStateTests(unittest.TestCase):
 
     def test_long_html_css_code_previews_are_collapsible(self):
         messages_source = Path("static/ui/messages.js").read_text()
-        css_source = Path("static/ui/ollmo.css").read_text()
+        css_source = Path("static/ui/fruth.css").read_text()
 
         self.assertIn('COLLAPSIBLE_CODE_PREVIEW_LINE_LIMIT = 15', messages_source)
         self.assertIn('isHtmlCssCodePreview', messages_source)
@@ -532,7 +532,7 @@ class FrontendMessageStateTests(unittest.TestCase):
             const context = {
               console,
               window: {},
-              state: { flaskServerUrl: 'http://127.0.0.1:5001' },
+              state: { flaskServerUrl: 'http://127.0.0.1:5011' },
               elements: {},
               normalizeCapability: (value) => String(value || '').trim().toLowerCase() || null,
               normalizeBackend: (value) => String(value || '').trim().toLowerCase() || null,
@@ -573,7 +573,7 @@ class FrontendMessageStateTests(unittest.TestCase):
             );
             assert.strictEqual(
               context.buildSavedArtifactPreviewUrl(artifact.path, 'resp test'),
-              'http://127.0.0.1:5001/api/preview_saved_artifact?path=%2Fartifacts%2Fdocuments%2Findex.html&response_id=resp%20test'
+              'http://127.0.0.1:5011/api/preview_saved_artifact?path=%2Fartifacts%2Fdocuments%2Findex.html&response_id=resp%20test'
             );
         """
         subprocess.run(
@@ -600,7 +600,7 @@ class FrontendMessageStateTests(unittest.TestCase):
 
     def test_resolved_compact_work_indicator_uses_success_tone(self):
         messages_source = Path("static/ui/messages.js").read_text()
-        css_source = Path("static/ui/ollmo.css").read_text()
+        css_source = Path("static/ui/fruth.css").read_text()
 
         self.assertIn("token === 'active' || token === 'resolved'", messages_source)
         self.assertIn("return 'resolved';", messages_source)
@@ -615,7 +615,7 @@ class FrontendMessageStateTests(unittest.TestCase):
 
     def test_response_artifact_bundle_ui_action_and_card_are_available(self):
         messages_source = Path("static/ui/messages.js").read_text()
-        css_source = Path("static/ui/ollmo.css").read_text()
+        css_source = Path("static/ui/fruth.css").read_text()
         history_source = Path("static/ui/settings-history.js").read_text()
         state_source = Path("static/ui/message-state.js").read_text()
 
@@ -1218,7 +1218,7 @@ class FrontendMessageStateTests(unittest.TestCase):
             );
 
             const protocolPrompt = [
-              'Run a whole-turn semantic closure review for the current Ollmo response.',
+              'Run a whole-turn semantic closure review for the current Fruth response.',
               '',
               'Authority boundary:',
               '- You are a semantic reviewer, not runtime truth.',
@@ -1226,7 +1226,7 @@ class FrontendMessageStateTests(unittest.TestCase):
               'Return exactly one JSON object and no markdown, no prose outside JSON, no chain-of-thought.',
               'Required schema:',
               '{',
-              '  "kind": "ollmo.semantic_review_verdict",',
+              '  "kind": "fruth.semantic_review_verdict",',
               '  "verdict": "passed | failed | uncertain"',
               '}',
             ].join('\n');
@@ -1247,7 +1247,7 @@ class FrontendMessageStateTests(unittest.TestCase):
               'Received empty response.'
             );
 
-            const verdictText = '{"kind":"ollmo.semantic_review_verdict","verdict":"passed"}';
+            const verdictText = '{"kind":"fruth.semantic_review_verdict","verdict":"passed"}';
             const structurallyInternalVerdict = {
               branch_id: 'branch-global-semantic-closure-review-feedface',
               type: 'text',
@@ -1816,14 +1816,14 @@ class FrontendMessageStateTests(unittest.TestCase):
               linked_artifact_rebinds: [
                 {
                   status: 'applied',
-                  target_path: '/Users/example/Projects/ollmo/artifacts/documents/index.html',
+                  target_path: '/Users/example/Projects/fruth/artifacts/documents/index.html',
                   change_count: 2,
                   changes: [
                     {
                       kind: 'attribute_link',
                       from: 'abyss7_station.png',
                       to: '../images/aethelgard.png',
-                      linked_path: '/Users/example/Projects/ollmo/artifacts/images/aethelgard.png',
+                      linked_path: '/Users/example/Projects/fruth/artifacts/images/aethelgard.png',
                     },
                   ],
                 },
@@ -2389,7 +2389,7 @@ class FrontendMessageStateTests(unittest.TestCase):
               console,
               window: { setTimeout: () => 'timer', clearTimeout: () => {} },
               state: {
-                flaskServerUrl: 'http://localhost:5001',
+                flaskServerUrl: 'http://localhost:5011',
                 inference: { lateFillPollers: {}, pendingRequests: {}, resumePollers: {} },
               },
               elements: {},
@@ -2463,7 +2463,7 @@ class FrontendMessageStateTests(unittest.TestCase):
               },
               clearTimeout: (timer) => { clearedTimers.push(timer); },
               state: {
-                flaskServerUrl: 'http://localhost:5001',
+                flaskServerUrl: 'http://localhost:5011',
                 conversations: { 'conv-1': [] },
                 arena: { enabled: false },
                 inference: {
@@ -2594,7 +2594,7 @@ class FrontendMessageStateTests(unittest.TestCase):
                 clearTimeout: (_timer) => {},
               },
               state: {
-                flaskServerUrl: 'http://localhost:5001',
+                flaskServerUrl: 'http://localhost:5011',
                 conversations: { 'conv-1': [] },
                 inference: {
                   lateFillPollers: {},
@@ -2659,9 +2659,9 @@ class FrontendMessageStateTests(unittest.TestCase):
               mergeRequestSnapshotInputArtifacts: (requestSnapshot) => requestSnapshot || null,
               getRequestExecutionInstance: (instance) => instance || {},
               buildResponsesInputForHistory: () => [],
-              buildGhostRoutingConversationSnapshot: () => [],
-              getResponsesGhostPreferencesPayload: () => null,
-              getResponsesGhostRequestMetaPayload: () => null,
+              buildInferenceRoutingConversationSnapshot: () => [],
+              getResponsesInferencePreferencesPayload: () => null,
+              getResponsesInferenceRequestMetaPayload: () => null,
               buildSessionControlRequestFields: () => ({}),
               buildSelectedReferenceArtifactPayload: () => null,
               buildCanonicalResponseId: () => 'resp-fallback',
@@ -2693,7 +2693,7 @@ class FrontendMessageStateTests(unittest.TestCase):
               assert.strictEqual(timeoutCalls, 0);
               assert.strictEqual(context.state.inference.lateFillPollers['resp-stream-final'], undefined);
               assert.strictEqual(lookupCalls.length, 1);
-              assert.strictEqual(lookupCalls[0].url, 'http://localhost:5001/api/responses/resp-stream-final');
+              assert.strictEqual(lookupCalls[0].url, 'http://localhost:5011/api/responses/resp-stream-final');
               assert.strictEqual(lookupCalls[0].options.params.view, 'ui');
               assert.ok(appliedPayloads.length >= 1);
               const fullPayload = appliedPayloads.find((payload) => (

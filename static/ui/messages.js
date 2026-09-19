@@ -117,14 +117,14 @@ async function renderResponsesWorkbenchConversation(conversationId = getResponse
     const conversation = Array.isArray(state.conversations[conversationId]) ? state.conversations[conversationId] : [];
     const historyLoaded = Boolean(state.chatHistoryLoaded[conversationId]);
     if (!historyLoaded && conversation.length === 0) {
-        showConversationLoadingPlaceholder('Ollmo');
+        showConversationLoadingPlaceholder('Fruth');
         return;
     }
     if (!target && !isResponsesWorkbenchAutoTarget() && conversation.length === 0) {
         elements.chatArea.innerHTML = `
             <div class="chat-placeholder h-full">
                 <div class="chat-placeholder__icon"><i class="fas fa-arrows-turn-right"></i></div>
-                <h3>Ollmo</h3>
+                <h3>Fruth</h3>
                 <p>Start a local model or explicitly enable an external provider, then choose where this draft should run.</p>
             </div>
         `;
@@ -132,13 +132,13 @@ async function renderResponsesWorkbenchConversation(conversationId = getResponse
     }
     if (conversation.length === 0) {
         const isAuto = isResponsesWorkbenchAutoTarget();
-        const resolvedAutoTarget = isAuto ? getGhostResolvedTargetInstance() : null;
+        const resolvedAutoTarget = isAuto ? getInferenceResolvedTargetInstance() : null;
         if (isAuto && !resolvedAutoTarget) {
             elements.chatArea.innerHTML = `
                 <div class="chat-placeholder h-full">
                     <div class="chat-placeholder__icon"><i class="fas fa-route"></i></div>
-                    <h3>Ollmo</h3>
-                    <p>This draft is empty. Ollmo will choose an available local model or an explicitly enabled external provider.</p>
+                    <h3>Fruth</h3>
+                    <p>This draft is empty. Fruth will choose an available local model or an explicitly enabled external provider.</p>
                 </div>
             `;
             return;
@@ -160,8 +160,8 @@ async function renderResponsesWorkbenchConversation(conversationId = getResponse
         elements.chatArea.innerHTML = `
             <div class="chat-placeholder h-full">
                 <div class="chat-placeholder__icon"><i class="fas fa-route"></i></div>
-                <h3>Ollmo</h3>
-                <p>This draft is empty. Everything sent here goes through Ollmo to ${label} (${backendLabel}).</p>
+                <h3>Fruth</h3>
+                <p>This draft is empty. Everything sent here goes through Fruth to ${label} (${backendLabel}).</p>
             </div>
         `;
         return;

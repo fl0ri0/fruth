@@ -6,9 +6,7 @@ import shutil
 from types import SimpleNamespace
 import pytest
 
-HERE = Path(__file__).resolve().parents[1] / 'ollmo_research/gold-core'
-if not (HERE / 'test_validate.py').is_file():
-    pytest.skip('Curated Research assets are excluded from source releases', allow_module_level=True)
+HERE = Path(__file__).resolve().parents[1] / 'fruth_research/gold-core'
 spec = importlib.util.spec_from_file_location('gold_fixture', HERE / 'test_validate.py')
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)

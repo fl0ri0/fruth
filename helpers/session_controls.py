@@ -204,7 +204,7 @@ def build_session_controls(instance: dict | None) -> dict[str, Any]:
             label = 'Whisper Shim Input'
         elif is_realtime:
             hint = 'Realtime transcription controls for this speech-to-text model.'
-            description = 'This model advertises realtime or streaming transcription semantics; Ollmo currently exposes the compatible request-time basics only.'
+            description = 'This model advertises realtime or streaming transcription semantics; Fruth currently exposes the compatible request-time basics only.'
             label = 'Realtime STT Input'
         return {
             'enabled': True,
@@ -290,7 +290,7 @@ def build_session_controls(instance: dict | None) -> dict[str, Any]:
                     'pdf_max_pages': _field(
                         'number',
                         label='Max Page Budget',
-                        description='Optional override. Leave blank to process all PDF pages. Enter a number only when you want to cap how many pages Ollmo renders and OCRs for this request.',
+                        description='Optional override. Leave blank to process all PDF pages. Enter a number only when you want to cap how many pages Fruth renders and OCRs for this request.',
                     ),
                     'pdf_dpi': _field(
                         'number',
@@ -301,7 +301,7 @@ def build_session_controls(instance: dict | None) -> dict[str, Any]:
                     'pdf_page_timeout_sec': _field(
                         'number',
                         label='Page Timeout (s)',
-                        description='Maximum OCR time budget per rendered PDF page before Ollmo aborts that page.',
+                        description='Maximum OCR time budget per rendered PDF page before Fruth aborts that page.',
                         default_value=180,
                     ),
                     'pdf_synthesize': _field(
@@ -373,7 +373,7 @@ def build_session_controls(instance: dict | None) -> dict[str, Any]:
                 default_first_option=(model_type in {'custom_voice', 'kitten_tts'}),
                 required=(model_type == 'kitten_tts'),
                 required_message=(
-                    'Kitten TTS models require a valid speaker. Ollmo should auto-fill one from the discovered speaker list.'
+                    'Kitten TTS models require a valid speaker. Fruth should auto-fill one from the discovered speaker list.'
                     if model_type == 'kitten_tts'
                     else None
                 ),
@@ -389,7 +389,7 @@ def build_session_controls(instance: dict | None) -> dict[str, Any]:
             fields['tts_response_format'] = _field(
                 'select',
                 label='Output Format',
-                description='Optional. Leave blank for Ollmo’s local default WAV output, or choose an explicit audio container format for the generated file.',
+                description='Optional. Leave blank for Fruth’s local default WAV output, or choose an explicit audio container format for the generated file.',
                 options=response_formats,
             )
         if supports_instruct:

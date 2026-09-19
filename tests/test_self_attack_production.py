@@ -10,7 +10,7 @@ from scripts.self_attack_production import (
     run_production_audit, terminal_event, instrumentation_summary, instrumented_cohort,
 )
 from scripts.self_attack_convergence import analyze_causal_records
-from scripts.ollmo_self_attack import main
+from scripts.fruth_self_attack import main
 
 
 def event(identity='one',count=1,*,skipped=False,terminal=True):
@@ -97,7 +97,7 @@ def test_parent_manifest_inherits_exact_refs():
 
 def test_production_cli_cannot_dispatch(tmp_path):
     with patch('scripts.self_attack_production.run_production_audit',return_value=0) as run, \
-         patch('scripts.ollmo_self_attack.execute_sweep',side_effect=AssertionError('dispatch')):
+         patch('scripts.fruth_self_attack.execute_sweep',side_effect=AssertionError('dispatch')):
         assert main(['--audit-production',str(tmp_path/'frames'),'--output',str(tmp_path/'audit')])==0
         run.assert_called_once()
     with pytest.raises(SystemExit):main(['--audit-production',str(tmp_path),'--live-after-fake'])
@@ -107,7 +107,7 @@ def test_small_production_audit_read_only_and_corpus_separation(tmp_path):
     state=tmp_path/'state';frames=state/'response_frames';frames.mkdir(parents=True)
     history_dir=state/'chat_history';history_dir.mkdir()
     rid='resp_123_abcd'
-    frame={'kind':'ollmo.response_frame','response_id':rid,'frame_id':rid+':frame-1','frame_sequence':1,
+    frame={'kind':'fruth.response_frame','response_id':rid,'frame_id':rid+':frame-1','frame_sequence':1,
            'request':{'prompt':'Write a poem'},'current_state':{'id':rid,'lifecycle_state':'completed','status':'completed','runtime':{}},
            'late_fill':{'status':'completed','started_at':'2026-09-06T10:00:30Z','completed_at':'2026-09-06T10:02:00Z'}}
     ledger=frames/'responses.jsonl';ledger.write_text(json.dumps(frame)+'\n'+json.dumps(dict(frame,response_id='resp_corpus_test'))+'\n')
@@ -127,12 +127,12 @@ def test_small_production_audit_read_only_and_corpus_separation(tmp_path):
 
 
 def test_instrumented_cohort_keeps_history_unknown_and_deduplicates_completion():
-    call = dict(schema='ollmo.causal_event.v1', event_id='e', invocation_id='i',
+    call = dict(schema='fruth.causal_event.v1', event_id='e', invocation_id='i',
         record_kind='runtime_invocation', owner='response_frame.finalize', status='returned',
         process_boot_id='boot', scope_id='scope', target={'response_id': 'r'},
         start_monotonic_ns=1, end_monotonic_ns=2000000001,
         operations={'nested': {'role': 'canonical_truth', 'calls': 3, 'elapsed_ns': 4000000000}})
-    gap = dict(schema='ollmo.causal_event.v1', event_id='gap', record_kind='coverage_gap',
+    gap = dict(schema='fruth.causal_event.v1', event_id='gap', record_kind='coverage_gap',
                scope_id='scope', dropped_count=9)
     events = [call, call, gap, gap]
     analysis = analyze_causal_records(events)
@@ -151,7 +151,7 @@ def test_instrumented_cohort_keeps_history_unknown_and_deduplicates_completion()
 
 
 def test_conflicting_finalizer_identity_is_not_ranked_as_measured_time():
-    call = dict(schema='ollmo.causal_event.v1', event_id='e', invocation_id='i',
+    call = dict(schema='fruth.causal_event.v1', event_id='e', invocation_id='i',
         owner='response_frame.finalize', status='returned', process_boot_id='boot',
         start_monotonic_ns=1, end_monotonic_ns=2)
     events = [call, dict(call, end_monotonic_ns=3)]

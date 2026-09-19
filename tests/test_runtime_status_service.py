@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_core.status import (
+from fruth_core.status import (
     default_runtime_status,
     merge_instances_with_runtime_status,
     read_runtime_status,
@@ -24,9 +24,9 @@ class RuntimeStatusServiceTests(unittest.TestCase):
         self.assertTrue(payload['updated_at'].endswith('Z'))
         self.assertEqual(payload['instances'], {})
 
-    @patch('ollmo_core.status._fetch_backend_runtime_metadata')
-    @patch('ollmo_core.status._port_listening')
-    @patch('ollmo_core.status._process_alive')
+    @patch('fruth_core.status._fetch_backend_runtime_metadata')
+    @patch('fruth_core.status._port_listening')
+    @patch('fruth_core.status._process_alive')
     def test_merge_instances_defaults_to_cached_observer_mode(
         self,
         mock_process_alive,
@@ -62,8 +62,8 @@ class RuntimeStatusServiceTests(unittest.TestCase):
             mock_port_listening.assert_not_called()
             mock_fetch_backend_runtime_metadata.assert_not_called()
 
-    @patch('ollmo_core.status._port_listening', return_value=True)
-    @patch('ollmo_core.status._process_alive', return_value=True)
+    @patch('fruth_core.status._port_listening', return_value=True)
+    @patch('fruth_core.status._process_alive', return_value=True)
     def test_record_instance_lifecycle_and_prune_status(self, _mock_process_alive, _mock_port_listening):
         with tempfile.TemporaryDirectory() as tmpdir:
             status_path = Path(tmpdir) / 'runtime_status.json'
@@ -108,8 +108,8 @@ class RuntimeStatusServiceTests(unittest.TestCase):
             payload = read_runtime_status(status_path)
             self.assertEqual(payload['instances'], {})
 
-    @patch('ollmo_core.status._port_listening', return_value=False)
-    @patch('ollmo_core.status._process_alive', return_value=False)
+    @patch('fruth_core.status._port_listening', return_value=False)
+    @patch('fruth_core.status._process_alive', return_value=False)
     def test_refresh_runtime_status_marks_unreachable_and_prunes_stale(self, _mock_process_alive, _mock_port_listening):
         with tempfile.TemporaryDirectory() as tmpdir:
             status_path = Path(tmpdir) / 'runtime_status.json'
@@ -142,9 +142,9 @@ class RuntimeStatusServiceTests(unittest.TestCase):
             self.assertEqual(list(refreshed.keys()), ['active-1'])
             self.assertEqual(refreshed['active-1']['readiness'], 'unreachable')
 
-    @patch('ollmo_core.status._fetch_backend_runtime_metadata', return_value={})
-    @patch('ollmo_core.status._port_listening', return_value=True)
-    @patch('ollmo_core.status._process_alive', return_value=True)
+    @patch('fruth_core.status._fetch_backend_runtime_metadata', return_value={})
+    @patch('fruth_core.status._port_listening', return_value=True)
+    @patch('fruth_core.status._process_alive', return_value=True)
     def test_refresh_runtime_status_treats_restart_after_failure_as_recovery_evidence(
         self,
         _mock_process_alive,
@@ -200,9 +200,9 @@ class RuntimeStatusServiceTests(unittest.TestCase):
 
             self.assertEqual(refreshed[instance['instance_id']]['readiness'], 'degraded')
 
-    @patch('ollmo_core.status._fetch_backend_runtime_metadata')
-    @patch('ollmo_core.status._port_listening', return_value=True)
-    @patch('ollmo_core.status._process_alive', return_value=True)
+    @patch('fruth_core.status._fetch_backend_runtime_metadata')
+    @patch('fruth_core.status._port_listening', return_value=True)
+    @patch('fruth_core.status._process_alive', return_value=True)
     def test_refresh_runtime_status_includes_ollama_ps_runtime_metadata(
         self,
         _mock_process_alive,
@@ -252,8 +252,8 @@ class RuntimeStatusServiceTests(unittest.TestCase):
             )
             self.assertEqual(merged[0]['backend_runtime']['size_vram'], 1234)
 
-    @patch('ollmo_core.status._port_listening', return_value=True)
-    @patch('ollmo_core.status._process_alive', return_value=True)
+    @patch('fruth_core.status._port_listening', return_value=True)
+    @patch('fruth_core.status._process_alive', return_value=True)
     def test_refresh_runtime_status_includes_mlx_runtime_metadata(self, _mock_process_alive, _mock_port_listening):
         with tempfile.TemporaryDirectory() as tmpdir:
             status_path = Path(tmpdir) / 'runtime_status.json'
@@ -311,11 +311,11 @@ class RuntimeStatusServiceTests(unittest.TestCase):
             self.assertEqual(merged[0]['backend_runtime']['models_url'], 'http://127.0.0.1:11502/v1/models')
 
     @patch(
-        'ollmo_core.status._fetch_backend_runtime_metadata',
+        'fruth_core.status._fetch_backend_runtime_metadata',
         return_value={'source': 'ollama_api_ps', 'model_active': False},
     )
-    @patch('ollmo_core.status._port_listening', return_value=True)
-    @patch('ollmo_core.status._process_alive', return_value=True)
+    @patch('fruth_core.status._port_listening', return_value=True)
+    @patch('fruth_core.status._process_alive', return_value=True)
     def test_refresh_runtime_status_clears_stale_timeout_degraded_and_busy_when_backend_is_idle(
         self,
         _mock_process_alive,
@@ -356,11 +356,11 @@ class RuntimeStatusServiceTests(unittest.TestCase):
             self.assertNotIn('failure_cooldown_until', entry)
 
     @patch(
-        'ollmo_core.status._fetch_backend_runtime_metadata',
+        'fruth_core.status._fetch_backend_runtime_metadata',
         return_value={'source': 'ollama_api_ps', 'model_active': True},
     )
-    @patch('ollmo_core.status._port_listening', return_value=True)
-    @patch('ollmo_core.status._process_alive', return_value=True)
+    @patch('fruth_core.status._port_listening', return_value=True)
+    @patch('fruth_core.status._process_alive', return_value=True)
     def test_refresh_runtime_status_clears_stale_timeout_degraded_when_ollama_model_is_active(
         self,
         _mock_process_alive,

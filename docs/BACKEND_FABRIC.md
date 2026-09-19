@@ -4,7 +4,7 @@ This note describes the normalized backend discovery and lifecycle contract that
 
 ## Purpose
 
-Ollmo already had two strong truth layers:
+Fruth already had two strong truth layers:
 
 - `model_ports.json` for stable instance registry truth
 - `state/runtime_status.json` for cached readiness and backend observations, subordinate to current process/port/backend facts
@@ -14,12 +14,12 @@ The backend fabric supplies one shared summary that answers:
 - which local backend variants are installed at all,
 - which are fully runnable,
 - which are partially installed or otherwise degraded,
-- which are currently auto-wired into Ollmo through models or active instances,
-- and which lifecycle actions Ollmo expects each backend variant to support.
+- which are currently auto-wired into Fruth through models or active instances,
+- and which lifecycle actions Fruth expects each backend variant to support.
 
 That shared summary is the backend fabric.
 
-It also feeds Ghost's provider-neutral routing layer. Ghost should not hardcode provider families; it should consume the merged runtime/control-plane truth that backend fabric helps normalize.
+It also supplies backend facts for provider-neutral routing in Fruth's interpretive inference layer. The layer should not hardcode provider families; it should consume the merged runtime/control-plane truth that backend fabric helps normalize.
 
 Backend fabric is capability/runtime evidence. It is not promotion authority. A backend being runnable means a promoted branch can potentially execute there; it does not turn a possible image/audio/chat branch into owed work by itself. Candidate promotion, workload tasks, closure review, and artifact truth remain owned by the Responses runtime contract.
 
@@ -50,30 +50,30 @@ The current contract covers:
 
 `llama.cpp` is now part of the current contract as the `llama_cpp` backend variant.
 
-In the current runtime slice, Ollmo also treats backend-native cache/runtime knobs as part of the truthful contract. For `llama.cpp`, that means the runtime probe and registered instance metadata can expose launch defaults such as prompt caching, KV offload, and Flash Attention mode when the installed `llama-server` supports those flags.
+In the current runtime slice, Fruth also treats backend-native cache/runtime knobs as part of the truthful contract. For `llama.cpp`, that means the runtime probe and registered instance metadata can expose launch defaults such as prompt caching, KV offload, and Flash Attention mode when the installed `llama-server` supports those flags.
 
 The same contract now applies more truthfully to MLX variants:
 
 - `mlx_lm` exposes the server-side cache knobs it actually supports, such as `prefill_step_size`, `prompt_cache_size`, and `prompt_cache_bytes`.
 - `mlx_vlm` exposes its real KV-cache launch knobs, including `kv_bits`, `kv_quant_scheme`, `kv_group_size`, `max_kv_size`, and `quantized_kv_start`.
-- Ollmo preserves active MLX launch defaults into instance metadata and runtime-status payloads, so the UI and control plane can report the effective cache mode instead of only showing a package label.
+- Fruth preserves active MLX launch defaults into instance metadata and runtime-status payloads, so the UI and control plane can report the effective cache mode instead of only showing a package label.
 
 This is intentionally backend-native truth, not prompt-side emulation. `mlx_vlm` TurboQuant settings are treated as process launch settings because the upstream server applies them process-wide at startup.
 
 `llama.cpp` source-aware handling is now part of the same maintenance surface as the other local backends:
 
 - the pull/download and start/remove surfaces can register a local `.gguf` path or pull a GGUF Hugging Face repo for `llama.cpp`,
-- pulled sources persist into an Ollmo-managed catalog under `state/`,
+- pulled sources persist into a Fruth-managed catalog under `state/`,
 - available-model payloads carry source truth such as `hf_repo`, `hf_file`, or `model_path`,
 - and running `llama.cpp` instances can enrich runtime metadata from the live `/v1/models` endpoint instead of relying only on static registry facts.
 
 Catalog discovery remains broader than startup eligibility. A backend can have visible cached/catalog sources without those sources being runnable yet on the current machine. In that case the normalized payload should preserve the source entry with a cached-only state and an explicit reason instead of pretending it is startable.
 
-For `llama.cpp` pull/download behavior, Ollmo now expects a non-interactive Hugging Face download path rather than abusing `llama-cli` as a downloader. When the system `hf` binary is not on `PATH`, Ollmo also checks the MLX virtualenv sibling `hf` binary so the existing local MLX toolchain can satisfy `llama.cpp` catalog pulls.
+For `llama.cpp` pull/download behavior, Fruth now expects a non-interactive Hugging Face download path rather than abusing `llama-cli` as a downloader. When the system `hf` binary is not on `PATH`, Fruth also checks the MLX virtualenv sibling `hf` binary so the existing local MLX toolchain can satisfy `llama.cpp` catalog pulls.
 
 ## Payload Shape
 
-The normalized payload is built by `ollmo_core/backend_fabric.py`.
+The normalized payload is built by `fruth_core/backend_fabric.py`.
 
 Top-level fields:
 
@@ -109,14 +109,14 @@ Each backend item includes:
 - `missing`
   The required local runtime pieces are not present.
 
-`auto_wiring_state` describes how that backend variant currently participates in Ollmo:
+`auto_wiring_state` describes how that backend variant currently participates in Fruth:
 
 - `active`
-  Ollmo already has one or more running instances for that variant.
+  Fruth already has one or more running instances for that variant.
 - `discoverable`
-  No active instance is running, but Ollmo can already see runnable models/catalog entries for that variant.
+  No active instance is running, but Fruth can already see runnable models/catalog entries for that variant.
 - `unwired`
-  The backend runtime is installed, but Ollmo currently has nothing to wire for that variant.
+  The backend runtime is installed, but Fruth currently has nothing to wire for that variant.
 - `degraded`
   The backend variant is only partially available.
 - `missing`
@@ -125,7 +125,7 @@ Each backend item includes:
 Catalog-state note:
 
 - backend fabric counts distinguish `available_model_count`, `runnable_model_count`, and `cached_only_model_count`
-- `cached_only` means Ollmo can see the source snapshot or catalog record, but the current backend/runtime contract cannot launch it yet
+- `cached_only` means Fruth can see the source snapshot or catalog record, but the current backend/runtime contract cannot launch it yet
 - operator/startup surfaces should treat cached-only entries as discovery truth, not as runnable start targets
 
 Active-runtime note:
@@ -160,11 +160,11 @@ This contract is intentionally additive:
 - it does not replace backend-specific lifecycle code
 - it does not replace Responses truth surfaces such as response frames, work trees, output slots, outputs, or artifact dossiers
 
-Instead, it gives the rest of Ollmo one stable substrate summary so new backends can plug into the same control-plane shape.
+Instead, it gives the rest of Fruth one stable substrate summary so new backends can plug into the same control-plane shape.
 
-Ghost/runtime-intelligence note:
+Interpretive inference/runtime-intelligence note:
 
 - backend fabric is not a second router, but it helps keep routing provider-neutral
-- Ghost consumes the normalized backend/runtime facts together with `model_ports.json`, `state/runtime_status.json`, and live session-control schemas
+- The interpretive inference layer consumes the normalized backend/runtime facts together with `model_ports.json`, `state/runtime_status.json`, and live session-control schemas
 - that lets Auto choose among live instances by actual controls, modality support, runtime health, and backend-native traits instead of a hand-maintained provider preference list
 - branch-local materialization uses backend fabric only after a promoted contract exists; missing runtime support may block or fail that branch, while missing upstream artifacts should become `repair_dependency_chain` rather than same-backend retry

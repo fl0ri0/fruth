@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_services import events
-from ollmo_webserver import _LATE_FILL_RUNTIME
-from ollmo_server.multi_materialization_runtime import MultiMaterializationRuntimeOwner
+from fruth_services import events
+from fruth_webserver import _LATE_FILL_RUNTIME
+from fruth_server.multi_materialization_runtime import MultiMaterializationRuntimeOwner
 
 
 def run_worker(*, response_id='response-test', branches=2, sink_failure=False,
@@ -106,7 +106,7 @@ def run_worker(*, response_id='response-test', branches=2, sink_failure=False,
             max_parallel_workers=1).execute_materialization_branches,
     )
     with patch.object(events, 'CAUSAL_RECORD_LIMIT', budget), \
-            patch.dict('os.environ', {'OLLMO_LATE_FILL_AVAILABILITY_POLL_SEC': '1'}), \
+            patch.dict('os.environ', {'FRUTH_LATE_FILL_AVAILABILITY_POLL_SEC': '1'}), \
             events.causal_scope(sink, response_id=response_id) as scope:
         owner.complete_response_late_fill(
             response_payload=payload, request_payload={'prompt': 'Run the explicit branches.'},

@@ -4,12 +4,12 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_services import response_frames as frames
+from fruth_services import response_frames as frames
 
 
 def _frame(response_id):
     return {
-        'kind': 'ollmo.response_frame',
+        'kind': 'fruth.response_frame',
         'frame_version': 9,
         'response_id': response_id,
         'status': 'completed',

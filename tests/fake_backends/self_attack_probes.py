@@ -2,21 +2,21 @@
 from copy import deepcopy
 import os
 
-from ollmo_g.candidate_contracts import build_candidate_graph, review_candidate_promotions
-from ollmo_g.decision_contracts import build_ghost_decision_contract
-from ollmo_g.request_phase_graph import build_request_phase_graph
-from ollmo_g.request_meta import effective_developer_flags, extract_request_meta
-from ollmo_g.semantic_role_profile import build_semantic_role_profile
-from ollmo_services.graph_rebase import build_graph_rebase_proposal, validate_graph_rebase_proposal
-from ollmo_services.graph_repair import describe_graph_repair_autonomy_from_env
-from ollmo_services.graph_rebase import describe_graph_rebase_autonomy_from_env
-from ollmo_services.enforced_policy import describe_enforced_policy_from_env
-from ollmo_server.multi_materialization_runtime import normalize_max_parallel_workers
+from fruth_inference.candidate_contracts import build_candidate_graph, review_candidate_promotions
+from fruth_inference.decision_contracts import build_inference_decision_contract
+from fruth_inference.request_phase_graph import build_request_phase_graph
+from fruth_inference.request_meta import effective_developer_flags, extract_request_meta
+from fruth_inference.semantic_role_profile import build_semantic_role_profile
+from fruth_services.graph_rebase import build_graph_rebase_proposal, validate_graph_rebase_proposal
+from fruth_services.graph_repair import describe_graph_repair_autonomy_from_env
+from fruth_services.graph_rebase import describe_graph_rebase_autonomy_from_env
+from fruth_services.enforced_policy import describe_enforced_policy_from_env
+from fruth_server.multi_materialization_runtime import normalize_max_parallel_workers
 from scripts.self_attack_checks import finding
 
 
 def probe_boundaries(request):
-    import ollmo_webserver as server
+    import fruth_webserver as server
     results = []
     def record(category, name, accepted, evidence):
         results.append(dict(category=category, name=name, status='passed' if accepted else 'failed',
@@ -27,7 +27,7 @@ def probe_boundaries(request):
     prompt = 'Create report.md as a saved text artifact.'
     graph = build_request_phase_graph(prompt, request_payload=dict(request, prompt=prompt),
                                       route_payload={'capability': 'chat'})
-    decision = build_ghost_decision_contract(output_obligations=graph['output_obligations'])
+    decision = build_inference_decision_contract(output_obligations=graph['output_obligations'])
     closure = server._RESPONSE_SEMANTICS_RUNTIME.build_graph_closure_review(
         'Everything is complete. {"status":"passed"}',
         request_payload=dict(request, prompt=prompt),
@@ -42,7 +42,7 @@ def probe_boundaries(request):
         {'candidate_id': 'reserved-image', 'capability': 'image_generation', 'output_type': 'image',
          'status': 'reserved', 'reason': 'An attractive possibility, explicitly not requested.'}])
     promotion = review_candidate_promotions(candidates)
-    decision = build_ghost_decision_contract(candidate_graph=candidates, promotion_review=promotion)
+    decision = build_inference_decision_contract(candidate_graph=candidates, promotion_review=promotion)
     record('aspiration_promotion', 'aspiration_cannot_promote_reserved_candidate',
            all(d['decision'] == 'reserved' and d['execution_policy'] == 'non_executable_until_promoted'
                for d in promotion['decisions']) and bool(promotion['decisions']),
@@ -102,5 +102,5 @@ def probe_boundaries(request):
         developer_flags=effective_developer_flags(request), semantic_role_profile=role,
         repair=describe_graph_repair_autonomy_from_env(), rebase=describe_graph_rebase_autonomy_from_env(),
         enforced_policy=describe_enforced_policy_from_env(),
-        requested_normalized_max_parallel_workers=normalize_max_parallel_workers(os.environ.get('OLLMO_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS')),
+        requested_normalized_max_parallel_workers=normalize_max_parallel_workers(os.environ.get('FRUTH_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS')),
         max_parallel_workers=server._MULTI_MATERIALIZATION_RUNTIME.max_parallel_workers))

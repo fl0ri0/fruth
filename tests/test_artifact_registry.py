@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ollmo_services.artifact_registry import (
+from fruth_services.artifact_registry import (
     build_artifact_registry_record,
     build_generated_image_artifact_registry_record,
     build_generated_image_provenance,
@@ -71,7 +71,7 @@ class ArtifactRegistryTests(unittest.TestCase):
     def test_build_generated_image_artifact_registry_record_preserves_lineage(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             provenance = {
-                'kind': 'ollmo.generated_image_provenance',
+                'kind': 'fruth.generated_image_provenance',
                 'provenance_id': 'generated_image_deadbeef',
                 'created_at': '2026-04-12T00:00:00Z',
                 'image_path': 'artifacts/images/out.png',
@@ -263,12 +263,12 @@ class ArtifactRegistryTests(unittest.TestCase):
         self.assertIn('image', by_type)
         self.assertGreaterEqual(len([record for record in records if record['type'] == 'text']), 2)
         for record in records:
-            self.assertEqual(record['provenance']['kind'], 'ollmo.output_artifact_provenance')
+            self.assertEqual(record['provenance']['kind'], 'fruth.output_artifact_provenance')
             self.assertEqual(record['linked_response_ids'], ['resp_all_outputs'])
             self.assertIn('artifact_ref', record)
 
     def test_saved_transcript_registry_identity_matches_canonical_response_identity(self):
-        from ollmo_services.responses import build_canonical_response_artifacts
+        from fruth_services.responses import build_canonical_response_artifacts
 
         with tempfile.TemporaryDirectory() as tmpdir:
             transcript_path = Path(tmpdir) / 'transcripts' / 'speech.md'
@@ -338,7 +338,7 @@ class ArtifactRegistryTests(unittest.TestCase):
         self.assertEqual(len(records), 1)
         record = records[0]
         self.assertEqual(record['roles'], ['input'])
-        self.assertEqual(record['provenance']['kind'], 'ollmo.input_artifact_provenance')
+        self.assertEqual(record['provenance']['kind'], 'fruth.input_artifact_provenance')
         self.assertEqual(record['provenance']['input']['origin'], 'upload')
         self.assertEqual(record['linked_response_ids'], ['resp_input'])
 
@@ -591,7 +591,7 @@ class ArtifactRegistryTests(unittest.TestCase):
             )
             found = find_artifact_registry_record(str(image_path), ledger_path=ledger_path)
 
-        self.assertEqual(found['provenance']['kind'], 'ollmo.generated_image_provenance')
+        self.assertEqual(found['provenance']['kind'], 'fruth.generated_image_provenance')
         self.assertEqual(found['provenance']['provenance_id'], provenance['provenance_id'])
         self.assertEqual(found['artifact']['origin'], 'generated_output')
         self.assertEqual(found['linked_response_ids'], ['resp_image'])

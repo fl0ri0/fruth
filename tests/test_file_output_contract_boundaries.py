@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from ollmo_core.inference import detect_text_artifact_requests
-from ollmo_g.request_phase_graph import build_request_phase_graph
-from ollmo_server.late_fill_runtime import LateFillRuntimeOwner
-from ollmo_server.responses_request_runtime import ResponsesRequestRuntimeOwner
-from ollmo_server.responses_runtime import late_fill_has_actionable_repair_work
-from ollmo_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
-from ollmo_services.responses import build_canonical_response_artifacts
-from ollmo_g.request_meta import extract_request_meta
+from fruth_core.inference import detect_text_artifact_requests
+from fruth_inference.request_phase_graph import build_request_phase_graph
+from fruth_server.late_fill_runtime import LateFillRuntimeOwner
+from fruth_server.responses_request_runtime import ResponsesRequestRuntimeOwner
+from fruth_server.responses_runtime import late_fill_has_actionable_repair_work
+from fruth_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
+from fruth_services.responses import build_canonical_response_artifacts
+from fruth_inference.request_meta import extract_request_meta
 
 
 @pytest.mark.parametrize('prompt', [
@@ -34,7 +34,7 @@ def projection_owner():
 def test_projected_repair_retains_exact_executable_binding(tmp_path):
     request = {'extension': 'html', 'source_name': 'report',
                'source': 'closure_link_rebind', 'target_path': str(tmp_path / 'report.html')}
-    contract = {'kind': 'ollmo.repair_rebuild_contract', 'contract_id': 'repair-contract-cohort',
+    contract = {'kind': 'fruth.repair_rebuild_contract', 'contract_id': 'repair-contract-cohort',
                 'branch_id': 'cohort', 'phase_id': 'cohort', 'capability': 'chat',
                 'output_type': 'text', 'status': 'promoted', 'auto_execute': True,
                 'authority': 'closure_review_runtime_truth', 'promotion_source': 'graph_closure_review',
@@ -47,7 +47,7 @@ def test_projected_repair_retains_exact_executable_binding(tmp_path):
                 'repair_loop': {'status': 'promoted', 'auto_execute': True,
                                 'repair_work_available': True, 'promoted_contracts': [contract]}}
     original = copy.deepcopy(feedback)
-    gap = projection_owner()._ghost_repair_feedback_gap({'ghost_repair_feedback': feedback})
+    gap = projection_owner()._inference_repair_feedback_gap({'inference_repair_feedback': feedback})
     assert feedback == original
     branch = gap['pending_branches'][0]
     assert branch['branch_id'] == 'repair-cohort'
@@ -168,7 +168,7 @@ def test_closure_cannot_discharge_unbound_read_by_matching_files(tmp_path):
                'late_fill': {'status': 'completed', 'final_materialization_contract_status': 'fulfilled',
                              'completed_branches': [{**b, 'status': 'fulfilled'} for b in branches]}}
     review = owner.build_graph_closure_review(payload['output_text'],
-        request_payload={'prompt': prompt, 'ghost_route': True}, artifact_payload=payload)
+        request_payload={'prompt': prompt, 'inference_route': True}, artifact_payload=payload)
     check = next(c for c in review['checks'] if c.get('text_artifact_extension') == 'html')
     assert check['status'] == 'blocked'
     assert check['evidence'] == 'saved_file_dependency_unbound'

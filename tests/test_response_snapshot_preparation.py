@@ -8,11 +8,11 @@ from unittest.mock import patch
 
 import pytest
 
-from ollmo_services import response_frames as frames
+from fruth_services import response_frames as frames
 
 
 FRAME = {
-    'kind': 'ollmo.response_frame',
+    'kind': 'fruth.response_frame',
     'response_id': 'resp_prepared_snapshot',
     'frame_id': 'resp_prepared_snapshot:frame-1',
     'frame_sequence': 1,
@@ -166,8 +166,8 @@ def test_separate_snapshot_calls_observe_mutated_input_and_media_file(tmp_path):
     assert first['sha256'] != second['sha256']
     first_node = body(tmp_path / 'frames', first)['request_phase_graph']['nodes'][0]
     second_nodes = body(tmp_path / 'frames', second)['request_phase_graph']['nodes']
-    assert first_node['image']['kind'] == 'ollmo.snapshot_externalized_media_payload'
-    assert second_nodes[0]['image']['kind'] == 'ollmo.snapshot_stripped_raw_media_payload'
+    assert first_node['image']['kind'] == 'fruth.snapshot_externalized_media_payload'
+    assert second_nodes[0]['image']['kind'] == 'fruth.snapshot_stripped_raw_media_payload'
     assert second_nodes[1]['id'] == 'changed-phase'
 
 

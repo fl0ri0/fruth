@@ -31,8 +31,10 @@ def make_isolated_cleanup_repo(
     cleanup_script = repo_root / 'clean_repo_state.sh'
     shutil.copy2(REPO_ROOT / 'clean_repo_state.sh', cleanup_script)
     shutil.copy2(REPO_ROOT / 'scripts' / 'maintenance_archive.py', scripts_dir)
-    (repo_root / 'ollmo').write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
-    (repo_root / 'ollmo').chmod(0o755)
+    (repo_root / 'fruth').write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
+    (repo_root / 'fruth').chmod(0o755)
+    (repo_root / 'stop_multi_models.sh').write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
+    (repo_root / 'stop_multi_models.sh').chmod(0o755)
     (repo_root / 'model_ports.json').write_text('[]\n', encoding='utf-8')
     (repo_root / 'artifacts' / 'bundles').mkdir(parents=True)
     (repo_root / 'artifacts' / 'bundles' / 'keep.html').write_text(
@@ -111,12 +113,12 @@ def run_isolated_cleanup(
     )
 
 
-def run_ollmo_dry_run(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def run_fruth_dry_run(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     fixture = Path(tempfile.mkdtemp(dir=tmp_path))
     repo_root, env, _ = make_isolated_cleanup_repo(fixture)
-    shutil.copy2(REPO_ROOT / 'ollmo', repo_root / 'ollmo')
+    shutil.copy2(REPO_ROOT / 'fruth', repo_root / 'fruth')
     return subprocess.run(
-        [str(repo_root / 'ollmo'), *args, '--dry-run'],
+        [str(repo_root / 'fruth'), *args, '--dry-run'],
         cwd=repo_root,
         env=env,
         capture_output=True,
@@ -125,24 +127,45 @@ def run_ollmo_dry_run(tmp_path: Path, *args: str) -> subprocess.CompletedProcess
     )
 
 
-def test_archive_full_dry_run_preserves_protected_ghost_state(tmp_path: Path) -> None:
-    result = run_ollmo_dry_run(tmp_path, 'archive', '--full')
+def test_clean_preserves_backup_and_publication_trees(tmp_path: Path) -> None:
+    root, env, _ = make_isolated_cleanup_repo(tmp_path)
+    protected = []
+    for name in ('00_backup', 'fruth-upload'):
+        for relative in ('__pycache__/cache.pyc', 'nested/.DS_Store', 'project.py'):
+            path = root / name / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'preserve exact backup bytes\n')
+            protected.append(path)
+    removable = root / '__pycache__/temporary.pyc'
+    removable.parent.mkdir()
+    removable.write_bytes(b'generated cache')
+    before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in protected}
+
+    result = run_isolated_cleanup(root, env)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert not removable.exists()
+    assert {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in protected} == before
+
+
+def test_archive_full_dry_run_preserves_protected_inference_state(tmp_path: Path) -> None:
+    result = run_fruth_dry_run(tmp_path, 'archive', '--full')
 
     assert result.returncode == 0, result.stderr or result.stdout
     assert 'mode: archive' in result.stdout
     assert 'full reset: enabled' in result.stdout
-    assert 'Removing Ghost preference state' not in result.stdout
-    assert '[dry-run] remove: state/ghost_preferences.json' not in result.stdout
-    assert '[dry-run] remove: state/ghost_compiled_memory.json' not in result.stdout
-    assert '[dry-run] remove: state/ghost_compiled_memory.md' not in result.stdout
+    assert 'Removing interpretive inference preference state' not in result.stdout
+    assert '[dry-run] remove: state/inference_preferences.json' not in result.stdout
+    assert '[dry-run] remove: state/inference_compiled_memory.json' not in result.stdout
+    assert '[dry-run] remove: state/inference_compiled_memory.md' not in result.stdout
     assert '[dry-run] clear directory contents: state/self_learning' not in result.stdout
-    assert '- state/ghost_preferences.json preserved' in result.stdout
-    assert 'protected Ghost state snapshotted when present' in result.stdout
+    assert '- state/inference_preferences.json preserved' in result.stdout
+    assert 'protected interpretive inference state snapshotted when present' in result.stdout
 
 
 def test_archive_and_clean_preserve_artifact_bucket_structure_in_output(tmp_path: Path) -> None:
-    archive_result = run_ollmo_dry_run(tmp_path, 'archive', '--full')
-    clean_result = run_ollmo_dry_run(tmp_path, 'clean')
+    archive_result = run_fruth_dry_run(tmp_path, 'archive', '--full')
+    clean_result = run_fruth_dry_run(tmp_path, 'clean')
 
     assert archive_result.returncode == 0, archive_result.stderr or archive_result.stdout
     assert clean_result.returncode == 0, clean_result.stderr or clean_result.stdout
@@ -154,8 +177,8 @@ def test_archive_and_clean_preserve_artifact_bucket_structure_in_output(tmp_path
 
 
 def test_clean_and_archive_dry_run_report_learning_retained_sidecars(tmp_path: Path) -> None:
-    archive_result = run_ollmo_dry_run(tmp_path, 'archive', '--full')
-    clean_result = run_ollmo_dry_run(tmp_path, 'clean')
+    archive_result = run_fruth_dry_run(tmp_path, 'archive', '--full')
+    clean_result = run_fruth_dry_run(tmp_path, 'clean')
 
     assert archive_result.returncode == 0, archive_result.stderr or archive_result.stdout
     assert clean_result.returncode == 0, clean_result.stderr or clean_result.stdout
@@ -207,20 +230,20 @@ print('retained_copy_count=0')
     assert '[dry-run] clear directory contents: state/response_frames' not in result.stdout
 
 
-def test_clean_full_and_forget_ghost_remain_explicit_forget_paths(tmp_path: Path) -> None:
-    clean_full = run_ollmo_dry_run(tmp_path, 'clean', '--full')
-    clean_forget = run_ollmo_dry_run(tmp_path, 'clean', '--forget-ghost')
+def test_clean_full_and_forget_inference_remain_explicit_forget_paths(tmp_path: Path) -> None:
+    clean_full = run_fruth_dry_run(tmp_path, 'clean', '--full')
+    clean_forget = run_fruth_dry_run(tmp_path, 'clean', '--forget-inference')
 
     assert clean_full.returncode == 0, clean_full.stderr or clean_full.stdout
     assert clean_forget.returncode == 0, clean_forget.stderr or clean_forget.stdout
-    assert 'Removing Ghost preference state' in clean_full.stdout
-    assert '- state/ghost_preferences.json removed' in clean_full.stdout
-    assert 'Removing Ghost preference state' in clean_forget.stdout
-    assert '- state/ghost_preferences.json removed' in clean_forget.stdout
+    assert 'Removing interpretive inference preference state' in clean_full.stdout
+    assert '- state/inference_preferences.json removed' in clean_full.stdout
+    assert 'Removing interpretive inference preference state' in clean_forget.stdout
+    assert '- state/inference_preferences.json removed' in clean_forget.stdout
 
 
 def test_clean_dry_run_warns_about_chrome_artifact_file_access(tmp_path: Path) -> None:
-    result = run_ollmo_dry_run(tmp_path, 'archive', '--full')
+    result = run_fruth_dry_run(tmp_path, 'archive', '--full')
 
     assert result.returncode == 0, result.stderr or result.stdout
     assert 'Chrome/macOS artifact preview note' in result.stdout
@@ -229,8 +252,8 @@ def test_clean_dry_run_warns_about_chrome_artifact_file_access(tmp_path: Path) -
 
 
 def test_chrome_file_access_prompt_reset_flag_is_opt_in(tmp_path: Path) -> None:
-    without_flag = run_ollmo_dry_run(tmp_path, 'archive', '--full')
-    with_flag = run_ollmo_dry_run(
+    without_flag = run_fruth_dry_run(tmp_path, 'archive', '--full')
+    with_flag = run_fruth_dry_run(
         tmp_path,
         'archive',
         '--full',
@@ -352,7 +375,7 @@ def test_readiness_preflight_failure_does_not_archive_or_remove_response_frames(
 
     assert result.returncode == 0, result.stderr or result.stdout
     assert live_frame.read_text(encoding='utf-8') == '{"response_id":"resp-fixture"}\n'
-    archives = list((repo_root / '.ollmo_archiv').iterdir())
+    archives = list((repo_root / '.fruth_archiv').iterdir())
     assert len(archives) == 1
     assert not (archives[0] / 'state' / 'response_frames' / 'responses.jsonl').exists()
     assert 'skipping archive of state/response_frames' in result.stdout
@@ -382,14 +405,14 @@ def test_archive_write_snapshots_but_preserves_readiness_registry_under_full_for
     registry = repo_root / 'state' / 'graph_rebase' / 'readiness_observations.jsonl'
     registry_bytes = registry.read_bytes()
 
-    result = run_isolated_cleanup(repo_root, env, '--archive', '--full', '--forget-ghost')
+    result = run_isolated_cleanup(repo_root, env, '--archive', '--full', '--forget-inference')
 
     assert result.returncode == 0, result.stderr or result.stdout
     args = args_file.read_text(encoding='utf-8').splitlines()
     assert '--write' in args
     assert '--check-only' not in args
     assert registry.read_bytes() == registry_bytes
-    archives = list((repo_root / '.ollmo_archiv').iterdir())
+    archives = list((repo_root / '.fruth_archiv').iterdir())
     assert len(archives) == 1
     archived_registry = (
         archives[0] / 'state' / 'graph_rebase' / 'readiness_observations.jsonl'
@@ -402,10 +425,10 @@ def test_archive_write_snapshots_but_preserves_readiness_registry_under_full_for
     assert 'graph-rebase readiness registry preserved: 1 / 1 settled observations registered' in result.stdout
 
 
-def test_docs_do_not_describe_archive_full_as_forget_ghost_equivalent() -> None:
+def test_docs_do_not_describe_archive_full_as_forget_inference_equivalent() -> None:
     checked_paths = [
         REPO_ROOT / 'README.md',
-        REPO_ROOT / 'OLLMO_FOR_AGENTS.md',
+        REPO_ROOT / 'FRUTH_FOR_AGENTS.md',
         REPO_ROOT / 'clean_repo_state.sh',
     ]
 
@@ -415,5 +438,5 @@ def test_docs_do_not_describe_archive_full_as_forget_ghost_equivalent() -> None:
             assert not (
                 'archive --full' in normalized
                 and 'equivalent' in normalized
-                and '--forget-ghost' in normalized
-            ), f'{path} still equates archive --full with --forget-ghost: {line}'
+                and '--forget-inference' in normalized
+            ), f'{path} still equates archive --full with --forget-inference: {line}'

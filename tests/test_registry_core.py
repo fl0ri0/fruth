@@ -4,18 +4,18 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_core.registry import (
+from fruth_core.registry import (
     filter_active_registry_entries,
     list_runtime_entries,
     read_registry_entries,
     sanitize_registry_entry_for_persistence,
     write_registry_entries,
 )
-from ollmo_core.lifecycle import list_running_instances
+from fruth_core.lifecycle import list_running_instances
 
 
 class RegistryCoreTests(unittest.TestCase):
-    @patch('ollmo_core.registry._sync_downstream_integrations')
+    @patch('fruth_core.registry._sync_downstream_integrations')
     def test_write_sync_external_routes_through_shared_downstream_helper(self, mock_sync):
         with tempfile.TemporaryDirectory() as tmpdir:
             registry_path = Path(tmpdir) / 'model_ports.json'
@@ -78,8 +78,8 @@ class RegistryCoreTests(unittest.TestCase):
             self.assertEqual(runtime_entry['backend'], 'ollama')
             self.assertEqual(runtime_entry['capability'], 'chat')
 
-    @patch('ollmo_core.registry.pid_is_running', return_value=False)
-    @patch('ollmo_core.registry.is_port_listening')
+    @patch('fruth_core.registry.pid_is_running', return_value=False)
+    @patch('fruth_core.registry.is_port_listening')
     def test_filter_prunes_inactive_runtime_entries_but_keeps_agents(self, mock_is_port_listening, _mock_pid):
         mock_is_port_listening.side_effect = lambda port, host='localhost': int(port) == 11435
         entries = [
@@ -112,8 +112,8 @@ class RegistryCoreTests(unittest.TestCase):
         )
         self.assertTrue(any(entry.get('agent') for entry in filtered))
 
-    @patch('ollmo_core.registry.pid_is_running', return_value=True)
-    @patch('ollmo_core.registry.is_port_listening', return_value=False)
+    @patch('fruth_core.registry.pid_is_running', return_value=True)
+    @patch('fruth_core.registry.is_port_listening', return_value=False)
     def test_filter_prunes_port_backed_entry_when_port_is_dead_even_if_pid_still_exists(
         self,
         _mock_is_port_listening,
@@ -133,8 +133,8 @@ class RegistryCoreTests(unittest.TestCase):
 
         self.assertEqual(filtered, [])
 
-    @patch('ollmo_core.registry.pid_is_running', return_value=False)
-    @patch('ollmo_core.registry.is_port_listening', return_value=False)
+    @patch('fruth_core.registry.pid_is_running', return_value=False)
+    @patch('fruth_core.registry.is_port_listening', return_value=False)
     def test_list_running_instances_preserves_registry_by_default(
         self,
         mock_is_port_listening,

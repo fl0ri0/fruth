@@ -5,7 +5,7 @@ import math
 import wave
 from pathlib import Path
 
-from ollmo_services.tts_audio_integrity import (
+from fruth_services.tts_audio_integrity import (
     TTS_AUDIO_INTEGRITY_POLICY_ID,
     TTS_QWEN_SENTENCE_CHUNK_INTEGRITY_PROFILE,
     build_tts_audio_integrity_evidence,
@@ -47,7 +47,7 @@ def _qwen_voice_design_budget(
     tts_model_type: str = 'voice_design',
 ) -> dict:
     return {
-        'kind': 'ollmo.tts_generation_budget',
+        'kind': 'fruth.tts_generation_budget',
         'version': 1,
         'policy_id': 'qwen3_tts_adaptive_audio_tokens_v2',
         'model_family': 'qwen3_tts',
@@ -72,7 +72,7 @@ def test_healthy_speech_like_wav_passes_with_source_binding(tmp_path):
         source_sha256=source_sha256,
     )
 
-    assert evidence['kind'] == 'ollmo.tts_audio_integrity_evidence'
+    assert evidence['kind'] == 'fruth.tts_audio_integrity_evidence'
     assert evidence['policy_id'] == TTS_AUDIO_INTEGRITY_POLICY_ID
     assert evidence['status'] == 'passed'
     assert evidence['reason_code'] == 'TTS_AUDIO_INTEGRITY_PASSED'

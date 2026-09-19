@@ -96,7 +96,7 @@ def analyze(records, response_id):
     for r in summaries.values():
         scope_cas.update((r.get('identities') or {}).get('produced_cas') or [])
         identity_complete &= not bool(r.get('identity_drops'))
-    return {'schema': 'ollmo.state_flow_analysis.v1', 'response_id': response_id,
+    return {'schema': 'fruth.state_flow_analysis.v1', 'response_id': response_id,
             'transitions': rows, 'owner_counts': dict(counts), 'selected_work_counters': dict(work_totals),
             'turn_summary': {'full_finalizers_completed': counts['response_frame.finalize'],
               'canonical_load_invocations': counts['response_frame.canonical_load'],

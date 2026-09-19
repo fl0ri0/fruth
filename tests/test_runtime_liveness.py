@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ollmo_g.payload import build_ghost_payload
-from ollmo_core.runtime_liveness import (
+from fruth_inference.payload import build_inference_payload
+from fruth_core.runtime_liveness import (
     format_runtime_timestamp,
     runtime_instance_is_selectable,
     runtime_instance_score,
@@ -98,8 +98,8 @@ class RuntimeLivenessTests(unittest.TestCase):
                     'cooldown_until': '2099-01-01T00:00:00Z',
                 }, capability='chat'))
 
-    def test_ghost_payload_does_not_turn_live_degraded_into_runtime_issue(self):
-        payload = build_ghost_payload(
+    def test_inference_payload_does_not_turn_live_degraded_into_runtime_issue(self):
+        payload = build_inference_payload(
             [
                 {
                     'instance_id': 'live-degraded-chat',
@@ -119,17 +119,17 @@ class RuntimeLivenessTests(unittest.TestCase):
                 }
             ],
             recent_events=[],
-            runtime_log_path=Path('/tmp/ollmo-missing-runtime.log'),
-            response_frame_ledger_path=Path('/tmp/ollmo-missing-responses.jsonl'),
-            accepted_learning_policy_path=Path('/tmp/ollmo-missing-accepted-policy.json'),
+            runtime_log_path=Path('/tmp/fruth-missing-runtime.log'),
+            response_frame_ledger_path=Path('/tmp/fruth-missing-responses.jsonl'),
+            accepted_learning_policy_path=Path('/tmp/fruth-missing-accepted-policy.json'),
         )
 
         self.assertEqual(payload['capabilities']['chat']['default_instance_id'], 'live-degraded-chat')
         self.assertFalse(any('degraded' in str(issue).lower() for issue in payload['issues']))
         self.assertFalse(any('unavailable' in str(issue).lower() for issue in payload['issues']))
 
-    def test_ghost_payload_reports_hard_unavailable_live_truth(self):
-        payload = build_ghost_payload(
+    def test_inference_payload_reports_hard_unavailable_live_truth(self):
+        payload = build_inference_payload(
             [
                 {
                     'instance_id': 'dead-port-chat',
@@ -149,16 +149,16 @@ class RuntimeLivenessTests(unittest.TestCase):
                 }
             ],
             recent_events=[],
-            runtime_log_path=Path('/tmp/ollmo-missing-runtime.log'),
-            response_frame_ledger_path=Path('/tmp/ollmo-missing-responses.jsonl'),
-            accepted_learning_policy_path=Path('/tmp/ollmo-missing-accepted-policy.json'),
+            runtime_log_path=Path('/tmp/fruth-missing-runtime.log'),
+            response_frame_ledger_path=Path('/tmp/fruth-missing-responses.jsonl'),
+            accepted_learning_policy_path=Path('/tmp/fruth-missing-accepted-policy.json'),
         )
 
         self.assertIsNone(payload['capabilities']['chat']['default_instance_id'])
         self.assertTrue(any('unavailable' in str(issue).lower() for issue in payload['issues']))
 
-    def test_ghost_payload_reclassifies_legacy_degraded_failed_event_as_advisory(self):
-        payload = build_ghost_payload(
+    def test_inference_payload_reclassifies_legacy_degraded_failed_event_as_advisory(self):
+        payload = build_inference_payload(
             [
                 {
                     'instance_id': 'ready-chat',
@@ -181,9 +181,9 @@ class RuntimeLivenessTests(unittest.TestCase):
                     'message': 'Runtime status changed: ready -> degraded',
                 }
             ],
-            runtime_log_path=Path('/tmp/ollmo-missing-runtime.log'),
-            response_frame_ledger_path=Path('/tmp/ollmo-missing-responses.jsonl'),
-            accepted_learning_policy_path=Path('/tmp/ollmo-missing-accepted-policy.json'),
+            runtime_log_path=Path('/tmp/fruth-missing-runtime.log'),
+            response_frame_ledger_path=Path('/tmp/fruth-missing-responses.jsonl'),
+            accepted_learning_policy_path=Path('/tmp/fruth-missing-accepted-policy.json'),
         )
 
         event = payload['recent_events'][0]
@@ -194,21 +194,21 @@ class RuntimeLivenessTests(unittest.TestCase):
             'legacy_degraded_failed_event_reclassified_as_advisory',
         )
 
-    def test_ghost_payload_can_skip_offline_self_learning_report_but_keep_accepted_hints(self):
+    def test_inference_payload_can_skip_offline_self_learning_report_but_keep_accepted_hints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             accepted_policy_path = root / 'accepted_policy_snapshot.json'
             accepted_policy_path.write_text(
                 json.dumps(
                     {
-                        'kind': 'ollmo.accepted_learning_policy_snapshot',
+                        'kind': 'fruth.accepted_learning_policy_snapshot',
                         'enabled': True,
                         'authority': 'soft_hint',
                         'status': 'enabled',
                         'runtime_effect': 'readable_policy_input',
                         'accepted_learnings': [
                             {
-                                'kind': 'ollmo.accepted_learning',
+                                'kind': 'fruth.accepted_learning',
                                 'learning_id': 'accepted-test-learning',
                                 'candidate_id': 'policy-improvement-artifact_fulfillment_policy',
                                 'target_area': 'artifact_fulfillment_policy',
@@ -225,10 +225,10 @@ class RuntimeLivenessTests(unittest.TestCase):
             )
 
             with patch(
-                'ollmo_g.payload.build_self_learning_report',
+                'fruth_inference.payload.build_self_learning_report',
                 side_effect=AssertionError('offline report should not be read in hot routing payload'),
             ):
-                payload = build_ghost_payload(
+                payload = build_inference_payload(
                     [],
                     recent_events=[],
                     runtime_log_path=root / 'missing.log',

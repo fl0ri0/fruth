@@ -1,25 +1,47 @@
 cff-version: "1.2.0"
-message: "If Ollmo, its state-substrate architecture, possibility space and selective promotion into obligations, work-graph model, recorded pre-freeze working state, intent-preserving block-resolution principle, cross-instance Late Fill and branch-local output binding within one canonical response, evidence-gated closure review, durable response-frame design, or evaluation artifacts contribute to your research or published work, please cite the software and repository."
-title: "Ollmo"
+message: >-
+  If you use Fruth, its software design, or its evaluation artifacts in research
+  or a published system, please cite this software and identify the exact version
+  and commit or local snapshot used. Fruth 0.1.2 derives
+  from Ollmo 0.1.1 (https://github.com/fl0ri0/ollmo). Its version identifies
+  the Fruth software, while Ollmo 0.1.1 identifies the source baseline.
+title: "Fruth"
 authors:
   - name: "fl0ri0"
 type: software
-version: "0.1.1"
-date-released: "2026-09-12"
-abstract: "A local-first AI runtime and control plane with work graphs, durable response frames, materialized artifacts, and evidence-gated closure."
-repository-code: "https://github.com/fl0ri0/ollmo"
+version: "0.1.2"
+date-released: "2026-09-19"
+repository-code: "https://github.com/fl0ri0/fruth"
+abstract: >-
+  Fruth is a durable semantic state inference engine for local AI. A response
+  develops through a fluid possibility space: intent is interpreted into candidate
+  work graphs, and relevant candidates become obligations through validated
+  promotion. Semantic depth and structural granularity guide interpretation,
+  decomposition, and review. Late fill continues already-promoted obligations and
+  binds later materialized results and their evidence back into the same response.
+  Work advances through execution, evidence-gated
+  closure review, and intent-preserving block resolution. Freezing records the
+  evidenced current state, including unresolved work. Reviewed learning can inform
+  future proposals; subsequent continuation, bounded repair, and reviewed graph
+  rebase preserve earlier frozen evidence through explicit successor lineage.
+  Interpretive inference proposes, while runtime contracts govern accepted
+  transitions and execution.
 license: "Apache-2.0"
 keywords:
-  - "local AI"
-  - "state-native runtime"
-  - "state substrate"
+  - "durable semantic state"
+  - "response semantics"
   - "possibility space"
-  - "selective promotion into obligations"
-  - "work graph"
-  - "recorded pre-freeze working state"
-  - "intent-preserving block resolution"
-  - "cross-instance Late Fill"
-  - "branch-local output binding"
-  - "canonical response identity"
-  - "evidence-gated closure review"
+  - "interpretive inference"
+  - "local AI"
+  - "semantic depth"
+  - "structural granularity"
+  - "work graphs"
+  - "selective obligation promotion"
+  - "artifact provenance"
+  - "evidence-gated closure"
   - "durable response frames"
+  - "workflow continuation"
+  - "late fill"
+  - "reviewed graph rebase"
+  - "reviewed learning"
+  - "intent-preserving block resolution"

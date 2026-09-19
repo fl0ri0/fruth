@@ -1,0 +1,126 @@
+{
+  "artifacts": [
+    {
+      "artifact_ref": "artifact:audio_47363b3d7831901a2652a86a",
+      "branch_id": "branch-text_to_speech-1",
+      "channels": 1,
+      "duration_seconds": 21.2,
+      "mime_type": "audio/wav",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/audio/narration.wav",
+      "sample_rate_hz": 24000,
+      "sample_width_bits": 16,
+      "sha256": "6b2a4073ba3fee6acc194a4562c4bb53bfa1b658dc2b2504de9c9d8343ce6e75",
+      "size_bytes": 1017644,
+      "type": "audio"
+    }
+  ],
+  "bundle": null,
+  "integrity": {
+    "frame_identity_verified": true,
+    "index_only_wire_lookup": true,
+    "ledger_fallback_used": false,
+    "observation_snapshot_digests_verified": true,
+    "source_frame_record_sha256": "6b436530b194c1eb84e11185ce37f564e83837ad9d33603ebab71f0e9a8c7aed",
+    "source_frame_record_size_bytes": 749700,
+    "verified_response_map": true
+  },
+  "outputs": [
+    {
+      "branch_id": "phase-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-1",
+      "slot_id": "output-phase-1",
+      "status": "fulfilled",
+      "text": "The steady rhythm of evening rain settles the world into a quiet, contemplative hush. Each droplet tapping against the windowpane acts as a gentle reminder of nature's persistent grace. In this dimming light, the scent of damp earth brings a profound sense of peace to the soul.",
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:audio_47363b3d7831901a2652a86a",
+      "branch_id": "branch-text_to_speech-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/audio/narration.wav",
+      "slot_id": "output-phase-2",
+      "status": "fulfilled",
+      "type": "audio"
+    }
+  ],
+  "provenance": {
+    "original_runtime_truth_remains_authoritative": true,
+    "raw_frame_published": false,
+    "runtime_effect": "none",
+    "source": "indexed final response frame and canonical artifact bytes"
+  },
+  "request": {
+    "prompt_path": "prompt.txt",
+    "prompt_sha256": "b52d91c9bfef110029b29ca7c8698069a9a61253c59b9bdc01d4742253e40379",
+    "runtime_request_sha256": "5c643c0a59aaddd09939addcf274c0ee056cf6bdc18bee68e7ad28a6ca99e1a4",
+    "verified": true
+  },
+  "response": {
+    "frame_id": "resp_1789746763551_269453bd124b18:frame-2",
+    "frame_sequence": 2,
+    "frame_version": 9,
+    "id": "resp_1789746763551_269453bd124b18",
+    "lifecycle_state": "completed",
+    "status": "completed",
+    "status_semantics": {
+      "has_actionable_repair": false,
+      "has_open_continuation": false,
+      "is_terminal": true,
+      "terminal": true
+    }
+  },
+  "runtime_truth": {
+    "closure": {
+      "continuation_required": false,
+      "counts": {
+        "blocked": 0,
+        "deferred": 0,
+        "fulfilled": 2,
+        "pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "obligation_count": 2,
+      "pending_branch_count": 0,
+      "status": "fulfilled"
+    },
+    "late_fill": {
+      "counts": {
+        "cancelled": 0,
+        "completed": 1,
+        "failed": 0,
+        "pending": 0
+      },
+      "final_materialization_contract_status": "fulfilled",
+      "status": "completed"
+    },
+    "surface": {
+      "active_categories": [
+        "completed",
+        "reconsiderable",
+        "controlled_attention_advisory",
+        "aspiration_advisory",
+        "commitment_advisory"
+      ],
+      "category_counts": {
+        "aspiration_advisory": 4,
+        "blocked": 0,
+        "commitment_advisory": 8,
+        "completed": 2,
+        "controlled_attention_advisory": 60,
+        "open": 0,
+        "reconsiderable": 2,
+        "repair_pending": 0,
+        "semantic_review_pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "status": "fulfilled"
+    }
+  },
+  "schema": "fruth.public_reference_run.v1",
+  "version": 1
+}

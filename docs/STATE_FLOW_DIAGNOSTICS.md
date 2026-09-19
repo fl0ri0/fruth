@@ -1,7 +1,7 @@
 # Bounded state-flow diagnostics
 
-`ollmo_services/state_flow.py` observes existing owners when the server process
-has `OLLMO_STATE_FLOW_DIAGNOSTICS_DIR` set to a diagnostic output directory.
+`fruth_services/state_flow.py` observes existing owners when the server process
+has `FRUTH_STATE_FLOW_DIAGNOSTICS_DIR` set to a diagnostic output directory.
 Unset means no carrier, payload inspection or diagnostic I/O. It is an observer
 switch, with no routing, scheduling, cache, authority or persistence decisions.
 The existing request scope and `traced_thread_target` carry context into existing
@@ -25,7 +25,7 @@ state/authority store. It is not inserted into canonical frames or sidecars.
 
 ## Boundaries and interpretation
 
-Observed transitions include request normalization; Ghost routing and candidate
+Observed transitions include request normalization; interpretive inference routing and candidate
 promotion; phase-graph attachment; live record registration/update; Late Fill
 handoffs, dependency bindings, branch results and state construction; semantic
 and graph Closure; terminal link rebind, reconcile and materialization; working

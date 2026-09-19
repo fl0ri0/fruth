@@ -5,14 +5,14 @@ import threading
 import time
 import unittest
 
-from ollmo_server.multi_materialization_runtime import (
+from fruth_server.multi_materialization_runtime import (
     DEFAULT_MAX_PARALLEL_WORKERS,
     MAX_MAX_PARALLEL_WORKERS,
     MultiMaterializationRuntimeOwner,
     _exception_error_payload,
     normalize_max_parallel_workers,
 )
-from ollmo_server.recovery_contract import (
+from fruth_server.recovery_contract import (
     RECOVERY_ACTION_MANUAL_REVIEW,
     RECOVERY_ACTION_REBIND_DEPENDENCY_EVIDENCE,
     RECOVERY_ACTION_REBUILD_FROM_PROMOTED_OBLIGATIONS,
@@ -1070,12 +1070,12 @@ class RuntimeContractKnobTests(unittest.TestCase):
     def test_webserver_parallel_worker_env_knob_is_read_at_import(self):
         env = dict(os.environ)
         env['PYTHONPATH'] = '.'
-        env['OLLMO_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS'] = '2'
+        env['FRUTH_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS'] = '2'
         result = subprocess.run(
             [
                 sys.executable,
                 '-c',
-                'import ollmo_webserver; print(ollmo_webserver._MULTI_MATERIALIZATION_RUNTIME.max_parallel_workers)',
+                'import fruth_webserver; print(fruth_webserver._MULTI_MATERIALIZATION_RUNTIME.max_parallel_workers)',
             ],
             cwd=os.getcwd(),
             env=env,

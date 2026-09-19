@@ -1,34 +1,34 @@
 #!/bin/bash
 # Starts the manager that discovers and launches dedicated model servers
 # and then starts the Flask webserver for the UI.
-# Usage: run from the ollmo repo root: ./start_multi_models.sh
+# Usage: run from the fruth repo root: ./start_multi_models.sh
 
-cd "$(dirname "$0")" # Ensure we are in the ollmo repo root.
+cd "$(dirname "$0")" # Ensure we are in the fruth repo root.
 
 OLLAMA_CLI="/opt/homebrew/bin/ollama"
 MAIN_VENV_DIR=".venv"
 REPO_PYTHON="python3"
-REQUIREMENTS_FILE="requirements.txt" # In the ollmo repo root.
+REQUIREMENTS_FILE="requirements.txt" # In the fruth repo root.
 UNIFIED_STARTUP_SCRIPT="scripts/startup_model_manager.py"
-WEBSERVER_SCRIPT="ollmo_webserver.py"
-WEBSERVER_PORT="5001"
+WEBSERVER_SCRIPT="fruth_webserver.py"
+WEBSERVER_PORT="5011"
 
 # Keep reviewed-rebase credentials out of every model/backend process. They
 # are re-exported only for the Flask control plane, which immediately removes
 # them from its process environment after startup.
-GRAPH_REBASE_OPERATOR_TOKEN="${OLLMO_GRAPH_REBASE_OPERATOR_TOKEN:-}"
-GRAPH_REBASE_OPERATOR_IDENTITY="${OLLMO_GRAPH_REBASE_OPERATOR_IDENTITY:-}"
+GRAPH_REBASE_OPERATOR_TOKEN="${FRUTH_GRAPH_REBASE_OPERATOR_TOKEN:-}"
+GRAPH_REBASE_OPERATOR_IDENTITY="${FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY:-}"
 export -n GRAPH_REBASE_OPERATOR_TOKEN
 export -n GRAPH_REBASE_OPERATOR_IDENTITY
-unset OLLMO_GRAPH_REBASE_OPERATOR_TOKEN
-unset OLLMO_GRAPH_REBASE_OPERATOR_IDENTITY
+unset FRUTH_GRAPH_REBASE_OPERATOR_TOKEN
+unset FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY
 
-: "${OLLMO_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS:=4}"
-: "${OLLMO_GRAPH_REPAIR_AUTONOMY=apply_enforced}"
-: "${OLLMO_APPLY_ENFORCED_POLICY=safe_v1}"
-export OLLMO_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS
-export OLLMO_GRAPH_REPAIR_AUTONOMY
-export OLLMO_APPLY_ENFORCED_POLICY
+: "${FRUTH_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS:=4}"
+: "${FRUTH_GRAPH_REPAIR_AUTONOMY=apply_enforced}"
+: "${FRUTH_APPLY_ENFORCED_POLICY=safe_v1}"
+export FRUTH_MULTI_MATERIALIZATION_MAX_PARALLEL_WORKERS
+export FRUTH_GRAPH_REPAIR_AUTONOMY
+export FRUTH_APPLY_ENFORCED_POLICY
 
 # Colors
 SYSTEM_COLOR="\033[90m"
@@ -47,8 +47,8 @@ run_repo_python() {
 }
 
 preflight_ollama_service_ownership() {
-    if [ "${OLLMO_ALLOW_BREW_OLLAMA_SERVICE:-0}" = "1" ]; then
-        echo "⚠️  OLLMO_ALLOW_BREW_OLLAMA_SERVICE=1 is set. Skipping the Homebrew Ollama ownership check."
+    if [ "${FRUTH_ALLOW_BREW_OLLAMA_SERVICE:-0}" = "1" ]; then
+        echo "⚠️  FRUTH_ALLOW_BREW_OLLAMA_SERVICE=1 is set. Skipping the Homebrew Ollama ownership check."
         return 0
     fi
 
@@ -70,9 +70,9 @@ preflight_ollama_service_ownership() {
     fi
 
     echo "❌ Homebrew service 'ollama' is already running."
-    echo "   Ollmo should be the only owner of 'ollama serve'."
+    echo "   Fruth should be the only owner of 'ollama serve'."
     echo "   Run this first: brew services stop ollama"
-    echo "   If you want to override this intentionally: OLLMO_ALLOW_BREW_OLLAMA_SERVICE=1 ./start_multi_models.sh"
+    echo "   If you want to override this intentionally: FRUTH_ALLOW_BREW_OLLAMA_SERVICE=1 ./start_multi_models.sh"
     return 1
 }
 
@@ -132,7 +132,7 @@ echo "✅ Model startup finished."
 
 # --- Start Flask webserver ---
 echo -e "\n${SYSTEM_COLOR}--- Step 3: start the webserver for the UI ---${RESET_COLOR}"
-echo "ℹ️  External provider projections are not refreshed during startup. Run './ollmo sync' manually if needed."
+echo "ℹ️  External provider projections are not refreshed during startup. Run './fruth sync' manually if needed."
 if [ ! -f "$WEBSERVER_SCRIPT" ]; then
      echo "❌ Could not find $WEBSERVER_SCRIPT."
      exit 1;
@@ -150,22 +150,22 @@ else
     run_repo_python - <<'PY'
 from pathlib import Path
 
-from ollmo_runtime.runtime_log_hygiene import prepare_clean_global_log
+from fruth_runtime.runtime_log_hygiene import prepare_clean_global_log
 
 prepare_clean_global_log(
     Path("logs/flask_webserver.log"),
     metadata={
         'service': 'flask_webserver',
-        'port': 5001,
+        'port': 5011,
     },
 )
 PY
-    export OLLMO_GRAPH_REBASE_OPERATOR_TOKEN="$GRAPH_REBASE_OPERATOR_TOKEN"
-    export OLLMO_GRAPH_REBASE_OPERATOR_IDENTITY="$GRAPH_REBASE_OPERATOR_IDENTITY"
+    export FRUTH_GRAPH_REBASE_OPERATOR_TOKEN="$GRAPH_REBASE_OPERATOR_TOKEN"
+    export FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY="$GRAPH_REBASE_OPERATOR_IDENTITY"
     nohup "$REPO_PYTHON" "$WEBSERVER_SCRIPT" > "$FLASK_LOG" 2>&1 &
     WEBSERVER_PID=$!
-    unset OLLMO_GRAPH_REBASE_OPERATOR_TOKEN
-    unset OLLMO_GRAPH_REBASE_OPERATOR_IDENTITY
+    unset FRUTH_GRAPH_REBASE_OPERATOR_TOKEN
+    unset FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY
     GRAPH_REBASE_OPERATOR_TOKEN=""
     GRAPH_REBASE_OPERATOR_IDENTITY=""
     sleep 2 # Give the server time to start.

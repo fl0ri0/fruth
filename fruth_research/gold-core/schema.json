@@ -1,0 +1,500 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "case_id": {
+      "type": "string",
+      "pattern": "^gc-[a-z0-9-]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "case_role": {
+      "type": "string",
+      "enum": [
+        "positive_reference",
+        "correct_negative",
+        "defect_regression",
+        "boundary_stress",
+        "provider_variance",
+        "infrastructure_failure"
+      ]
+    },
+    "expected_outcome": {
+      "type": "string",
+      "enum": [
+        "fulfilled",
+        "blocked",
+        "repair_needed",
+        "partial",
+        "invariant_preserved"
+      ]
+    },
+    "historical_result": {
+      "type": "string",
+      "enum": [
+        "correct",
+        "defect",
+        "incomplete",
+        "ambiguous"
+      ]
+    },
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "population": {
+          "type": "string",
+          "enum": [
+            "canonical_history",
+            "owner_probe",
+            "retained_replay",
+            "diagnostic",
+            "recovery"
+          ]
+        },
+        "campaign_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "response_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "frame_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "eval_case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ref_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "root_kind": {
+                "type": "string",
+                "enum": [
+                  "state",
+                  "artifacts"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "purpose": {
+                "type": "string",
+                "minLength": 1
+              },
+              "byte_offset": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "byte_length": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "canonical_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "ref_id",
+              "root_kind",
+              "path",
+              "sha256",
+              "purpose"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "binding_scope": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "population",
+        "campaign_id",
+        "response_ids",
+        "frame_ids",
+        "eval_case_ids",
+        "evidence_refs",
+        "binding_scope"
+      ],
+      "additionalProperties": false
+    },
+    "contract": {
+      "type": "object",
+      "properties": {
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "desired_behavior": {
+          "type": "string",
+          "minLength": 1
+        },
+        "invariants": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "requires_fulfillment": {
+          "type": "boolean"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "intent",
+        "desired_behavior",
+        "invariants",
+        "requires_fulfillment",
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "historical_observation": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lifecycle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "closure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_result": {
+          "type": "string",
+          "minLength": 1
+        },
+        "violation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "causal_classification": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    "adjudication": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "reviewed",
+            "unresolved"
+          ]
+        },
+        "basis": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "status",
+        "basis",
+        "evidence_refs",
+        "limitations"
+      ],
+      "additionalProperties": false
+    },
+    "corrected_outcome": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "summary",
+        "evidence_refs"
+      ],
+      "additionalProperties": false
+    },
+    "reproducibility": {
+      "type": "string",
+      "enum": [
+        "deterministic",
+        "retained_replay",
+        "stochastic",
+        "historical_only"
+      ]
+    },
+    "evidence_quality": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "bounded",
+        "incomplete"
+      ]
+    },
+    "semantic_dedup": {
+      "type": "object",
+      "properties": {
+        "intent_shape": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trajectory_role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "duplicate_rationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "intent_shape",
+        "trajectory_role"
+      ],
+      "additionalProperties": false
+    },
+    "research": {
+      "type": "object",
+      "properties": {
+        "system_behavior_category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authority_boundary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failure_origin": {
+          "type": "string",
+          "enum": [
+            "none",
+            "semantic",
+            "provider",
+            "infrastructure",
+            "runtime",
+            "test_harness"
+          ]
+        },
+        "outcome_expected": {
+          "type": "boolean"
+        },
+        "fix_exists": {
+          "type": "boolean"
+        },
+        "before_after_evidence": {
+          "type": "boolean"
+        },
+        "artifact_modalities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "external_provider_contributed": {
+          "type": "boolean"
+        },
+        "repair_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "trajectory_frames": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "system_behavior_category",
+        "authority_boundary",
+        "failure_origin",
+        "outcome_expected",
+        "fix_exists",
+        "before_after_evidence",
+        "artifact_modalities",
+        "external_provider_contributed"
+      ],
+      "additionalProperties": false
+    },
+    "external_share_status": {
+      "type": "string",
+      "enum": [
+        "internal_only",
+        "review_required",
+        "potentially_exportable"
+      ]
+    },
+    "privacy_audit": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concerns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "decision": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "scope",
+        "concerns",
+        "decision"
+      ],
+      "additionalProperties": false
+    },
+    "evidence_assertions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ref_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pointer": {
+            "type": "string"
+          },
+          "equals": {}
+        },
+        "required": [
+          "ref_id",
+          "pointer",
+          "equals"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "schema_version",
+    "case_id",
+    "title",
+    "case_role",
+    "expected_outcome",
+    "historical_result",
+    "boundaries",
+    "source",
+    "contract",
+    "historical_observation",
+    "adjudication",
+    "reproducibility",
+    "evidence_quality",
+    "semantic_dedup",
+    "research",
+    "external_share_status",
+    "privacy_audit",
+    "evidence_assertions",
+    "notes"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fruth Gold Core case v1",
+  "description": "Metadata and digest-bound retained evidence. Conditional curation rules are enforced by validate.py."
+}

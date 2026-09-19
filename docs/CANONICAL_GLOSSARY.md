@@ -8,7 +8,7 @@ Treat this file as the naming authority for public and human-facing terminology.
 
 When docs, UI copy, diagrams, onboarding text, operator/admin labels, or review comments need a term, this glossary wins unless the surface is deliberately quoting a literal compatibility identifier or a historical migration note.
 
-Do not introduce new public wording that re-centers legacy terms such as `planner`, `execution planner`, `Ghost planning`, `late-fill`, or generic `follow-up generation` when the canonical terms in this glossary apply.
+Do not introduce new public wording that re-centers legacy terms such as `planner`, `execution planner`, `interpretive inference planning`, `late-fill`, or generic `follow-up generation` when the canonical terms in this glossary apply.
 
 ## Purpose
 
@@ -19,36 +19,48 @@ When code, payload, or file identifiers still use legacy names, mention the cano
 
 ## Canonical Terms
 
-### Ghost
+### Interpretive inference
 
-The runtime-intelligence layer inside Ollmo.
+Fruth's interpretive inference layer interprets current-turn evidence and proposes
+meaning, work structure and reviews. Runtime contracts and evidence govern
+accepted state transitions.
 
-Use when referring to the subsystem as a whole.
-Do not use `Ghost` as a synonym for the whole Ollmo product.
+Use **Fruth's interpretive inference layer** when first identifying the subsystem
+or when its ownership could be unclear. Once established, **the interpretive
+inference layer** or **the layer** is enough. In full sentences, give the singular
+count noun **layer** an article or possessive.
 
-### Ghost-owned graph derivation
+Use **interpretive inference** without an article for the activity, short labels
+and modifiers, such as *interpretive inference routing*. It is a functional term,
+not a separate product name. Use **a Fruth response** and **an interpretive
+inference model**; adding an article before every occurrence would be incorrect.
 
-Ghost's structural phase and request-graph responsibility.
+Use this term when referring to the subsystem as a whole.
+Do not use `interpretive inference` as a synonym for the whole Fruth product.
+
+### Interpretive inference-owned graph derivation
+
+The interpretive inference layer's structural phase and request-graph responsibility.
 
 Use for:
 
 - request-phase interpretation
 - request phase graph derivation
 - structural phase decisions
-- Ghost-owned routing intent
+- Interpretive inference-owned routing intent
 
 Preferred public phrasing:
 
-- `Ghost`
-- `Ghost-owned graph derivation`
-- `Ghost-owned phase decision`
+- `interpretive inference`
+- `interpretive inference-owned graph derivation`
+- `interpretive inference-owned phase decision`
 
 Avoid in public prose:
 
-- `Planner` as a separate layer beside Ghost
-- `Ghost + Planner + Resolver` as the architecture model
+- `Planner` as a separate layer beside interpretive inference
+- `interpretive inference + Planner + Resolver` as the architecture model
 - `execution planner` when you actually mean the resolver stage
-- `Ghost planning` when `Ghost-owned graph derivation` or `Ghost phase decision` is clearer
+- `interpretive inference planning` when `interpretive inference-owned graph derivation` or `interpretive inference phase decision` is clearer
 
 ### Resolver
 
@@ -80,7 +92,7 @@ Some internal code, payload, trigger, and test surfaces still carry legacy plann
 
 Allowed literal identifiers when naming code or payload fields:
 
-- `ollmo_g/execution_planner.py`
+- `fruth_inference/execution_planner.py`
 - `runtime.execution_planner`
 - `execution_planner`
 - `planner_timeout_ms`
@@ -91,10 +103,10 @@ Allowed literal identifiers when naming code or payload fields:
 Writing rule:
 
 - Say `resolver` first, then put the literal compatibility identifier in backticks when the exact key or module matters.
-- Do not describe `Planner` as a separate layer beside Ghost.
+- Do not describe `Planner` as a separate layer beside interpretive inference.
 - Do not rename persisted compatibility keys casually; code/schema migrations require dual-read or compatibility wrappers.
 - Python module or function renames may use aliases first, but request keys, persisted response/runtime payload keys, trigger strings, response-frame fields, history fields, and replay/resume data need staged dual-read before any new write shape.
-- Prompt or policy wording that reaches Ghost, the resolver, semantic roles, route construction, or injected runtime policy is behavior-affecting. Rename such wording only as a dedicated rollout with targeted router/resolver/Responses tests and, when local runtime is available, side-by-side route/output comparison.
+- Prompt or policy wording that reaches interpretive inference, the resolver, semantic roles, route construction, or injected runtime policy is behavior-affecting. Rename such wording only as a dedicated rollout with targeted router/resolver/Responses tests and, when local runtime is available, side-by-side route/output comparison.
 - Do not keep separate naming migration docs as active architecture. This glossary is the current naming authority.
 
 ### Late fill
@@ -126,15 +138,15 @@ Avoid in public prose:
 ### Request phase graph
 
 The structural graph of phases and dependencies for a request.
-Ghost owns its derivation.
+The interpretive inference layer owns its derivation.
 The resolver and late fill act within that graph; they do not replace it.
-The graph is frozen in intent and fluid in state: Ghost anchors what the user asked for, while runtime evidence updates fulfillment, pending, blocked, failed, or clarified state.
+The graph is frozen in intent and fluid in state: the interpretive inference layer anchors what the user asked for, while runtime evidence updates fulfillment, pending, blocked, failed, or clarified state.
 
 ### Candidate graph
 
 The visible possibility layer before work is owed.
 Use for possible outputs, workload tasks, context, references, memory, evidence, repairs, continuations, learning hints, and reserved or rejected options.
-The pure helper module is `ollmo_g/candidate_contracts.py`.
+The pure helper module is `fruth_inference/candidate_contracts.py`.
 
 Literal identifier:
 
@@ -210,7 +222,7 @@ Literal identifier:
 
 ### Runtime truth
 
-The actual state Ollmo can prove from graph, branch, slot, output, artifact, response frame, late fill, and runtime-status data.
+The actual state Fruth can prove from graph, branch, slot, output, artifact, response frame, late fill, and runtime-status data.
 Use this instead of visible assistant prose or model critique when deciding whether work is real.
 
 ### Local model execution
@@ -289,12 +301,12 @@ trusted graph-rebase operator registry.
 ### Control hints
 
 Post-route detail filling that maps user intent onto truthful runtime/session controls.
-Use separately from both Ghost-owned graph derivation and the resolver.
+Use separately from both interpretive inference-owned graph derivation and the resolver.
 
 ## Usage
 
 - In docs and UI, use canonical terms by default.
 - If a literal code or payload identifier still uses legacy naming, write the canonical term first and the literal identifier second.
 - Keep legacy wording only in migration notes, schema-compatibility notes, or direct code identifiers.
-- When editing diagrams or labels, prefer short noun phrases: `Ghost`, `Request phase graph`, `resolver`, `late fill`.
+- When editing diagrams or labels, prefer short noun phrases: `interpretive inference`, `Request phase graph`, `resolver`, `late fill`.
 - Do not describe hidden hard caps as architecture. If a bound is technically necessary, name it as an explicit budget or safety knob and document the reason.

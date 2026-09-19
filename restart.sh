@@ -1,16 +1,16 @@
 #!/bin/bash
-# Convenience script to fully restart the local OLLMO stack.
+# Convenience script to fully restart the local FRUTH stack.
 # 1. Runs stop_multi_models.sh and waits for completion
 # 2. Runs start_multi_models.sh
 # 3. Waits for the UI port to become available
-# 4. Opens http://127.0.0.1:5001 in the default browser (macOS `open`)
+# 4. Opens http://127.0.0.1:5011 in the default browser (macOS `open`)
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STOP_SCRIPT="$ROOT_DIR/stop_multi_models.sh"
 START_SCRIPT="$ROOT_DIR/start_multi_models.sh"
-UI_PORT=5001
+UI_PORT=5011
 UI_URL="http://127.0.0.1:${UI_PORT}"
 
 wait_for_port() {

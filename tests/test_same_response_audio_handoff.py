@@ -10,12 +10,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from ollmo_services.tts_audio_integrity import build_tts_audio_integrity_evidence
+from fruth_services.tts_audio_integrity import build_tts_audio_integrity_evidence
 
 
 @pytest.fixture
 def handoff(tmp_path, monkeypatch):
-    import ollmo_webserver as web
+    import fruth_webserver as web
     root = tmp_path.resolve()
     path = root / 'first.wav'
     with wave.open(str(path), 'wb') as wav:
@@ -215,8 +215,8 @@ def test_same_path_conflicting_canonical_identities_are_not_deduplicated(handoff
 
 
 def test_later_frame_registry_publication_preserves_direct_identity(handoff, monkeypatch):
-    from ollmo_services.artifact_registry import persist_output_artifact_registry_records
-    from ollmo_services.response_frames import attach_response_frame
+    from fruth_services.artifact_registry import persist_output_artifact_registry_records
+    from fruth_services.response_frames import attach_response_frame
     h = handoff
     direct = h.owner.execute_prepared_late_fill_branch(h.plan())['infer_result']['audio_reference_input_evidence']
     payload = h.owner.merge_late_fill_result_fields(h.current, h.producer)

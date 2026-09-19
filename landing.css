@@ -199,8 +199,8 @@ html.scene-pager-ready .scene--active.scene--from-below {
     row-gap: var(--section-content-gap);
 }
 
-.ghost-stage {
-    --ghost-aura-duration: 21s;
+.mascot-stage {
+    --mascot-aura-duration: 21s;
     position: relative;
     display: grid;
     place-items: center;
@@ -209,11 +209,11 @@ html.scene-pager-ready .scene--active.scene--from-below {
     transition: opacity 0.24s ease;
 }
 
-.ghost-stage--vanished {
+.mascot-stage--vanished {
     opacity: 0;
 }
 
-.ghost-aura {
+.mascot-aura {
     position: absolute;
     width: 76%;
     aspect-ratio: 1;
@@ -231,22 +231,22 @@ html.scene-pager-ready .scene--active.scene--from-below {
         inset 0 0 3rem color-mix(in srgb, var(--status-success-vivid) 1.5%, transparent);
     filter: blur(1.5rem);
     will-change: opacity, transform;
-    animation: ghostAuraBloomA var(--ghost-aura-duration) ease-in-out infinite alternate;
+    animation: mascotAuraBloomA var(--mascot-aura-duration) ease-in-out infinite alternate;
 }
 
-.landing-ghost {
-    --ghost-symbol-duration: 24s;
+.landing-mascot {
+    --mascot-symbol-duration: 24s;
     position: relative;
     display: grid;
     width: min(62%, 17rem);
     aspect-ratio: 1;
     place-items: center;
     color: var(--status-success-vivid, #baff8a);
-    animation: ghostFloat 20s ease-in-out infinite;
+    animation: mascotFloat 20s ease-in-out infinite;
 }
 
-.landing-ghost::before,
-.landing-ghost::after {
+.landing-mascot::before,
+.landing-mascot::after {
     position: absolute;
     z-index: -1;
     content: "";
@@ -254,16 +254,16 @@ html.scene-pager-ready .scene--active.scene--from-below {
     pointer-events: none;
 }
 
-.landing-ghost::before {
+.landing-mascot::before {
     inset: -10%;
     opacity: 0.42;
     background: color-mix(in srgb, var(--status-success-vivid) 7%, transparent);
     filter: blur(3.2rem);
     will-change: opacity, transform;
-    animation: ghostAuraBloomA var(--ghost-aura-duration) ease-in-out infinite alternate;
+    animation: mascotAuraBloomA var(--mascot-aura-duration) ease-in-out infinite alternate;
 }
 
-.landing-ghost::after {
+.landing-mascot::after {
     inset: 4%;
     opacity: 0.62;
     background:
@@ -274,10 +274,10 @@ html.scene-pager-ready .scene--active.scene--from-below {
         );
     filter: blur(2.8rem);
     will-change: opacity, transform;
-    animation: ghostAuraBloomB var(--ghost-aura-duration) ease-in-out infinite alternate;
+    animation: mascotAuraBloomB var(--mascot-aura-duration) ease-in-out infinite alternate;
 }
 
-.landing-ghost__icon {
+.landing-mascot__icon {
     position: absolute;
     inset: 0;
     z-index: 1;
@@ -290,28 +290,28 @@ html.scene-pager-ready .scene--active.scene--from-below {
     transition: opacity 0.32s ease;
 }
 
-.landing-ghost__body {
+.landing-mascot__body {
     fill: var(--status-success-vivid, #baff8a);
-    animation: ghostSymbolPeek var(--ghost-symbol-duration) linear infinite;
+    animation: mascotSymbolPeek var(--mascot-symbol-duration) linear infinite;
 }
 
-.landing-ghost__outline {
+.landing-mascot__outline {
     fill: none;
     stroke: var(--status-success-vivid, #baff8a);
     stroke-width: 5;
     stroke-linecap: round;
     stroke-linejoin: round;
     opacity: 0.36;
-    animation: ghostStrokeCounterPeek var(--ghost-symbol-duration) linear infinite;
+    animation: mascotStrokeCounterPeek var(--mascot-symbol-duration) linear infinite;
 }
 
-.landing-ghost__eye-cutouts {
+.landing-mascot__eye-cutouts {
     transform-box: fill-box;
     transform-origin: center;
-    animation: ghostBlink 6.4s linear infinite;
+    animation: mascotBlink 6.4s linear infinite;
 }
 
-.ghost-shadow {
+.mascot-shadow {
     position: absolute;
     bottom: 14%;
     width: 42%;
@@ -507,6 +507,19 @@ h1 {
     font-size: 0.82em;
 }
 
+@supports (grid-template-rows: subgrid) {
+    .beyond__overview .principle-card {
+        display: grid;
+        grid-row: span 3;
+        grid-template-rows: subgrid;
+        row-gap: 0;
+    }
+
+    .beyond__overview .principle-card h3 {
+        align-self: end;
+    }
+}
+
 .beyond__proof {
     position: relative;
     display: grid;
@@ -661,6 +674,25 @@ h1 {
     color: var(--accent-card-muted);
     font-size: 0.82rem;
     line-height: 1.5;
+}
+
+.proof-evidence-link {
+    display: inline-block;
+    margin-top: 1rem;
+    color: var(--accent-card-muted);
+    font-size: 0.85rem;
+    font-weight: 650;
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.22em;
+}
+
+.proof-evidence-link span {
+    color: inherit;
+}
+
+.proof-evidence-link:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 4px;
 }
 
 .principles-grid--today .principle-card {
@@ -1045,7 +1077,7 @@ html.scene-pager-ready .scene-nav {
     }
 }
 
-@keyframes ghostFloat {
+@keyframes mascotFloat {
     0%,
     100% {
         transform: translate3d(0, 0, 0) rotate(0deg);
@@ -1081,7 +1113,7 @@ html.scene-pager-ready .scene-nav {
     }
 }
 
-@keyframes ghostAuraBloomA {
+@keyframes mascotAuraBloomA {
     from {
         opacity: 0.38;
         transform: scale(0.96);
@@ -1093,7 +1125,7 @@ html.scene-pager-ready .scene-nav {
     }
 }
 
-@keyframes ghostAuraBloomB {
+@keyframes mascotAuraBloomB {
     from {
         opacity: 0.32;
         transform: scale(0.98);
@@ -1105,7 +1137,7 @@ html.scene-pager-ready .scene-nav {
     }
 }
 
-@keyframes ghostBlink {
+@keyframes mascotBlink {
     0%,
     44%,
     48%,
@@ -1118,7 +1150,7 @@ html.scene-pager-ready .scene-nav {
     }
 }
 
-@keyframes ghostSymbolPeek {
+@keyframes mascotSymbolPeek {
     0%,
     52%,
     54.6%,
@@ -1151,7 +1183,7 @@ html.scene-pager-ready .scene-nav {
     }
 }
 
-@keyframes ghostStrokeCounterPeek {
+@keyframes mascotStrokeCounterPeek {
     0%,
     52%,
     54.6%,
@@ -1190,6 +1222,22 @@ html.scene-pager-ready .scene-nav {
     }
 }
 
+@media (min-width: 801px) {
+    .proof-copy {
+        display: flex;
+        flex-direction: column;
+        align-self: stretch;
+    }
+
+    .proof-copy > p:not(.eyebrow, .proof-axiom) {
+        margin-bottom: 2.5rem;
+    }
+
+    .proof-copy > p.proof-axiom {
+        margin-top: auto;
+    }
+}
+
 @media (min-width: 801px) and (max-height: 760px) {
     :root {
         --scene-padding: 2rem;
@@ -1210,7 +1258,7 @@ html.scene-pager-ready .scene-nav {
         gap: 1.5rem;
     }
 
-    .ghost-stage {
+    .mascot-stage {
         width: min(76vw, 22rem);
         margin-inline: auto;
     }
@@ -1323,15 +1371,15 @@ html.scene-pager-ready .scene-nav {
         transition-duration: 0.01ms !important;
     }
 
-    .ghost-aura,
-    .landing-ghost,
-    .landing-ghost::before,
-    .landing-ghost::after,
-    .landing-ghost__icon,
-    .landing-ghost__body,
-    .landing-ghost__outline,
-    .landing-ghost__eye-cutouts,
-    .ghost-shadow {
+    .mascot-aura,
+    .landing-mascot,
+    .landing-mascot::before,
+    .landing-mascot::after,
+    .landing-mascot__icon,
+    .landing-mascot__body,
+    .landing-mascot__outline,
+    .landing-mascot__eye-cutouts,
+    .mascot-shadow {
         animation: none !important;
     }
 }

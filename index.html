@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="dark">
     <meta name="theme-color" content="#111315">
-    <meta name="description" content="Fruth turns local AI work into inspectable artifacts and continuable runtime state across Ollama, MLX, and llama.cpp.">
+    <meta name="description" content="Fruth turns local AI work into inspectable artifacts and continuable runtime state across Ollama, MLX, llama.cpp, and Apple Foundation Models.">
     <title>Fruth - Durable Semantic State Inference Engine</title>
     <link rel="stylesheet" href="./landing.css?v=0.1.0-6">
     <script defer src="./landing.js"></script>
@@ -49,9 +49,9 @@
                     inspectable artifacts and continuable runtime state.
                 </p>
                 <p class="local-note">
-                    Local by default. Use compatible models through Ollama, MLX, or
-                    llama.cpp. Backend packages and model weights are installed
-                    separately.
+                    Local by default. Use compatible models through Ollama, MLX,
+                    llama.cpp, or Apple Foundation Models. Runtimes and models are supplied separately;
+                    AFM uses the model available on your Mac. Apple PCC is an optional cloud backend.
                 </p>
             </div>
 
@@ -164,7 +164,7 @@
                         </svg>
                     </span>
                     <h3>Run compatible local models.</h3>
-                    <p>Run Ollama, MLX, and llama.cpp side by side from one control plane – including multiple instances of the same model. Pull compatible models, add Hugging Face repositories or local GGUF files, remove local copies, and start or stop each instance independently.</p>
+                    <p>Run Ollama, MLX, llama.cpp, and Apple Foundation Models from one control plane, with multiple instances and independent start/stop controls. Manage compatible downloaded models and local GGUF files, or use Apple's available on-device model for text generation, image analysis, and streaming, with optional OCR and barcode/QR tools.</p>
                 </article>
                 <article class="principle-card principle-card--compact">
                     <span class="principle-card__icon" aria-hidden="true">
@@ -186,7 +186,7 @@
                     <p>Inspect outputs and response state, open compatible link-checked bundles, revisit saved work, or connect through canonical Responses endpoints.</p>
                 </article>
             </div>
-            <p class="provider-note"><strong>Third-party providers.</strong> Fruth can optionally use an explicitly enabled third-party provider (currently ChatGPT), directly or through Fruth's routing. For those turns, the current prompt, only the context Fruth promotes as relevant, and any explicitly selected files or Fruth artifacts leave your device and are processed by that provider – by OpenAI for the current ChatGPT integration. Fruth also offers an optional companion skill that helps ChatGPT inspect runtime truth, work with canonical outputs, and execute requests through Fruth. Local operation does not depend on either.</p>
+            <p class="provider-note"><strong>Optional cloud providers.</strong> Fruth supports Apple PCC through user-installed Shortcuts and an explicitly enabled ChatGPT route. Selected prompts, context and attachments leave your device for Apple or OpenAI respectively. Provider availability and usage limits apply. <a href="https://github.com/fl0ri0/fruth/blob/HEAD/fruth_integrations/shortcuts/README.md" target="_blank" rel="noopener noreferrer">Apple PCC setup ↗</a> Fruth also offers an optional companion skill that helps ChatGPT inspect runtime truth, work with canonical outputs, and execute requests through Fruth. Local operation does not depend on a cloud provider.</p>
         </section>
 
         <section id="setup" class="setup-scene scene" aria-labelledby="install-title" tabindex="-1">
@@ -194,25 +194,25 @@
                 <p class="eyebrow">Local setup</p>
                 <h2 id="install-title">Start Fruth with a local model.</h2>
                 <p class="install-lede">Fruth itself can start before a backend or model is available. Local inference needs one supported runtime and at least one compatible model; neither the runtime nor its model weights are bundled.</p>
-                <p class="install-meta">Fruth is experimental, tested on macOS on Apple Silicon with Python 3.11 or newer. Output quality and factual accuracy still depend on the models and providers you choose.</p>
+                <p class="install-meta">Fruth is experimental, tested on macOS on Apple Silicon with Python 3.11 or newer. Current source release: 0.1.3. Output quality and factual accuracy still depend on the models and providers you choose.</p>
             </div>
 
             <div class="setup-path" aria-label="Local Fruth setup">
                 <article class="setup-step">
                     <span>Backend</span>
                     <h3>Choose a local runtime.</h3>
-                    <p>Install Ollama, MLX, or llama.cpp using that project's own setup.</p>
+                    <p>Install Ollama, MLX, or llama.cpp using that project's own setup, or use an Apple Foundation Model on a compatible Mac with Apple Intelligence and the installed <code>fm</code> command.</p>
                 </article>
                 <article class="setup-step">
                     <span>Model</span>
-                    <h3>Add a compatible model.</h3>
-                    <p>Add or select at least one model the chosen runtime can actually run. After Fruth starts, its Models view can manage compatible models and instances.</p>
+                    <h3>Select a compatible model.</h3>
+                    <p>Add a model for your runtime, or select the available AFM model. Fruth's Models view manages instances and shows readiness. <a href="https://github.com/fl0ri0/fruth/blob/HEAD/docs/APPLE_FOUNDATION_MODELS.md" target="_blank" rel="noopener noreferrer">Apple Foundation Models setup and capabilities ↗</a></p>
                 </article>
                 <article class="setup-step setup-step--launch">
                     <div class="setup-step__copy">
                         <span>Fruth</span>
                         <h3>Start Fruth.</h3>
-                        <p>From the repository checkout, create the Python environment, install the requirements, and launch Fruth.</p>
+                        <p>Extract the download, enter its folder, and launch Fruth. On first start, the launcher creates the Python environment and installs its requirements; this needs internet access.</p>
                     </div>
                     <div class="install-terminal">
                         <div class="install-terminal__bar">
@@ -228,9 +228,7 @@
                                 </button>
                             </div>
                         </div>
-                        <pre id="install-commands" class="install-commands" aria-label="Fruth installation commands"><code>python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-./fruth start</code></pre>
+                        <pre id="install-commands" class="install-commands" aria-label="Fruth installation commands"><code>./fruth start</code></pre>
                     </div>
                 </article>
             </div>

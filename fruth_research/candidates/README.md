@@ -59,3 +59,8 @@ No raw candidate evidence is copied and no provenance is invented after reset.
 
 Everything is internal research. `external_share_status` is retained on updates;
 new candidates default to `review_required`. Retention confers no export rights.
+
+For the next step, use the maintained [evidence review commands](../README.md#review-new-evidence).
+Sync does not perform adjudication or create Gold. Explicit reviewed cases can be
+added through [Gold curation](../gold-core/README.md#add-reviewed-cases); only their
+linked candidate source versions receive promoted dispositions.

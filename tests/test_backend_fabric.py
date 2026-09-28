@@ -2,9 +2,19 @@ import unittest
 from unittest.mock import patch
 
 from fruth_core.backend_fabric import build_backend_fabric_snapshot
+from fruth_runtime import apple_pcc_model_manager as pcc
 
 
 class BackendFabricTests(unittest.TestCase):
+    def setUp(self):
+        pcc = patch('fruth_core.backend_fabric.describe_apple_pcc_runtime_probe',
+                    return_value={'runtime_state': 'missing', 'issues': []})
+        pcc.start()
+        self.addCleanup(pcc.stop)
+        afm = patch('fruth_core.backend_fabric.describe_apple_fm_runtime_probe',
+                    return_value={'runtime_state': 'missing', 'issues': []})
+        afm.start()
+        self.addCleanup(afm.stop)
     @patch('fruth_core.backend_fabric.describe_llama_cpp_runtime_probe')
     @patch('fruth_core.backend_fabric.describe_mlx_runtime_variants')
     @patch('fruth_core.backend_fabric.describe_ollama_runtime_probe')
@@ -119,9 +129,31 @@ class BackendFabricTests(unittest.TestCase):
         self.assertEqual(by_id['mlx_whisper']['runtime_state'], 'missing')
         self.assertEqual(payload['summary']['runtime_runnable_backend_count'], 4)
         self.assertEqual(payload['summary']['runtime_degraded_backend_count'], 1)
-        self.assertEqual(payload['summary']['runtime_missing_backend_count'], 1)
+        self.assertEqual(payload['summary']['runtime_missing_backend_count'], 3)
         self.assertEqual(payload['summary']['wiring_active_backend_count'], 2)
         self.assertEqual(payload['summary']['wiring_discoverable_backend_count'], 2)
+
+
+class PassivePCCFabricTests(unittest.TestCase):
+    def test_afm_only_snapshots_do_not_contact_shortcuts_or_native_pcc_metadata(self):
+        with (
+            patch.object(pcc, '_shortcut_installation_observation', None),
+            patch.object(pcc, 'list_pcc_shortcuts', side_effect=AssertionError('Unrequested Shortcuts discovery')) as listing,
+            patch.object(pcc, 'pcc_sdk_metadata', side_effect=AssertionError('Unrequested PCC metadata')) as sdk,
+            patch('fruth_core.backend_fabric.describe_apple_fm_runtime_probe', return_value={'runtime_state': 'runnable'}),
+            patch('fruth_core.backend_fabric.describe_ollama_runtime_probe', return_value={'runtime_state': 'missing'}),
+            patch('fruth_core.backend_fabric.describe_llama_cpp_runtime_probe', return_value={'runtime_state': 'missing'}),
+            patch('fruth_core.backend_fabric.describe_mlx_runtime_variants', return_value={}),
+        ):
+            for _ in range(3):
+                snapshot = build_backend_fabric_snapshot(instances=[
+                    {'instance_id': 'apple_fm:system:11601', 'backend': 'apple_fm', 'model': 'system'}])
+                item = next(item for item in snapshot['backends'] if item['backend_id'] == 'apple_pcc')
+                self.assertEqual(item['detection']['status'], 'not_observed')
+                self.assertIsNone(item['detection']['observed_at'])
+                self.assertFalse(item['auto_wireable'])
+            listing.assert_not_called()
+            sdk.assert_not_called()
 
 
 if __name__ == '__main__':

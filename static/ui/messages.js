@@ -138,7 +138,7 @@ async function renderResponsesWorkbenchConversation(conversationId = getResponse
                 <div class="chat-placeholder h-full">
                     <div class="chat-placeholder__icon"><i class="fas fa-route"></i></div>
                     <h3>Fruth</h3>
-                    <p>This draft is empty. Fruth will choose an available local model or an explicitly enabled external provider.</p>
+                    <p>This draft is empty. Fruth will choose a running model or an explicitly enabled external provider.</p>
                 </div>
             `;
             return;
@@ -148,7 +148,7 @@ async function renderResponsesWorkbenchConversation(conversationId = getResponse
             : (
                 isExternalConversationTarget(target)
                     ? 'ChatGPT'
-                    : (target ? formatModelDisplayName(target.model || target.instance_id) : 'target model')
+                    : (target ? formatModelDisplayName(target.model || target.instance_id, target.backend) : 'target model')
             );
         const backendLabel = isAuto
             ? 'resolved target'
@@ -197,7 +197,7 @@ function renderArenaConversations() {
         const header = document.createElement('div');
         header.className = 'arena-column__header';
         const meta = getInstanceMeta(instanceId);
-        const title = formatModelDisplayName(meta?.model || instanceId);
+        const title = formatModelDisplayName(meta?.model || instanceId, meta?.backend);
         const backendLabel = formatBackendLabel(meta?.backend);
         header.innerHTML = `<span>${label}</span><span>${title} • ${backendLabel}</span>`;
         column.appendChild(header);
@@ -585,6 +585,13 @@ function buildMessageArtifactReferencePayload(artifact = {}, message = {}) {
         type: String(artifact.type || '').trim().toLowerCase() || 'document',
         path,
         message_id: String(message.clientMessageId || '').trim() || null,
+        source_response_id: artifact.source_response_id || artifact.sourceResponseId || message.responseId || message.response_id || null,
+        artifact_id: artifact.artifact_id || artifact.artifactId || null,
+        artifact_ref: artifact.artifact_ref || artifact.artifactRef || artifact.ref || null,
+        branch_id: artifact.branch_id || null,
+        phase_id: artifact.phase_id || null,
+        slot_id: artifact.slot_id || null,
+        obligation_id: artifact.obligation_id || null,
         name: artifact.name || null,
         kind: artifact.kind || null,
         origin: artifact.origin || null,
@@ -600,6 +607,38 @@ function buildMessageArtifactReferencePayload(artifact = {}, message = {}) {
         seed: artifact.seed,
         image_state: artifact.image_state || null,
     });
+}
+
+function buildMessageReplyReferenceText(message = {}) {
+    const outputs = sanitizeResponseOutputs(message.outputs || message.canonical_outputs || message.canonicalOutputs);
+    if (!outputs.length) return String(message.content || '').trim();
+    const visibleOutputs = filterUserVisibleResponseWorkItems(outputs);
+    const lateFill = sanitizeMessageLateFill(message.lateFill || message.late_fill);
+    const text = visibleOutputs
+        .filter((output) => shouldRenderAssistantOutputText(output, visibleOutputs, lateFill))
+        .map((output) => String(output.value || '').trim());
+    if (text.length) return text.join('\n\n');
+    // Single-output replies use the ordinary message body in the renderer.
+    if (outputs.length < 2) return String(message.content || '').trim();
+    return getPreservedAssistantPreviewText(message, visibleOutputs, { displayTextOutputCount: 0 });
+}
+
+function buildMessageReplyReferencePayload(message = {}) {
+    return sanitizeSelectedReferenceArtifacts([
+        {
+            type: 'message',
+            content: buildMessageReplyReferenceText(message),
+            message_role: 'assistant',
+            message_id: message.clientMessageId || null,
+            source_response_id: message.responseId || message.response_id || null,
+            response_model: message.responseModel || message.response_model || null,
+            response_instance_id: message.responseInstanceId || message.response_instance_id || null,
+            timestamp: message.timestamp || null,
+        },
+        ...buildRenderableMessageArtifacts(message)
+            .filter(canUseArtifactAsReference)
+            .map((artifact) => buildMessageArtifactReferencePayload(artifact, message)),
+    ]);
 }
 
 function inferArtifactFileName(savedArtifactPath = '', artifact = {}) {
@@ -1288,7 +1327,7 @@ function appendRenderableArtifactToBubble(
                 const referenceButton = createChatMessageActionButton('', () => {
                     setSelectedReferenceArtifact(referencePayload, { conversationId });
                 });
-                const isSelectedReference = isSelectedArtifactReferencePath(savedArtifactPath, conversationId);
+                const isSelectedReference = isSelectedArtifactReference(referencePayload, conversationId);
                 referenceButton.innerHTML = isSelectedReference
                     ? '<i class="fas fa-code-branch"></i> Pinned'
                     : `<i class="fas fa-code-branch"></i> ${escapeHtml(formatArtifactReferenceActionLabel(artifactType))}`;
@@ -2149,18 +2188,15 @@ function createChatMessageElement(message, conversationId = '') {
         hasActions = true;
     }
 
-    if (isAssistantMessage && allowReferenceActions && String(message.content || '').trim()) {
-        const isPinnedReply = isSelectedMessageReferenceForMessage(message);
+    const replyReferences = isAssistantMessage && allowReferenceActions
+        ? buildMessageReplyReferencePayload(message)
+        : [];
+    if (replyReferences.length) {
+        const isPinnedReply = isSelectedMessageReferenceForMessage(message)
+            && replyReferences.filter((item) => item.type !== 'message')
+                .every((item) => isSelectedArtifactReference(item, conversationId));
         const referenceButton = createChatMessageActionButton('', () => {
-            setSelectedReferenceArtifact({
-                type: 'message',
-                content: String(message.content || '').trim(),
-                message_role: 'assistant',
-                message_id: String(message.clientMessageId || '').trim() || null,
-                response_model: String(message.responseModel || '').trim() || null,
-                response_instance_id: String(message.responseInstanceId || '').trim() || null,
-                timestamp: String(message.timestamp || '').trim() || null,
-            }, { conversationId });
+            setSelectedReferenceArtifact(replyReferences, { conversationId });
         });
         referenceButton.innerHTML = isPinnedReply
             ? '<i class="fas fa-code-branch"></i> Pinned Reply'

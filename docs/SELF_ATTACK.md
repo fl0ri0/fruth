@@ -5,6 +5,12 @@
 Recorded campaign: [Fruth Self-Attack status — September 19, 2026](SELF_ATTACK_STATUS_2026-09-19.md)
 reports a full fake and live pass for its recorded source and scope.
 
+The [September 25–27 Apple backend report](SELF_ATTACK_STATUS_2026-09-27.md)
+records the AFM and PCC conformance campaigns: 168 AFM cases passed with two
+correct audio/transcript mismatch rejections; PCC passed 126 cases before
+quota-limited and other incomplete coverage. Both recorded zero invariant
+findings and retain their original native INCOMPLETE verdicts.
+
 Run from the checkout:
 
 ```sh
@@ -42,7 +48,7 @@ production preferences, operator authorization, or learning state. Fake model
 decisions are deterministic substitutes; this mode does not certify a live
 interpretive inference model's interpretation.
 
-The source release ships this guide, the dated public campaign summary, the
+The source release ships this guide, the dated public campaign summaries, the
 harness/tests and two compact inputs:
 `config/self_attack_corpus.json` (the default adversarial corpus) and
 `config/graph_rebase_shadow_corpus.json`. Retained captures, local regression
@@ -331,6 +337,18 @@ a producer/consumer evidence witness does not count as complete Late Fill covera
 Fake-provider handoff checks additionally compare the consumer's actual input path
 and bytes with its declared producer. Missing source evidence remains incomplete;
 accepted mismatched evidence is a deterministic failure.
+
+For a settled audio mismatch with exact failed producer/consumer identities,
+runtime semantic-gate evidence and blocked Closure checks, future reports can
+state **Guard PASS: correctly rejected audio/transcript mismatch; successful
+handoff coverage INCOMPLETE.** The case's `incomplete_observations` retains
+`classification: missing_scenario_coverage` and adds `guard_status: passed`,
+`coverage_status: incomplete` and the exact rejection evidence references.
+This is a scoped diagnostic observation, not a new scenario pass: required
+`exact_source_binding` coverage, findings, overall verdicts and exit codes are
+unchanged. Generic failures, missing evidence, sibling bindings or contradictory
+acceptance cannot receive this label. Existing campaign results are not rewritten
+automatically. Check this boundary with `tests/test_self_attack_mismatch_reporting.py`.
 
 
 ## Hard live budgets and detached execution

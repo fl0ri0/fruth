@@ -19,10 +19,12 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, BinaryIO, Iterable, Optional
 
 DEFAULT_EVENT_LOG_PATH = Path('state/events.jsonl')
 _EVENT_LOG_LOCK = threading.Lock()
+# I/O batch size only; records and filtered searches are never truncated.
+_EVENT_READ_CHUNK_BYTES = 64 * 1024
 
 # Observation budgets, not execution limits. Overflow is explicit and invalidates
 # complete-interval claims. The event writer's 50-item bound also applies here.
@@ -643,6 +645,31 @@ def log_event(
     return entry
 
 
+def _iter_event_lines_reverse(handle: BinaryIO) -> Iterable[str]:
+    """Read newest-first from one open file, buffering at most one line plus a chunk."""
+    handle.seek(0, os.SEEK_END)
+    cursor = handle.tell()
+    newer_fragments: list[bytes] = []
+    while cursor > 0:
+        size = min(_EVENT_READ_CHUNK_BYTES, cursor)
+        cursor -= size
+        handle.seek(cursor)
+        parts = handle.read(size).split(b'\n')
+        if len(parts) == 1:
+            newer_fragments.append(parts[0])
+            continue
+        complete_line = b''.join([parts[-1], *reversed(newer_fragments)])
+        newer_fragments.clear()
+        for line in (complete_line, *reversed(parts[1:-1])):
+            # Decode complete physical lines so chunk boundaries cannot split
+            # UTF-8. Retain the prior text reader's splitlines semantics.
+            yield from reversed(line.decode('utf-8').splitlines())
+        del complete_line, line
+        newer_fragments.append(parts[0])
+    if newer_fragments:
+        yield from reversed(b''.join(reversed(newer_fragments)).decode('utf-8').splitlines())
+
+
 def read_events(
     *,
     path: Path | str | None = None,
@@ -654,24 +681,24 @@ def read_events(
     target = Path(path) if path else DEFAULT_EVENT_LOG_PATH
     if limit <= 0 or not target.exists():
         return []
-    lines = target.read_text(encoding='utf-8').splitlines()
     entries: list[dict] = []
-    for raw_line in reversed(lines):
-        if not raw_line.strip():
-            continue
-        try:
-            item = json.loads(raw_line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(item, dict):
-            continue
-        if category and str(item.get('category') or '') != category:
-            continue
-        if action and str(item.get('action') or '') != action:
-            continue
-        if status and str(item.get('status') or '') != status:
-            continue
-        entries.append(item)
-        if len(entries) >= limit:
-            break
+    with target.open('rb') as handle:
+        for raw_line in _iter_event_lines_reverse(handle):
+            if not raw_line.strip():
+                continue
+            try:
+                item = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(item, dict):
+                continue
+            if category and str(item.get('category') or '') != category:
+                continue
+            if action and str(item.get('action') or '') != action:
+                continue
+            if status and str(item.get('status') or '') != status:
+                continue
+            entries.append(item)
+            if len(entries) >= limit:
+                break
     return entries

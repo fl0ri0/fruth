@@ -1,5 +1,10 @@
+import io
+import json
 import unittest
 from unittest.mock import Mock, patch
+
+import requests
+from urllib3.response import HTTPResponse
 
 from fruth_server.backend_transport_runtime import BackendTransportRuntimeOwner
 
@@ -186,6 +191,42 @@ class BackendTransportRuntimeTests(unittest.TestCase):
         payload = post.call_args.kwargs['json']
         self.assertTrue(payload['enable_thinking'])
         self.assertEqual(payload['reasoning_effort'], 'xhigh')
+
+    def test_stream_http_error_keeps_provider_reason_after_socket_cleanup(self):
+        reason = 'The model cannot provide a response for this request.'
+        for backend, model in (('apple_pcc', 'auto'), ('apple_fm', 'system'),
+                               ('mlx', 'model'), ('llama_cpp', 'model')):
+            with self.subTest(backend=backend):
+                response = requests.Response()
+                response.status_code = 502
+                response.url = 'http://127.0.0.1:11653/v1/chat/completions'
+                response.raw = HTTPResponse(
+                    body=io.BytesIO(json.dumps({'error': {'message': reason}}).encode()),
+                    preload_content=False,
+                )
+                owner = self._request_owner(Mock(return_value=response))
+                with self.assertRaises(requests.HTTPError) as caught:
+                    owner.open_openai_chat_stream(
+                        backend=backend, target_port=11653, request_model_override=None,
+                        model_name=model, messages=[{'role': 'user', 'content': 'Explain osmosis.'}],
+                        timeout_sec=30,
+                    )
+                self.assertTrue(response.raw.closed)
+                self.assertEqual(owner.request_exception_details(caught.exception), reason)
+
+    def test_error_details_keep_http_fallback_for_empty_or_unreadable_body(self):
+        for body in (b'', b'{}', b'{"error": {}}'):
+            with self.subTest(body=body):
+                response = requests.Response()
+                response.status_code = 502
+                response._content = body
+                error = requests.HTTPError('502 Bad Gateway', response=response)
+                self.assertEqual(self._owner().request_exception_details(error), '502 Bad Gateway')
+        response = Mock()
+        response.json.side_effect = OSError('disconnected')
+        response.text = ''
+        error = requests.HTTPError('502 Bad Gateway', response=response)
+        self.assertEqual(self._owner().request_exception_details(error), '502 Bad Gateway')
 
 
 if __name__ == '__main__':

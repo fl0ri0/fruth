@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 RUNTIME_LOG_PREFIXES = (
+    'apple_fm_system_',
+    'apple_pcc_auto_',
     'mlx_',
     'mlx_vlm_',
     'mlx_audio_',

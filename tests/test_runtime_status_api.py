@@ -11,6 +11,7 @@ class RuntimeStatusApiTests(unittest.TestCase):
     def setUp(self):
         app.config["TESTING"] = True
         self.client = app.test_client()
+        self.enterContext(patch("fruth_webserver._external_targets_payload", return_value=[]))
 
     @patch("fruth_webserver.merge_instances_with_runtime_status")
     @patch("fruth_webserver.load_running_instances")

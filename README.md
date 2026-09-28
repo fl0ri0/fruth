@@ -9,12 +9,16 @@ validated promotion to determine which work is owed. Its interpretive inference
 layer can infer meaning from evidence and propose interpretations, work and
 reviews; runtime contracts, validation and evidence govern accepted transitions.
 
+**Model inference generates token continuations; Fruth derives required work,
+permitted state transitions and fulfillment from the request, validated contracts
+and recorded evidence.**
+
 Recorded frames and artifact evidence support inspection and continuation of work.
 Mutable work, frozen frames and append-only successors remain distinct. Durable
 means supported persistence and continuation of recorded state; it does not mean
 infallible conclusions or guaranteed survival of every in-flight operation.
 
-**Status:** Fruth `0.1.2` —
+**Status:** Fruth `0.1.3` —
 experimental, usable, and still evolving within the `0.x` series.
 
 **Conceived, designed, created, built, and developed by
@@ -50,6 +54,13 @@ budgets and regression replay.
 The [September 19 Fruth conformance report](docs/SELF_ATTACK_STATUS_2026-09-19.md)
 records a full pass across 380 deterministic/fake and 170 live cases, with source
 identity, coverage limits, and retained-evidence hashes.
+The [September 25–27 Apple backend results](docs/SELF_ATTACK_STATUS_2026-09-27.md)
+record 168 passing AFM cases and two correct mismatch rejections, and 126 passing
+PCC cases with remaining coverage limited by provider quota, a sequence timeout
+and one correct mismatch rejection. Neither campaign recorded invariant findings;
+both retain the native INCOMPLETE verdict.
+Those dated campaigns precede the later PDF, provider-failover and Research
+changes; they are not a full-conformance verdict for the complete 0.1.3 source.
 
 ## Project, Citation, and Collaboration
 
@@ -90,18 +101,22 @@ Useful public context:
 
 The primary tested environment is a recent macOS release on Apple Silicon with
 Python 3.11 or newer. Local capabilities require their corresponding Ollama,
-MLX, or llama.cpp backend and model. Windows, Linux, Intel Mac, remote hosting,
-and multi-user operation are outside the 0.1.2 support promise.
+MLX, llama.cpp, or Apple Foundation Models backend and model. Windows, Linux, Intel Mac, remote hosting,
+and multi-user operation are outside the 0.1.3 support promise.
 
 ## Install and Start
 
-Enter the Fruth checkout (or a locally built Fruth archive) and run:
+Extract the source archive, enter its `fruth-0.1.3` directory, and run:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
 ./fruth start
 ```
+
+The executable launcher creates `.venv` and installs `requirements.txt` on first
+start. Python 3.11 or newer and internet access for that initial dependency
+installation are required. Backend runtimes, model weights, Apple Intelligence
+availability and user-installed PCC Shortcuts are separate prerequisites for
+their respective capabilities; they are not bundled in the download.
 
 Fruth startup initializes missing Research stores automatically and preserves
 existing candidates, reviews and Gold data. No separate Research startup command
@@ -114,15 +129,39 @@ a model. Startup starts the Flask webserver in the background, or reuses the
 listener on port 5011, and prints the dashboard URL. Use `./fruth status` to
 inspect the stack and `./fruth restart` to run stop followed by start.
 Refresh an open browser tab after restarting.
+Startup installs Python requirements only when it creates a new `.venv`. An
+existing environment is reused without running pip, even if `requirements.txt`
+has changed. Apply dependency changes explicitly with
+`.venv/bin/python -m pip install -r requirements.txt` when needed.
+When upgrading an existing checkout to 0.1.3, run that dependency update before
+the next start/restart to install the native macOS PDF binding. Preserve your
+existing `state/`, `artifacts/`, Research data and settings; the release contains
+empty defaults for new installations, not a replacement for your saved data.
 Fruth's default backend ports are 11434 (Ollama), 11435–11500
-(dedicated Ollama), 11501–11550 (MLX), and 11551–11600 (llama.cpp).
+(dedicated Ollama), 11501–11550 (MLX), 11551–11600 (llama.cpp), and
+11601–11650 (Apple Foundation Models). The optional Apple PCC Shortcuts adapter
+uses 11651–11700.
+Apple AI supports local text and image analysis through the installed `fm serve`
+with the API model `system`; multiple instances appear separately in the existing UI. See the
+Apple AI **Image Mode** control for explicit OCR and barcode/QR recognition through
+the installed CLI tools, with verified tool-result receipts. See the
+[Apple AI guide](docs/APPLE_FOUNDATION_MODELS.md) for prerequisites, metadata,
+streaming and the observed interpretive-inference context limitation.
+**Apple PCC** is also available as a startable chat and vision instance and an existing
+preferred-II choice. It automatically prefers Cloud Pro and falls back to Cloud
+on confirmed Pro access/availability errors. It sends task text, attached images and selected
+context to Apple, including the full Fruth policy for interpretive inference.
+Direct single-instance chat has no automatic Fruth policy or role. PCC is
+separate from local Apple AI.
+See [PCC setup and metadata](fruth_integrations/shortcuts/README.md).
 The model registry remains local to the Fruth checkout.
 The webserver log is `logs/flask_webserver.log`.
 
 `./fruth stop` (also `shutdown` or `down`) runs the shutdown sequence:
 stop the Flask webserver, collect registered PIDs and listeners in the backend
 port ranges, stop those processes and the default Ollama server, then finalize
-runtime status and archive session logs. It prints the process/port diagnostics
+runtime status and archive session logs. Apple AI and PCC use ownership-checked stopping;
+an unverified Apple bridge process preserves recovery state and makes shutdown fail. It prints the process/port diagnostics
 in the terminal. An already-stopped stack is a successful stop, so `restart`
 continues into startup normally. External provider projections are refreshed
 only by an explicit `./fruth sync`.
@@ -234,8 +273,8 @@ Stop, Pull, or Delete actions. Direct tab turns are ephemeral and independent;
 Fruth can promote bounded relevant context for a referential turn, but does not
 create a persistent provider session. Model selection is automatic,
 and the exact GPT variant is not exposed to Fruth; model self-descriptions are
-not runtime proof. Direct API-key management and other external providers are
-outside the 0.1.2 contract.
+not runtime proof. Direct API-key management is outside this route's 0.1.3
+contract. Apple PCC is a separate optional integration described above.
 
 ## Release and Safety Notes
 
@@ -323,7 +362,7 @@ Base URL resolution:
 Local runtime recovery order:
 
 - `fruthctl` talks to the current Fruth Flask control plane on `127.0.0.1:5011`.
-- First dependency: if local runtime commands hit `connection refused` on `5011`, the control plane is down.
+- First dependency: if local runtime commands hit `connection refused` on `5011`, check process/listener evidence and the client permission boundary before concluding that the control plane is down.
 - Read-like `fruthctl` commands such as `instances list`, `models list`, `inference`, and `responses get` do not recover/start the control plane by default. Pass `--recover-control-plane` only when that recovery behavior is intentional.
 - Mutating or lifecycle-oriented `fruthctl` commands may auto-attempt a one-shot local recovery by starting `fruth_webserver.py` and retrying once for the default local base URL.
 - If `5011` is up but `instances list --json` is empty, start the required model with `fruthctl start ...`.
@@ -497,7 +536,8 @@ Streaming note:
 
 - canonical streaming currently uses Responses-style SSE over the finalized normalized response payload; the final serialized SSE event, including its outer wrapper, obeys the same 8 MiB ceiling
 - this is already useful for one client language and UI compatibility
-- for chat-capable Ollama/MLX runtimes, canonical streaming now forwards real backend deltas
+- for chat-capable Ollama, MLX, llama.cpp and Apple AI runtimes, canonical streaming forwards real backend deltas
+- Apple PCC through Shortcuts emits a buffered completed answer, not provider token deltas
 - non-chat capabilities still use completed-response style payloads/synthetic SSE where appropriate
 - the main UI chat flow now uses canonical responses streaming for ordinary chat turns
 
@@ -803,42 +843,50 @@ Current direct UI/internal behavior:
   - Backend persists generated images to `artifacts/images/` when needed and returns the saved path in API payload for local open actions.
 - PDF document handling:
   - PDF attachments are accepted in `/api/responses` and still supported by `/api/infer` compatibility calls.
-  - For `vision_analysis` models (for example DeepSeek-OCR), PDFs are treated image-first: pages are rendered and OCR runs page-by-page.
+  - File-aware external agent routes receive the original selected PDF under their existing file-sharing controls; page conversion is confined to backends that require text or images.
+  - For `vision_analysis` models and chat instances advertising image input (including Apple AI single tabs), PDFs are treated image-first: each selected page is rendered and sent to the selected instance for recognition or analysis. Mixed documents retain both searchable text and text inside images through their rendered pages.
+  - Apple **Read text (OCR)** and **Read barcodes / QR codes** also accept PDFs. They run the existing native image tool on each rendered page and return page-labelled detections with per-page receipts bound to the original PDF digest. A failed tool call is an explicit error; it does not fall back to model prose.
   - DeepSeek-OCR page extraction follows the official prompt pipeline from the upstream docs:
     - primary: `<image>` + `<|grounding|>Convert the document to markdown.`
     - fallback: `<image>` + `Free OCR.`
-  - For searchable/text PDFs, backend extracts text and sends it as document context.
+  - Text-only targets and explicit `pdf_prefer_text` requests use `pypdf` to extract the existing text layer as document context. If some pages have no extractable text, a warning identifies that missing coverage; text extraction does not recognize text inside images. Explicit Apple OCR/barcode modes require rendered pages even if `pdf_prefer_text` is set.
   - For scanned PDFs, backend renders pages as images and runs page-wise OCR/context analysis.
-  - OCR page execution uses `/api/generate` first and automatically retries with an emergency OCR prompt when Ollama returns empty content or upstream generate errors.
+  - Ollama OCR page execution uses `/api/generate` first and automatically retries with an emergency OCR prompt when Ollama returns empty content or upstream generate errors.
   - DeepSeek-OCR requests are sent with conservative runner options (`num_ctx=4096`, `num_keep=0`) to avoid sequence errors on some Ollama builds.
   - Prompt-echo responses (where the model repeats user instructions instead of OCR text) are treated as invalid page OCR output and trigger fallback automatically.
   - Optional request params:
     - `pdf_max_pages` (blank by default; only set when you want to cap how many pages Fruth renders and OCRs for this request, max `500`)
-    - `pdf_dpi` (default `260` for `vision_analysis`, max `600`)
+    - `pdf_dpi` (default `260` for `vision_analysis`, `180` for chat, max `600`)
     - `pdf_page_timeout_sec` (default `240`; timeout per OCR page call)
     - `pdf_page_retry_dpi` (default auto; retries failed pages with lower DPI)
     - `pdf_max_image_side` (default `2400`; constrains rendered page size for stability)
     - `pdf_prefer_text` (default `false`; for vision OCR path we render PDF pages first)
     - `infer_timeout_sec` (default `1200`, max `7200`)
     - `pdf_synthesize` (default `false`; set `true` for one-pass global merge)
-  - If individual pages fail, the backend returns partial page results plus warnings instead of dropping the full document response.
+  - Ollama page failures retain partial results and warnings. Empty page answers from compatible chat/vision transports retain a labelled gap and warning; they are not counted as successful recognition. Native Apple tool failures stop with the failing page number and receipts for earlier successful pages. A page cap retains the full document page count and a coverage warning.
   - Inline PDF output is a convenience view and may be shortened for UI stability; the saved markdown artifact is the completeness source of truth.
   - Text-layer PDF runs now persist both the extracted source text artifact and the model-produced result artifact when available.
-  - PDF inference history is persisted to `state/infer_history.jsonl` for later reuse/retrieval.
-  - Cache reuse is enabled by default for PDFs (`reuse_cached=true`) based on file hash + model + capability + prompt.
+  - PDF inference history is persisted to `state/infer_history.jsonl` for explicit retrieval and reference.
+  - Each incoming PDF is processed again using the current request settings. History remains available for explicit retrieval; the legacy `reuse_cached` input is accepted for compatibility but has no effect.
   - Query stored insights via `GET /api/infer_history?file_kind=pdf&limit=50`.
   - `pypdf` is installed by default for text-layer extraction.
-  - Multi-page scanned-PDF rendering can optionally use `PyMuPDF`. It is not a
-    default dependency because its upstream license is AGPL-3.0 or commercial.
-    Review the applicable upstream terms before installing it separately with
-    `python -m pip install PyMuPDF`. Without it, Fruth retains a limited macOS
-    first-page rendering fallback when available.
+  - On macOS, PDFKit draws pages into CoreGraphics bitmaps through the
+    `pyobjc-framework-Quartz` dependency. All selected pages, intrinsic rotation,
+    crop boxes and visible annotations are included. ImageIO encodes the page
+    PNGs for the existing OCR/vision routes; rendering itself performs no OCR.
+    Native bitmap rendering does not imply GPU acceleration.
+  - `requirements.txt` installs the Quartz binding only on macOS, along with
+    its PyObjC core/Cocoa dependencies. For an existing environment, apply the
+    updated requirements explicitly using the install command above. Upstream
+    wheels normally avoid compilation; source installs require Apple's command
+    line developer tools ([PyObjC installation](https://pyobjc.readthedocs.io/en/latest/install.html)).
+    Fruth's source archive contains neither wheels nor Apple frameworks.
 
 ## Registry Schema
 
 Running model records in `model_ports.json` now include:
 - `modelName`: canonical model identifier (same semantic value as `model`).
-- `backend`: normalized backend (`ollama` or `mlx`).
+- `backend`: normalized backend (`ollama`, `mlx`, `llama_cpp`, or `apple_fm`).
 - `capability`: normalized capability used by routing.
 - `features`: canonical feature flags such as `vision_input`, `audio_input`, `image_output`, `audio_output`, `tool_calling`, `function_calling`, `computer_use`, and `structured_outputs`.
 - `feature_sources`: per-feature provenance labels such as `explicit_metadata`, `local_template`, `curated_override`, `capability_contract`, or `conservative_default`.
@@ -846,6 +894,7 @@ Running model records in `model_ports.json` now include:
 - `outputs`: normalized output modality list.
 - `backend_metadata` for Ollama-backed entries: a doc-aligned `/api/show` summary carrying fields such as `capabilities`, `details`, `parameters`, and derived `context_length`.
 - `backend_metadata` for MLX-backed entries: package-contract metadata describing which surface is in play (`mlx_lm`, `mlx_vlm`, `mlx_audio`, or `mlx_whisper_shim`), the upstream/native endpoint set, package capabilities, and key constraints such as lazy loading or one-model-at-a-time model binding.
+- `backend_metadata` for Apple AI entries: the observed `fm serve` contract, exact health/models URLs, observation time and raw reported model entry. The API model is `system`; the UI label is Apple AI. Optional macOS 27 discovery adds `system_model` with the Mac's default AFM variant, context size, source and timestamp, shown in startup and the Models panel. Unreported exact-server variant, revision and context size remain unknown. See [Apple AI](docs/APPLE_FOUNDATION_MODELS.md).
 - `backend_package` / `backend_contract`: additive top-level provenance fields so callers can distinguish generic `backend = mlx` from the actual MLX package contract.
 - `discovery_state`, `runnable`, `runnable_checks`, `disabled_reason`: available-model fields that now separate cache/catalog discovery from locally runnable backend truth.
 
@@ -857,8 +906,8 @@ For Ollama-backed entries it also carries `backend_runtime`, a doc-aligned `/api
 For MLX-backed entries the same nested field now carries package-aware live runtime facts such as the native base URL, package-specific health or infer routes, unload/model-list URLs where applicable, and the current model-binding strategy (`model_bound_at_launch` vs `model_selected_per_request`).
 It is now fed by canonical start/stop plus successful or failed work through chat and `/api/responses` flows, with `/api/infer` and `/api/chat` retained only as compatibility plumbing where still needed.
 That split is intentional:
-- `model_ports.json` is the stable registry plus doc-backed `/api/show` facts.
-- `state/runtime_status.json` is the live status layer plus backend-specific runtime facts (`/api/ps` for Ollama, native-route/runtime binding facts for MLX).
+- `model_ports.json` is the stable registry plus attributed backend metadata.
+- `state/runtime_status.json` is the live status layer plus backend-specific runtime facts (`/api/ps` for Ollama, native-route/runtime binding facts for MLX, and observed server readiness for llama.cpp and Apple AI).
 - `fruthctl instances list --json` and `GET /api/running_instances` merge both views so callers do not have to guess from model names alone.
 
 For external wrappers, Fruth now exposes a discovery manifest:

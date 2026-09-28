@@ -695,10 +695,12 @@ def test_landing_keeps_third_party_provider_and_skill_as_a_demoted_runtime_note(
     assert 'class="codex-skill"' not in html
     assert 'class="codex-skill-note"' not in html
     assert 'class="provider-note"' in about
-    assert "<strong>Third-party providers.</strong>" in about
-    assert "(currently ChatGPT)" in about
-    assert "Fruth also offers an optional companion skill" in about
-    assert "execute requests through Fruth" in about
+    assert "<strong>Optional cloud providers.</strong>" in about
+    assert "Apple PCC through user-installed Shortcuts" in about
+    assert "explicitly enabled ChatGPT route" in about
+    assert "leave your device for Apple or OpenAI respectively" in about
+    assert "optional companion skill" in about
+    assert "runtime truth, work with canonical outputs" in about
     assert 'class="provider-note"' not in setup
 
     skill_note_rule = _css_rule(css, ".today > .provider-note")

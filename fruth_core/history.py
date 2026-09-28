@@ -52,46 +52,6 @@ def read_infer_history(history_path: Path, limit: int = 200) -> list[dict]:
     return entries
 
 
-def find_cached_pdf_insight(
-    *,
-    history_path: Path,
-    file_sha256: str,
-    model_name: str,
-    backend: str,
-    capability: str,
-    prompt: str,
-    looks_like_ocr_prompt_echo,
-) -> Optional[dict]:
-    if not file_sha256:
-        return None
-    history = read_infer_history(history_path, limit=1000)
-    for entry in history:
-        if entry.get('status') != 'ok':
-            continue
-        if entry.get('file_kind') != 'pdf':
-            continue
-        if entry.get('file_sha256') != file_sha256:
-            continue
-        if str(entry.get('model') or '') != model_name:
-            continue
-        if str(entry.get('backend') or '') != backend:
-            continue
-        if str(entry.get('capability') or '') != capability:
-            continue
-        if str(entry.get('prompt') or '') != prompt:
-            continue
-        content_value = str(entry.get('content') or '').strip()
-        if not content_value:
-            continue
-        if looks_like_ocr_prompt_echo(content_value, user_hint=prompt):
-            continue
-        if str(entry.get('mode') or '').strip() == 'vision_analysis_pdf_scan':
-            if int(entry.get('pdf_processed_pages') or 0) == 0:
-                continue
-        return entry
-    return None
-
-
 def log_pdf_infer_event(
     *,
     history_path: Path,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from pathlib import Path
 from typing import Any, Iterable, Optional
@@ -27,6 +28,7 @@ from fruth_inference.intent import (
     prompt_has_self_contained_direct_tts_source,
 )
 from fruth_services.file_inputs import file_kind_from_name
+from fruth_inference.policy_scope import select_policy_scope
 
 MAX_REFERENTIAL_ROUTE_USER_TURNS = 1
 MAX_RECENT_MESSAGES = 8
@@ -34,7 +36,9 @@ MAX_RECENT_MESSAGE_FALLBACK = 4
 MAX_EMBEDDING_HINTS = 3
 EMBEDDING_BIAS_MIN_SCORE = 0.84
 EMBEDDING_BIAS_MIN_MARGIN = 0.05
-INFERENCE_POLICY_PATH = Path(__file__).resolve().parent.parent / 'FRUTH_INFERENCE.md'
+_CANONICAL_INFERENCE_POLICY_PATH = Path(__file__).resolve().parent.parent / 'FRUTH_INFERENCE.md'
+INFERENCE_POLICY_PATH = _CANONICAL_INFERENCE_POLICY_PATH
+AFM_INFERENCE_POLICY_PATH = Path(__file__).resolve().parent / 'policies' / 'apple_fm.md'
 _DEFAULT_INFERENCE_RUNTIME_POLICY = (
     'You perform runtime routing within Fruth. '
     'Trust the provided runtime manifest, attachments, recent artifacts, and session-control truth. '
@@ -69,7 +73,7 @@ _TEXT_TO_SPEECH_INTENT_RE = re.compile(
     re.IGNORECASE,
 )
 _EXISTING_IMAGE_REFERENCE_RE = re.compile(
-    r"\b(this image|that image|the image|this picture|that picture|the picture|this photo|that photo|"
+    r"\b(this image|that image|the image|previous image|prior image|this picture|that picture|the picture|this photo|that photo|"
     r"the photo|screenshot|screen|full picture|dieses bild|das bild|dieses foto|dieses screenshot|"
     r"den screenshot|vollständige bild|ganze bild)\b"
     r"|\b(describe what you see|what do you see|what is in this image|what's in this image|read the text|"
@@ -166,7 +170,7 @@ def _clip(text: Any, *, max_chars: int = 700) -> str:
     return value[:max_chars].rstrip() + '...[truncated]'
 
 
-def _load_runtime_inference_policy() -> str:
+def _load_runtime_inference_policy(scope: str = 'routing', *, backend: Optional[str] = None) -> str:
     path = INFERENCE_POLICY_PATH
     try:
         stat_result = path.stat()
@@ -175,18 +179,34 @@ def _load_runtime_inference_policy() -> str:
 
     cached_mtime_ns = _INFERENCE_POLICY_CACHE.get('mtime_ns')
     cached_text = _INFERENCE_POLICY_CACHE.get('text')
-    if cached_text and cached_mtime_ns == stat_result.st_mtime_ns:
-        return str(cached_text)
+    if (cached_text and cached_mtime_ns == stat_result.st_mtime_ns
+            and _INFERENCE_POLICY_CACHE.get('path') == str(path)):
+        policy_text = str(cached_text)
+    else:
+        try:
+            raw_text = path.read_text(encoding='utf-8')
+        except OSError:
+            return _DEFAULT_INFERENCE_RUNTIME_POLICY
 
+        policy_text = raw_text if raw_text.strip() else _DEFAULT_INFERENCE_RUNTIME_POLICY
+        _INFERENCE_POLICY_CACHE['mtime_ns'] = stat_result.st_mtime_ns
+        _INFERENCE_POLICY_CACHE['text'] = policy_text
+        _INFERENCE_POLICY_CACHE['path'] = str(path)
+
+    if normalize_backend(backend) != 'apple_fm':
+        return policy_text
+    # An explicitly supplied custom policy remains authoritative, including its tail.
+    if path != _CANONICAL_INFERENCE_POLICY_PATH:
+        return select_policy_scope(policy_text, scope)
     try:
-        raw_text = path.read_text(encoding='utf-8').strip()
-    except OSError:
-        return _DEFAULT_INFERENCE_RUNTIME_POLICY
-
-    policy_text = raw_text or _DEFAULT_INFERENCE_RUNTIME_POLICY
-    _INFERENCE_POLICY_CACHE['mtime_ns'] = stat_result.st_mtime_ns
-    _INFERENCE_POLICY_CACHE['text'] = policy_text
-    return policy_text
+        projection = AFM_INFERENCE_POLICY_PATH.read_text(encoding='utf-8')
+    except OSError as exc:
+        raise ValueError('Apple AI interpretive inference policy is unavailable.') from exc
+    if not projection.strip() or '<!-- fruth-policy:' not in projection:
+        raise ValueError('Apple AI interpretive inference policy requires complete marked scopes.')
+    selected = select_policy_scope(projection, scope, source='fruth_inference/policies/apple_fm.md')
+    return (f'Canonical policy: FRUTH_INFERENCE.md; source_sha256: '
+            f'{hashlib.sha256(policy_text.encode("utf-8")).hexdigest()}\n{selected}')
 
 
 def _readiness_rank(value: object) -> int:
@@ -1669,7 +1689,7 @@ def build_embedding_route_audit(
     return audit
 
 
-def build_router_messages(context: dict[str, Any]) -> list[dict[str, str]]:
+def build_router_messages(context: dict[str, Any], *, backend: Optional[str] = None) -> list[dict[str, str]]:
     schema = {
         'capability': 'chat|vision_analysis|image_generation|speech_to_text|text_to_speech',
         'instance_id': 'string|null',
@@ -1686,7 +1706,7 @@ def build_router_messages(context: dict[str, Any]) -> list[dict[str, str]]:
             'controlled attention targets, and learning_hint_refs.'
         ),
     }
-    runtime_policy = _load_runtime_inference_policy()
+    runtime_policy = _load_runtime_inference_policy(backend=backend)
     system_prompt = (
         'You perform runtime routing within Fruth. '
         'Your job is runtime routing only. '
@@ -2731,7 +2751,11 @@ def build_route_hint(context: dict[str, Any]) -> dict[str, Any]:
     artifact_path = None
     confidence = 0.62
 
-    if (explicit_defer_materialization or (
+    if prompt_intent.get('artifact_state_readback_request'):
+        capability = CAPABILITY_CHAT
+        reason = 'explain saved artifact state and evidence without fresh media execution'
+        confidence = 0.98
+    elif (explicit_defer_materialization or (
         prompt_intent.get('explicit_defer_materialization') and not materialization_intent_active
     )) and (
         materialization_intent_active
@@ -2803,7 +2827,8 @@ def build_route_hint(context: dict[str, Any]) -> dict[str, Any]:
         capability = continuation_capability
         reason = 'follow-up cue from recent artifact context'
         confidence = 0.78
-    elif allow_artifact_reuse and latest_image and _references_existing_image(lowered_prompt):
+    elif (allow_artifact_reuse and latest_image and _references_existing_image(lowered_prompt)
+          and not prompt_intent.get('visual_analysis_execution_suppressed_by_preservation')):
         capability = CAPABILITY_VISION_ANALYSIS
         reuse_last_artifact = not has_explicit_file
         artifact_path = str(latest_image.get('path') or '').strip() or None

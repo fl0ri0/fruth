@@ -46,7 +46,7 @@
                 </div>
                 <div class="collapse-panel open" data-section-panel="available">
                     <div class="section-hint flex items-center justify-between gap-2">
-                        <span>Local checkpoints with running sessions inline</span>
+                        <span>Models with running sessions inline</span>
                         <button
                             id="toggle-known-models"
                             type="button"
@@ -862,6 +862,8 @@
 
         function normalizeBackend(backend) {
             const normalized = String(backend || 'ollama').trim().toLowerCase();
+            if (normalized === 'afm' || normalized === 'apple-fm') return 'apple_fm';
+            if (normalized === 'pcc' || normalized === 'apple-pcc') return 'apple_pcc';
             if (normalized === 'llama.cpp' || normalized === 'llama-cpp' || normalized === 'llama cpp') {
                 return 'llama_cpp';
             }
@@ -943,6 +945,8 @@
         function getAvailableModelSourceLabel(entry) {
             if (!entry || typeof entry !== 'object') return 'ollama';
             const backend = normalizeBackend(entry.backend || 'ollama');
+            if (backend === 'apple_fm') return 'Apple system model';
+            if (backend === 'apple_pcc') return 'Apple Private Cloud Compute';
             const modelSource = String(entry.model_source || '').trim().toLowerCase();
             if (backend === 'mlx') {
                 return modelSource || 'huggingface';
@@ -957,6 +961,15 @@
 
         function getInstanceRuntimeTruthSummary(instance) {
             if (!instance || typeof instance !== 'object') return '';
+            if (normalizeBackend(instance.backend) === 'apple_pcc') {
+                const tier = instance.backend_runtime?.last_execution?.model;
+                return tier === 'cloud-pro' ? 'Last used: Cloud Pro • Automatic tier selection'
+                    : tier === 'cloud' ? 'Last used: Cloud • Pro preferred when available'
+                    : 'Pro preferred • Cloud fallback • Cloud processing';
+            }
+            if (normalizeBackend(instance.backend) === 'apple_fm') {
+                return 'API: system • Server variant unknown • Context size unknown';
+            }
             const capability = normalizeCapability(instance.capability || '');
             const backend = normalizeBackend(instance.backend || 'ollama');
             const backendRuntime = instance.backend_runtime && typeof instance.backend_runtime === 'object'
@@ -1021,6 +1034,8 @@
         function getAvailableModelTruthSummary(entry) {
             if (!entry || typeof entry !== 'object') return '';
             const backend = normalizeBackend(entry.backend || 'ollama');
+            if (backend === 'apple_fm') return 'On-device text + image analysis';
+            if (backend === 'apple_pcc') return 'Apple Private Cloud Compute';
             const pieces = [];
             if (backend === 'mlx') {
                 const packageLabel = String(
@@ -1121,6 +1136,8 @@
 
         function formatBackendLabel(backend) {
             const normalized = normalizeBackend(backend);
+            if (normalized === 'apple_fm') return 'Apple AI';
+            if (normalized === 'apple_pcc') return 'Apple PCC';
             if (normalized === 'mlx') return 'MLX';
             if (normalized === 'llama_cpp') return 'llama.cpp';
             if (normalized === 'codex_cli') return 'Codex bridge';
@@ -1335,7 +1352,7 @@
                         elements.activeModelSettingsBtn.title = 'Fruth controls';
                         elements.activeModelSettingsBtn.setAttribute('aria-label', 'Fruth controls');
                     } else {
-                        const label = formatModelDisplayName(current.model || current.instance_id || 'model');
+                        const label = formatModelDisplayName(current.model || current.instance_id || 'model', current.backend);
                         const backend = formatBackendLabel(current.backend || 'ollama');
                         elements.activeModelSettingsBtn.title = `Session Controls for ${label} (${backend})`;
                         elements.activeModelSettingsBtn.setAttribute('aria-label', `Session Controls for ${label} (${backend})`);
@@ -1345,9 +1362,21 @@
             renderModelSettingsPanel();
         }
 
-function formatModelDisplayName(rawName = '') {
+function formatModelDisplayName(rawName = '', backend = '', metadata = null) {
     if (!rawName) return '';
     let cleaned = String(rawName).trim();
+    const pccInstance = cleaned.match(/^apple_pcc:auto:(\d+)$/i);
+    if (pccInstance) return `Apple PCC · ${pccInstance[1]}`;
+    if (['apple_pcc', 'apple-pcc', 'pcc'].includes(String(backend).toLowerCase())) return 'Apple PCC';
+    const appleInstance = cleaned.match(/^apple_fm:system:(\d+)$/i);
+    if (appleInstance || ['apple_fm', 'apple-fm', 'afm'].includes(String(backend).toLowerCase())) {
+        const observed = metadata?.backend_metadata?.system_model;
+        const name = observed?.status === 'available' && typeof observed.display_name === 'string'
+            ? observed.display_name.trim() || 'AFM'
+            : 'AFM';
+        if (appleInstance) return `${name} · ${appleInstance[1]}`;
+        return cleaned === 'system' ? name : cleaned;
+    }
     if (['codex:auto', 'external:codex'].includes(cleaned.toLowerCase())) {
         return 'ChatGPT';
     }
@@ -2192,9 +2221,9 @@ function summarizeStopDetails(details) {
                 const sourceLabel = formatCodexSourceLabel(instance);
                 return `ChatGPT (automatic model) · ${sourceLabel}`;
             }
-            const modelLabel = formatModelDisplayName(instance?.model || instance?.instance_id || 'model');
+            const modelLabel = formatModelDisplayName(instance?.model || instance?.instance_id || 'model', instance?.backend);
             const backendLabel = formatBackendLabel(instance?.backend || 'ollama');
-            return `${modelLabel} (${backendLabel})`;
+            return modelLabel === backendLabel ? modelLabel : `${modelLabel} (${backendLabel})`;
         }
 
         function populateResponsesInferencePreferenceSelect(select, instances, selectedTarget, emptyLabel, { capability = '', role = '' } = {}) {
@@ -2231,7 +2260,7 @@ function summarizeStopDetails(details) {
             if (selectedValue && !seenValues.has(selectedValue) && normalizedSelected) {
                 const option = document.createElement('option');
                 option.value = selectedValue;
-                option.textContent = `${formatModelDisplayName(normalizedSelected.model || 'model')} (${formatBackendLabel(normalizedSelected.backend || 'runtime')} • unavailable)`;
+                option.textContent = `${formatModelDisplayName(normalizedSelected.model || 'model', normalizedSelected.backend)} (${formatBackendLabel(normalizedSelected.backend || 'runtime')} • unavailable)`;
                 select.appendChild(option);
             }
 
@@ -2777,7 +2806,7 @@ function summarizeStopDetails(details) {
                 const option = document.createElement('option');
                 option.value = inst.instance_id;
                 const backendLabel = formatBackendLabel(inst.backend);
-                option.textContent = `${formatModelDisplayName(inst.model || inst.instance_id)} • ${backendLabel}`;
+                option.textContent = `${formatModelDisplayName(inst.model || inst.instance_id, inst.backend)} • ${backendLabel}`;
                 frag.appendChild(option);
             });
             selectEl.innerHTML = '';
@@ -3050,7 +3079,7 @@ function summarizeStopDetails(details) {
             updateSendButtonState();
             updateArenaPanelVisibility();
             const backendLabel = formatBackendLabel(instance.backend);
-            updateGlobalModelStatus(`Arena ready with ${formatModelDisplayName(instance.model || forcedInstanceId)} (${backendLabel}) as a contestant.`);
+            updateGlobalModelStatus(`Arena ready with ${formatModelDisplayName(instance.model || forcedInstanceId, instance.backend)} (${backendLabel}) as a contestant.`);
             elements.userInput.focus();
             return true;
         }
@@ -3840,13 +3869,13 @@ function summarizeStopDetails(details) {
                     if (resolved) {
                         const label = isExternalConversationTarget(resolved)
                             ? 'ChatGPT'
-                            : formatModelDisplayName(resolved.model || resolved.instance_id);
+                            : formatModelDisplayName(resolved.model || resolved.instance_id, resolved.backend);
                         elements.userInput.placeholder = `Fruth is currently routing to ${label}.`;
                     } else {
-                        elements.userInput.placeholder = 'Fruth will pick an available local model or enabled external provider.';
+                        elements.userInput.placeholder = 'Fruth will pick a running model or enabled external provider.';
                     }
                 } else {
-                    const label = target ? formatModelDisplayName(target.model || target.instance_id) : 'selected target';
+                    const label = target ? formatModelDisplayName(target.model || target.instance_id, target.backend) : 'selected target';
                     elements.userInput.placeholder = `Send the next prompt to ${label}.`;
                 }
                 if (selectedReferenceArtifacts.length) {

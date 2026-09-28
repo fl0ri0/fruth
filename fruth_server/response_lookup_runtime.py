@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from fruth_services.response_persistence import response_persistence_blocked
+
 import copy
 import time
 import uuid
@@ -240,6 +242,8 @@ class ResponseLookupRuntimeOwner:
         live_surface = self.project_surface(raw_live_surface)
         if live_surface:
             updated['surface_state'] = live_surface
+        if isinstance(live_payload.get('persistence'), Mapping):
+            updated['persistence'] = copy.deepcopy(live_payload['persistence'])
         for key in ('status', 'lifecycle_state'):
             value = live_payload.get(key) or live_record.get(key)
             if value not in (None, '', [], {}):
@@ -314,6 +318,8 @@ class ResponseLookupRuntimeOwner:
 
         normalized_id = self.normalize_response_lookup_id(response_id)
         live_record = self.get_live_response_lookup_record(normalized_id)
+        if live_record and response_persistence_blocked(live_record.get('response_payload') or {}):
+            return live_record, None, 200
         projected, wire_state = self.load_wire_payload_from_index(normalized_id)
         if projected is not None:
             wire_record = self.response_lookup_record_from_wire_payload(

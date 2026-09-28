@@ -266,6 +266,34 @@ class InferenceServiceTests(unittest.TestCase):
         self.assertEqual(request['extension'], 'html')
         self.assertEqual(request['source_name'], 'index')
 
+    def test_saved_evidence_cannot_borrow_negated_or_unrelated_file_actions(self):
+        from tests.test_artifact_state_followups import AUDIO_NO_RETRANSCRIPTION
+
+        for prompt in (
+            AUDIO_NO_RETRANSCRIPTION,
+            'Explain the saved runtime evidence. Do not generate new audio.',
+            'Explain the saved runtime evidence. Generate a new image of a lighthouse.',
+            'Using saved runtime evidence, provide an explanation of the source binding.',
+            'Explain the evidence in the document. Do not generate new audio.',
+            'Explain the file. The old instruction was "generate new audio".',
+        ):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(detect_text_artifact_requests(prompt, source_available=True), [])
+
+    def test_explicit_file_actions_survive_media_negation(self):
+        for prompt, extension in (
+            ('Do not transcribe again. Save the evidence explanation as a text file.', 'txt'),
+            ('Do not generate new audio, but write a text file about the saved evidence.', 'txt'),
+            ('Explain the saved evidence, and create evidence.md. Do not transcribe again.', 'md'),
+            ('Do not only create a text file; also explain the saved evidence.', 'txt'),
+            ('Generate a text file using the saved transcript.', 'txt'),
+        ):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(
+                    [request['extension'] for request in detect_text_artifact_requests(prompt, source_available=True)],
+                    [extension],
+                )
+
     def test_detect_text_artifact_request_allows_explicit_filename_with_that_says(self):
         request = detect_text_artifact_request(
             'Create an index.html artifact with a minimal page that says "Signal Garden" in blue text.'

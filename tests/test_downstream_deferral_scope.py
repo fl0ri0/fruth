@@ -114,7 +114,7 @@ def test_terminal_closure_judges_preserved_actual_files(tmp_path, monkeypatch, c
 def test_saved_file_producer_consumer_executes_with_unrelated_exclusions(tmp_path, monkeypatch):
     from tests import test_saved_file_consumer_path as saved
     monkeypatch.setattr(saved, 'PROMPT', saved.PROMPT + ' ' + EXCLUSIONS)
-    saved.test_complete_late_fill_executes_save_then_read_consumer(tmp_path, monkeypatch, 'Save')
+    saved.test_complete_late_fill_executes_save_then_read_consumer(tmp_path, monkeypatch, 'Save', early_files=False, missing_result=False)
 
 
 @pytest.mark.parametrize('constraint,expected_names,closed', [

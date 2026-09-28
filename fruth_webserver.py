@@ -322,6 +322,10 @@ from fruth_services.responses import (
     translate_responses_payload_to_infer_payload as _translate_responses_payload_to_infer_payload,
 )
 from fruth_services import response_wire as _response_wire_policy
+from fruth_services.response_persistence import (
+    ResponseFramePersistenceError, ResponsePersistenceError,
+    attach_persistence_failure, response_persistence_blocked,
+)
 from fruth_services.response_frames import (
     RESPONSE_FRAME_STALE_PARENT_REASON,
     ResponseFrameParentCASMismatch,
@@ -977,6 +981,9 @@ def _finalize_response_frame_payload(
     expected_parent_frame_sequence: Optional[int] = None,
 ) -> dict[str, Any]:
     total_started_at = time.perf_counter()
+    response_payload = dict(response_payload)
+    if persist:
+        response_payload.pop('persistence', None)
     raw_late_fill = response_payload.get('late_fill') if isinstance(response_payload.get('late_fill'), Mapping) else {}
 
     def _branch_count(key: str) -> int:
@@ -1195,6 +1202,9 @@ def _finalize_response_frame_payload(
         _mark_step('response_frame_metadata', step_started_at)
         _publish_finalize_timing(framed_payload)
     frame_persisted = False
+    persistence_receipt = {}
+    writer_entered = False
+    registry_outcome = {'status': 'not_attempted'}
     if persist and not app.config.get("TESTING"):
         step_started_at = time.perf_counter()
         try:
@@ -1202,18 +1212,22 @@ def _finalize_response_frame_payload(
                 framed_payload,
                 ledger_path=ARTIFACT_REGISTRY_LEDGER,
             )
+            registry_outcome = {'status': 'published'}
         except Exception as exc:  # noqa: BLE001
+            registry_outcome = {'status': 'failed', 'error': str(exc)}
             logging.warning("Could not append output artifact registry records: %s", exc)
         _mark_step('persist_output_artifact_registry_records', step_started_at)
         _publish_finalize_timing(framed_payload)
         step_started_at = time.perf_counter()
         try:
             if str(expected_parent_frame_id or '').strip():
+                writer_entered = True
                 append_result = _append_response_frame_with_parent_cas(
                     framed_payload['response_frame'],
                     expected_parent_frame_id=str(expected_parent_frame_id).strip(),
                     expected_parent_frame_sequence=expected_parent_frame_sequence,
                     frames_dir=RESPONSE_FRAMES_DIR,
+                    receipt=persistence_receipt,
                 )
                 framed_payload['response_frame'] = append_result['response_frame']
             else:
@@ -1221,12 +1235,50 @@ def _finalize_response_frame_payload(
                     framed_payload['response_frame'],
                     frames_dir=RESPONSE_FRAMES_DIR,
                 )
-                _persist_response_frame(framed_payload['response_frame'], frames_dir=RESPONSE_FRAMES_DIR)
+                writer_entered = True
+                _persist_response_frame(
+                    framed_payload['response_frame'], frames_dir=RESPONSE_FRAMES_DIR,
+                    receipt=persistence_receipt,
+                )
             frame_persisted = True
         except ResponseFrameParentCASMismatch:
             raise
         except Exception as exc:  # noqa: BLE001
             logging.warning("Could not append response frame: %s", exc)
+            if isinstance(exc, ResponseFramePersistenceError):
+                persistence_receipt = dict(exc.receipt)
+                if exc.frame is not None:
+                    framed_payload['response_frame'] = exc.frame
+            else:
+                # Includes preparation failures before the native writer and
+                # unexpected failures without a trustworthy commit receipt.
+                persistence_receipt = {
+                    'kind': 'fruth.response_persistence', 'version': 1,
+                    'status': 'uncertain' if writer_entered else 'not_committed',
+                    'stage': 'finalizer' if writer_entered else 'prepare',
+                    'automatic_retry': False,
+                    'error': {'code': 'response_frame_persistence_failed',
+                              'message': str(exc), 'errno': getattr(exc, 'errno', None)},
+                }
+            persistence_receipt['artifact_registry'] = registry_outcome
+            if persistence_receipt.get('status') != 'committed':
+                failed_payload = attach_persistence_failure(framed_payload, persistence_receipt)
+                _mark_step('persist_response_frame', step_started_at)
+                _publish_finalize_timing(failed_payload)
+                failed_payload = _attach_response_status_semantics(failed_payload)
+                _ensure_response_lookup_for_payload(failed_payload, mode_hint='chat')
+                _touch_response_lookup(
+                    str(failed_payload.get('id') or '').strip(), status='incomplete',
+                    output_text=str(failed_payload.get('output_text') or ''),
+                    error_message=failed_payload['error']['message'],
+                    response_payload=failed_payload,
+                )
+                raise ResponsePersistenceError(failed_payload) from exc
+            # The canonical row is already fsynced. Index publication is a
+            # separate repair, never permission to append/execute the work twice.
+            frame_persisted = True
+        persistence_receipt['artifact_registry'] = registry_outcome
+        framed_payload['persistence'] = persistence_receipt
         _mark_step('persist_response_frame', step_started_at)
         if frame_persisted:
             step_started_at = time.perf_counter()
@@ -1294,6 +1346,11 @@ def _finalize_response_frame_payload(
 
 def _response_registry_now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+@app.errorhandler(ResponsePersistenceError)
+def _response_persistence_error_response(exc):
+    return jsonify(_project_response_payload_for_wire(exc.response_payload)), exc.status_code
 
 
 def _normalize_response_lookup_id(value: Any) -> str:
@@ -1736,7 +1793,13 @@ def _publish_response_lookup_stream_update(record: Mapping[str, Any]) -> None:
         isinstance(ui_payload.get('late_fill'), Mapping)
         and _response_stream_payload_requires_attention(ui_payload)
     )
-    if terminal_stream:
+    persistence_failed = response_persistence_blocked(ui_payload)
+    if persistence_failed:
+        events.append(_format_response_sse_event(
+            'response.failed', {'type': 'response.failed', 'response': ui_payload,
+                                'error': ui_payload.get('error')},
+        ))
+    elif terminal_stream:
         events.append(
             _format_response_sse_event(
                 'response.completed',
@@ -1750,7 +1813,7 @@ def _publish_response_lookup_stream_update(record: Mapping[str, Any]) -> None:
                 {'type': 'response.requires_action', 'response': ui_payload},
             )
         )
-    _append_response_stream_events(response_id, events, done=terminal_stream or attention_stream)
+    _append_response_stream_events(response_id, events, done=persistence_failed or terminal_stream or attention_stream)
 
 
 def _publish_response_lookup_stream_status_update(record: Mapping[str, Any]) -> None:
@@ -1970,11 +2033,19 @@ def _get_response_lookup_record(
 
     record = _RESPONSES_RUNTIME.get_response_lookup_record(response_id)
     if record:
+        if response_persistence_blocked(record.get('response_payload') or {}):
+            return record
         normalized_id = _normalize_response_lookup_id(response_id)
         latest_state = _load_latest_response_state(normalized_id, frames_dir=RESPONSE_FRAMES_DIR)
         if latest_state.get('ok') and _response_lookup_record_should_refresh_from_frame(record, latest_state):
             recovered_record, _error, _status_code = _recover_response_lookup_record_from_frames(normalized_id)
             if recovered_record:
+                live_payload = record.get('response_payload') or {}
+                recovered_payload = recovered_record.get('response_payload') or {}
+                if (isinstance(live_payload.get('persistence'), Mapping)
+                        and _response_wire_frame_identity(live_payload) == _response_wire_frame_identity(recovered_payload)):
+                    recovered_payload['persistence'] = copy.deepcopy(live_payload['persistence'])
+                    _RESPONSES_RUNTIME.touch_response_lookup(normalized_id, response_payload=recovered_payload)
                 return recovered_record
         if latest_state.get('ok'):
             live_payload = record.get('response_payload') or {}
@@ -2508,6 +2579,11 @@ def _project_response_payload_for_wire(response_payload: dict[str, Any]) -> dict
             value = response_payload.get(key)
             if value not in (None, '', [], {}) and key not in {'surface_state'}:
                 projected[key] = copy.deepcopy(value)
+    if isinstance(response_payload.get('persistence'), Mapping):
+        projected['persistence'] = copy.deepcopy(response_payload['persistence'])
+        if response_persistence_blocked(response_payload):
+            projected['status'] = response_payload.get('status')
+            projected['error'] = copy.deepcopy(response_payload.get('error'))
     projected = _attach_response_status_semantics(projected)
     record = _response_lookup_record_from_wire_payload(
         response_id or str(projected.get('id') or ''),
@@ -2528,9 +2604,14 @@ def _build_bounded_response_debug_payload(record: Mapping[str, Any]) -> dict[str
         response_id,
         include_observation=True,
     ) if response_id else (None, {})
+    live_payload = record.get('response_payload') or {}
+    if response_persistence_blocked(live_payload):
+        projected = None
     if projected is None:
         source_payload = record.get('response_payload') if isinstance(record.get('response_payload'), Mapping) else {}
         projected = _response_wire_fallback_payload(source_payload)
+    if isinstance(live_payload.get('persistence'), Mapping) and _response_wire_frame_identity(live_payload) == _response_wire_frame_identity(projected):
+        projected['persistence'] = copy.deepcopy(live_payload['persistence'])
     projected = _attach_response_status_semantics(projected)
     projected = _attach_response_artifact_bundles_from_registry(projected)
     status_record = _response_lookup_record_from_wire_payload(
@@ -3162,6 +3243,8 @@ def _resolve_responses_target_instance(
     *,
     forced_instance_id: Optional[str] = None,
     excluded_instance_ids: Optional[list[str]] = None,
+    preferred_targets: Optional[list[dict[str, Any]]] = None,
+    candidate_filter: Any = None,
 ) -> tuple[Optional[str], Optional[dict], Optional[str], Optional[str]]:
     explicit_instance_id = str(
         forced_instance_id
@@ -3195,6 +3278,8 @@ def _resolve_responses_target_instance(
         data,
         forced_instance_id=forced_instance_id,
         excluded_instance_ids=excluded_instance_ids,
+        preferred_targets=preferred_targets,
+        candidate_filter=candidate_filter,
     )
 
 
@@ -3411,8 +3496,7 @@ _INFER_RUNTIME = InferRuntimeOwner(
         'to_base64': lambda path: _to_base64(path),
         'read_text_file': lambda path: _read_text_file(path),
         'hash_file_sha256': lambda path: _hash_file_sha256(path),
-        'find_cached_pdf_insight': lambda *args, **kwargs: _find_cached_pdf_insight(*args, **kwargs),
-        'extract_pdf_text_content': lambda path: _extract_pdf_text_content(path),
+        'extract_pdf_text_content': lambda path, **kwargs: _extract_pdf_text_content(path, **kwargs),
         'render_pdf_pages_to_base64': lambda *args, **kwargs: _render_pdf_pages_to_base64(*args, **kwargs),
         'log_pdf_infer_event': lambda **kwargs: _log_pdf_infer_event(**kwargs),
         'record_instance_activity': lambda *args, **kwargs: record_instance_activity(*args, **kwargs),
@@ -3677,6 +3761,7 @@ _CHAT_RUNTIME = ChatRuntimeOwner(
 
 _REQUEST_INTAKE_RUNTIME = RequestIntakeRuntimeOwner(
     hooks={
+        'candidate_matches_inference_preference': lambda candidate, target: _candidate_matches_inference_preference(candidate, target),
         'normalize_backend': lambda value: normalize_backend(value),
         'normalize_capability': lambda value: normalize_capability(value),
         'normalize_external_identifier': lambda value, **kwargs: _normalize_external_identifier(value, **kwargs),
@@ -3722,6 +3807,7 @@ _RESPONSE_SEMANTICS_RUNTIME = ResponseSemanticsRuntimeOwner(
         'build_instance_trait_summary': lambda instance: _build_instance_trait_summary(instance),
         'sanitize_selected_reference_artifacts': lambda payload: _sanitize_selected_reference_artifacts(payload),
         'get_response_lookup_record': lambda response_id: _get_response_lookup_record(response_id),
+        'find_artifact_registry_record_by_artifact_ref': lambda ref: _find_artifact_registry_record_by_artifact_ref(ref, ledger_path=ARTIFACT_REGISTRY_LEDGER),
         'normalize_capability_list': lambda values: _normalize_capability_list(values),
         'normalize_late_fill_branches': lambda values: _normalize_late_fill_branches(values),
         'extract_request_meta': lambda payload: extract_request_meta(payload),
@@ -5085,6 +5171,8 @@ def _retry_response_late_fill_branch(response_id: str, body: Optional[dict[str, 
     if not record:
         return jsonify({'error': 'Response not found.'}), 404
     current_payload = dict(record.get('response_payload') or {})
+    if response_persistence_blocked(current_payload):
+        return jsonify({'error': current_payload.get('error'), 'persistence': current_payload['persistence']}), 409
     if not current_payload:
         return jsonify({'error': 'Response has no retryable payload.'}), 409
     current_payload, _orphaned_retry_projected = _project_orphaned_late_fill_retry_attempts(
@@ -7579,11 +7667,13 @@ def _inject_inference_runtime_policy_into_chat_messages(
     *,
     route_payload: Optional[dict[str, Any]] = None,
     request_payload: Optional[dict[str, Any]] = None,
+    backend: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     return _RESPONSE_SEMANTICS_RUNTIME.inject_inference_runtime_policy_into_chat_messages(
         messages,
         route_payload=route_payload,
         request_payload=request_payload,
+        backend=backend,
     )
 
 
@@ -7592,11 +7682,13 @@ def _inject_prepare_phase_contract_into_chat_messages(
     *,
     route_payload: Optional[dict[str, Any]] = None,
     request_payload: Optional[dict[str, Any]] = None,
+    backend: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     return _RESPONSE_SEMANTICS_RUNTIME.inject_prepare_phase_contract_into_chat_messages(
         messages,
         route_payload=route_payload,
         request_payload=request_payload,
+        backend=backend,
     )
 
 
@@ -7808,7 +7900,7 @@ def _chat_timeout_seconds(model_name: str, backend: str, capability: str) -> int
         normalized_backend == 'ollama' and size_hint_billion is not None and size_hint_billion >= 20
     )
 
-    if normalized_backend in {'mlx', 'llama_cpp'}:
+    if normalized_backend in {'mlx', 'llama_cpp', 'apple_fm'}:
         return 900 if is_heavy else 600
 
     if is_heavy:
@@ -8008,7 +8100,7 @@ def _build_response_status_lookup_payload(record: dict[str, Any]) -> dict[str, A
             or 'completed'
         )
         if record.get('error_message'):
-            payload['error'] = {'message': str(record.get('error_message') or '').strip()}
+            payload['error'] = {**(payload.get('error') if isinstance(payload.get('error'), Mapping) else {}), 'message': str(record.get('error_message') or '').strip()}
         semantic_payload = _attach_response_status_semantics(dict(payload))
     else:
         semantic_payload = _attach_response_status_semantics({
@@ -8036,6 +8128,7 @@ def _build_response_status_lookup_payload(record: dict[str, Any]) -> dict[str, A
         'status_compatibility': semantic_payload.get('status_compatibility'),
         'status_semantics': dict(status_semantics),
         'late_fill': _response_lookup_late_fill_for_status(semantic_payload),
+        'persistence': semantic_payload.get('persistence'),
         'output_counts': _response_lookup_output_counts(semantic_payload),
         'surface_state': _response_lookup_surface_for_status(semantic_payload),
     }
@@ -9127,7 +9220,7 @@ def _build_response_lookup_ui_source_payload(record: dict[str, Any]) -> dict[str
             or 'completed'
         )
         if record.get('error_message'):
-            payload['error'] = {'message': str(record.get('error_message') or '').strip()}
+            payload['error'] = {**(payload.get('error') if isinstance(payload.get('error'), Mapping) else {}), 'message': str(record.get('error_message') or '').strip()}
         payload = _normalize_lookup_output_artifact_bindings(payload)
         payload = _attach_response_artifact_bundles_from_registry(payload)
         status_record = dict(record)
@@ -9247,6 +9340,7 @@ def _build_response_ui_lookup_payload(record: dict[str, Any]) -> dict[str, Any]:
         'saved_audio_path',
         'saved_text_path',
         'error',
+        'persistence',
         'lang_code',
         'lang_code_source',
         'response_format',
@@ -9532,7 +9626,7 @@ def _build_response_lookup_payload(record: dict[str, Any]) -> dict[str, Any]:
             or 'completed'
         )
         if record.get('error_message'):
-            payload['error'] = {'message': str(record.get('error_message') or '').strip()}
+            payload['error'] = {**(payload.get('error') if isinstance(payload.get('error'), Mapping) else {}), 'message': str(record.get('error_message') or '').strip()}
         payload = _attach_response_artifact_bundles_from_registry(payload)
         status_record = dict(record)
         status_record['response_payload'] = dict(payload)
@@ -9996,6 +10090,7 @@ def _stream_chat_backend_as_responses(
     response_id: Optional[str] = None,
     request_payload: Optional[dict[str, Any]] = None,
     artifact_prompt: Optional[str] = None,
+    provider_failure_retry: Any = None,
 ):
     return _CHAT_RUNTIME.stream_chat_backend_as_responses(
         instance_id=instance_id,
@@ -10013,6 +10108,7 @@ def _stream_chat_backend_as_responses(
         response_id=response_id,
         request_payload=request_payload,
         artifact_prompt=artifact_prompt,
+        provider_failure_retry=provider_failure_retry,
     )
 
 
@@ -10113,25 +10209,6 @@ def _read_infer_history(limit: int = 200) -> list[dict]:
 
 def _append_infer_history(entry: dict) -> None:
     _INFER_SUPPORT_RUNTIME.append_infer_history(entry)
-
-
-def _find_cached_pdf_insight(
-    *,
-    file_sha256: str,
-    model_name: str,
-    backend: str,
-    capability: str,
-    prompt: str,
-) -> Optional[dict]:
-    return _INFER_SUPPORT_RUNTIME.find_cached_pdf_insight(
-        file_sha256=file_sha256,
-        model_name=model_name,
-        backend=backend,
-        capability=capability,
-        prompt=prompt,
-        read_infer_history_fn=_read_infer_history,
-        looks_like_ocr_prompt_echo_fn=_looks_like_ocr_prompt_echo,
-    )
 
 
 def _log_pdf_infer_event(
@@ -11653,9 +11730,16 @@ def _send_saved_artifact_file_response(resolved: Path, *, as_attachment: bool):
         mimetype=mimetype or "application/octet-stream",
     )
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
-    if not as_attachment:
-        if normalized_mimetype in {'text/html', 'application/xhtml+xml'} or resolved.suffix.lower() in {'.html', '.htm'}:
-            _apply_saved_artifact_html_security_headers(response)
+    if normalized_mimetype == 'image/svg+xml' or resolved.suffix.lower() in {'.svg', '.svgz'}:
+        if resolved.suffix.lower() == '.svgz' and not as_attachment:
+            response.headers['Content-Encoding'] = 'gzip'
+        response.headers['Content-Security-Policy'] = (
+            "sandbox; default-src 'none'; style-src 'unsafe-inline'; "
+            "img-src data:; font-src data:; object-src 'none'; "
+            "base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+        )
+        response.headers['Referrer-Policy'] = 'no-referrer'
+        response.headers['Cache-Control'] = 'no-store'
     return response
 
 

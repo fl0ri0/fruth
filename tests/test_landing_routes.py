@@ -180,8 +180,9 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
         assert overpromise not in html
 
     assert 'ChatGPT' not in hero
-    assert 'Backend packages and model weights are installed' in hero
-    assert 'separately.' in hero
+    assert 'Runtimes and models are supplied separately;' in hero
+    assert 'AFM uses the model available on your Mac.' in hero
+    assert 'Apple PCC is an optional cloud backend.' in hero
     assert 'Fruth is a durable semantic state inference engine for local AI.' in hero
     assert 'A model can say' in hero
     assert '“done”; Fruth records what the runtime can prove happened' in hero
@@ -210,14 +211,12 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
     assert html.index('One request becomes connected work.') < html.index(
         '<h2 id="today-title">Fruth gives every <br>'
     )
-    assert '<strong>Third-party providers.</strong>' in html
-    assert 'an explicitly enabled third-party provider (currently ChatGPT)' in html
-    assert (
-        'For those turns, the current prompt, only the context Fruth promotes as '
-        'relevant, and any explicitly selected files or Fruth artifacts leave your device'
-    ) in html
-    assert 'by OpenAI for the current ChatGPT integration' in html
-    assert "directly or through Fruth's routing" in html
+    assert '<strong>Optional cloud providers.</strong>' in html
+    assert 'Apple PCC through user-installed Shortcuts' in html
+    assert 'explicitly enabled ChatGPT route' in html
+    assert 'Selected prompts, context and attachments leave your device' in html
+    assert 'for Apple or OpenAI respectively' in html
+    assert 'Provider availability and usage limits apply.' in html
     assert (
         'Fruth also offers an optional companion skill that helps ChatGPT inspect '
         'runtime truth, work with canonical outputs, and execute requests through Fruth'
@@ -282,14 +281,12 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
     assert 'neither the runtime nor its model weights are bundled' in html
     assert 'Choose a local runtime.' in html
     assert 'Start Fruth.' in html
-    assert 'Add a compatible model.' in html
-    assert 'add Hugging Face repositories or local GGUF files' in html
-    assert 'remove local copies' in html
-    assert 'Run Ollama, MLX, and llama.cpp side by side' in html
-    assert 'multiple instances of the same model' in html
-    assert 'start or stop each instance independently' in html
-    assert html.index('Choose a local runtime.') < html.index('Add a compatible model.')
-    assert html.index('Add a compatible model.') < html.index(
+    assert 'Select a compatible model.' in html
+    assert 'Manage compatible downloaded models and local GGUF files' in html
+    assert 'Run Ollama, MLX, llama.cpp, and Apple Foundation Models' in html
+    assert 'multiple instances and independent start/stop controls' in html
+    assert html.index('Choose a local runtime.') < html.index('Select a compatible model.')
+    assert html.index('Select a compatible model.') < html.index(
         'Start Fruth.'
     )
     assert 'Python 3.11 or newer' in html
@@ -298,21 +295,18 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
     assert '<span class="install-terminal__label">Terminal</span>' in html
     assert 'data-copy-target="install-commands"' in html
     assert 'id="install-commands"' in html
-    assert (
-        '<code>python3 -m venv .venv\n'
-        '.venv/bin/python -m pip install -r requirements.txt\n'
-        './fruth start</code>'
-    ) in html
+    assert '<code>./fruth start</code>' in html
+    assert 'launcher creates the Python environment and installs its requirements' in html
+    assert 'this needs internet access' in html
     assert html.index('Start Fruth.') < html.index(
         'class="install-terminal"'
     )
-    assert '.venv/bin/python -m pip install -r requirements.txt' in html
     assert './fruth start</code>' in html
     assert 'role="status"' in html
     assert 'aria-live="polite"' in html
     assert 'class="provider-note"' in html
-    assert html.index('Carry the work forward.') < html.index('Third-party providers.')
-    assert html.index('Third-party providers.') < html.index('Local setup')
+    assert html.index('Carry the work forward.') < html.index('Optional cloud providers.')
+    assert html.index('Optional cloud providers.') < html.index('Local setup')
     assert 'class="site-footer"' not in html
     assert 'Open Large Language Model Orchestrator' not in html
 

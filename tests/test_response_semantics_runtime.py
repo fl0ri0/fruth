@@ -3812,56 +3812,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             self.assertNotIn('@', prompt)
             self.assertNotIn('**Style', prompt)
 
-    def test_composed_page_repair_avoids_single_template_card_container(self):
-        content = (
-            '<main id="feed">\n'
-            '  <div class="image-grid" id="trending">\n'
-            '    <!-- Repeatable Asset Block Template: To be populated by 24 assets from Manifest -->\n'
-            '    <article class="grid-item">\n'
-            '      <div class="image-wrapper">\n'
-            '        <img src="../images/existing.png" alt="Luna Paris" loading="lazy">\n'
-            '        <div class="image-overlay">\n'
-            '          <div class="user-tag">@Luna_Paris\n'
-            '          <p class="caption">Midnight in Montmartre</p>\n'
-            '        </div>\n'
-            '      </div>\n'
-            '    </article>\n'
-            '  </div>\n'
-            '</main>'
-        )
 
-        updated, inserted, container_tag = LateFillRuntimeOwner._insert_html_into_existing_image_container(
-            content,
-            ['../images/missing-02.png', '../images/missing-03.png'],
-        )
-
-        self.assertFalse(inserted)
-        self.assertEqual(container_tag, '')
-        self.assertEqual(updated, content)
-
-    def test_composed_page_repair_still_uses_healthy_multi_image_gallery_container(self):
-        content = (
-            '<main id="feed">\n'
-            '  <section class="feed gallery">\n'
-            '    <!-- Sample of the 12 images integrated into a feed -->\n'
-            '    <article><img src="../images/one.png" alt="Post 1"></article>\n'
-            '    <article><img src="../images/two.png" alt="Post 2"></article>\n'
-            '    <article><img src="../images/three.png" alt="Post 3"></article>\n'
-            '    <!-- Additional posts would populate here up to 12 -->\n'
-            '  </section>\n'
-            '</main>'
-        )
-
-        updated, inserted, container_tag = LateFillRuntimeOwner._insert_html_into_existing_image_container(
-            content,
-            ['../images/four.png', '../images/five.png'],
-        )
-
-        self.assertTrue(inserted)
-        self.assertEqual(container_tag, 'section')
-        self.assertIn('../images/four.png', updated)
-        self.assertIn('../images/five.png', updated)
-        self.assertNotIn('fruth-generated-media', updated)
 
     def test_composed_site_image_closure_fans_out_target_bound_cohort_repairs(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -3994,14 +3945,12 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 },
             }
 
-            repaired = self.late_fill_owner._repair_terminal_composed_page_image_representation(payload)
             checks = self.late_fill_owner._terminal_composed_page_image_representation_open_checks(payload)
             demoted = self.late_fill_owner._demote_terminal_materialization_branches_with_open_checks(
                 payload['late_fill'],
                 checks,
             )
 
-            self.assertEqual(repaired, payload)
             self.assertEqual(index_path.read_text(encoding='utf-8'), index_source)
             self.assertEqual(rooms_path.read_text(encoding='utf-8'), rooms_source)
             self.assertEqual(styles_path.read_text(encoding='utf-8'), styles_source)
@@ -4283,7 +4232,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             for image_path in image_paths:
                 image_path.write_bytes(b'png')
             index_path.write_text(
-                '<html><body><section class="hero"></section>'
+                '<html><head><link rel="stylesheet" href="styles.css"></head><body><section class="hero"></section>'
                 '<section class="fruth-generated-media" '
                 'data-fruth-repair="composed-page-image-representation">'
                 + ''.join(
@@ -4294,7 +4243,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 encoding='utf-8',
             )
             rooms_path.write_text(
-                '<html><body><div id="room-grid" class="room-grid"></div>'
+                '<html><head><link rel="stylesheet" href="styles.css"></head><body><div id="room-grid" class="room-grid"></div>'
                 '<script src="app.js"></script></body></html>',
                 encoding='utf-8',
             )
@@ -4367,7 +4316,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             self.assertTrue(all(check['missing_image_count'] == 0 for check in detached_checks))
 
             index_path.write_text(
-                '<html><body><section class="hero"></section></body></html>',
+                '<html><head><link rel="stylesheet" href="styles.css"></head><body><section class="hero"></section></body></html>',
                 encoding='utf-8',
             )
             app_path.write_text(
@@ -4390,59 +4339,6 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 [],
             )
 
-    def test_composed_page_repair_avoids_content_rich_repeat_gallery_container(self):
-        content = (
-            '<main id="feed">\n'
-            '  <section class="image-grid gallery">\n'
-            '    <!-- The 24 Assets will be injected here -->\n'
-            '    <!-- Asset 1 -->\n'
-            '    <div class="gallery-card">\n'
-            '      <div class="image-wrapper"><img src="../images/one.png" alt="@Panda_Prime"></div>\n'
-            '      <div class="card-info"><span class="username">@Panda_Prime</span>'
-            '<p class="caption">Bamboo breakfast hits different.</p></div>\n'
-            '    </div>\n'
-            '    <!-- Asset 2 -->\n'
-            '    <div class="gallery-card">\n'
-            '      <div class="image-wrapper"><img src="../images/two.png" alt="@Quack_Master"></div>\n'
-            '      <div class="card-info"><span class="username">@Quack_Master</span>'
-            '<p class="caption">Tulip fields and morning dew.</p></div>\n'
-            '    </div>\n'
-            '    <!-- ... (Repeated for all 24 assets following the same pattern) ... -->\n'
-            '    <!-- For brevity in this preparation phase, the template below covers the structural logic used for all 24 cards -->\n'
-            '  </section>\n'
-            '</main>'
-        )
-
-        updated, inserted, container_tag = LateFillRuntimeOwner._insert_html_into_existing_image_container(
-            content,
-            ['../images/three.png', '../images/four.png', '../images/five.png'],
-        )
-
-        self.assertFalse(inserted)
-        self.assertEqual(container_tag, '')
-        self.assertEqual(updated, content)
-
-        flat_card_content = (
-            '<main><section class="image-grid gallery">'
-            '<div class="gallery-card"><img src="../images/one.png" alt="@Panda_Prime">'
-            '<span class="username">@Panda_Prime</span><p class="caption">copy</p></div>'
-            '<div class="gallery-card"><img src="../images/two.png" alt="@Quack_Master">'
-            '<span class="username">@Quack_Master</span><p class="caption">copy</p></div>'
-            '<!-- ... (Repeated for all 24 assets following the same pattern) ... -->'
-            '<!-- For brevity in this preparation phase, the template below covers the structural logic used for all 24 cards -->'
-            '</section></main>'
-        )
-
-        flat_updated, flat_inserted, flat_container_tag = (
-            LateFillRuntimeOwner._insert_html_into_existing_image_container(
-                flat_card_content,
-                ['../images/three.png', '../images/four.png', '../images/five.png'],
-            )
-        )
-
-        self.assertFalse(flat_inserted)
-        self.assertEqual(flat_container_tag, '')
-        self.assertEqual(flat_updated, flat_card_content)
 
     def test_composed_page_repair_refuses_detached_section_for_unfinished_template_gallery(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -4532,13 +4428,15 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 },
             }
 
-            updated = self.late_fill_owner._repair_terminal_composed_page_image_representation(payload)
+            checks = self.late_fill_owner._terminal_composed_page_image_representation_open_checks(payload)
 
-            self.assertEqual(updated, payload)
+            self.assertEqual(len(checks), 1)
+            self.assertEqual(checks[0]['missing_image_paths'], [str(p) for p in image_paths[1:]])
+            self.assertEqual(checks[0]['execution_contract']['target_path'], str(html_path))
             self.assertEqual(html_path.read_text(encoding='utf-8'), original_html)
             self.assertNotIn('fruth-generated-media', html_path.read_text(encoding='utf-8'))
 
-    def test_composed_page_repair_expands_manifest_backed_unfinished_template_gallery(self):
+    def test_composed_page_repair_keeps_manifest_template_in_exact_target_contract(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             documents = root / 'documents'
@@ -4643,17 +4541,15 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
                 },
             }
 
-            updated = self.late_fill_owner._repair_terminal_composed_page_image_representation(payload)
+            checks = self.late_fill_owner._terminal_composed_page_image_representation_open_checks(payload)
             html = html_path.read_text(encoding='utf-8')
 
-            self.assertNotEqual(updated, payload)
-            self.assertNotIn('fruth-generated-media', html)
-            self.assertEqual(html.count('data-fruth-repair="manifest-backed-gallery-expansion"'), 4)
-            for image_path in image_paths:
-                self.assertIn(f'../images/{image_path.name}', html)
-            self.assertIn('@FennecEars', html)
-            self.assertIn('@SlothSlowmo', html)
-            self.assertIn('@TigerTough', html)
+            self.assertEqual(html, original_html)
+            self.assertEqual(len(checks), 1)
+            self.assertEqual(checks[0]['missing_image_paths'], [str(p) for p in image_paths[1:]])
+            self.assertEqual(checks[0]['execution_contract']['target_path'], str(html_path))
+            self.assertFalse(checks[0]['execution_contract']['sibling_write_allowed'])
+            self.assertIn(original_html, checks[0]['content_payload'])
 
     def test_truth_gate_rewrites_visible_control_json(self):
         payload = {
@@ -7850,6 +7746,62 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(payload.get('content_payload_source'), 'focused_labeled_speakable_text')
         self.assertEqual(payload.get('candidate_extraction_source'), 'labeled_speakable_section')
+
+    def test_prepared_website_tts_handoff_uses_heading_narration_and_exact_digest(self):
+        spoken = 'Above the tree line, wind and stone preserve the memory of every season.'
+        request = {'inference_route': True, 'prompt': (
+            'Create a website with two mountain images, HTML and CSS, '
+            'and one WAV narration reading the supplied sentence.'
+        )}
+        for heading, body in [
+            ('### narration_script', spoken),
+            ('### narration.wav', '```wav\n' + spoken + '\n```'),
+            ('## Narration', '```text\n' + spoken + '\n```'),
+        ]:
+            with self.subTest(heading=heading):
+                output = (
+                    '### Image Generation Prompts\n1. Mountain peak.\n2. Alpine lake.\n\n'
+                    '### index.html\n```html\n<h1>Archive</h1>\n```\n\n'
+                    '### styles.css\n```css\n.container { color: red; }\n```\n\n'
+                    + heading + '\n' + body + '\n\n'
+                    '### Transcript\nThis is an invented transcript, not a speech source.\n'
+                    '### metadata.json\n```json\n{"status":"prepared"}\n```'
+                )
+                semantic = self.owner.build_response_semantic_phase_payload(
+                    output_text=output, request_payload=request, capability='chat',
+                )
+                focused = self.late_fill_owner.focus_late_fill_branch_gap_payload(
+                    {'capability': 'text_to_speech'}, semantic, capability='text_to_speech',
+                )
+                self.assertEqual(focused['content_payload'], spoken)
+                self.assertNotIn('branch_contract_error', focused)
+                evidence = self.late_fill_owner.tts_source_evidence_from_effective_data(focused)
+                self.assertEqual(evidence['tts_source_text'], spoken)
+                self.assertEqual(evidence['tts_source_text_sha256'], hashlib.sha256(spoken.encode()).hexdigest())
+
+    def test_tts_heading_candidates_remain_ambiguous_without_branch_selection(self):
+        from fruth_inference.execution_planner import split_visible_tts_payload
+
+        output = '## Narration A\nFirst spoken text.\n## Narration B\nSecond spoken text.'
+        semantic = split_visible_tts_payload(output)
+        self.assertEqual(semantic['content_payload'], output)
+        focused = self.late_fill_owner.focus_late_fill_branch_gap_payload(
+            {'capability': 'text_to_speech'}, semantic, capability='text_to_speech',
+        )
+        self.assertEqual(focused['branch_contract_error'], 'ambiguous_audio_variant_contract')
+        self.assertTrue(focused['materialization_blocked'])
+
+    def test_tts_headings_inside_code_and_transcript_are_not_source_authority(self):
+        from fruth_inference.execution_planner import extract_atx_tts_sections
+
+        for code in ['```html\n<h1>Not speech</h1>\n```', '```json\n{"text":"Not speech"}\n```']:
+            with self.subTest(code=code):
+                output = (
+                    '### index.py\n```python\n# Narration\nprint("not speech")\n```\n'
+                    '### Narration transcript\nInvented evidence.\n'
+                    '### Narration\n' + code
+                )
+                self.assertEqual(extract_atx_tts_sections(output), [])
 
     def test_single_tts_late_fill_stops_labeled_narration_at_compact_json_sibling(self):
         payload = self.late_fill_owner.focus_late_fill_branch_gap_payload(
@@ -11979,6 +11931,9 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
             }
         ]
         phase_graph = {
+            'intent_obligations': [{'kind': 'media_artifact', 'capability': 'text_to_speech',
+                                    'required': True, 'status': 'promoted',
+                                    'source': 'current_user_intent'}],
             'current_phase_id': 'phase-1',
             'mode': 'single_phase',
             'output_obligations': [
@@ -12018,7 +11973,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'inference_route': True, 'prompt': 'Plane fünf Artefakte.'},
+            request_payload={'inference_route': True, 'prompt': 'Read the report aloud and save the audio.'},
             artifact_payload=payload,
         )
 
@@ -12032,8 +11987,41 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
         self.assertEqual(capability_checks[0]['evidence'], 'runtime_capability_available_but_unmaterialized')
         self.assertEqual(capability_checks[0]['available_instance_ids'], ['tts-ready-1'])
 
+    def test_false_media_claim_cannot_promote_report_followup_work(self):
+        prompt = ('Refer to the previous report. Preserve any unresolved obligation and report '
+                  'its actual state. Do not create another file. A prior assistant said '
+                  'everything was complete; consider that claim unverified.')
+        for state in (None, 'reserved', 'candidate', 'deferred', 'waived', 'superseded', 'cancelled'):
+            with self.subTest(state=state):
+                graph = build_request_phase_graph(prompt, request_payload={'prompt': prompt})
+                if state:
+                    for capability in ('image_generation', 'text_to_speech'):
+                        record = {'capability': capability, 'status': state, 'required': True}
+                        graph.setdefault('output_obligations', []).append(dict(record))
+                        graph.setdefault('intent_obligations', []).append(dict(record))
+                payload = self.owner.truth_gate_response_output_claims({
+                    'output_text': ('### Materialisierte Artefakte\n\n'
+                                    'Artefakt 1 (Bild): image_generation.\n'
+                                    'Artefakt 2 (Audio): text_to_speech.'),
+                }, request_payload={'prompt': prompt})
+                self.assertIn('truth_guard', payload['runtime'])
+                payload['runtime']['request_phase_graph'] = graph
+                review = self.owner.build_graph_closure_review(
+                    payload['output_text'], request_payload={'prompt': prompt, 'inference_route': True},
+                    artifact_payload=payload)
+                self.assertTrue(any(c.get('check_kind') == 'truth_guard' for c in review['checks']))
+                self.assertFalse(any(c.get('check_kind') == 'truth_guard_capability'
+                                     for c in review['checks']))
+                # The false claim remains a visible text defect. It cannot be
+                # turned into missing image/audio work by the claim guard.
+                self.assertFalse(any(c.get('evidence') == 'runtime_capability_available_but_unmaterialized'
+                                     for c in review['checks']))
+
     def test_closure_review_blocks_unavailable_tts_claim(self):
         phase_graph = {
+            'intent_obligations': [{'kind': 'media_artifact', 'capability': 'text_to_speech',
+                                    'required': True, 'status': 'promoted',
+                                    'source': 'current_user_intent'}],
             'current_phase_id': 'phase-1',
             'mode': 'single_phase',
             'output_obligations': [
@@ -12073,7 +12061,7 @@ class ResponseSemanticsRuntimeTests(unittest.TestCase):
 
         review = self.owner.build_graph_closure_review(
             payload['output_text'],
-            request_payload={'inference_route': True, 'prompt': 'Plane fünf Artefakte.'},
+            request_payload={'inference_route': True, 'prompt': 'Read the report aloud and save the audio.'},
             artifact_payload=payload,
         )
 

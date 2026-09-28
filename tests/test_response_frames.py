@@ -2156,6 +2156,49 @@ class ResponseFrameTests(unittest.TestCase):
             vision_texts,
         )
 
+        # The bounded lookup deliberately does not hydrate the role/dependency
+        # sidecars. Its compatibility text still belongs to the final join,
+        # never to the earlier preparation slot.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            persist_response_frame(frame, frames_dir=tmpdir)
+            wire = load_latest_response_wire_state(
+                frame["response_id"], frames_dir=tmpdir
+            )
+        self.assertTrue(wire["ok"])
+        projected = wire["response_payload"]
+        for _ in range(2):
+            projected = hoist_response_output_surfaces(projected)
+            text_outputs = [item for item in projected["outputs"] if item.get("value") == final_text]
+            self.assertEqual([item["phase_id"] for item in text_outputs], ["phase-8"])
+            self.assertEqual(projected["output_text"], final_text)
+
+    def test_canonical_text_fallback_preserves_explicit_equal_valued_owners(self):
+        shared_text = "The same answer from two independent branches."
+        slots = [
+            {"slot_id": "output-phase-1", "phase_id": "phase-1", "type": "text", "status": "fulfilled"},
+            {"slot_id": "output-phase-2", "phase_id": "phase-2", "branch_id": "branch-chat-1",
+             "type": "text", "status": "fulfilled", "parent_slot_id": "output-phase-1"},
+        ]
+        downstream = {**slots[1], "value": shared_text}
+        for root_source in ("slot", "existing_output", "fill_result"):
+            with self.subTest(root_source=root_source):
+                payload = {"output_text": shared_text, "outputs": [downstream]}
+                test_slots = [dict(item) for item in slots]
+                if root_source == "slot":
+                    test_slots[0]["value"] = shared_text
+                elif root_source == "existing_output":
+                    payload["outputs"].insert(0, {**slots[0], "value": shared_text})
+                else:
+                    payload["late_fill"] = {"fill_results": [
+                        {"phase_id": "phase-1", "result_text": shared_text}
+                    ]}
+                outputs = build_canonical_outputs(payload, output_slots=test_slots)
+                self.assertEqual([item["value"] for item in outputs], [shared_text, shared_text])
+
+        # A plain response without a prior canonical owner retains its fallback.
+        outputs = build_canonical_outputs({"output_text": shared_text}, output_slots=slots[:1])
+        self.assertEqual(outputs[0]["value"], shared_text)
+
     def test_canonical_outputs_keep_vision_text_without_fulfilled_terminal_consumer(self):
         evidence_text = "The image contains a fox beside a red mailbox."
         payload = {

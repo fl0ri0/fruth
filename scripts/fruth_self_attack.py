@@ -30,10 +30,11 @@ from scripts.run_graph_rebase_shadow_corpus import (
     CorpusError, JsonHttpClient, ShadowCorpusRunner, atomic_write_json,
     assert_manifest_matches_corpus, build_manifest, load_corpus, load_manifest,
     clean_identifier, manifest_lock, stable_digest, utc_now,
-    classify_compact_status,
+    classify_compact_status, captured_predecessor_context,
 )
 from scripts.self_attack_checks import (
     audit_history, audit_truth, audit_provider_bindings, compare_profiles, finding, records,
+    rejected_audio_mismatch_evidence,
 )
 from scripts.self_attack_knobs import build_profiles, discover_knobs, validate_saved_profile, diverse_live_profiles
 
@@ -379,6 +380,17 @@ def explain_incomplete(cases, output, *, error=None):
     originals = {c['case_id']: c for c in load_manifest(manifest_path)['cases']} if manifest_path.exists() else {}
     for case in cases:
         observations = []
+        # A guard success explains missing positive-path coverage; it must not
+        # remove that gap, change the oracle, or mask contradictory findings.
+        rejection_evidence = (
+            rejected_audio_mismatch_evidence(case.get('payload'))
+            if case.get('state') == 'settled_repair_needed'
+            and isinstance(case.get('payload'), dict)
+            and case.get('response_id') == case['payload'].get('id')
+            and not case.get('findings')
+            and case.get('missing') == ['scenario_not_exercised:exact_source_binding']
+            else []
+        )
         dependencies = originals.get(case['case_id'], {}).get('depends_on', [])
         for reason in case['missing']:
             waiting = [key for key in dependencies if by_id.get(key, {}).get('missing')]
@@ -390,8 +402,36 @@ def explain_incomplete(cases, output, *, error=None):
                 detail=(f'Not dispatched because predecessors lack settled truth: {waiting}.' if scenario and waiting
                         else f'{reason}; state={case["state"]}; worker={error or "returned"}; last owner stage={progress.get("stage", "unobserved")}.'),
                 evidence_path=str(manifest_path), execution_progress=progress))
+            if reason == 'scenario_not_exercised:exact_source_binding' and rejection_evidence:
+                observations[-1].update(
+                    guard_status='passed', coverage_status='incomplete',
+                    guard_code='audio_transcript_mismatch_rejected',
+                    guard_evidence=rejection_evidence,
+                    detail=('Guard PASS: correctly rejected audio/transcript mismatch; '
+                            'successful handoff coverage INCOMPLETE.'),
+                )
         case['incomplete_observations'] = observations
     return cases
+
+
+def attach_predecessor_context(payload, case, manifest):
+    predecessors = [c for c in manifest['cases'] if c['case_id'] in case.get('depends_on', [])]
+    if not predecessors:
+        return payload
+    messages, refs = [], []
+    for previous in predecessors:
+        context = captured_predecessor_context(previous, case)
+        messages.append({'role': 'user', 'content': previous['prompt']})
+        messages.extend(context['inference_messages'])
+        refs.extend(context['reference_artifacts'])
+    payload['inference_messages'] = messages
+    # Routing history and execution input are distinct public surfaces. Supply
+    # both explicitly, as the interactive client does, with this turn last.
+    payload['input'] = [
+        {'type': 'message', 'role': m['role'], 'content': m['content']} for m in messages
+    ] + [{'type': 'message', 'role': 'user', 'content': payload['prompt']}]
+    payload['reference_artifacts'] = refs
+    return payload
 
 
 def run_profile(raw, profile, output, *, mode, base_url, cycles, namespace, deadline_at=None):
@@ -412,21 +452,7 @@ def run_profile(raw, profile, output, *, mode, base_url, cycles, namespace, dead
                 payload.update(deepcopy(fixture))
             # Explicit current-turn references receive only the exact predecessor's
             # saved truth. Other history never becomes fresh work by recency.
-            predecessors = [c for c in manifest['cases'] if c['case_id'] in case.get('depends_on', [])]
-            if predecessors:
-                messages = []
-                refs = []
-                for previous in predecessors:
-                    summary = (previous.get('final_debug') or {}).get('summary') or {}
-                    messages.append({'role': 'user', 'content': previous['prompt']})
-                    messages.append({'role': 'assistant', 'content': json.dumps({
-                        'response_id': previous['response_id'], 'lifecycle_state': previous.get('last_lifecycle_state'),
-                        'outputs': summary.get('outputs'), 'artifacts': summary.get('artifacts')})})
-                    refs.extend(records(summary.get('artifacts')))
-                payload['inference_messages'] = messages
-                if refs:
-                    payload['reference_artifacts'] = refs
-            return payload
+            return attach_predecessor_context(payload, case, manifest)
         if mode == 'fake':
             from tests.fake_backends.self_attack import SelfAttackBackend
             context = SelfAttackBackend(root=output / 'runtime')

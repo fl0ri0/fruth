@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+
 import base64
 import datetime as dt
 import io
@@ -20,6 +21,139 @@ from typing import Any, Callable, List, Optional
 
 from helpers.model_capabilities import CAPABILITY_IMAGE_GENERATION
 from helpers.session_controls import REASONING_EFFORT_OPTIONS
+
+
+class AppleFMTransportError(ValueError):
+    """An attributable AFM error; partial text is never completion evidence."""
+
+
+def _apple_fm_message_content(content, *, role):
+    """Normalize Fruth image parts to the observed fm serve wire contract."""
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list) or not content:
+        raise AppleFMTransportError('AFM requires text or a nonempty list of text/image parts.')
+    parts = []
+    for part in content:
+        if not isinstance(part, dict):
+            raise AppleFMTransportError('Malformed AFM message content part.')
+        kind = part.get('type')
+        if kind in {'text', 'input_text', 'output_text'} and isinstance(part.get('text'), str):
+            parts.append({'type': 'text', 'text': part['text']})
+        elif kind in {'image_url', 'input_image'}:
+            if role != 'user':
+                raise AppleFMTransportError('AFM image attachments require a user message.')
+            image = part.get('image_url')
+            url = image.get('url') if isinstance(image, dict) else image
+            if not isinstance(url, str) or not re.fullmatch(
+                r'data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/]+={0,2}', url
+            ):
+                raise AppleFMTransportError('AFM requires an inline base64 image data URL.')
+            parts.append({'type': 'image_url', 'image_url': {'url': url}})
+        else:
+            raise AppleFMTransportError('AFM supports text and image parts; audio and tools are unsupported.')
+    return parts
+
+
+def apple_fm_chat_payload(model, messages, *, stream=False, temperature=None,
+                          top_p=None, max_tokens=None, reasoning_effort=None):
+    if model != 'system':
+        raise AppleFMTransportError('AFM supports only the system API model; variant selection is unavailable.')
+    if reasoning_effort not in (None, '', 'off'):
+        raise AppleFMTransportError('AFM does not expose reasoning_effort.')
+    if not messages or not isinstance(messages, list):
+        raise AppleFMTransportError('AFM requires messages.')
+    prepared_messages = []
+    for message in messages:
+        if (not isinstance(message, dict) or message.get('role') not in {'system', 'user', 'assistant'}
+                or message.get('tool_calls') or message.get('tool_call_id') or message.get('audio')
+                or message.get('images')):
+            raise AppleFMTransportError('AFM accepts system/user/assistant messages with text/image content; tools and audio are unsupported.')
+        prepared_messages.append({**message, 'content': _apple_fm_message_content(
+            message.get('content'), role=message['role'])})
+    payload = {'model': 'system', 'messages': prepared_messages, 'stream': stream}
+    if temperature is not None:
+        payload['temperature'] = temperature
+    if top_p is not None:
+        payload['top_p'] = top_p
+    if max_tokens is not None:
+        payload['max_completion_tokens'] = max_tokens
+    return payload
+
+
+def validate_apple_fm_response(data):
+    if not isinstance(data, dict):
+        raise AppleFMTransportError('AFM returned a malformed response.')
+    if data.get('error'):
+        error = data['error']
+        raise AppleFMTransportError(str(error.get('message', error) if isinstance(error, dict) else error))
+    choices = data.get('choices')
+    if data.get('model') != 'system' or not isinstance(choices, list) or len(choices) != 1:
+        raise AppleFMTransportError('AFM response model or choices do not match the requested system model.')
+    choice = choices[0]
+    if not isinstance(choice, dict) or not isinstance(choice.get('message'), dict):
+        raise AppleFMTransportError('AFM returned a malformed choice or message.')
+    message = choice['message']
+    if message.get('refusal') or choice.get('finish_reason') == 'content_filter':
+        raise AppleFMTransportError('AFM refusal: ' + str(message.get('refusal') or 'content filtered'))
+    if choice.get('finish_reason') != 'stop':
+        raise AppleFMTransportError('AFM response incomplete: ' + str(choice.get('finish_reason')))
+    if not isinstance(message.get('content'), str) or not message['content']:
+        raise AppleFMTransportError('AFM completed without text.')
+    return message['content']
+
+
+def iter_apple_fm_stream_deltas(response):
+    """fm HTTP emits deltas (unlike framework snapshots). Require both terminal markers."""
+    finished = False
+    had_text = False
+    try:
+        for raw in response.iter_lines(decode_unicode=False):
+            line = raw.decode('utf-8') if isinstance(raw, bytes) else raw
+            if not line or line.startswith(':') or line.startswith('event:'):
+                continue
+            if not line.startswith('data:'):
+                raise AppleFMTransportError('Malformed AFM stream framing.')
+            value = line[5:].strip()
+            if value == '[DONE]':
+                if not finished or not had_text:
+                    raise AppleFMTransportError('AFM stream ended without completed text.')
+                return
+            try:
+                data = json.loads(value)
+            except (ValueError, TypeError) as exc:
+                raise AppleFMTransportError('Malformed AFM stream JSON.') from exc
+            if not isinstance(data, dict):
+                raise AppleFMTransportError('Malformed AFM stream event.')
+            if data.get('error'):
+                error = data['error']
+                raise AppleFMTransportError(str(error.get('message', error) if isinstance(error, dict) else error))
+            if data.get('model') != 'system':
+                raise AppleFMTransportError('AFM stream model changed or is missing.')
+            choices = data.get('choices')
+            if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+                raise AppleFMTransportError('Malformed AFM stream choices.')
+            choice = choices[0]
+            delta = choice.get('delta') or {}
+            if not isinstance(delta, dict):
+                raise AppleFMTransportError('Malformed AFM stream delta.')
+            if delta.get('refusal'):
+                raise AppleFMTransportError('AFM refusal: ' + str(delta['refusal']))
+            reason = choice.get('finish_reason')
+            if reason is not None:
+                if reason != 'stop' or finished:
+                    raise AppleFMTransportError('AFM stream incomplete: ' + str(reason))
+                finished = True
+            content = delta.get('content')
+            if content:
+                if finished or not isinstance(content, str):
+                    raise AppleFMTransportError('Unexpected content after AFM completion.')
+                had_text = True
+                yield content
+        raise AppleFMTransportError('AFM stream disconnected before completion; inference stop is unverified.')
+    finally:
+        response.close()
+
 
 ARTIFACTS_ROOT = Path('artifacts')
 ARTIFACT_OUTPUTS_ROOT = ARTIFACTS_ROOT

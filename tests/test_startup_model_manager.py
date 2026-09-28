@@ -149,7 +149,8 @@ class StartupModelManagerTests(unittest.TestCase):
             'port': 11438,
         }
 
-        result = startup_model_manager.main()
+        with patch('scripts.startup_model_manager.is_port_listening', return_value=False):
+            result = startup_model_manager.main()
 
         self.assertEqual(result, 0)
         mock_start_model.assert_called_once()

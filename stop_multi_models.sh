@@ -214,13 +214,40 @@ else
     echo "-> Snapshot runtime ports from model_ports.json: none"
 fi
 
+# Apple bridges must use the shared lifecycle ownership checks during shutdown.
+# Never add their ranges to the generic kill-by-port fallback below.
+AFM_SHUTDOWN_STATUS=0
+run_repo_python - <<'AFM_PY' || AFM_SHUTDOWN_STATUS=$?
+import json
+from pathlib import Path
+
+path = Path('model_ports.json')
+entries = json.loads(path.read_text()) if path.exists() else []
+if isinstance(entries, dict):
+    entries = entries.get('models') or entries.get('instances') or []
+targets = [e for e in entries if isinstance(e, dict) and e.get('backend') in {'apple_fm', 'apple_pcc'}]
+if targets:
+    from fruth_core.lifecycle import stop_instance
+    failed = False
+    for entry in targets:
+        try:
+            result, _ = stop_instance(entry['instance_id'])
+            if result.state != 'stopped':
+                failed = True
+                print(f"Apple backend stop incomplete: {entry['instance_id']}")
+        except Exception as exc:
+            failed = True
+            print(f"Apple backend ownership-checked stop failed: {exc}")
+    raise SystemExit(1 if failed else 0)
+AFM_PY
+
 PIDS_TO_KILL=()
 
 # --- Step 1: try to read PIDs from the JSON file ---
 if [ -f "$CONFIG_FILE" ]; then
     echo -e "\n1. Trying to read PIDs from '$CONFIG_FILE'..."
     if command -v jq &> /dev/null; then
-        PIDS_FROM_JSON=$(jq -r '.[].pid // empty | select(. != null)' "$CONFIG_FILE" 2>/dev/null)
+        PIDS_FROM_JSON=$(jq -r '.[] | select(.backend != "apple_fm" and .backend != "apple_pcc") | .pid // empty | select(. != null)' "$CONFIG_FILE" 2>/dev/null)
         if [ -n "$PIDS_FROM_JSON" ]; then
             echo "   Found PIDs from JSON: $PIDS_FROM_JSON"
             for pid in $PIDS_FROM_JSON; do
@@ -293,6 +320,11 @@ quiet_lsof -iTCP:${LLAMA_CPP_START_PORT}-${LLAMA_CPP_PORT_MAX} -sTCP:LISTEN -P |
 
 echo "================================================"
 
+if [ "$AFM_SHUTDOWN_STATUS" -ne 0 ]; then
+    echo "Apple backend shutdown needs attention; preserving registry, status and logs for recovery."
+    exit "$AFM_SHUTDOWN_STATUS"
+fi
+
 # Finalize runtime-state files via the shared hygiene helper.
 echo -e "\n🧹 Finalizing runtime registry, status, and log hygiene..."
 run_repo_python - <<'PY'
@@ -318,4 +350,4 @@ PY
 echo -e "\n--- Stop script finished ---"
 echo "ℹ️  External provider projections were left untouched. Run './fruth sync' or the cleanup/unsync scripts manually if needed."
 
-exit 0
+exit "$AFM_SHUTDOWN_STATUS"

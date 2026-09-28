@@ -23,7 +23,8 @@ Authoritative local runtime substrate.
 - `fruth_core/backend_fabric.py` as the normalized backend discovery/lifecycle contract layer above backend-specific runtime managers
 - `state/chat_history/` as the canonical durable history store for active UI conversations, including the Responses workbench, lineage rotation state, and the persisted message/request payloads that rebuild the frontend timeline
 - `artifacts/` as the canonical user-visible artifact tree, with generated outputs stored in typed buckets under `artifacts/`, saved request inputs under `artifacts/inputs/`, and audit/report outputs under `artifacts/audits/`
-- Ollama + MLX + llama.cpp runtime handling
+- Ollama + MLX + llama.cpp + [Apple AI](APPLE_FOUNDATION_MODELS.md) runtime handling
+- Optional [Apple PCC](../fruth_integrations/shortcuts/README.md) through a locally managed Shortcuts bridge, with model execution in Apple's cloud
 - Capability-aware startup/stop
 - Backend-native runtime defaults surfaced in registry/status metadata where supported
 - manual external integration sync hooks for Codex
@@ -33,6 +34,9 @@ Primary package surface:
 - `fruth_runtime/ollama_model_manager.py`
 - `fruth_runtime/llama_cpp_model_manager.py`
 - `fruth_runtime/mlx_model_manager.py`
+- `fruth_runtime/apple_fm_model_manager.py`
+- `fruth_runtime/apple_pcc_model_manager.py`
+- `fruth_integrations/shortcuts/`
 - `fruth_runtime/registry.py`
 - `fruth_runtime/lifecycle.py`
 - `fruth_runtime/status.py`
@@ -143,7 +147,7 @@ Primary implementation:
 - `fruth_server/request_intake_runtime.py` for request-intake normalization, explicit-target recovery, selected-reference extraction, and interpretive inference preference coercion ownership
 - `fruth_server/response_semantics_runtime.py` for selected-reference semantics, prepare-phase contracts, semantic phase payloads, graph closure review construction, resolver deferred-gap shaping under `execution_planner`, and late fill state ownership
 - `fruth_server/model_control_runtime.py` for backend-fabric, available-models, and lifecycle route-body ownership
-- `fruth_server/infer_support_runtime.py` for input-artifact persistence, generic file/audio/PDF intake support, infer-history support, and cached PDF lookup/logging ownership
+- `fruth_server/infer_support_runtime.py` for input-artifact persistence, generic file/audio/PDF intake support, explicit infer-history retrieval, and PDF event logging; incoming PDFs are processed afresh
 - `fruth_server/late_fill_runtime.py` for late fill branch resolver/executor ownership
 - `fruth_server/inference_route_runtime.py` for interpretive inference route-manifest/context/auto-route plus route-support ownership
 - `fruth_server/inference_route_runtime.py` also owns current-turn-only route-context hygiene and backend chat-message normalization for fresh turns

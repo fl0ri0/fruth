@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from fruth_services.response_persistence import response_persistence_blocked
+
 from fruth_services.state_flow import observe_state, note as state_flow_note
 
 import threading
@@ -405,6 +407,8 @@ def derive_response_lifecycle_state(
     """Return the canonical lifecycle state for response lookup/current-state views."""
 
     payload = response_payload if isinstance(response_payload, Mapping) else {}
+    if response_persistence_blocked(payload):
+        return 'blocked'
     explicit_lifecycle = _canonical_response_lifecycle_token(payload.get('lifecycle_state'))
     late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
     late_fill_status = str(late_fill.get('status') or '').strip().lower()

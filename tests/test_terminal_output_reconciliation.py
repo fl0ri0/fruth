@@ -28,7 +28,7 @@ def scene(root):
         '<link rel="stylesheet" href="styles.css"></head><body><h1>Moon</h1>'
         '<img src="moon.png" alt="Moon"><audio controls>'
         '<source src="narration.wav" type="audio/wav"></audio></body></html>')
-    css.write_text('body { color: white; background: black; }')
+    css.write_text('body { color: white; background: black; } img {max-width:100%;height:auto;}')
     image.write_bytes(tiny_png_bytes())
     audio.write_bytes(tiny_wav_bytes())
     request = {'prompt': PROMPT, 'inference_route': True}

@@ -22,9 +22,53 @@ The question is:
 
 Hidden hard limits are not valid knobs. Fruth runs locally, so canonical policy, graph, artifact, and contract sources should stay open unless a bound is technically required for safety, concurrency, storage, transport, or a concrete model/request budget. When a bound is needed, make it explicit, name the knob, document the reason, and prefer graceful budget handling over silent truncation.
 
+Saved-artifact explanation uses `_SELECTED_ARTIFACT_READBACK_MAX_CHARS = 32000`
+in `response_semantics_runtime.py` as a maximum serialized reference-context size.
+The verdict/binding projection deduplicates exact evidence and excludes raw
+measurement diagnostics; full canonical records remain the verification source.
+An oversized projection reports evidence unavailable instead of truncating proof.
+This is a serialization safety limit, not a provider context size or a guarantee
+of sufficient generation headroom. It does not shorten the inference policy.
+
 ---
 
+## Apple PCC instance transport
+
+`apple_pcc` / model `auto` starts the local Shortcuts adapter explicitly through
+Models or startup selection. It prefers Cloud Pro, then permits one Cloud attempt
+on a recognized Pro eligibility/availability failure. There is no automatic model
+start on routing or observation, and no separate tier preference to configure.
+
+`APPLE_PCC_START_PORT`–`APPLE_PCC_PORT_MAX` is 11651–11700, separate from local AFM.
+`APPLE_PCC_START_TIMEOUT_SEC=30` bounds adapter startup and
+`APPLE_PCC_METADATA_TIMEOUT_SEC=20` bounds optional native SDK discovery.
+`PCC_MAX_REQUEST_BYTES=8388608` is a transport body bound, not a model-context
+claim: oversized requests fail instead of being truncated. The low-level CLI
+defaults to `PCC_SHORTCUT_TIMEOUT_SEC=120`; ordinary Fruth requests pass their
+existing chat timeout as the single budget shared by both tier attempts.
+
+PCC has no native sampling/output-token controls in Shortcuts. A single direct
+user text message passes through unchanged; system instructions, history and
+image inputs retain the neutral ordered message envelope. Inference-owned calls
+receive the full ordinary policy and scoped Fruth roles; direct single-instance
+chat receives neither automatically. Local AFM policy reduction does not apply.
+Exact Shortcuts context size is unknown;
+`backend_metadata.sdk_model` separately records optional native PCC SDK context
+observations. See [PCC setup and boundaries](../fruth_integrations/shortcuts/README.md).
+
 ## The 5 Control Knobs
+
+Automatic chat/file/vision provider recovery uses the named
+`PROVIDER_FAILOVER_MAX_ATTEMPTS=4` constant in
+`fruth_server/responses_request_runtime.py`. It bounds transport/quota retries
+across instances (initial attempt included) without changing each backend's
+timeout. The configured fallback precedes ordinary compatible running-instance
+selection; failed instances are excluded for the request. Direct targets and
+locked preferences remain fixed. The response's `runtime.provider_failover`
+records the attempts and any exhausted bound. This adds no model review calls;
+it applies only after an eligible execution failure, before accepted output.
+See [execution recovery](INFERENCE_ROUTING.md) for refusal, input and streaming
+boundaries. Media branch retry limits remain separate and unchanged.
 
 ### 1. Interpretive inference model (intent/graph knob)
 
@@ -58,6 +102,22 @@ Then this is the first knob to inspect.
 
 Primary posture:
 
+- `FRUTH_INFERENCE.md` is injected in full for ordinary backends. Only the actual
+  executing `apple_fm` backend uses the expanded compact projection in
+  `fruth_inference/policies/apple_fm.md`: complete `common` plus `routing` or
+  `execution` blocks, with both source digests. Available AFM candidates or an
+  AFM preference do not shorten another backend's policy. An explicitly supplied
+  custom policy remains authoritative; unmarked custom text is never truncated.
+  Missing/malformed bundled AFM scopes fail visibly. Current task contracts and
+  promoted context remain separate and intact; scope selection does not enlarge
+  the model's context. AFM preparation uses explicit `fruth_bounded_task` and
+  `fruth_promoted_context` sections, following the provider handoff boundary:
+  produce this phase's payload while later producers and evidence remain runtime work.
+- The root execution policy message retains the selected semantic-role guidance
+  even when graph-resolved preparation skips a model-backed planner call. It
+  reuses the planner's existing guidance renderer for every backend. This carries
+  advisory orientation only; review criteria, promotion and Closure authority
+  remain with their existing owners.
 - `inference_first`: the request phase graph and runtime truth are the decision authority.
 - `heuristic_role=shadow_guardrail`: hardcoded cues are compared and audited, but should not silently override interpretive inference.
 - `accepted_learning_authority=soft_hint_only`: reviewed learnings can orient interpretive inference without mutating Graph, IR, Closure Review, routing, context promotion, output obligations, or graph-patch authority by themselves. Enabling an accepted snapshot does not upgrade this runtime effect.
@@ -248,15 +308,27 @@ Text-like output artifacts are runtime-backed only when the current turn explici
 
 Multiple text-like artifacts may materialize from one response only when the latest turn explicitly asks for multiple file artifacts and the model output exposes clear matching payloads, such as fenced `html` plus `css` blocks. Structured wrappers such as `output_obligations[].content` are payload envelopes: persistence saves the declared `content`, not the surrounding router/control JSON. README is normalized as a markdown text artifact when requested as a file. The legacy `saved_text_path` remains the first artifact for compatibility; `saved_text_artifacts` and canonical `artifacts` carry the full list.
 
+Save/read/transform preparation stays text-only until the declared source-file producer runs. The source producer owns persistence; the dependent consumer receives the actual saved read bytes and digest. Initial preparation must not create a competing source or consumer file, in streaming or nonstreaming responses. Later valid sibling files do not silently resolve repairs bound to a different exact target.
+
 Linked artifact sets close only when concrete saved files point to the concrete saved dependency artifacts they expose. If a surviving generated output path does not resolve to a saved local artifact, or if duplicate substitution reuses one saved path before all owed saved artifacts are bound, closure remains repair-needed/non-complete unless Closure records a waiver or supersession.
 
 Local image asset requirements are graph adequacy, not late presentation polish. A page/site prompt that asks for local generated or embedded images, local image assets, or non-external image paths must promote image-generation branches even without an exact image count. Structural hints such as "two image sections" set the minimum count, and subpage/image-asset language can raise that minimum. HTML/CSS artifact branches that must reference those images should depend on the generated image phases and carry `dependency_contract=local_visual_asset_binding`.
 
-Counted image cohorts require an exact branch-local prompt cohort before any image backend may run. When `batch_prompt_expected_count >= 2`, the number of non-empty `batch_prompts` must match exactly and the selected branch must retain its slot binding. An explicitly present malformed, Boolean, non-positive, fractional, or out-of-range count is contract corruption, not an absent single-image count, and fails closed as `candidate_extraction_issue=invalid_image_prompt_batch_count`. A shared preparation answer, complete website source, root prompt, selected text/JSON input, or heuristically focused fragment cannot stand in for a missing slot. A missing, mismatched, or invalid count contract removes every executable prompt carrier and exposes `branch_contract_error=incomplete_image_prompt_batch`, `materialization_blocked=true`, and `repair_action=repair_branch_contract`. A genuinely absent count and valid count `1` retain existing single-image behavior; complete counted cohorts are unchanged.
+Counted image cohorts require an exact branch-local prompt cohort before any image backend may run. When `batch_prompt_expected_count >= 2`, the number of non-empty `batch_prompts` must match exactly and the selected branch must retain its slot binding. An explicitly present malformed, Boolean, non-positive, fractional, or out-of-range count is contract corruption, not an absent single-image count, and fails closed as `candidate_extraction_issue=invalid_image_prompt_batch_count`. A shared preparation answer, complete website source, root prompt, selected text/JSON input, or heuristically focused fragment cannot stand in for a missing slot. A missing, mismatched, or invalid count contract removes every executable prompt carrier and exposes `branch_contract_error=incomplete_image_prompt_batch`, `materialization_blocked=true`, and `repair_action=repair_branch_contract`. A genuinely absent count and valid count `1` retain existing single-image behavior; complete counted cohorts are unchanged. A JSON array of exactly one `prompt_1`, `prompt_2`, … string field per ordered slot is also accepted as unambiguous prompt preparation. Missing, repeated, extra, non-string, duplicate-key or out-of-order fields are rejected; arbitrary JSON data is not mined for prompts.
 
 Post-media text follow-ups need evidence branches, not just paths. Requests such as "generate two images, then compare them" should form `image_generation -> vision_analysis -> chat`; requests such as "turn it into audio, then confirm the exact spoken text" should form `text_to_speech -> speech_to_text -> chat`.
 
 Generated-image evidence branches must receive focused analysis prompts for the attached/generated artifact. They may keep the original request as bounded intent context, but must not execute the original multi-step request again.
+
+Apple AI exposes explicit `ocr_mode=apple_ocr` and `apple_barcode` controls when
+the installed CLI advertises those tools. These extract from an image or each
+selected, natively rendered PDF page; `auto` keeps ordinary image analysis. The tool modes return verified
+native tool output, not a model rewrite. They run a bounded `fm.respond` session
+and record its transport, original image digest, re-encoded attachment digest and
+tool-call/result linkage. Missing input, skipped tools and invalid transcripts
+fail explicitly. PDF receipts retain the original PDF digest, full page count and
+ordered per-page image/tool evidence. Each PDF tool call uses the existing
+`pdf_page_timeout_sec` budget. See [Apple AI image tools](APPLE_FOUNDATION_MODELS.md#ocr-and-barcode--qr-tools).
 
 Required single-image vision branches have one bounded alternate-instance recovery
 under `vision_bounded_evidence_recovery_v1`. A path-only or missing-input answer
@@ -389,7 +461,16 @@ Closure Repair now classifies open graph checks with a concrete recovery action.
 
 Closure-promoted text artifact repairs must carry the defect evidence into the branch prompt. Syntax repair names the target artifact, deterministic syntax issues, and current saved file content. Link rebind names unresolved placeholders or guessed links, concrete runtime artifacts, and current saved target content. HTML/CSS selector-binding repair names the CSS target, linked HTML artifact, HTML classes missing CSS selectors, CSS class selectors unused by HTML, and current saved HTML/CSS content. These payloads are patch/replace authority for the bounded target file only; they are not permission to replay the root prompt, redesign, translate, or rewrite unrelated artifact structure.
 
-For a composed website with multiple HTML files and generated images, path presence alone is not completion evidence. Runtime rejects a detached `fruth-generated-media` catch-all section, preserves ordered image prompt/path evidence, and promotes one bounded in-place repair per existing HTML, CSS, or JavaScript target. Each branch receives its target bytes plus read-only cohort snapshots; it may replace only that exact path. Closure completes only after the saved cohort binds the generated images to its site roles and exposes deliberate image layout CSS.
+For every generated HTML site with generated images, including a single page or one image, path presence alone is not completion evidence. Runtime rejects a detached `fruth-generated-media` catch-all section, preserves ordered image prompt/path evidence, and promotes one bounded in-place repair per existing HTML, CSS, or JavaScript target. Each branch receives its target bytes plus read-only cohort snapshots; it may replace only that exact path. Closure completes only after the saved cohort binds the generated images to its site roles and exposes deliberate image layout CSS, whether external, embedded or inline. Explicit hero/listening assignments require containment in their corresponding section markup or CSS binding; a nearby unrelated image is insufficient. This is the shared backend-independent owner. The old automatic gallery insertion/template-expansion fallback is retired; defects use the existing target-bound repair contracts. When a generic link check targets the same file, it must not replace the stronger composition contract during promotion; remaining defects are rechecked against the saved replacement.
+
+For concrete HTML images, sizing evidence must bind to every occurrence through
+its own inline style, embedded page CSS, or a stylesheet linked by that page.
+Sizing a parent section or another image cannot satisfy it. Repair diagnostics
+name `unstyled_image_paths`. Static tag/class/id, descendant and child selectors
+are supported; unsupported selectors do not establish a binding. This is not a
+browser cascade, responsive screenshot test, or judgment of visual design/copy.
+Script-rendered cards retain the existing image-layout heuristic alongside the
+shared web-binding review; their evidence cannot waive an unstyled concrete img.
 
 A `TEXT_ARTIFACT_SYNTAX_SANITY_FAILED` result at the saved-truth gate uses that same bounded syntax-repair contract immediately. Runtime may schedule one repair generation against the exact saved path and current file snapshot; it records `target_bound_saved_text_syntax_repair` and must not turn a second syntax failure into another full-page regeneration. This narrows only that failure class. The generic automatic repair budget and the unchanged syntax, artifact, Closure, and publication gates continue to govern other work.
 
@@ -566,6 +647,31 @@ Fruth currently has 5 clean control knobs:
 Every real problem should map primarily to one of these.
 
 That is the operational clarity to keep during testing.
+
+### PDF page preparation
+
+Local PDF rendering uses PDFKit/CoreGraphics through the macOS Quartz binding.
+`pdf_max_pages` selects the leading pages (blank means all, explicit maximum 500);
+the response retains the full `pdf_total_pages` alongside `pdf_processed_pages`.
+`pdf_dpi` keeps its 96–600 request bounds and capability-specific default;
+`pdf_max_image_side` keeps its 1200–6000 bounds and 2400 default, including for
+unusually large pages. Lower-DPI and border-crop retries target the same original
+zero-based page index. Bitmap dimensions respect the side ceiling even when the
+required scale is below 0.75.
+
+`pdf_prefer_text` preserves explicit text-first intent for ordinary analysis/chat.
+Mixed PDFs with pages missing a text layer report that gap. Vision requests and
+chat instances whose existing capability contract supports image input are
+image-first. The selected instance and request capability stay unchanged.
+Explicit Apple OCR/barcode modes always require page images, regardless of
+`pdf_prefer_text`; they cannot substitute extracted PDF text for native tool output.
+The renderer does not choose models, recognize text or change artifact identities.
+File-aware external agent handoffs retain original PDF bytes.
+
+Every incoming PDF is processed again with the current settings. The legacy
+`reuse_cached` field remains accepted in compatibility payloads and historical
+control snapshots, but no longer changes execution. History is retained for
+explicit lookup and reference; it does not substitute old outcomes for new input.
 
 ### Text-chat inference timeout
 

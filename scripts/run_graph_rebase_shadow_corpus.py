@@ -2278,6 +2278,14 @@ def _opportunity_predecessor_context(
     predecessor = _immediate_opportunity_predecessor(manifest, case)
     if predecessor is None:
         return None
+    return captured_predecessor_context(predecessor, case)
+
+
+def captured_predecessor_context(
+    predecessor: Mapping[str, Any],
+    case: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Carry exact captured answer/reference identities, never a status as prose."""
     predecessor_id = _required_bounded_string(
         predecessor.get('response_id'),
         field='predecessor.response_id',

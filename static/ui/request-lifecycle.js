@@ -142,7 +142,7 @@ function buildInterruptedPendingRequestNotice(request = {}) {
     }
     const capability = normalizeCapability(request.capability || '') || 'request';
     const instanceLabel = request.instanceId
-        ? formatModelDisplayName(getInstanceMeta(request.instanceId)?.model || request.instanceId)
+        ? formatModelDisplayName(getInstanceMeta(request.instanceId)?.model || request.instanceId, getInstanceMeta(request.instanceId)?.backend)
         : 'this conversation';
     return `The browser connection to a running ${capability} request for ${instanceLabel} was interrupted. The previous connection cannot resume automatically, so resend it if no answer arrives.`;
 }
@@ -1914,7 +1914,7 @@ function stopRequestProgressMonitor(instanceId) {
 function buildRequestProgressMessage(instance, elapsedSec, context = 'chat', slot = '') {
     const displayModel = requestLifecycleTargetIsExternal(instance)
         ? 'ChatGPT'
-        : formatModelDisplayName(instance?.model || instance?.instance_id || 'model');
+        : formatModelDisplayName(instance?.model || instance?.instance_id || 'model', instance?.backend);
     const prefix = context === 'arena' ? `Arena ${slot}` : displayModel;
     if (elapsedSec < 10) {
         return '<span class="loading-dots">Thinking</span>';
@@ -1946,7 +1946,7 @@ function startRequestProgressMonitor(instanceId, instance, context = 'chat', slo
         ) {
             const displayModel = requestLifecycleTargetIsExternal(instance)
                 ? 'ChatGPT'
-                : formatModelDisplayName(instance?.model || instance?.instance_id || 'model');
+                : formatModelDisplayName(instance?.model || instance?.instance_id || 'model', instance?.backend);
             if (elapsedSec >= 10) {
                 updateGlobalModelStatus(`${displayModel}: still generating...`);
             }
@@ -1974,7 +1974,7 @@ function buildInferenceRoutingStatusMessage(payload = {}) {
     });
     const modelLabel = externalTarget
         ? 'ChatGPT'
-        : formatModelDisplayName(payload.model || resolvedInstanceId);
+        : formatModelDisplayName(payload.model || resolvedInstanceId, payload.backend);
     const backendLabel = externalTarget
         ? 'external provider'
         : formatBackendLabel(payload.backend || 'runtime');
@@ -2308,7 +2308,7 @@ async function sendSingleMessage(instanceId, message, attachment = null, clearAt
         return;
     }
     if (capability !== 'chat' && hasPendingRequestForInstance(requestInstance.instance_id, { excludeRequestId: requestId })) {
-        const displayModel = formatModelDisplayName(requestInstance.model || requestInstance.instance_id);
+        const displayModel = formatModelDisplayName(requestInstance.model || requestInstance.instance_id, requestInstance.backend);
         releasePendingRequestState();
         if (currentInstance.inferenceAuto) {
             resetResponsesWorkbenchAutoRoute();

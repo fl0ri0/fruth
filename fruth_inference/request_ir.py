@@ -431,6 +431,8 @@ def _review_criteria_for_phase(
             )
     role = _clean_text(phase.get('role')).lower()
     stage_direction = _clean_text(phase.get('stage_direction')).lower()
+    if role == 'saved_artifact_state_explanation':
+        criteria.extend(_clean_string_list(phase.get('semantic_review_criteria')))
     if role == 'post_artifact_text_follow_up' or stage_direction == 'write_text_after_artifact_generation':
         criteria.append('uses_dependency_evidence')
         criteria.append('does_not_restart_root_request')

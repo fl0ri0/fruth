@@ -19,6 +19,12 @@ Do not overthink. Just map the issue.
 
 ## Quick Debug Flow
 
+For startup dependency behavior, run `tests/test_stack_shutdown.py`. Its shell
+fixtures verify that existing environments never run pip on start/restart, even
+after requirements change, while a new environment installs once and stops on
+installation failure. All commands and environment files are isolated; tests do
+not install packages or start real models.
+
 1. Did it understand the request?
    → interpretive inference
 
@@ -73,6 +79,8 @@ Do not overthink. Just map the issue.
 - `BLOCKED:` provider text materialized as output content → external-provider block projection, artifact acceptance, late fill
 - modality cue created work without a current-turn obligation → candidate graph, promotion review, Closure-repair authority
 - bad feel → UX
+- final text appears twice only after compact lookup/history hydration → response output ownership; test persisted wire projection and repeated hoisting without role sidecars
+- graph-resolved preparation selects semantic roles but the execution call loses their guidance → shared root policy-message handoff; test role guidance and direct-request isolation across all four backends in `tests/test_inference_policy_scope.py`
 
 ## Current Failure Mapping
 
@@ -119,6 +127,17 @@ Do not overthink. Just map the issue.
 
 ## Current Self-Healing Test Slices
 
+For cross-backend chat/file/vision provider failover, run
+`tests/test_provider_failover.py`, `tests/test_backend_transport_runtime.py`, and
+the Responses routing/preference, self-heal, chat/stream and Apple transport
+slices. Run in a disposable source checkout with empty temporary state and
+network/subprocess execution blocked. Cover PCC quota -> configured fallback ->
+automatic selection, exclusion/exhaustion, exact task/graph/reference identity,
+saved attempt evidence, incompatible input/controls, fixed/locked targets,
+refusal/invalid/evidence rejection, stream-open failure and no producer switch
+after streamed output. These deterministic tests do not establish live provider
+availability or turn the historical quota-limited PCC campaign into a full pass.
+
 For the external downstream execution boundary, run:
 
     .venv/bin/python -m pytest tests/test_codex_runtime_bridge.py -q
@@ -139,6 +158,11 @@ For labelled/count TTS extraction, output-side WAV integrity, and TTS-to-STT sem
     .venv/bin/python -m pytest tests/test_tts_audio_integrity.py -q
     .venv/bin/python -m pytest tests/test_response_semantics_runtime.py -q -k "tts or speech_to_text or audio_variant or semantic_evidence or audio_integrity"
     .venv/bin/python -m pytest tests/test_fake_backend_e2e.py -q -k "tts_stt_and_vision or silent_tts"
+
+Include Markdown `#` narration headings in mixed website output, with plain or
+text/audio-labelled fenced text. Only the labelled spoken body may feed TTS;
+HTML/CSS, transcript and JSON siblings must stay out. Multiple narration sections
+still require branch selection, and headings inside code do not establish a source.
 
 The expected current shape is exact branch-local speakable payload selection, contiguous labelled candidate authority, exclusion of transcript/analysis/code/JSON siblings, durable exact final-prompt `tts_semantic_source`, deterministic source/file-bound PCM-WAV signal evidence, direct-producer-only `tts_stt_semantic_evidence`, harmless transcript normalization acceptance, and fail-closed silence/truncation/padding/malformed/missing/digest/binding handling. HTTP 200 or a non-empty WAV must not fulfill audio by itself. Expected text must never enter the STT request, downstream joins must stay unexecuted on mismatch, and a physically materialized wrong WAV remains diagnostic evidence rather than fulfillment.
 
@@ -203,12 +227,23 @@ rebinding must neither rewrite unchanged bytes nor append evidence. Legacy
 identity-free records remain readable diagnostics, never retroactively attributed
 write authority. Ledger and UI projections preserve optional branch identity.
 
-For composed multi-page image placement and bounded cohort repair, run:
+For generated-site image placement and bounded cohort repair across single/multiple pages and external/embedded/inline CSS, run:
+
+    .venv/bin/python -m pytest tests/test_composed_site_closure.py -q
+    .venv/bin/python -m pytest tests/test_afm_preparation_handoffs.py -q
 
     .venv/bin/python -m pytest tests/test_response_semantics_runtime.py -q -k "composed_site_image_closure or composed_page"
     .venv/bin/python -m pytest tests/test_responses_api.py -q -k "authoritative_composed_site_image_repair"
     .venv/bin/python -m pytest tests/test_response_artifact_bundles.py -q
     .venv/bin/python -m pytest tests/test_fruth_run_monitor_projection.py tests/test_reference_run_export.py -q
+
+Include the terminal `superseded_composition_recovery` API regression. Cover a
+styled listening image with an unstyled hero, repeated occurrences, unlinked and
+cross-page styles, inline styles, picture sources, and script-rendered cards.
+Fresh exact supersession must retire its recovery candidate and repair contract
+without accepting a missing repair body, losing failed-attempt evidence, or
+closing conflicting/unrelated work. The final frame must clear stale partial
+failure only after the substantive contract is fulfilled.
 
 The expected shape is that `batch_prompt_expected_count >= 2` requires the exact number of non-empty branch-local prompts and a valid slot selection. Shared preparation prose, full HTML/CSS/JSON answers, selected room data, root prompts, and heuristically focused fragments must be removed and exposed as `incomplete_image_prompt_batch` before routing. A user-triggered retry after `NO_COMPATIBLE_INSTANCE` keeps all exclusions, prefers any ready non-excluded alternative, and may reuse one excluded provider only under `explicit_image_excluded_pool_retry_v1` after fresh live truth; the attempt cannot auto-follow up. Missing contracts and refresh failures fail closed. A failed frame and a later successful frame under one response id each receive one append-only report, while export accepts only evidence matching the authoritative latest frame and leaves the source ledger byte-identical.
 
@@ -342,6 +377,16 @@ For availability waiting, include `availability_wait` and `unavailable_preparati
 
 ## Response-Ledger Lookup And Test Isolation
 
+For recent-event reads, run `tests/test_event_log.py`,
+`tests/test_event_log_tail.py`, `tests/test_event_api.py` and
+`tests/test_causal_telemetry.py` in the disposable offline checkout. Compare
+newest-first results and matching-event limits with the legacy reader across
+filters, UTF-8/chunk boundaries, long records, malformed tails and line endings.
+Count actual bytes to prove early stop once enough matching events are found;
+rare filters may still require the full history. Check fresh append/replacement,
+the initial end-of-file boundary and the real `/api/inference` event-read path.
+Use synthetic temporary logs for tests and benchmarks, preserving history bytes.
+
 For causal convergence observations, also run:
 
     .venv/bin/python -m pytest tests/test_causal_telemetry.py tests/test_self_attack_convergence.py tests/test_self_attack_production.py tests/test_fruth_run_monitor_projection.py -q
@@ -355,6 +400,26 @@ When touching response lookup, index persistence, or `/api/responses/<id>` recov
 
     .venv/bin/python -m pytest tests/test_response_frames.py -q
     .venv/bin/python -m pytest tests/test_responses_api.py -q --durations=20
+
+For Ledger commit outcomes and saved SVG isolation, also run
+`tests/test_response_persistence.py` and `tests/test_storage_and_svg_api.py`.
+Inject snapshot preparation, partial append, fsync and post-commit Index failures
+in temporary roots. Compare recovery with old/missing indexes and preserve exact
+parent CAS. Check that HTTP, stream and all lookup views retain storage failure,
+keep saved work inspectable and refuse inference/branch retries. An unterminated
+tail must stop append without changing existing bytes. SVG view, ordinary asset
+and download routes must carry a script-free opaque-origin CSP sandbox while
+preserving bytes and ordinary raster delivery. Run webserver-importing tests in
+the disposable offline checkout described below.
+
+For Index encoding and new-response parent-scan avoidance, include
+`tests/test_response_index_append_cost.py`. Compare compact and legacy JSON
+values, coverage digests and recovered state. Prove no parent scan for an absent
+id only with a fresh complete map; retain scans for missing, stale, incomplete,
+corrupt, legacy or physically replaced evidence, including same-byte replacement.
+An omitted existing id must recover its parent CAS and monotonically increasing
+sequence from the Ledger. Benchmark synthetic temporary maps; never rewrite or
+attest production Index data as a test.
 
 For recursive snapshot preparation, include
 `tests/test_response_snapshot_preparation.py`. It checks eliminated duplicate
@@ -395,6 +460,14 @@ any response-specific authority. Evaluate scaling and the unchanged client timeo
 on isolated valid histories; never use production Ledger/Index as writable test
 fixtures or rerun the live Self-Attack corpus merely to validate this owner.
 
+For the parsed-JSON normalization fast path, include
+`tests/test_response_frame_normalization.py` with the frame, snapshot, Epoch,
+Readiness observation/Registry and pass suites. Preserve canonical digests,
+empty/reserved-field filtering, scalar values, mutable-output isolation, and
+Mapping/Path/subclass behavior. Performance comparisons use synthetic temporary
+histories or maps with identical normalized bytes; no integrity check or timeout
+is relaxed.
+
 For the finalizer's closed map ownership boundary, include
 `tests/test_finalizer_closed_map_owner.py` with the Epoch, observation receipt,
 Registry, frame persistence/parent-CAS/recovery, graph rebase and Readiness HTTP
@@ -415,7 +488,58 @@ For the explicit legacy-index boundary, include the `attest_response_frame_index
 
 ## Fake-Backend E2E Truth Harness
 
+For saved-state follow-ups, run `tests/test_artifact_state_followups.py` with the
+intent, inference-router, request-phase-graph, response-semantics and selected
+reference owner suites. Cover exact predecessor text in both routing history and
+Responses execution input; chat-only saved audio/image state; explicit fresh
+media work; wrong-source/sibling evidence; changed/missing files; and immutable
+parent truth. These owner checks need no model execution. The corresponding
+`ResponsesApiTests.test_saved_artifact_state_followups_execute_chat_without_media_reinspection`
+checks the real request path with deterministic providers, including stale media
+previews, saved enrichment, exact prior text and zero new media calls. Include the
+captured coordinated prohibition "Do not generate new audio or transcribe the
+recording again": execution must remain chat with no new artifacts or
+materialization or automatic semantic-review obligations. Cover negated and quoted STT cues and affirmative STT
+after a prohibition. Also run `tests/test_inference_service.py` for saved-evidence
+mentions combined with negated generation; explicit file requests must still
+survive. Run these checks in a disposable physical checkout with external I/O
+blocked, together with the
+existing generated-image enrichment tests. Discovery probes must be fixture
+isolated. Run the self-attack and shadow-corpus runner suites for client handoff
+changes; completed campaign captures and verdicts must remain unchanged.
+
+The saved-evidence fixture in `tests/fixtures/artifact_readback_audio.json`
+reproduces the repeated diagnostic shape that overflowed AFM during follow-up
+explanations. Keep exact source/consumer identities, digests, mismatch and negative
+child verdicts while projecting shared evidence once. Its character-size check
+detects diagnostic expansion; it is not an Apple tokenizer or live acceptance
+test. For `saved_digest_equalities`, cover unequal byte/text representations with
+a positive semantic word-match verdict, unequal same-representation hashes,
+missing/malformed digests, uppercase hexadecimal values and conflicting saved
+flags. Preserve original evidence and the existing context-size assertion. These
+computed comparisons must not create a new semantic verdict or promote missing
+evidence into proof. Run the claim-guard tests in `tests/test_response_semantics_runtime.py` too:
+unsupported model prose and reserved/waived/cancelled candidates cannot create
+image/audio repair obligations. Positive repair fixtures must supply an explicit
+promoted obligation, not merely a capability named by the model.
+
+For explanation completion, cover exact transcript echoes, explicit verbatim
+readbacks and ordinary explanations completing without automatic review calls.
+For separately contracted semantic criteria, retain malformed/failed review and
+changed-answer/evidence invalidation checks, plus a positive explanation through
+both branch and whole-turn review. Check that AFM's reference-only
+history envelope preserves every text turn, the exact current request and system
+instructions, is idempotent, and leaves other providers and typed multimodal/tool
+messages intact. Include `tests/test_inference_policy_scope.py`,
+`tests/test_apple_fm_backend.py` and `tests/test_semantic_review_verdict.py`.
+An opt-in native replay should capture provider output and canonical output
+separately. If review workers are stubbed to bound that probe, pending closure is
+expected and the result cannot be reported as a completed native lifecycle test.
+
 For selected-reference collections and retained audio handoff, run
+`tests/test_frontend_reference_selection.py`,
+`tests/test_frontend_message_state.py`,
+`tests/test_frontend_external_multifile_transport.py`,
 `tests/test_selected_reference_collection.py`,
 `tests/test_selected_audio_reference_binding.py` and
 `tests/test_request_intake_predecessor_context.py`. Cover n mixed/same-type
@@ -426,20 +550,69 @@ boundary with a deterministic provider witness. Broaden with artifact/Registry,
 phase graph, Late Fill, saved-file dependency, interpretive inference and fake-backend suites.
 All files and source frames in these tests are temporary.
 
-The older `InferApiTests` slice has an unmocked status-only port probe in some
-cases, despite mocked inference providers. Under a strict offline runner this
-is a fixture failure. Isolate the status probe for those fake-provider tests;
-do not allow real model/network execution or change product status gates to
-make the validation pass.
+The frontend reference tests execute the actual JavaScript owners in Node VM.
+Cover full-reply public text/artifacts, artifact-only replies, accumulating mixed
+and same-type selections, idempotent duplicates, distinct source identities,
+removal/clear and conversation isolation, snapshot reconstruction, JSON/SSE and
+multipart submission. The UI-to-intake fixture must retain all exact source and
+artifact bindings, a reply longer than 12,000 characters, canonical mismatch
+evidence and wrong-source rejection. This verifies the request handoff without
+running models; it is not a native browser or live provider conformance test.
 
-`InferApiTests` redirects `fruth_webserver.OCR_EXPORT_DIR` to a per-test
-temporary directory. Keep the real Markdown writer active in OCR persistence
+Status-only host probes are external I/O even when inference providers are
+mocked. The offline API fixtures must isolate those observations; do not allow
+real model/network execution or change product status gates to pass validation.
+
+`InferApiTests` redirects status storage and `fruth_webserver.OCR_EXPORT_DIR` to
+per-test temporary paths and supplies fixture port liveness. The fake-backend
+harness also supplies its own non-listening status observation; even preparation
+stream tests must not probe host ports through real status bookkeeping.
+Runtime-manifest fixtures supply their external-target inventory, and model
+stop/start fixtures supply log-port observations. Fake Codex execution tests use
+temporary synthetic executables; they must not invoke the host's installed CLI.
+For public artifact selection, run `tests/test_artifact_authority.py` and
+`tests/test_response_artifact_bundles.py`: an exact registered linked dependency
+must preserve its logical identity, prefer current authoritative work and leave
+conflicts unresolved. Include the Responses API and fake-backend E2E suites when
+changing that shared projection.
+Keep the real Markdown writer active in OCR persistence
 checks and assert the saved path, exact bytes and output count there. Mocking
 the provider and infer-history append alone does not isolate artifact writes:
 successive `scan.pdf` tests can otherwise publish `scan.md`, `scan_2.md`, etc.
 into the checkout's `artifacts/ocr/`. Those suffixes are filename-collision
 counters, not PDF page identities. Never use historical OCR files as test
 fixtures or remove them to make validation pass.
+
+For PDF foundation changes, run `tests/test_ocr_pdf.py` on macOS with the Quartz
+binding installed. Its temporary synthetic PDFs exercise real native rendering:
+scanned/mixed pages, page selection/counts, rotation, nonzero crop/media origins,
+annotations, crop retries, oversized-page pixel ceilings and explicit failures.
+It does not perform OCR or invoke a model. PDFKit initialization requires access
+to macOS application services; a restrictive process sandbox may abort before
+Python can report an exception. Run native checks in a process with those services
+available, keeping all documents and outputs temporary.
+
+Run `tests/test_pdf_request_handling.py` and the PDF/OCR slice of
+`tests/test_infer_api.py` in a disposable physical checkout with production state
+absent and external I/O blocked. Mock status probes as well as providers. These
+check native-page handoff to existing OCR, source digests, saved artifacts, mixed
+text coverage, explicit controls and fresh execution for repeated incoming PDFs.
+Include direct `chat` targets with image-capability metadata, single/multiple
+scanned or mixed pages, full counts under page caps, exact selected transports,
+per-page budgets, explicit text-first/text-only handling and visible empty-page
+gaps. Apple OCR/barcode PDF checks must use fake native tools, retain source-PDF
+and per-page receipt identities through canonical Responses, count verified empty
+detections as processed, and reject tool/render failures without model fallback.
+For direct Apple image analysis, exercise the real request builder with fake HTTP
+responses: one ordered PNG per independent request, the exact prompt/instance,
+and no frame instructions. Guardrail/refusal, timeout and connection failures on
+the first or a later page must retain the failing page and completed coverage
+through canonical error storage, preserve error status/budgets, and stop without
+retry, OCR fallback or full-document success.
+Keep single-image handling outside PDF preparation. The file-handoff cases in
+`tests/test_codex_execution.py` and `tests/test_codex_runtime_bridge.py` verify that
+file-aware agents receive original PDFs; use their fake executors, never a live
+agent. These checks do not establish OCR accuracy or whole-pipeline conformance.
 
 For PNG/SVG request typing and negative-format scope, run:
 
@@ -479,7 +652,8 @@ For prose-only work, check local Markdown links and fragments, repository owner
 paths, command flags and referenced config files against the current checkout.
 Distinguish generated runtime paths and illustrative placeholders from shipped
 files. Compare public references with `scripts/build_release_archive.py`:
-`PUBLIC_DOCS`, `PUBLIC_CONFIG_PATHS` and `RELEASE_SKILL_FILES` govern inclusion;
+`PUBLIC_DOCS`, `PUBLIC_CONFIG_PATHS`, `PUBLIC_INTEGRATION_DOC_PATHS` and
+`RELEASE_SKILL_FILES` govern inclusion;
 a file existing in a development checkout does not prove it is packaged.
 
 The existing packaging/static checks mostly use temporary fixture source trees;
@@ -514,8 +688,19 @@ For compatibility key migrations involving resolver-named replacements for liter
 
 For prompt or injected policy wording changes that reach interpretive inference routing, the resolver, semantic roles, or `FRUTH_INFERENCE.md`, run:
 
+    .venv/bin/python -m pytest tests/test_inference_policy_scope.py -q
     .venv/bin/python -m pytest tests/test_inference_router.py tests/test_inference_execution_planner.py tests/test_semantic_roles.py -q
-    .venv/bin/python -m pytest tests/test_responses_api.py -q -k "inference_route or inference_auto or inference_route_preview or execution_planner or planner_deferred or late_fill"
+    .venv/bin/python -m pytest tests/test_responses_api.py -q -k "inference_route or inference_auto or inference_route_preview or inference_policy or runtime_policy or execution_planner or planner_deferred or late_fill"
+
+Policy selection must cover complete ordinary-backend injection, AFM common+role
+selection by the actual executor, mixed-backend cache/retry rebinding, preserved
+custom-policy tails, visible malformed/missing projections, and streaming/nonstream
+dispatch. AFM preparation must retain the exact workflow reference, bound only the
+current task, and remain idempotent; other backends retain their existing framing.
+Regression coverage must include indexed JSON image batches and malformed variants, preparation-only save/read responses in both transports, actual producer/read/consumer execution, and exact-target site repair without gallery insertion. Native preparation probes must inspect section payloads, counts and actual roles; a single saved JSON source uses raw data, and the real file-payload extractor must accept it.
+Budget fixtures are estimates, not server context metadata. Record native token
+counts and inspect actual content; a successful HTTP response is not semantic
+equivalence or a completed reference workflow.
 
 When a local chat-capable runtime is available, also compare a small live set: plain chat, write-then-speak, describe-then-image, selected-reference follow-up, latest-artifact edit, and each canonical semantic role selected through `semantic_role_ids`.
 
@@ -555,10 +740,104 @@ partial byte/timing coverage. No live submission is implicit in these tests.
 For changes to Research preservation, candidate sync or Gold resolution, run:
 
 ```sh
-.venv/bin/python -m pytest -q tests/test_maintenance_archive.py tests/test_clean_repo_state_policy.py tests/test_inference_reset_learning_state.py tests/test_self_learning.py tests/test_research_candidates.py tests/test_research_retention.py fruth_research/gold-core/test_validate.py
+.venv/bin/python -m pytest -q tests/test_maintenance_archive.py tests/test_clean_repo_state_policy.py tests/test_inference_reset_learning_state.py tests/test_self_learning.py tests/test_research_candidates.py tests/test_research_retention.py fruth_research/gold-core/test_validate.py fruth_research/test_review.py
 ```
 
 Fixtures must use temporary runtime/Research roots. Read-only Gold validation is
 separate from test execution. Real retained-evidence materialization needs explicit
 authority, inventory, disk/source preflight and copied-byte verification. Never run
 production cleanup, provider inference or Full Conformance to validate retention.
+
+
+## Apple Foundation Models backend
+
+For the PCC Shortcuts bridge and its normal instance integration, run:
+
+    .venv/bin/python -m pytest tests/test_pcc_shortcut_bridge.py tests/test_pcc_vision.py tests/test_apple_pcc_backend.py tests/test_frontend_apple_pcc.py tests/test_inference_policy_scope.py -q
+
+The focused `tests/test_responses_api.py -k pcc_responses` slice checks canonical
+stream/nonstream execution evidence, rejection of unsupported public controls,
+and native error messages reaching Arena's ordinary streaming Responses path.
+`tests/test_backend_transport_runtime.py` checks that failed streaming HTTP bodies
+survive socket cleanup, nested provider errors become readable messages, and an
+empty body retains the HTTP error fallback across compatible backends.
+
+These isolated tests never launch Shortcuts.
+
+For PCC observation boundaries, include `tests/test_backend_fabric.py` alongside
+`tests/test_apple_pcc_backend.py`: cold and warm passive snapshots must never
+contact Shortcuts or query native PCC metadata. Explicit discovery/start refreshes
+installation evidence; cached projections retain the original observation time,
+cannot mutate the owner's cache, and must not preserve success after a failed
+explicit refresh.
+
+Cover automatic Pro preference,
+one Cloud fallback on a confirmed Pro access/availability error, explicit model
+overrides without fallback, and rejection of refusal/unknown-error/timeout fallback.
+Also cover
+installation versus access, missing/ambiguous shortcuts, blank input, private
+per-request staging and cleanup, operator-credential stripping, fresh UTF-8 output,
+failed/blocked output, one shared timeout budget across both attempts, and no loops.
+Cover real image-file staging, ordered message/attachment binding, malformed
+base64/transport and remote input rejection, unchanged multi-frame bytes, native
+image-error propagation, exact Pro/Cloud image digests, cleanup on every outcome,
+ordinary vision dispatch, and conservative metadata for old text-only adapters.
+Authorized live probes use harmless text and synthetic images in temporary files, retain CLI status
+and actual returned output, and distinguish account errors from installation.
+Also cover full policy and message preservation, strict buffered stream completion,
+unchanged single-user text for direct chat/Arena, UTF-8, unsupported inputs/controls,
+separately scoped SDK metadata, port isolation,
+owned-process startup/cleanup/stop (including macOS framework Python re-exec),
+normal catalog/card/tab identity and existing preferred-II selection. Authorized
+browser checks use an isolated control plane and temporary registry/response state.
+A shortcut round trip alone does not establish workflow conformance or content quality.
+
+Run the isolated backend/transport, frontend identity and lifecycle slices:
+
+    .venv/bin/python -m pytest tests/test_apple_fm_backend.py tests/test_frontend_apple_fm.py tests/test_backend_transport_runtime.py tests/test_backend_fabric.py tests/test_stack_shutdown.py -q
+
+For default-model metadata discovery, include `tests/test_apple_fm_metadata.py`
+and `tests/test_startup_model_manager.py`. Verify sourced host-default metadata,
+known/future variants, positive context validation, cache reuse, missing SDK/tool,
+older OS, unavailable model, malformed output and timeout fallbacks. HTTP identity
+and readiness must stay independent. A native metadata check may run only the
+Swift helper without generation; record its execution environment because a
+restricted sandbox can return Core 3 with zero context instead of usable facts.
+
+For AFM streaming, `tests/test_apple_fm_backend.py -k stream` verifies terminal
+markers, failure/partial handling and UTF-8 decoding independent of HTTP's default
+text encoding. Keep non-ASCII punctuation and names intact in Arena and direct chat.
+
+For Apple OCR/barcode changes, include `tests/test_apple_fm_image_tools.py`,
+`tests/test_session_controls.py`, and the Apple image-mode cases in
+`tests/test_infer_api.py` / `tests/test_responses_api.py`. Verify native transcript
+call/result linkage, exact tool text, original versus re-encoded image digests,
+empty detections, skipped/mismatched calls, private staging cleanup and bounded
+process failure. Use synthetic OCR/QR/blank images for live CLI/browser checks in
+disposable state. Check canonical receipt persistence, not model prose alone.
+
+Broaden to existing Ollama/MLX/llama.cpp manager tests, startup, session controls,
+chat/infer APIs, shared frontend, runtime hygiene and fake-backend conformance
+when those owners change. Live tests require explicit lifecycle authority and a
+disposable checkout/state root. Never use production registry/artifact paths.
+Browser acceptance includes two-instance creation, exact selection, streaming,
+stop-one/survivor, reload, prerequisite errors and failed startup. Report actual
+interpretive-inference context failures separately from successful direct chat;
+do not shorten policy or substitute a provider to turn the check green. Detailed
+observations and limits are in [Apple AI](APPLE_FOUNDATION_MODELS.md).
+
+For image transport changes, include `tests/test_infer_api.py` and the vision/image
+attachment cases in `tests/test_responses_api.py`. Verify internal image-part
+aliases normalize to inline `image_url` parts without changing image bytes or
+history order, the exact selected instance receives them, PDF pages use that
+backend, and malformed/unsupported parts fail visibly. Browser acceptance must
+include an attached synthetic image and canonical response evidence. AFM 3 model
+research does not prove public audio access: keep TTS/STT unsupported unless its
+actual transport and the existing audio evidence contracts are validated.
+
+`tests/test_image_input_formats.py` covers raw image media types and uploaded
+JPEG/PNG bytes through chat and vision analysis to the selected Apple transport.
+Include uppercase and misleading filename extensions, explicit data URLs,
+unchanged prompts and saved input digests. These offline checks use synthetic
+fixtures and a fake completion backend; they do not measure model accuracy or
+prove that a particular live backend decodes every image format.

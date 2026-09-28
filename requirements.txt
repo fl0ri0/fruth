@@ -5,4 +5,6 @@ urllib3<2
 pyyaml
 pydantic
 pypdf
+# Native macOS PDF rendering; pulls PyObjC core/Cocoa, not the full PyObjC bundle.
+pyobjc-framework-Quartz ; sys_platform == "darwin"
 pytest

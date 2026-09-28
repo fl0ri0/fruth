@@ -143,6 +143,7 @@ async function fetchAvailableModels() {
         const response = await axios.get(`${state.flaskServerUrl}/api/available_models`);
         state.availableModels = response.data?.models || [];
         renderAvailableModelsList();
+        renderModelTabs();
         renderVoiceInputPreferences();
         renderModelSettingsPanel();
         updateVoiceInputButtonState();
@@ -260,7 +261,7 @@ function getCatalogRuntimeMeta(instance) {
 }
 
 function buildRuntimeStopButtonMarkup({ instanceId = '', isStopping = false, hasOtherStops = false, extraClass = '' } = {}) {
-    const stopTitle = hasOtherStops ? 'Finish current action before stopping' : `Stop ${instanceId}`;
+    const stopTitle = hasOtherStops ? 'Finish current action before stopping' : `Stop ${formatModelDisplayName(instanceId)}`;
     const classes = [
         'icon-button',
         'icon-button--stop',
@@ -327,7 +328,7 @@ function renderAvailableModelsList() {
     }
     if (!state.availableModels || state.availableModels.length === 0) {
         updateAvailableModelsToggle(0);
-        elements.availableModelsList.innerHTML = '<div class="ledger-placeholder">No local models found</div>';
+        elements.availableModelsList.innerHTML = '<div class="ledger-placeholder">No models found</div>';
         populateRemoveModelSelect();
         return;
     }
@@ -336,6 +337,7 @@ function renderAvailableModelsList() {
     ));
     const hiddenEntries = normalizedEntries.filter((entry) => (
         entry.runnable === false
+        && !['apple_fm', 'apple_pcc'].includes(normalizeBackend(entry.backend))
         && getCatalogCardRunningInstances(entry.name || '', normalizeBackend(entry.backend)).length === 0
     ));
     updateAvailableModelsToggle(hiddenEntries.length);
@@ -343,6 +345,7 @@ function renderAvailableModelsList() {
         ? normalizedEntries
         : normalizedEntries.filter((entry) => (
             entry.runnable !== false
+            || ['apple_fm', 'apple_pcc'].includes(normalizeBackend(entry.backend))
             || getCatalogCardRunningInstances(entry.name || '', normalizeBackend(entry.backend)).length > 0
         ));
     elements.availableModelsList.innerHTML = '';
@@ -351,14 +354,14 @@ function renderAvailableModelsList() {
         const hiddenText = hiddenCount > 0
             ? ` ${hiddenCount} known cache entr${hiddenCount === 1 ? 'y is' : 'ies are'} hidden behind the broken-link toggle.`
             : '';
-        elements.availableModelsList.innerHTML = `<div class="ledger-placeholder">No runnable local checkpoints.${hiddenText}</div>`;
+        elements.availableModelsList.innerHTML = `<div class="ledger-placeholder">No runnable models.${hiddenText}</div>`;
         populateRemoveModelSelect();
         return;
     }
     visibleEntries.forEach((entry) => {
         const modelName = entry.name || 'Unknown model';
-        const displayName = formatModelDisplayName(modelName);
         const backend = normalizeBackend(entry.backend);
+        const displayName = formatModelDisplayName(modelName, backend, entry);
         const runnable = entry.runnable !== false;
         const opKey = makeModelKey(modelName, backend);
         const isStarting = state.modelOperations.starting.has(opKey);
@@ -380,7 +383,7 @@ function renderAvailableModelsList() {
             : hasOtherStarts
                 ? 'Finish current action before launching'
                 : `Start new ${displayName} instance`;
-        let statusLabel = 'Idle';
+        let statusLabel = runnable ? 'Idle' : 'Unavailable';
         let statusIcon = '<i class="fas fa-circle"></i>';
         let statusClass = 'status-pill--pending';
         let runtimeSummary = '';
@@ -402,13 +405,13 @@ function renderAvailableModelsList() {
         item.className = 'model-card';
         item.innerHTML = `
             <div class="model-row">
-                <div class="model-meta" title="${modelName}">
+                <div class="model-meta" title="${escapeHtmlAttribute(displayName)}">
                     <div class="model-meta-title">
-                        <span class="truncate">${displayName}</span>
+                        <span class="truncate">${escapeHtml(displayName)}</span>
                     </div>
                     <div class="model-meta-sub model-meta-sub--inline">
                         <span class="${backendBadgeInline}">${backendLabel}</span>
-                        <span class="model-meta-note">${secondLine}</span>
+                        <span class="model-meta-note"></span>
                     </div>
                     ${runtimeSummary ? `<div class="model-runtime-summary">${runtimeSummary}</div>` : ''}
                 </div>
@@ -431,7 +434,7 @@ function renderAvailableModelsList() {
                         data-backend="${backend}"
                         ${startDisabled ? 'disabled' : ''}
                         data-locked="${hasOtherStarts ? 'true' : 'false'}"
-                        title="${buttonTitle}"
+                        title="${escapeHtmlAttribute(buttonTitle)}"
                     >
                         <i class="fas ${startIcon}"></i>
                     </button>
@@ -444,6 +447,10 @@ function renderAvailableModelsList() {
             ` : ''}
         `;
 
+        item.querySelector('.model-meta-note').textContent = secondLine;
+        if (['apple_fm', 'apple_pcc'].includes(backend)) {
+            item.querySelector('.model-meta-note').title = entry.description || secondLine;
+        }
         const startBtn = item.querySelector('.icon-button--launch');
         startBtn.addEventListener('click', (event) => {
             event.stopPropagation();
@@ -511,7 +518,7 @@ function populateRemoveModelSelect() {
     select.innerHTML = '';
     const removableModels = (state.availableModels || []).map(modelEntry => (
         typeof modelEntry === 'string' ? { name: modelEntry, backend: 'ollama' } : (modelEntry || {})
-    ));
+    )).filter(entry => entry.removable !== false);
     if (removableModels.length === 0) {
         const option = document.createElement('option');
         option.value = '';
@@ -593,6 +600,7 @@ async function startModel(modelName, backend = 'ollama', options = {}) {
     const normalizedBackend = normalizeBackend(backend);
     const opKey = makeModelKey(modelName, normalizedBackend);
     const backendLabel = formatBackendLabel(normalizedBackend);
+    const displayName = formatModelDisplayName(modelName, normalizedBackend);
     if (state.modelOperations.starting.has(opKey)) {
         return null;
     }
@@ -603,7 +611,7 @@ async function startModel(modelName, backend = 'ollama', options = {}) {
     const previousInstanceIds = new Set((state.runningInstances || []).map((instance) => instance.instance_id).filter(Boolean));
     state.modelOperations.starting.add(opKey);
     renderAvailableModelsList();
-    updateGlobalModelStatus(`Starting ${modelName} (${backendLabel})...`);
+    updateGlobalModelStatus(`Starting ${displayName} (${backendLabel})...`);
     try {
         const payload = {
             model: modelName,
@@ -613,7 +621,7 @@ async function startModel(modelName, backend = 'ollama', options = {}) {
         if (options.forceStart) payload.force_start = true;
         if (options.modelName) payload.modelName = options.modelName;
         if (options.capability) payload.capability = options.capability;
-        if (normalizedBackend === 'mlx' || normalizedBackend === 'llama_cpp') {
+        if (normalizedBackend === 'mlx' || normalizedBackend === 'llama_cpp' || normalizedBackend === 'apple_fm' || normalizedBackend === 'apple_pcc') {
             if (options.modelPath) payload.model_path = options.modelPath;
             if (options.preferredPort) payload.preferred_port = options.preferredPort;
             if (options.hfFile) payload.hf_file = options.hfFile;
@@ -638,15 +646,15 @@ async function startModel(modelName, backend = 'ollama', options = {}) {
             || response?.data?.instance
             || null
         );
-        updateGlobalModelStatus(`Started ${modelName} (${backendLabel})`);
+        updateGlobalModelStatus(`Started ${displayName} (${backendLabel})`);
         setTimeout(() => updateGlobalModelStatus(''), 2500);
         return startedInstance;
     } catch (error) {
         console.error('Error starting model:', error);
         const message = error.response?.data?.error || error.message || 'Unknown error';
-        updateGlobalModelStatus(`Failed to start ${modelName} (${backendLabel}): ${message}`);
+        updateGlobalModelStatus(`Failed to start ${displayName} (${backendLabel}): ${message}`);
         if (!options.suppressAlert) {
-            alert(`Failed to start ${modelName} (${backendLabel}): ${message}`);
+            alert(`Failed to start ${displayName} (${backendLabel}): ${message}`);
         }
         return null;
     } finally {
@@ -793,11 +801,23 @@ function createModelTab(instanceId, modelName, backend = 'ollama', status = 'act
     tab.type = 'button';
     tab.className = 'model-tab';
     tab.dataset.instanceId = instanceId;
-    const displayName = formatTabLabel(instanceId, modelName);
+    let displayName = formatTabLabel(instanceId, modelName);
+    if (normalizeBackend(backend) === 'apple_fm') {
+        const instance = getInstanceMeta(instanceId);
+        const metadata = instance?.backend_metadata?.system_model ? instance
+            : (state.availableModels || []).find(entry => entry?.name === modelName
+                && normalizeBackend(entry.backend) === 'apple_fm');
+        displayName = `${formatModelDisplayName(modelName, backend, metadata)} · ${String(instanceId).split(':').pop()}`;
+    }
+    if (normalizeBackend(backend) === 'apple_fm') tab.setAttribute('aria-label', `${displayName} (Apple AI)`);
+    if (normalizeBackend(backend) === 'apple_pcc') {
+        displayName = `Apple PCC · ${String(instanceId).split(':').pop()}`;
+        tab.setAttribute('aria-label', displayName);
+    }
     tab.innerHTML = `
         <span class="model-tab__indicator ${status === 'pending' ? 'model-tab__indicator--pending' : ''}"></span>
-        <span class="model-tab__label" title="${modelName || instanceId}">
-            ${displayName}
+        <span class="model-tab__label" title="${escapeHtmlAttribute(displayName)}">
+            ${escapeHtml(displayName)}
         </span>
     `;
     if (instanceId === state.currentInstanceId) {
@@ -947,7 +967,7 @@ async function switchToInstance(instanceId, {
     const backendLabel = formatBackendLabel(instance.backend);
     const displayModel = isExternalConversationTarget(instance)
         ? (instance.label || 'ChatGPT')
-        : (instance.model || instanceId);
+        : formatModelDisplayName(instance.model || instanceId, instance.backend);
     updateGlobalModelStatus(
         isExternalConversationTarget(instance)
             ? `Ready with ${displayModel} (automatic model via ${formatCodexSourceLabel(instance)}; each turn is independent)`

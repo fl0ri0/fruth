@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import base64
 import logging
+import math
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Callable, Optional
@@ -27,7 +25,12 @@ PDF_PAGE_OCR_NUM_PREDICT = 8192
 IMAGE_OCR_NUM_PREDICT = 4096
 
 
-def extract_pdf_text_content(pdf_path: Path, max_chars: Optional[int] = PDF_TEXT_EXTRACTION_MAX_CHARS) -> str:
+def extract_pdf_text_content(
+    pdf_path: Path,
+    max_chars: Optional[int] = PDF_TEXT_EXTRACTION_MAX_CHARS,
+    *,
+    warnings: Optional[list[str]] = None,
+) -> str:
     try:
         from pypdf import PdfReader  # type: ignore
     except ImportError:
@@ -35,11 +38,13 @@ def extract_pdf_text_content(pdf_path: Path, max_chars: Optional[int] = PDF_TEXT
 
     chunks: list[str] = []
     total_len = 0
+    pages_without_text = 0
     try:
         reader = PdfReader(str(pdf_path))
         for page in reader.pages:
             text = (page.extract_text() or '').strip()
             if not text:
+                pages_without_text += 1
                 continue
             if max_chars is not None:
                 remaining = max_chars - total_len
@@ -65,7 +70,104 @@ def extract_pdf_text_content(pdf_path: Path, max_chars: Optional[int] = PDF_TEXT
         logging.warning('PDF text extraction failed for %s: %s', pdf_path, exc)
         return ''
 
+    if chunks and pages_without_text and warnings is not None:
+        warnings.append(
+            f'{pages_without_text} PDF page(s) had no extractable text and are absent '
+            'from the text result. Use image analysis to include scanned content.'
+        )
     return '\n\n'.join(chunks).strip()
+
+
+def _open_native_pdf(pdf_path: Path):
+    if sys.platform != 'darwin':
+        raise RuntimeError('PDF page rendering requires macOS; text-layer extraction remains available.')
+    try:
+        import Quartz  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError(
+            'macOS PDF rendering requires pyobjc-framework-Quartz. '
+            'Install the updated requirements.txt in the Fruth environment.'
+        ) from exc
+
+    path_bytes = bytes(pdf_path.resolve())
+    url = Quartz.CFURLCreateFromFileSystemRepresentation(None, path_bytes, len(path_bytes), False)
+    document = Quartz.PDFDocument.alloc().initWithURL_(url)
+    if document is None:
+        raise ValueError('PDF could not be opened.')
+    if document.isLocked():
+        raise ValueError('PDF is password locked.')
+    if document.pageCount() == 0:
+        raise ValueError('PDF contains no pages.')
+    return Quartz, document
+
+
+def _render_native_pdf_page(
+    quartz,
+    document,
+    *,
+    page_index: int,
+    dpi: int,
+    max_image_side_px: int,
+    crop_margin_ratio: float = 0.0,
+) -> tuple[str, bool]:
+    import objc  # type: ignore
+
+    # Bound native temporaries to one page even on a long-lived request thread.
+    with objc.autorelease_pool():
+        page = document.pageAtIndex_(page_index)
+        if page is None:
+            raise ValueError(f'PDF page {page_index + 1} is unavailable.')
+        box = quartz.kPDFDisplayBoxCropBox
+        bounds = page.boundsForBox_(box)  # PDFKit intersects CropBox with MediaBox.
+        width, height = float(bounds.size.width), float(bounds.size.height)
+        # PDFKit's box/drawing coordinates do not apply PDF /UserUnit. Preserve
+        # physical size at the requested DPI before enforcing the pixel ceiling.
+        dictionary = quartz.CGPDFPageGetDictionary(page.pageRef())
+        has_unit, raw_unit = quartz.CGPDFDictionaryGetNumber(dictionary, b'UserUnit', None)
+        unit = float(raw_unit) if has_unit else 1.0
+        if not math.isfinite(unit) or unit <= 0:
+            raise ValueError(f'PDF page {page_index + 1} has invalid page units.')
+        width, height = width * unit, height * unit
+        if not all(math.isfinite(value) and value > 0 for value in (width, height)):
+            raise ValueError(f'PDF page {page_index + 1} has invalid geometry.')
+        if page.rotation() % 180:
+            width, height = height, width
+        if max_image_side_px <= 0 or not math.isfinite(float(dpi)) or dpi <= 0:
+            raise ValueError('PDF rendering requires positive DPI and image-side limits.')
+        base_zoom = max(1.0, float(dpi) / 72.0)
+        # No minimum zoom: oversized PDF pages must still obey the pixel ceiling.
+        zoom = min(base_zoom, float(max_image_side_px) / max(width, height))
+        ratio = max(0.0, min(0.2, float(crop_margin_ratio or 0.0)))
+        if min(width, height) * (1.0 - 2.0 * ratio) <= 72:
+            ratio = 0.0
+        pixel_width = min(max_image_side_px, max(1, math.ceil(width * zoom * (1.0 - 2.0 * ratio))))
+        pixel_height = min(max_image_side_px, max(1, math.ceil(height * zoom * (1.0 - 2.0 * ratio))))
+        context = quartz.CGBitmapContextCreate(
+            None, pixel_width, pixel_height, 8, pixel_width * 4,
+            quartz.CGColorSpaceCreateDeviceRGB(),
+            quartz.kCGImageAlphaNoneSkipLast | quartz.kCGBitmapByteOrder32Big,
+        )
+        if context is None:
+            raise RuntimeError('Could not allocate the PDF page bitmap.')
+        quartz.CGContextSetRGBFillColor(context, 1, 1, 1, 1)
+        quartz.CGContextFillRect(context, quartz.CGRectMake(0, 0, pixel_width, pixel_height))
+        quartz.CGContextTranslateCTM(context, -width * zoom * ratio, -height * zoom * ratio)
+        quartz.CGContextScaleCTM(context, zoom * unit, zoom * unit)
+        # PDFKit applies the intrinsic rotation and box origin exactly once, and
+        # includes visible annotations. CoreGraphics alone draws page content.
+        page.setDisplaysAnnotations_(True)
+        page.drawWithBox_toContext_(box, context)
+        image = quartz.CGBitmapContextCreateImage(context)
+        if image is None:
+            raise RuntimeError('Could not create the PDF page image.')
+        data = quartz.CFDataCreateMutable(None, 0)
+        destination = quartz.CGImageDestinationCreateWithData(data, 'public.png', 1, None)
+        if destination is None:
+            raise RuntimeError('Could not create the PDF page PNG destination.')
+        quartz.CGImageDestinationAddImage(destination, image, None)
+        if not quartz.CGImageDestinationFinalize(destination):
+            raise RuntimeError('Could not encode the PDF page PNG.')
+        return base64.b64encode(bytes(data)).decode('ascii'), zoom + 1e-6 < base_zoom
 
 
 def render_pdf_pages_to_base64(
@@ -76,71 +178,32 @@ def render_pdf_pages_to_base64(
     max_image_side_px: int = 2400,
 ) -> tuple[list[str], int, list[str]]:
     warnings: list[str] = []
-    try:
-        import fitz  # type: ignore
-    except ImportError:
-        if sys.platform == 'darwin' and shutil.which('sips'):
-            tmp = tempfile.NamedTemporaryFile(prefix='fruth_pdf_', suffix='.png', delete=False)
-            tmp_path = Path(tmp.name)
-            tmp.close()
-            try:
-                subprocess.run(
-                    ['sips', '-s', 'format', 'png', str(pdf_path), '--out', str(tmp_path)],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                encoded = base64.b64encode(tmp_path.read_bytes()).decode('utf-8')
-                warnings.append('PyMuPDF is not installed: the PDF was rendered as a first-page-only image via sips.')
-                return [encoded], 1, warnings
-            except Exception as exc:  # noqa: BLE001
-                logging.warning('sips fallback failed for %s: %s', pdf_path, exc)
-                warnings.append(
-                    "The PDF could not be rendered. Multi-page scanned-PDF "
-                    "rendering can use optional 'PyMuPDF'; review its separate "
-                    "AGPL-3.0 or commercial upstream terms before installation."
-                )
-                return [], 0, warnings
-            finally:
-                try:
-                    tmp_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-        warnings.append(
-            "PDF scan analysis requires optional 'PyMuPDF'. Review its separate "
-            "AGPL-3.0 or commercial upstream terms before installation, then "
-            "restart the webserver."
-        )
-        return [], 0, warnings
-
     encoded_pages: list[str] = []
     page_count = 0
     try:
-        with fitz.open(str(pdf_path)) as doc:
-            total_pages = len(doc)
-            page_count = total_pages
-            limit = total_pages if max_pages is None else min(total_pages, max_pages)
-            base_zoom = max(1.0, float(dpi) / 72.0)
-            did_downscale = False
-            for page_index in range(limit):
-                page = doc.load_page(page_index)
-                max_page_points = max(float(page.rect.width), float(page.rect.height), 1.0)
-                max_zoom_for_side = max(0.75, float(max_image_side_px) / max_page_points)
-                effective_zoom = min(base_zoom, max_zoom_for_side)
-                matrix = fitz.Matrix(effective_zoom, effective_zoom)
-                pix = page.get_pixmap(matrix=matrix, alpha=False)
-                encoded_pages.append(base64.b64encode(pix.tobytes('png')).decode('utf-8'))
-                if effective_zoom + 1e-6 < base_zoom:
-                    did_downscale = True
-            if did_downscale:
-                warnings.append(
-                    f'PDF pages were limited to a maximum edge length of {max_image_side_px}px to keep OCR stable.'
-                )
-            if total_pages > limit:
-                warnings.append(f'PDF umfasst {total_pages} Seiten; analysiert wurden die ersten {limit} Seiten.')
+        quartz, document = _open_native_pdf(pdf_path)
+        page_count = int(document.pageCount())
+        if max_pages is not None and max_pages < 0:
+            raise ValueError('PDF page limit must not be negative.')
+        limit = page_count if max_pages is None else min(page_count, max_pages)
+        did_downscale = False
+        for page_index in range(limit):
+            encoded, downscaled = _render_native_pdf_page(
+                quartz, document, page_index=page_index, dpi=dpi,
+                max_image_side_px=max_image_side_px,
+            )
+            encoded_pages.append(encoded)
+            did_downscale = did_downscale or downscaled
+        if did_downscale:
+            warnings.append(
+                f'PDF pages were limited to a maximum edge length of {max_image_side_px}px to keep OCR stable.'
+            )
+        if page_count > limit:
+            warnings.append(f'PDF contains {page_count} pages; only the first {limit} pages were rendered.')
     except Exception as exc:  # noqa: BLE001
         logging.warning('PDF rendering failed for %s: %s', pdf_path, exc)
-        warnings.append('PDF-Seiten konnten nicht gerendert werden.')
+        warnings.append(f'PDF pages could not be rendered: {exc}')
+        # Never skip a page and shift every later page/retry identity.
         return [], page_count, warnings
 
     return encoded_pages, page_count, warnings
@@ -155,31 +218,14 @@ def render_single_pdf_page_to_base64(
     crop_margin_ratio: float = 0.0,
 ) -> Optional[str]:
     try:
-        import fitz  # type: ignore
-    except ImportError:
-        return None
-
-    try:
-        with fitz.open(str(pdf_path)) as doc:
-            if page_index < 0 or page_index >= len(doc):
-                return None
-            page = doc.load_page(page_index)
-            base_zoom = max(1.0, float(dpi) / 72.0)
-            max_page_points = max(float(page.rect.width), float(page.rect.height), 1.0)
-            max_zoom_for_side = max(0.75, float(max_image_side_px) / max_page_points)
-            effective_zoom = min(base_zoom, max_zoom_for_side)
-            matrix = fitz.Matrix(effective_zoom, effective_zoom)
-            clip_rect = None
-            ratio = max(0.0, min(0.2, float(crop_margin_ratio or 0.0)))
-            if ratio > 0.0:
-                rect = page.rect
-                dx = rect.width * ratio
-                dy = rect.height * ratio
-                candidate = fitz.Rect(rect.x0 + dx, rect.y0 + dy, rect.x1 - dx, rect.y1 - dy)
-                if candidate.width > 72 and candidate.height > 72:
-                    clip_rect = candidate
-            pix = page.get_pixmap(matrix=matrix, alpha=False, clip=clip_rect)
-            return base64.b64encode(pix.tobytes('png')).decode('utf-8')
+        quartz, document = _open_native_pdf(pdf_path)
+        if page_index < 0 or page_index >= document.pageCount():
+            return None
+        encoded, _downscaled = _render_native_pdf_page(
+            quartz, document, page_index=page_index, dpi=dpi,
+            max_image_side_px=max_image_side_px, crop_margin_ratio=crop_margin_ratio,
+        )
+        return encoded
     except Exception as exc:  # noqa: BLE001
         logging.warning(
             'Single-page PDF rendering failed for %s (page=%s, dpi=%s): %s',

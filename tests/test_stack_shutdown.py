@@ -83,6 +83,10 @@ if os.environ.get('FIXTURE_WEB_FAIL') != '1':
     python = venv / 'python3'
     python.write_text(
         '#!/bin/bash\n'
+        'if [[ "$1" == "-m" && "$2" == "pip" ]]; then\n'
+        '  printf "pip %s\\n" "$*" >> "$FIXTURE_STATE/events"\n'
+        '  exit "${FIXTURE_PIP_EXIT:-0}"\n'
+        'fi\n'
         'if [[ "$1" == "-" && "$2" == "5011" ]]; then\n'
         '  cat >/dev/null\n'
         '  printf "probe 5011\\n" >> "$FIXTURE_STATE/events"\n'
@@ -92,7 +96,10 @@ if os.environ.get('FIXTURE_WEB_FAIL') != '1':
         f'exec {shlex.quote(sys.executable)} "$@"\n'
     )
     python.chmod(0o755)
-    (venv / 'activate').write_text(f'export PATH={shlex.quote(str(venv))}:"$PATH"\n')
+    (venv / 'activate').write_text(f'export PATH={shlex.quote(str(venv))}:"$PATH"\ndeactivate() {{ :; }}\n')
+    # An accidental bare pip call must never install into the test runner's env.
+    (venv / 'pip3').write_text('#!/bin/bash\nprintf "bare pip\\n" >> "$FIXTURE_STATE/events"\nexit 75\n')
+    (venv / 'pip3').chmod(0o755)
     hooks = state / 'shell-hooks'
     hooks.write_text(r'''
 lsof() {
@@ -250,6 +257,49 @@ def test_start_reuses_existing_webserver_after_model_selection(shell_stack):
     assert shell_stack.events() == ['model selection empty']
 
 
+@pytest.mark.parametrize('command', ['start', 'restart'])
+def test_existing_environment_never_installs_after_requirements_change(shell_stack, command):
+    requirements = shell_stack.root / 'requirements.txt'
+    requirements.write_text('Requests\n')
+    pip_stamp = shell_stack.root / '.venv/bin/pip'
+    pip_stamp.touch()
+    os.utime(pip_stamp, (1, 1))
+    assert requirements.stat().st_mtime > pip_stamp.stat().st_mtime
+    result = shell_stack.run(command)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not any('pip' in event for event in shell_stack.events())
+    assert 'Installing' not in result.stdout
+    assert pip_stamp.stat().st_mtime == 1
+
+
+@pytest.mark.parametrize('install_exit', ['0', '23'])
+def test_new_environment_bootstraps_once_and_install_failure_stops_startup(shell_stack, install_exit):
+    shutil.move(shell_stack.root / '.venv', shell_stack.state / 'venv-template')
+    (shell_stack.root / 'requirements.txt').write_text('Requests\n')
+    with (shell_stack.state / 'shell-hooks').open('a') as handle:
+        handle.write('''
+python3() {
+    if [[ "$1" == '-m' && "$2" == 'venv' ]]; then
+        cp -R "$FIXTURE_STATE/venv-template" "$3"
+        printf 'create venv\\n' >> "$FIXTURE_STATE/events"
+    else
+        command python3 "$@"
+    fi
+}
+''')
+    result = shell_stack.run('start', FIXTURE_PIP_EXIT=install_exit)
+    events = shell_stack.events()
+    assert events[:2] == ['create venv', 'pip -m pip --disable-pip-version-check install -r requirements.txt']
+    assert sum(event.startswith('pip ') for event in events) == 1
+    if install_exit == '0':
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert 'model selection empty' in events
+    else:
+        assert result.returncode == 1
+        assert 'Failed to install dependencies' in result.stdout
+        assert 'model selection empty' not in events
+
+
 @pytest.mark.parametrize('failure', ['model', 'web'])
 def test_restart_keeps_original_abort_on_actual_start_failure(shell_stack, failure):
     overrides = {'FIXTURE_MODEL_EXIT': '23'} if failure == 'model' else {'FIXTURE_WEB_FAIL': '1'}
@@ -285,3 +335,37 @@ def test_removed_launcher_is_not_advertised_or_executable(shell_stack):
     assert result.returncode == 2
     assert "unknown command 'control-plane'" in result.stdout + result.stderr
     assert shell_stack.events() == []
+
+
+@pytest.mark.parametrize('refused', [False, True])
+def test_afm_stack_stop_uses_ownership_gate_without_port_sweep(shell_stack, refused):
+    import json
+    shell_stack.listener(11601, 81901, 'fm')
+    registry = shell_stack.root / 'model_ports.json'
+    registry.write_text(json.dumps([{'backend':'apple_fm','instance_id':'apple_fm:system:11601',
+                                    'port':11601,'pid':81901}]))
+    (shell_stack.root / 'fruth_core/lifecycle.py').write_text('''
+from pathlib import Path
+from types import SimpleNamespace
+
+def stop_instance(instance_id):
+    assert instance_id == 'apple_fm:system:11601'
+    with Path('fixture/events').open('a') as handle:
+        handle.write('AFM ownership check\\n')
+    if REFUSED:
+        raise RuntimeError('ownership cannot be verified')
+    Path('fixture/live-81901').unlink()
+    Path('model_ports.json').write_text('[]')
+    return SimpleNamespace(state='stopped'), None
+'''.replace('REFUSED', repr(refused)))
+    result = shell_stack.run('stop')
+    assert result.returncode == (1 if refused else 0), result.stdout + result.stderr
+    assert not any(event.startswith('kill ') for event in shell_stack.events())
+    assert shell_stack.events()[0] == 'AFM ownership check'
+    if refused:
+        assert (shell_stack.state / 'live-81901').exists()
+        assert json.loads(registry.read_text())[0]['pid'] == 81901
+        assert 'shutdown hygiene' not in shell_stack.events()
+    else:
+        assert not (shell_stack.state / 'live-81901').exists()
+        assert 'shutdown hygiene' in shell_stack.events()

@@ -469,6 +469,10 @@ function sanitizeResponseArtifacts(value) {
                 ref: String(artifact.ref || artifact.artifact_ref || artifact.artifactRef || '').trim() || null,
                 provenance_id: String(artifact.provenance_id || artifact.provenanceId || '').trim() || null,
                 source_response_id: String(artifact.source_response_id || artifact.sourceResponseId || '').trim() || null,
+                branch_id: String(artifact.branch_id || '').trim() || null,
+                phase_id: String(artifact.phase_id || '').trim() || null,
+                slot_id: String(artifact.slot_id || '').trim() || null,
+                obligation_id: String(artifact.obligation_id || '').trim() || null,
                 response_model: String(artifact.response_model || artifact.responseModel || '').trim() || null,
                 response_instance_id: String(artifact.response_instance_id || artifact.responseInstanceId || '').trim() || null,
                 source_path: artifact.source_path || artifact.sourcePath || null,
@@ -1189,7 +1193,7 @@ function buildAssistantMessageRenderableState(message = {}) {
         responseFrameId: String(message.responseFrameId || message.response_frame_id || '').trim() || null,
         responseCapability: normalizeCapability(message.responseCapability || '') || null,
         responseModel: String(message.responseModel || '').trim() || null,
-        responseBackend: normalizeBackend(message.responseBackend || '') || null,
+        responseBackend: message.responseBackend ? normalizeBackend(message.responseBackend) : null,
         responseInstanceId: String(message.responseInstanceId || '').trim() || null,
         routeSource: String(message.routeSource || '').trim().toLowerCase() || null,
         routeReason: String(message.routeReason || '').trim() || null,
@@ -1604,6 +1608,7 @@ function sanitizeSelectedReferenceArtifact(value) {
             content: content || null,
             message_role: ['user', 'assistant', 'system'].includes(messageRole) ? messageRole : 'assistant',
             message_id: messageId,
+            source_response_id: String(value.source_response_id || value.sourceResponseId || '').trim() || null,
             response_model: String(value.response_model || value.responseModel || '').trim() || null,
             response_instance_id: String(value.response_instance_id || value.responseInstanceId || '').trim() || null,
             timestamp: String(value.timestamp || '').trim() || null,
@@ -1621,6 +1626,11 @@ function sanitizeSelectedReferenceArtifact(value) {
         artifact_id: String(value.artifact_id || value.artifactId || '').trim() || null,
         artifact_ref: String(value.artifact_ref || value.artifactRef || value.ref || '').trim() || path,
         message_id: String(value.message_id || value.messageId || '').trim() || null,
+        source_response_id: String(value.source_response_id || value.sourceResponseId || '').trim() || null,
+        branch_id: String(value.branch_id || '').trim() || null,
+        phase_id: String(value.phase_id || '').trim() || null,
+        slot_id: String(value.slot_id || '').trim() || null,
+        obligation_id: String(value.obligation_id || '').trim() || null,
         name: String(value.name || '').trim() || null,
         kind: String(value.kind || '').trim().toLowerCase() || null,
         origin: String(value.origin || '').trim().toLowerCase() || null,
@@ -1635,10 +1645,18 @@ function sanitizeSelectedReferenceArtifact(value) {
     return normalized;
 }
 
+function selectedReferenceArtifactIdentity(reference) {
+    return JSON.stringify([
+        reference.type, reference.source_response_id, reference.artifact_ref,
+        reference.artifact_id, reference.path, reference.branch_id,
+        reference.phase_id, reference.slot_id, reference.obligation_id,
+    ]);
+}
+
 function sanitizeSelectedReferenceArtifacts(value) {
     const items = Array.isArray(value) ? value : [value];
     let messageReference = null;
-    let artifactReference = null;
+    const artifactReferences = new Map();
     items.forEach((item) => {
         const normalized = sanitizeSelectedReferenceArtifact(item);
         if (!normalized) return;
@@ -1646,9 +1664,11 @@ function sanitizeSelectedReferenceArtifacts(value) {
             messageReference = normalized;
             return;
         }
-        artifactReference = normalized;
+        // The same selection is idempotent; different producers/siblings must
+        // remain distinct even if their paths or display names are identical.
+        artifactReferences.set(selectedReferenceArtifactIdentity(normalized), normalized);
     });
-    return [messageReference, artifactReference].filter(Boolean);
+    return [messageReference, ...artifactReferences.values()].filter(Boolean);
 }
 
 function compactRequestSnapshotReferenceArtifacts(value) {
@@ -1661,6 +1681,7 @@ function compactRequestSnapshotReferenceArtifacts(value) {
                 artifact_id: String(item.artifact_id || '').trim() || null,
                 artifact_ref: String(item.artifact_ref || item.message_id || fallbackRef).trim() || fallbackRef,
                 message_id: String(item.message_id || '').trim() || null,
+                source_response_id: item.source_response_id,
                 message_role: String(item.message_role || '').trim().toLowerCase() || 'assistant',
                 response_model: String(item.response_model || '').trim() || null,
                 response_instance_id: String(item.response_instance_id || '').trim() || null,
@@ -1677,6 +1698,11 @@ function compactRequestSnapshotReferenceArtifacts(value) {
             artifact_ref: String(item.artifact_ref || item.path || item.message_id || fallbackRef).trim() || fallbackRef,
             path: String(item.path || '').trim() || null,
             message_id: String(item.message_id || '').trim() || null,
+            source_response_id: item.source_response_id,
+            branch_id: item.branch_id,
+            phase_id: item.phase_id,
+            slot_id: item.slot_id,
+            obligation_id: item.obligation_id,
             name: String(item.name || '').trim() || null,
             kind: String(item.kind || '').trim().toLowerCase() || null,
             mime_type: String(item.mime_type || '').trim() || null,
@@ -1753,13 +1779,14 @@ function expandSelectedReferenceArtifactForPayload(artifact, conversationId = ''
     );
     const resolvedContent = normalized.message_role === 'user'
         ? String(requestSnapshot?.prompt_text || requestSnapshot?.promptText || resolvedMessage.content || '').trim()
-        : String(resolvedMessage.content || '').trim();
+        : buildMessageReplyReferenceText(resolvedMessage);
     if (!resolvedContent) {
         return normalized;
     }
     return sanitizeSelectedReferenceArtifact({
         ...normalized,
         content: resolvedContent,
+        source_response_id: normalized.source_response_id || resolvedMessage.responseId || resolvedMessage.response_id || null,
         timestamp: normalized.timestamp || resolvedMessage.timestamp || null,
         response_model: normalized.response_model || resolvedMessage.responseModel || resolvedMessage.response_model || null,
         response_instance_id: normalized.response_instance_id || resolvedMessage.responseInstanceId || resolvedMessage.response_instance_id || null,
@@ -1767,8 +1794,9 @@ function expandSelectedReferenceArtifactForPayload(artifact, conversationId = ''
 }
 
 function buildSelectedReferenceArtifactPayload(conversationId = '') {
-    const selected = getSelectedReferenceArtifacts(conversationId)
-        .map((item) => expandSelectedReferenceArtifactForPayload(item, conversationId))
+    const targetConversationId = resolveSelectedReferenceConversationId(conversationId);
+    const selected = getSelectedReferenceArtifacts(targetConversationId)
+        .map((item) => expandSelectedReferenceArtifactForPayload(item, targetConversationId))
         .filter(Boolean);
     if (!selected.length) return null;
     return selected.length === 1 ? selected[0] : selected;
@@ -1858,6 +1886,15 @@ function isSelectedArtifactReferencePath(path, conversationId = '') {
     ));
 }
 
+function isSelectedArtifactReference(artifact, conversationId = '') {
+    const normalized = sanitizeSelectedReferenceArtifact(artifact);
+    if (!normalized || normalized.type === 'message') return false;
+    const identity = selectedReferenceArtifactIdentity(normalized);
+    return getSelectedReferenceArtifacts(conversationId).some((item) => (
+        item.type !== 'message' && selectedReferenceArtifactIdentity(item) === identity
+    ));
+}
+
 function removeSelectedReferenceArtifactByPath(path, { quiet = false, conversationId = '' } = {}) {
     const targetPath = String(path || '').trim();
     if (!targetPath) return;
@@ -1889,19 +1926,11 @@ function removeSelectedReferenceArtifactByPath(path, { quiet = false, conversati
 }
 
 function setSelectedReferenceArtifact(artifact, { quiet = false, conversationId = '' } = {}) {
-    const normalized = sanitizeSelectedReferenceArtifact(artifact);
-    if (!normalized) return;
+    const normalized = sanitizeSelectedReferenceArtifacts(artifact);
+    if (!normalized.length) return;
     const targetConversationId = resolveSelectedReferenceConversationId(conversationId);
     const current = getSelectedReferenceArtifacts(targetConversationId);
-    const next = normalized.type === 'message'
-        ? [
-            normalized,
-            ...current.filter((item) => item.type !== 'message'),
-        ]
-        : [
-            ...current.filter((item) => item.type === 'message'),
-            normalized,
-        ];
+    const next = sanitizeSelectedReferenceArtifacts([...current, ...normalized]);
     const scopedStore = ensureSelectedReferenceArtifactStore();
     if (targetConversationId) {
         scopedStore[targetConversationId] = next.length === 1 ? next[0] : next;
@@ -2131,7 +2160,7 @@ function buildAssistantResponseProvenance(payload = {}, fallbackInstance = null)
     const routerMeta = explicitRouterInstanceId ? getInstanceMeta(explicitRouterInstanceId) : null;
     return {
         model: explicitModel || String(targetInstance?.model || targetInstance?.modelName || explicitInstanceId || '').trim() || null,
-        backend: explicitBackend || normalizeBackend(targetInstance?.backend || '') || null,
+        backend: explicitBackend || (targetInstance?.backend ? normalizeBackend(targetInstance.backend) : null),
         instanceId: explicitInstanceId || String(targetInstance?.instance_id || '').trim() || null,
         routeSource: routeSource || null,
         routeReason: routeReason || null,
@@ -2734,12 +2763,13 @@ function buildAssistantMessageProvenance(message = {}, conversationId = '') {
     const routerMeta = explicitRouterInstanceId ? getInstanceMeta(explicitRouterInstanceId) : null;
     return {
         model: explicitModel || String(targetMeta?.model || targetMeta?.modelName || explicitInstanceId || '').trim() || null,
-        backend: explicitBackend || normalizeBackend(targetMeta?.backend || '') || null,
+        backend: explicitBackend || (targetMeta?.backend ? normalizeBackend(targetMeta.backend) : null),
         instanceId: explicitInstanceId || String(targetMeta?.instance_id || '').trim() || null,
         routeSource: explicitRouteSource || null,
         routeReason: String(message.routeReason || '').trim() || null,
         routeRouterInstanceId: explicitRouterInstanceId,
         routeRouterModel: String(message.routeRouterModel || '').trim() || String(routerMeta?.model || routerMeta?.modelName || '').trim() || null,
+        routeRouterBackend: routerMeta?.backend || null,
         routeArtifactRef: String(message.routeArtifactRef || '').trim() || null,
         routeArtifactPath: String(message.routeArtifactPath || '').trim() || null,
         routeReuseLastArtifact: message.routeReuseLastArtifact === null || message.routeReuseLastArtifact === undefined
@@ -2777,35 +2807,36 @@ function formatAssistantProvenanceText(message = {}, conversationId = '') {
         parts.push('· automatic model');
     } else {
         if (provenance.model) {
-            parts.push(`Answered by ${formatModelDisplayName(provenance.model)}`);
+            parts.push(`Answered by ${formatModelDisplayName(provenance.model, provenance.backend)}`);
         } else {
             parts.push('Answered locally');
         }
-        if (provenance.backend) {
+        if (provenance.backend && formatBackendLabel(provenance.backend)
+                !== formatModelDisplayName(provenance.model, provenance.backend)) {
             parts.push(`(${formatBackendLabel(provenance.backend)})`);
         }
     }
     if (provenance.routeSource && !externalChatGPT) {
         if (provenance.routeSource === 'heuristic') {
             if (provenance.routeRouterModel) {
-                parts.push(`via heuristic after Fruth attempt (${formatModelDisplayName(provenance.routeRouterModel)})`);
+                parts.push(`via heuristic after Fruth attempt (${formatModelDisplayName(provenance.routeRouterModel, provenance.routeRouterBackend)})`);
             } else {
                 parts.push('via heuristic');
             }
         } else if (provenance.routeSource === 'self_heal') {
             if (provenance.routeRouterModel) {
-                parts.push(`via self-heal after Fruth attempt (${formatModelDisplayName(provenance.routeRouterModel)})`);
+                parts.push(`via self-heal after Fruth attempt (${formatModelDisplayName(provenance.routeRouterModel, provenance.routeRouterBackend)})`);
             } else {
                 parts.push('via self-heal');
             }
         } else if (provenance.routeSource === 'embedding_tiebreak') {
             if (provenance.routeRouterModel) {
-                parts.push(`via embedding tie-break after Fruth attempt (${formatModelDisplayName(provenance.routeRouterModel)})`);
+                parts.push(`via embedding tie-break after Fruth attempt (${formatModelDisplayName(provenance.routeRouterModel, provenance.routeRouterBackend)})`);
             } else {
                 parts.push('via embedding tie-break');
             }
         } else if (provenance.routeRouterModel) {
-            parts.push(`via Fruth route (${formatModelDisplayName(provenance.routeRouterModel)})`);
+            parts.push(`via Fruth route (${formatModelDisplayName(provenance.routeRouterModel, provenance.routeRouterBackend)})`);
         } else {
             parts.push('via Fruth route');
         }
@@ -2847,7 +2878,7 @@ function formatAssistantArtifactProvenanceText(message = {}) {
     const parts = [];
     const modelLabel = lateFill.fillModel || lateFill.fillInstanceId || '';
     if (modelLabel) {
-        parts.push(`${label} ${formatModelDisplayName(modelLabel)}`);
+        parts.push(`${label} ${formatModelDisplayName(modelLabel, lateFill.fillBackend)}`);
     } else {
         parts.push(`${label} local continuation`);
     }

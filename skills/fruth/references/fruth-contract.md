@@ -184,6 +184,14 @@ For engineering and test selection, use `<fruth>/AGENTS.md` and
 second broader skill mandate. Isolate tests from production ledgers/artifacts;
 do not invoke live workloads merely to validate instructions. FRUTH_INFERENCE.md is runtime
 prompt input and is read/edited only for relevant authorized policy work.
+Ordinary backends receive the full policy; the actual Apple AI executor uses the
+expanded common+role projection at `<fruth>/fruth_inference/policies/apple_fm.md`.
+This is a provider-specific prompt contract, not a weaker execution/evidence gate.
+AFM preparation distinguishes `fruth_bounded_task` from `fruth_promoted_context`,
+as the ChatGPT provider handoff does: execute the current task, preserve the
+workflow as reference, and leave later work and closure to Fruth. Keep API keys
+`apple_fm` and `system` unchanged when using the Apple AI backend and AFM display
+labels. Attribute a model variant only to evidence from the serving instance.
 
 For downstream Codex and opt-in provider projections, use “External Integrations”
 in `<fruth>/FRUTH_FOR_AGENTS.md`. Preserve isolated user-config/rules handling,

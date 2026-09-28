@@ -7,6 +7,7 @@ from fruth_services.state_flow import observe_state, note as state_flow_note
 from fruth_services.state_flow import observe_state, observe_mapping_digest, note as state_flow_note
 
 from fruth_services.events import measure_operation, timed_operation, observe_transition, exact_target
+from fruth_services.response_persistence import ResponseFramePersistenceError
 
 import base64
 import binascii
@@ -587,7 +588,15 @@ def _is_empty(value: Any) -> bool:
 
 
 def _json_safe(value: Any) -> Any:
-    if isinstance(value, Mapping):
+    # Parsed JSON dominates large Index/Readiness reads. Exact built-in values
+    # need no protocol checks; subclasses and other inputs keep the same path.
+    value_type = type(value)
+    if (
+        value is None or value_type is str or value_type is int
+        or value_type is float or value_type is bool
+    ):
+        return value
+    if value_type is dict or isinstance(value, Mapping):
         payload: dict[str, Any] = {}
         for raw_key, raw_value in value.items():
             key = str(raw_key or '').strip()
@@ -2518,14 +2527,14 @@ def _iter_ledger_frames(target: Path) -> tuple[list[dict[str, Any]], list[dict[s
     errors: list[dict[str, Any]] = []
     if not target.exists():
         return frames, errors
-    with target.open('r', encoding='utf-8') as handle:
+    with target.open('rb') as handle:
         for line_number, raw_line in enumerate(handle, start=1):
             line = raw_line.strip()
             if not line:
                 continue
             try:
-                payload = json.loads(line)
-            except json.JSONDecodeError as exc:
+                payload = json.loads(line.decode('utf-8'))
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
                 errors.append(
                     {
                         'line': line_number,
@@ -5500,7 +5509,7 @@ def _write_response_frame_index(
             publication_payload,
             ensure_ascii=False,
             sort_keys=True,
-            indent=2,
+            separators=(',', ':'),
         )
         + '\n'
     ).encode('utf-8')
@@ -6845,6 +6854,30 @@ def attach_response_frame(
     return payload
 
 
+class ResponseFrameLedgerTailError(ValueError):
+    code = 'response_frame_ledger_unterminated_tail'
+
+
+def _assert_response_frame_append_boundary(target: Path) -> None:
+    """Never append a new JSON record onto an interrupted physical record.
+
+    Reads and failures do not repair history. Explicit operator recovery must
+    preserve the original tail and validate the recovered Ledger first.
+    """
+    try:
+        with target.open('rb') as handle:
+            if handle.seek(0, os.SEEK_END):
+                handle.seek(-1, os.SEEK_END)
+                if handle.read(1) != b'\n':
+                    raise ResponseFrameLedgerTailError(
+                        'Response Ledger has an unterminated final record. '
+                        'Append stopped without changing existing bytes; preserve '
+                        'the Ledger and recover its tail before further writes.'
+                    )
+    except FileNotFoundError:
+        pass
+
+
 @observe_state('response_frame.persist', 'response_frame_before_compaction', 'ledger_representation', labels=('NEW_AUTHORITY_BOUNDARY', 'NEW_REPRESENTATION'), new_authority_boundary=True)
 def _persist_response_frame_locked(
     response_frame: Mapping[str, Any],
@@ -6853,15 +6886,63 @@ def _persist_response_frame_locked(
     ledger_name: str = DEFAULT_RESPONSE_FRAME_LEDGER,
     expected_parent_frame_id: str | None = None,
     expected_parent_frame_sequence: int | None = None,
+    receipt: Optional[dict[str, Any]] = None,
+) -> tuple[Path, dict[str, Any]]:
+    outcome = receipt if receipt is not None else {}
+    outcome.clear()
+    outcome.update({
+        'kind': 'fruth.response_persistence', 'version': 1,
+        'status': 'not_committed', 'stage': 'prepare',
+        'response_id': _frame_response_id(response_frame),
+        'index_status': 'not_attempted', 'automatic_retry': False,
+    })
+    try:
+        return _append_response_frame_locked(
+            response_frame, frames_dir=frames_dir, ledger_name=ledger_name,
+            expected_parent_frame_id=expected_parent_frame_id,
+            expected_parent_frame_sequence=expected_parent_frame_sequence,
+            receipt=outcome,
+        )
+    except ResponseFrameParentCASMismatch:
+        raise
+    except Exception as exc:
+        if outcome['stage'] == 'index':
+            outcome['index_status'] = 'failed'
+        frame = outcome.pop('_frame', None)
+        raise ResponseFramePersistenceError(exc, outcome, frame=frame) from exc
+    finally:
+        outcome.pop('_frame', None)
+
+
+def _append_response_frame_locked(
+    response_frame: Mapping[str, Any],
+    *,
+    frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
+    ledger_name: str = DEFAULT_RESPONSE_FRAME_LEDGER,
+    expected_parent_frame_id: str | None = None,
+    expected_parent_frame_sequence: int | None = None,
+    receipt: dict[str, Any],
 ) -> tuple[Path, dict[str, Any]]:
     """Append while the caller holds ``_RESPONSE_FRAME_APPEND_LOCK``."""
 
     if not isinstance(response_frame, Mapping) or not response_frame:
         raise ValueError('response_frame must be a non-empty mapping')
     target_dir = Path(frames_dir)
+    missing_directories = []
+    ancestor = target_dir
+    while not ancestor.exists():
+        missing_directories.append(ancestor)
+        ancestor = ancestor.parent
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / (str(ledger_name or '').strip() or DEFAULT_RESPONSE_FRAME_LEDGER)
+    receipt['ledger_path'] = str(target)
+    _assert_response_frame_append_boundary(target)
     response_id = _frame_response_id(response_frame)
+    index_path = _index_path(frames_dir=target_dir)
+    parent_source_state = (
+        _response_frame_file_state(target),
+        _response_frame_file_state(index_path),
+    )
     existing_frames, index_state = _index_parent_frame_stub(
         response_id,
         frames_dir=target_dir,
@@ -6901,7 +6982,21 @@ def _persist_response_frame_locked(
         if isinstance(candidate_parent, dict):
             parent_frame = candidate_parent
             parent_snapshot_manifest = _snapshot_items_from_frame(candidate_parent)
-    if target.exists() and (parent_frame is None or not parent_snapshot_manifest):
+    parent_scan_needed = target.exists() and (parent_frame is None or not parent_snapshot_manifest)
+    if parent_scan_needed and response_id and response_id not in index_responses:
+        # Absence needs the complete current map proof, not just a missing key.
+        # This proof is local to this append; any source movement retains the
+        # ordinary Ledger fallback, including same-byte Index replacement.
+        proved_absent = (
+            all(state is not None for state in parent_source_state)
+            and _response_frame_index_has_verified_response_map(index_state, target)
+            and parent_source_state == (
+                _response_frame_file_state(target),
+                _response_frame_file_state(index_path),
+            )
+        )
+        parent_scan_needed = not proved_absent
+    if parent_scan_needed:
         ledger_frames, _errors = _iter_ledger_frames(target)
         response_frames = [
             frame
@@ -6910,6 +7005,9 @@ def _persist_response_frame_locked(
             and str(frame.get('kind') or '').strip() == 'fruth.response_frame'
         ]
         if response_frames:
+            # The recovered parent also owns sequence/lineage enrichment;
+            # a missing Index entry must not make its successor a first frame.
+            existing_frames = response_frames
             expanded_parents = _expand_snapshot_manifests_for_frames(response_frames)
             parent_frame = response_frames[-1]
             parent_snapshot_manifest = _snapshot_items_from_frame(expanded_parents[-1])
@@ -6947,6 +7045,8 @@ def _persist_response_frame_locked(
         previous_frames=existing_frames,
         force_append_sequence=True,
     )
+    receipt.update(frame_id=enriched_frame.get('frame_id'), frame_sequence=enriched_frame.get('frame_sequence'))
+    receipt['_frame'] = enriched_frame
     ledger_frame = compact_response_frame_for_ledger(
         enriched_frame,
         frames_dir=target_dir,
@@ -6970,11 +7070,33 @@ def _persist_response_frame_locked(
     with measure_operation('ledger_serialization', role='canonical_truth'):
         encoded_line = json.dumps(_json_safe(ledger_frame), ensure_ascii=False, sort_keys=True).encode('utf-8') + b'\n'
     state_flow_note(ledger_serializations=1, ledger_serialized_bytes=len(encoded_line))
+    _assert_response_frame_append_boundary(target)
+    new_ledger = not target.exists()
+    receipt.update(byte_offset=byte_offset, line_length=len(encoded_line),
+                   source_frame_sha256=hashlib.sha256(encoded_line).hexdigest(), stage='open')
     with target.open('ab') as handle:
+        if os.fstat(handle.fileno()).st_size != byte_offset:
+            raise OSError('Response Ledger moved before append.')
         with measure_operation('ledger_append_flush_fsync', role='canonical_durability'):
-            handle.write(encoded_line)
+            receipt.update(status='uncertain', stage='append')
+            written = handle.write(encoded_line)
+            if written != len(encoded_line):
+                raise OSError('Incomplete response Ledger write.')
+            receipt['stage'] = 'flush'
             handle.flush()
+            receipt['stage'] = 'ledger_fsync'
             os.fsync(handle.fileno())
+        if new_ledger:
+            # A new file and any newly created parent names need their own
+            # durability boundary; file fsync alone does not retain those names.
+            receipt['stage'] = 'directory_fsync'
+            for directory in dict.fromkeys([target.parent, *(p.parent for p in missing_directories)]):
+                directory_fd = os.open(directory, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+    receipt.update(status='committed', stage='index')
     state_flow_note(ledger_appends=1, ledger_written_bytes=len(encoded_line))
     _write_response_frame_index(
         ledger_frame,
@@ -6986,6 +7108,7 @@ def _persist_response_frame_locked(
         frames_dir=target_dir,
         effective_snapshot_manifest=effective_snapshot_manifest,
     )
+    receipt.update(stage='complete', index_status='published')
     return target, enriched_frame
 
 
@@ -6994,6 +7117,7 @@ def persist_response_frame(
     *,
     frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
     ledger_name: str = DEFAULT_RESPONSE_FRAME_LEDGER,
+    receipt: Optional[dict[str, Any]] = None,
 ) -> Path:
     """Append a response frame under the shared service lock and return its path."""
 
@@ -7002,6 +7126,7 @@ def persist_response_frame(
             response_frame,
             frames_dir=frames_dir,
             ledger_name=ledger_name,
+            receipt=receipt,
         )
     return target
 
@@ -7013,6 +7138,7 @@ def append_response_frame_with_parent_cas(
     expected_parent_frame_sequence: int | None = None,
     frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
     ledger_name: str = DEFAULT_RESPONSE_FRAME_LEDGER,
+    receipt: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Atomically append a successor only if its exact durable parent is current."""
 
@@ -7021,6 +7147,7 @@ def append_response_frame_with_parent_cas(
             response_frame,
             frames_dir=frames_dir,
             ledger_name=ledger_name,
+            receipt=receipt,
             expected_parent_frame_id=expected_parent_frame_id,
             expected_parent_frame_sequence=expected_parent_frame_sequence,
         )

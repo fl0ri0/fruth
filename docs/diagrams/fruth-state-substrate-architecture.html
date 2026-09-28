@@ -611,7 +611,7 @@
           </label>
           <label class="control control-runtime">
             <input type="checkbox" data-layer="runtime" checked>
-            <span><strong>Runtime providers</strong><span>Backend fabric, transport runtime, model_ports, runtime_status.</span></span>
+            <span><strong>Runtime providers</strong><span>Local backends, optional Apple PCC, transport and observed status.</span></span>
           </label>
           <label class="control control-service">
             <input type="checkbox" data-layer="service" checked>
@@ -676,7 +676,7 @@
         <div class="diagram-wrap">
           <svg id="architectureSvg" viewBox="0 0 2900 3200" preserveAspectRatio="xMinYMin meet" role="img" aria-labelledby="diagramTitle diagramDesc">
             <title id="diagramTitle">Current Fruth State Substrate Architecture</title>
-            <desc id="diagramDesc">Current Fruth architecture diagram with draggable nodes, attached arrows, canonical layers, advisory interpretive inference surfaces, runtime truth, closure review, durable outputs, and hidden compatibility paths.</desc>
+            <desc id="diagramDesc">Current Fruth architecture diagram with draggable nodes, attached arrows, local model backends, optional Apple PCC cloud execution through a local bridge, canonical layers, advisory interpretive inference surfaces, runtime truth, closure review, durable outputs, and hidden compatibility paths.</desc>
 
             <defs>
               <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -761,7 +761,7 @@
       </aside>
     </section>
 
-  <p class="footer">Fruth State Substrate Architecture | reviewed against Fruth 0.1.2 contracts and source on 2026-09-19 | interactive HTML/SVG</p>
+  <p class="footer">Fruth State Substrate Architecture | contracts reviewed 2026-09-19; Apple backend inventory updated 2026-09-27 | interactive HTML/SVG</p>
   </main>
 
   <script>
@@ -784,7 +784,7 @@
 
     const defaultRegions = [
       { id: 'outerTruth', layer: 'durable', x: 70, y: 120, w: 2397, h: 2614, rx: 38, fill: '#eff6ff', stroke: '#3f78b5', minW: 900, minH: 700, title: 'Outermost shell: durable truth / continuity', sub: 'Time boundary: response frames, outputs[], artifact dossiers, history, settings, registry, and docks survive the turn.' },
-      { id: 'runtimeShell', layer: 'runtime', x: 128, y: 232, w: 2284, h: 2224, rx: 32, fill: '#ecfdf5', stroke: '#238b68', minW: 760, minH: 520, title: 'Runnable shell: local backend fabric / substrate', sub: 'Typed local instances, ports, live status, backend transport, session controls, and provider metadata.' },
+      { id: 'runtimeShell', layer: 'runtime', x: 128, y: 232, w: 2284, h: 2224, rx: 32, fill: '#ecfdf5', stroke: '#238b68', minW: 760, minH: 520, title: 'Runnable shell: local backend fabric / substrate', sub: 'Local processes, ports, observed status and provider transport. A local cloud bridge does not make model execution local.' },
       { id: 'serviceShell', layer: 'service', x: 170, y: 330, w: 1943, h: 2100, rx: 30, fill: '#fff4e8', stroke: '#c66f2f', minW: 760, minH: 500, title: 'Service shell: canonical API, resolver, continuation, and freeze owners', sub: 'Responses orchestration owns intake, working_frame mutation, branch execution, late fill, closure review attachment, and response_frame freeze.' },
       { id: 'workingFrameShell', layer: 'mutable', x: 220, y: 560, w: 1861, h: 1750, rx: 24, fill: '#fffaf4', stroke: '#b7791f', minW: 640, minH: 500, title: 'working_frame: mutable live request substrate', sub: 'Contracts, candidate/promotion state, artifact_flow, work_tree, workload tasks, evidence, closure, and freeze source.' },
       { id: 'semanticShell', layer: 'inference', x: 245, y: 740, w: 1798, h: 380, rx: 20, fill: '#f5f3ff', stroke: '#7357c7', minW: 540, minH: 240, title: 'Semantic contracts on the frame', sub: 'Interpretive inference proposes phases, candidates and orientation. Validated promotion records accepted contracts; advisory proposals alone create no obligations.' },
@@ -1013,7 +1013,7 @@
         id: 'backendFabric', layer: 'runtime', x: 2168, y: 1085, w: 190, h: 64,
         title: 'Backend Fabric', label: 'backend fabric', sub: 'source vs runnable',
         kind: 'Runtime substrate', status: 'canonical',
-        body: 'Backend fabric normalizes runnable local capability while keeping source ecosystem and runnable backend truth distinct.',
+        body: 'Backend fabric normalizes runnable capability while keeping source ecosystem, local process availability and provider execution truth distinct. A running PCC bridge does not establish Apple cloud access.',
         paths: 'docs/BACKEND_FABRIC.md; fruth_server/backend_transport_runtime.py; model_ports.json',
         authority: 'Runtime capability truth. Model prose cannot invent available capabilities.'
       },
@@ -1034,7 +1034,7 @@
         authority: 'Registry identity and cached observations. Current availability needs suitably fresh runtime evidence.'
       },
       {
-        id: 'ollama', layer: 'runtime', x: 2251, y: 537, w: 150, h: 64,
+        id: 'ollama', layer: 'runtime', x: 2125, y: 655, w: 150, h: 64,
         title: 'Ollama Instances', label: 'Ollama', sub: 'chat / image / embed',
         kind: 'Runtime provider', status: 'canonical runtime',
         body: 'Ollama-backed local model instances expose capabilities such as chat, vision, embeddings, or image generation through the registry and backend transport.',
@@ -1042,7 +1042,7 @@
         authority: 'Can execute compatible promoted branches. Cannot define user intent or closure success.'
       },
       {
-        id: 'mlx', layer: 'runtime', x: 2176, y: 439, w: 150, h: 64,
+        id: 'mlx', layer: 'runtime', x: 2251, y: 575, w: 150, h: 64,
         title: 'MLX Instances', label: 'MLX', sub: 'TTS / STT / local models',
         kind: 'Runtime provider', status: 'canonical runtime',
         body: 'MLX-backed local instances provide typed capabilities such as text-to-speech or speech-to-text according to live runtime metadata.',
@@ -1050,12 +1050,28 @@
         authority: 'Can execute compatible promoted branches. Cannot replace contract or closure truth.'
       },
       {
-        id: 'llamacpp', layer: 'runtime', x: 2227, y: 331, w: 150, h: 64,
+        id: 'llamacpp', layer: 'runtime', x: 2126, y: 468, w: 150, h: 64,
         title: 'llama.cpp Runners', label: 'llama.cpp', sub: 'backend family',
         kind: 'Runtime provider', status: 'canonical runtime',
         body: 'llama.cpp is an implemented local backend for supported GGUF models. Runnable capabilities depend on the runner, model and available transport contract.',
         paths: 'docs/BACKEND_FABRIC.md; fruth_runtime/llama_cpp_model_manager.py; model_ports.json',
         authority: 'Provider family, not semantic authority.'
+      },
+      {
+        id: 'applefm', layer: 'runtime', x: 2241, y: 375, w: 160, h: 64,
+        title: 'Apple AI Instances', label: 'Apple AI', sub: 'local text / vision',
+        kind: 'Runtime provider', status: 'canonical runtime',
+        body: 'Apple Foundation Models supports text and image analysis through the installed macOS fm serve transport, including streamed text output. Each system instance has its own process, port and registry identity. It uses the same routing, Responses and closure owners as the other backends.',
+        paths: 'docs/APPLE_FOUNDATION_MODELS.md; fruth_runtime/apple_fm_model_manager.py; model_ports.json',
+        authority: 'Text and vision execution; no public AFM audio transport verified. Server variant/context metadata stays unknown when unreported; model prose is not artifact or closure evidence.'
+      },
+      {
+        id: 'applepcc', layer: 'runtime', x: 2123, y: 275, w: 210, h: 64,
+        title: 'Apple Private Cloud Compute', label: 'Apple PCC', sub: 'cloud text / vision',
+        kind: 'Cloud provider via local bridge', status: 'implemented; cloud access checked per call',
+        body: 'An explicitly started loopback adapter registers apple_pcc:auto:<port> and runs user-installed Shortcuts for text and image analysis in Apple Private Cloud Compute. Task text, applicable instructions, attached images and selected context go to Apple. Pro-to-Cloud access fallback and per-call input/tier evidence remain within the existing transport and Responses owners.',
+        paths: 'fruth_integrations/shortcuts/README.md; fruth_integrations/shortcuts/server.py; fruth_integrations/shortcuts/pcc.py; fruth_runtime/apple_pcc_model_manager.py; docs/BACKEND_FABRIC.md',
+        authority: 'The local bridge is a managed instance, not an on-device model. Installation and cached status do not prove cloud access. Apple usage limits remain visible; completed-answer streaming compatibility is not provider token streaming. Model prose cannot establish artifacts or closure.'
       },
       {
         id: 'generatedOutputs', layer: 'evidence', x: 2176, y: 1273, w: 190, h: 64,
@@ -1412,6 +1428,8 @@
       { from: 'runtimeRegistry', to: 'ollama', layer: 'runtime', label: 'typed instance', curve: 0.05 },
       { from: 'runtimeRegistry', to: 'mlx', layer: 'runtime', label: 'typed instance' },
       { from: 'runtimeRegistry', to: 'llamacpp', layer: 'runtime', label: 'runner', curve: -0.05 },
+      { from: 'runtimeRegistry', to: 'applefm', layer: 'runtime', label: 'typed instance', curve: 0.1 },
+      { from: 'runtimeRegistry', to: 'applepcc', layer: 'runtime', label: 'registered bridge', curve: 0.05 },
       { from: 'executionContracts', to: 'generatedOutputs', layer: 'evidence', label: 'materialized branch', curve: 0.22 },
       { from: 'generatedOutputs', to: 'evidenceBranches', layer: 'evidence', label: 'dependency evidence' },
       { from: 'generatedOutputs', to: 'artifactIdentity', layer: 'evidence', label: 'artifact_ref + provenance', curve: 0.32 },

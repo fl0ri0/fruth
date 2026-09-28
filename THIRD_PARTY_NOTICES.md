@@ -24,15 +24,34 @@ Python packages installed through `requirements.txt`, local AI runtimes,
 model weights, and models are not bundled with Fruth. They remain subject to
 their respective upstream licenses and terms.
 
-### Optional scanned-PDF rendering
+### Apple Foundation Models
 
-Fruth can use PyMuPDF for multi-page scanned-PDF rendering, but PyMuPDF is not
-part of the default Fruth installation. PyMuPDF is offered upstream under the
-GNU Affero General Public License 3.0 or a commercial Artifex license. Review
-and accept the applicable upstream terms before installing it separately.
+Apple FM integration uses the Mac's installed `fm` command and Apple-managed
+system model. Neither is bundled with Fruth. Fruth checks availability and license
+status but does not accept Apple's terms, download models or enable Apple
+Intelligence on the user's behalf. No Python Foundation Models SDK is required.
 
-Without PyMuPDF, Fruth retains text-layer PDF extraction through `pypdf` and a
-limited macOS first-page rendering fallback when available.
+The optional Apple PCC bridge uses the Mac's installed Shortcuts application and
+user-installed Shortcuts to access Apple's cloud models. Neither Shortcuts nor
+Apple's models or frameworks are bundled in the source archive.
+
+### PDF extraction and rendering
+
+- `pypdf` extracts existing text layers. Its upstream license is
+  [BSD-3-Clause](https://github.com/py-pdf/pypdf/blob/main/LICENSE).
+- On macOS, `pyobjc-framework-Quartz` exposes Apple's PDFKit, CoreGraphics and
+  ImageIO frameworks for page rendering. The binding and its `pyobjc-core` and
+  `pyobjc-framework-Cocoa` dependencies use the
+  [PyObjC MIT license](https://github.com/ronaldoussoren/pyobjc/blob/main/pyobjc-core/License.txt).
+  Upstream distributions also carry notices for embedded components such as
+  libffi; preserve the notices shipped with the installed packages if bundling
+  them in a downstream distribution.
+- Apple's frameworks are provided by macOS, under Apple's applicable
+  [system software terms](https://www.apple.com/legal/sla/).
+  They are not bundled in Fruth's source archive.
+
+These Python packages are installed separately through `requirements.txt`;
+their code and binary wheels are not included in Fruth's source distribution.
 
 ## Loaded at Runtime from External CDNs
 

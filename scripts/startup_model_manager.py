@@ -50,6 +50,8 @@ from fruth_core.registry import (
 )
 
 BACKEND_LABELS = {
+    'apple_fm': 'Apple AI',
+    'apple_pcc': 'Apple PCC',
     'ollama': 'Ollama',
     'mlx': 'MLX',
     'llama_cpp': 'llama.cpp',
@@ -294,10 +296,34 @@ def _discover_mlx_entries() -> List[CatalogEntry]:
 
 
 def _discover_catalog() -> List[CatalogEntry]:
-    catalog = _discover_ollama_entries() + _discover_mlx_entries() + _discover_llama_cpp_entries()
+    catalog = (_discover_ollama_entries() + _discover_mlx_entries() + _discover_llama_cpp_entries()
+               + _discover_apple_fm_entries() + _discover_apple_pcc_entries())
     backend_rank = {'ollama': 0, 'mlx': 1, 'llama_cpp': 2}
     catalog.sort(key=lambda entry: (backend_rank.get(entry.backend, 9), entry.display_label.lower()))
     return catalog
+
+
+def _discover_apple_fm_entries() -> List[CatalogEntry]:
+    from fruth_runtime.apple_fm_model_manager import list_available_apple_fm_models
+    models = list_available_apple_fm_models()
+    for item in models:
+        if not item['runnable']:
+            reason = item.get('disabled_reason') or 'Apple system model is not ready.'
+            print(f'⚠️  Apple AI (AFM) startup unavailable: {reason}')
+    return [CatalogEntry(backend='apple_fm', model_name='system', display_label=item.get('display_name') or 'AFM',
+                         capability='chat', capability_badge=format_capability_badge('chat'),
+                         size='unknown', backend_label='Apple AI',
+                         type_label='Chat + Vision', details='On-device text + image analysis')
+            for item in models if item['runnable']]
+
+
+def _discover_apple_pcc_entries() -> List[CatalogEntry]:
+    from fruth_runtime.apple_pcc_model_manager import list_available_apple_pcc_models
+    return [CatalogEntry(backend='apple_pcc', model_name='auto', display_label='Apple PCC',
+                         capability='chat', capability_badge=format_capability_badge('chat'),
+                         size='cloud', backend_label='Apple PCC', type_label='Chat + Vision',
+                         details='Apple Private Cloud Compute')
+            for item in list_available_apple_pcc_models() if item['runnable']]
 
 
 def _discover_llama_cpp_entries() -> List[CatalogEntry]:
@@ -480,6 +506,15 @@ def main() -> int:
     current_llama_cpp_port = LLAMA_CPP_START_PORT
 
     for entry in selected_entries:
+        if entry.backend in {'apple_fm', 'apple_pcc'}:
+            from fruth_core.lifecycle import start_instance
+            try:
+                record = start_instance(entry.model_name, entry.backend, 'chat', start_source='startup_policy')
+                started_servers.append(record)
+                current_instances.append(record)
+            except Exception as exc:
+                print(f'❌ {entry.backend_label} start failed: {exc}')
+            continue
         if entry.backend == 'ollama':
             server_info = start_model(
                 entry.model_name,

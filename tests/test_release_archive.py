@@ -268,6 +268,9 @@ def _make_release_source(tmp_path: Path) -> Path:
     _write(source / 'fruth-upload' / 'state' / 'runtime_status.json', '{"private": true}\n')
     for research_path in release.RESEARCH_SOURCE_FILES:
         _write(source / research_path, '{}\n' if research_path.suffix == '.json' else '# Research source fixture\n')
+    for integration_doc in release.PUBLIC_INTEGRATION_DOC_PATHS:
+        _write(source / integration_doc, '# Public integration setup\n')
+    _write(source / 'fruth_integrations/shortcuts/private-note.md', '# Private note\n')
     _write(source / 'fruth_research/candidates/candidates.jsonl', '{"internal_only": true}\n')
     _write(source / 'fruth_research/retained-evidence/gold-core-v0/files/private.bin', 'private retained bytes\n')
     _write(source / '.env', 'SHOULD_NOT_ENTER_ARCHIVE=1\n')
@@ -294,6 +297,8 @@ def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> No
     assert (staged_root / 'model_ports.json').read_text(encoding='utf-8') == '[]\n'
     assert not (staged_root / 'state').exists()
     assert all((staged_root / path).is_file() for path in release.RESEARCH_SOURCE_FILES)
+    assert (staged_root / 'fruth_integrations/shortcuts/README.md').is_file()
+    assert not (staged_root / 'fruth_integrations/shortcuts/private-note.md').exists()
     assert not (staged_root / 'fruth_research/candidates/candidates.jsonl').exists()
     assert not (staged_root / 'fruth_research/retained-evidence').exists()
     assert not (staged_root / 'logs').exists()
@@ -464,6 +469,13 @@ def test_required_public_document_is_required(tmp_path: Path, document: str) -> 
             source_root=source,
             output_dir=tmp_path / 'dist',
         )
+
+
+def test_pcc_setup_guide_is_required(tmp_path: Path) -> None:
+    source = _make_release_source(tmp_path)
+    (source / 'fruth_integrations/shortcuts/README.md').unlink()
+    with pytest.raises(release.ReleaseArchiveError, match='Required regular file'):
+        release.build_release_archive(source_root=source, output_dir=tmp_path / 'dist')
 
 
 @pytest.mark.parametrize(

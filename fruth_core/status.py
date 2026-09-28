@@ -147,6 +147,23 @@ def _fetch_backend_runtime_metadata(instance: Optional[dict]) -> dict:
     if not isinstance(instance, dict):
         return {}
     backend = str(instance.get('backend') or '').strip().lower()
+    if backend == 'apple_pcc':
+        from fruth_runtime.apple_pcc_model_manager import server_metadata
+        try:
+            return server_metadata(int(instance['port']))
+        except Exception as exc:
+            return {'source': 'fruth_shortcuts_bridge', 'observed_at': _now_iso(),
+                    'transport_ready': None, 'observation_error': str(exc)}
+    if backend == 'apple_fm':
+        from fruth_runtime.apple_fm_model_manager import server_metadata, AppleFMUnavailable
+        try:
+            return server_metadata(int(instance['port']))
+        except AppleFMUnavailable as exc:
+            return {'source': 'fm_serve_http', 'observed_at': _now_iso(),
+                    'model_available': False, 'observation_error': str(exc)}
+        except Exception as exc:
+            return {'source': 'fm_serve_http', 'observed_at': _now_iso(),
+                    'model_available': None, 'observation_error': str(exc)}
     if backend == 'llama_cpp':
         port = instance.get('port')
         try:
@@ -538,6 +555,9 @@ def refresh_runtime_status_entries(
             else:
                 entry['readiness'] = 'ready'
 
+        if entry.get('backend') == 'apple_fm' and backend_runtime.get('model_available') is False:
+            entry['readiness'] = 'unreachable'
+            entry['last_error'] = backend_runtime.get('observation_error')
         refreshed[instance_id] = entry
 
     payload['instances'] = refreshed

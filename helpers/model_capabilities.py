@@ -326,6 +326,10 @@ def normalize_backend(value: Optional[str]) -> str:
         return "llama_cpp"
     if backend in {"mlx", "mlx-lm"}:
         return "mlx"
+    if backend in {"apple_fm", "apple-fm", "afm"}:
+        return "apple_fm"
+    if backend in {"apple_pcc", "apple-pcc", "pcc"}:
+        return "apple_pcc"
     if backend == "ollama":
         return "ollama"
     return backend

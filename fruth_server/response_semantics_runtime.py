@@ -13,6 +13,7 @@ import hashlib
 import html
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,7 @@ from helpers.model_capabilities import (
     CAPABILITY_TEXT_TO_SPEECH,
     CAPABILITY_VISION_ANALYSIS,
     normalize_capability,
+    normalize_backend,
 )
 from fruth_core.inference import (
     detect_text_artifact_requests,
@@ -32,11 +34,15 @@ from fruth_core.inference import (
 )
 from fruth_core.transports import TEXT_ARTIFACT_EXTENSIONS
 from fruth_inference.execution_planner import (
+    _semantic_role_guidance,
     plan_compound_execution,
     split_visible_image_payload,
     split_visible_tts_payload,
 )
-from fruth_inference.intent import analyze_prompt_intent, materialization_is_deferred
+from fruth_inference.intent import (
+    analyze_prompt_intent, intent_span_is_literal_payload,
+    materialization_is_deferred, visual_action_is_negated,
+)
 from fruth_inference.intent_obligations import (
     required_intent_obligations,
     summarize_required_intent_obligations,
@@ -127,6 +133,7 @@ _GLOBAL_SEMANTIC_LATE_FILL_BRANCH_LIMIT = 128
 _GLOBAL_SEMANTIC_REVIEW_EVIDENCE_POLICY = (
     'global_semantic_review_instruction_sha256_v1'
 )
+_SELECTED_ARTIFACT_READBACK_MAX_CHARS = 32_000
 _BRANCH_SEMANTIC_REVIEW_EVIDENCE_POLICY = (
     'branch_semantic_review_instruction_sha256_v1'
 )
@@ -1856,16 +1863,11 @@ def _phase_graph_from_runtime_payload(route_payload: Optional[Mapping[str, Any]]
     return dict(graph)
 
 
-def phase_output_is_graph_preparation(
+def _phase_output_graph(
     *,
     route_payload: Optional[Mapping[str, Any]],
     request_payload: Optional[Mapping[str, Any]],
-    capability: Optional[str],
-) -> bool:
-    """Return whether the current chat phase directly prepares downstream work."""
-
-    if normalize_capability(capability) != CAPABILITY_CHAT:
-        return False
+) -> dict[str, Any]:
     request_info = request_payload if isinstance(request_payload, Mapping) else {}
     graph = _phase_graph_from_runtime_payload(route_payload)
     if not graph:
@@ -1881,6 +1883,20 @@ def phase_output_is_graph_preparation(
             request_payload=dict(request_info),
             route_payload=dict(route_payload or {}),
         )
+    return graph
+
+
+def phase_output_is_graph_preparation(
+    *,
+    route_payload: Optional[Mapping[str, Any]],
+    request_payload: Optional[Mapping[str, Any]],
+    capability: Optional[str],
+) -> bool:
+    """Return whether the current chat phase directly prepares downstream work."""
+
+    if normalize_capability(capability) != CAPABILITY_CHAT:
+        return False
+    graph = _phase_output_graph(route_payload=route_payload, request_payload=request_payload)
     if not current_phase_is_graph_resolved(graph) or current_phase_capability(graph) != CAPABILITY_CHAT:
         return False
     current_phase_id = str(graph.get('current_phase_id') or '').strip()
@@ -1898,6 +1914,29 @@ def phase_output_is_graph_preparation(
     return bool(
         downstream_phase_capabilities(graph)
         and (phase_kind == 'prepare' or phase_role == 'text_preparation')
+    )
+
+
+def phase_output_defers_saved_file_materialization(
+    *,
+    route_payload: Optional[Mapping[str, Any]],
+    request_payload: Optional[Mapping[str, Any]],
+    capability: Optional[str],
+) -> bool:
+    """Keep save/read preparation as text; its producer branch owns the file."""
+
+    if normalize_capability(capability) != CAPABILITY_CHAT:
+        return False
+    graph = _phase_output_graph(route_payload=route_payload, request_payload=request_payload)
+    graph_route = {'route_runtime': {'request_phase_graph': graph}}
+    if not phase_output_is_graph_preparation(
+        route_payload=graph_route, request_payload=request_payload, capability=capability,
+    ):
+        return False
+    return any(
+        isinstance(phase, Mapping)
+        and phase.get('dependency_contract') == 'saved_file_read_required'
+        for phase in (graph.get('phases') or [])
     )
 
 
@@ -7480,6 +7519,7 @@ class ResponseSemanticsRuntimeOwner:
                             'semantic_review_required',
                             'semantic_review_criteria',
                             'repair_action',
+                            'saved_artifact_state',
                         )
                     }
                 )
@@ -7941,6 +7981,10 @@ class ResponseSemanticsRuntimeOwner:
                 'artifact_manifest_policy': 'branch_artifact_ordered_length_prefixed_sha256_v2',
                 'branch_check': branch_check,
                 'branch_check_sha256': self._semantic_manifest_sha256([branch_check]),
+                # Runtime-owned readback, never client assertions. Including it
+                # in this generation invalidates a verdict if the source/file
+                # evidence changes, even when the answer text stays the same.
+                'saved_artifact_state': check.get('saved_artifact_state'),
             }
         )
 
@@ -9770,24 +9814,47 @@ class ResponseSemanticsRuntimeOwner:
         *,
         route_payload: Optional[dict[str, Any]] = None,
         request_payload: Optional[dict[str, Any]] = None,
+        backend: Optional[str] = None,
     ) -> Optional[dict[str, str]]:
         if not self._request_is_inference_owned(
             route_payload=route_payload,
             request_payload=request_payload,
         ):
             return None
-        runtime_policy = str(_load_runtime_inference_policy() or '').strip()
+        runtime_policy = str(_load_runtime_inference_policy(scope='execution', backend=backend) or '').strip()
         if not runtime_policy:
             return None
+        route_runtime = (
+            route_payload.get('route_runtime')
+            if isinstance(route_payload, Mapping)
+            and isinstance(route_payload.get('route_runtime'), Mapping)
+            else {}
+        )
+        profile = route_runtime.get('semantic_role_profile')
+        # Graph-resolved preparation can skip model-backed planning. Carry the
+        # already-selected guidance into execution through the same renderer.
+        role_guidance = (
+            [_semantic_role_guidance(dict(profile))]
+            if isinstance(profile, Mapping) and profile else []
+        )
+        transport_guidance = []
+        if normalize_backend(backend) == 'apple_pcc':
+            transport_guidance = [
+                'Apple Shortcuts only transports this text exchange to PCC and returns your text. '
+                'It does not execute Fruth image, audio, file or review branches. Fruth dispatches '
+                'those branches through its own runtime. Produce only the current phase result; '
+                'do not promise work in Shortcuts or claim downstream results without supplied evidence.'
+            ]
         return {
             'role': 'system',
             'content': '\n'.join(
                 [
                     _INFERENCE_RUNTIME_POLICY_SYSTEM_MARKER,
                     "You implement Fruth's interpretive inference layer for this turn.",
-                    'The repository policy for this layer is already attached below.',
-                    'Do not claim that you cannot access, read, or know FRUTH_INFERENCE.md for this turn.',
+                    'The applicable repository policy is attached below in full.',
                     runtime_policy,
+                    *transport_guidance,
+                    *role_guidance,
                 ]
             ),
         }
@@ -9798,22 +9865,23 @@ class ResponseSemanticsRuntimeOwner:
         *,
         route_payload: Optional[dict[str, Any]] = None,
         request_payload: Optional[dict[str, Any]] = None,
+        backend: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         injected = list(messages or [])
-        if any(
-            str(item.get('role') or '').strip().lower() == 'system'
-            and _INFERENCE_RUNTIME_POLICY_SYSTEM_MARKER in str(item.get('content') or '')
-            for item in injected
-            if isinstance(item, dict)
-        ):
-            return injected
         system_message = self.build_inference_runtime_policy_system_message(
             route_payload=route_payload,
             request_payload=request_payload,
+            backend=backend,
         )
         if not system_message:
             return injected
-        return [system_message] + injected
+        # Rebind an existing injection when execution moves to a different backend.
+        return [system_message] + [
+            item for item in injected
+            if not (isinstance(item, dict)
+                    and str(item.get('role') or '').strip().lower() == 'system'
+                    and str(item.get('content') or '').startswith(_INFERENCE_RUNTIME_POLICY_SYSTEM_MARKER))
+        ]
 
     def _extract_semantic_phase_payload_from_payload(self, payload: Any) -> dict[str, Any]:
         if not isinstance(payload, dict):
@@ -9927,6 +9995,33 @@ class ResponseSemanticsRuntimeOwner:
     ) -> list[str]:
         normalized_text = str(prepared_text or '').strip()
         prompts: list[str] = []
+        # A narrowly typed indexed JSON batch is also unambiguous preparation.
+        # Do not mine arbitrary JSON, sibling fields, data files or partial slots.
+        if expected_count > 1 and normalized_text.startswith('['):
+            def unique_object(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError('Ambiguous duplicate image prompt key')
+                    result[key] = value
+                return result
+
+            try:
+                indexed_batch = json.loads(normalized_text, object_pairs_hook=unique_object)
+            except (ValueError, TypeError):
+                indexed_batch = None
+            if isinstance(indexed_batch, list) and len(indexed_batch) == expected_count:
+                indexed_prompts = []
+                for index, item in enumerate(indexed_batch, start=1):
+                    key = f'prompt_{index}'
+                    if not isinstance(item, dict) or set(item) != {key}:
+                        break
+                    value = item[key]
+                    if not isinstance(value, str) or not value.strip():
+                        break
+                    indexed_prompts.append(value.strip())
+                if len(indexed_prompts) == expected_count and len(set(indexed_prompts)) == expected_count:
+                    return indexed_prompts
         plain_alpha_candidate_present = bool(
             allow_plain_alpha_sequence
             and _contains_plain_alpha_image_prompt_line(normalized_text)
@@ -17054,6 +17149,19 @@ class ResponseSemanticsRuntimeOwner:
             if exclude_instance_ids:
                 check['exclude_instance_ids'] = exclude_instance_ids
             check = self._apply_review_criteria_to_check(check)
+            if (phase_id == current_phase_id
+                    and any(p.get('phase_id') == phase_id
+                            and p.get('role') == 'saved_artifact_state_explanation'
+                            for p in phases if isinstance(p, Mapping))
+                    and status not in {'waived', 'superseded', 'cancelled'}):
+                request_info = request_payload if isinstance(request_payload, dict) else {}
+                sanitize = self.hooks.get('sanitize_selected_reference_artifacts')
+                references = request_info.get('reference_artifacts') or request_info.get('selected_reference_artifact') or []
+                references = sanitize(references) if callable(sanitize) else []
+                check['saved_artifact_state'] = self._selected_artifact_state_projection(references)
+                check = self._reject_saved_artifact_transcript_echo(
+                    check, output_text, prompt=semantic_review_prompt,
+                )
             check = self._apply_branch_semantic_verdict_to_check(
                 check,
                 artifact_payload=artifact_payload,
@@ -17098,7 +17206,19 @@ class ResponseSemanticsRuntimeOwner:
                 claimed_capabilities = self._hook('normalize_capability_list')(
                     truth_guard.get('claimed_capabilities')
                 )
+                # A false model claim is a text-truth defect, not permission to
+                # create the claimed media. Only already-promoted obligations
+                # can supply materialization/repair authority here.
+                promised_capabilities = {
+                    normalize_capability(item.get('capability'))
+                    for key in ('intent_obligations', 'output_obligations')
+                    for item in required_intent_obligations(request_phase_graph.get(key) or [])
+                    if str(item.get('status') or '').lower() not in
+                    {'waived', 'superseded', 'cancelled', 'canceled', 'rejected'}
+                }
                 for claimed_capability in claimed_capabilities:
+                    if claimed_capability not in promised_capabilities:
+                        continue
                     availability = self.runtime_capability_availability(claimed_capability)
                     availability_status = str(availability.get('status') or '').strip().lower()
                     if availability_status == 'available':
@@ -17932,6 +18052,13 @@ class ResponseSemanticsRuntimeOwner:
             return False
         if str(selected_reference_artifact.get('type') or '').strip().lower() == 'message':
             return False
+        intent = analyze_prompt_intent(str(prompt or ''))
+        if intent.get('artifact_state_readback_request'):
+            return False
+        if (str(selected_reference_artifact.get('type') or '').strip().lower() == 'image'
+                and normalize_capability(capability) == CAPABILITY_CHAT
+                and intent.get('visual_analysis_execution_suppressed_by_preservation')):
+            return False
         return True
 
     def build_selected_reference_prompt_prefix(
@@ -17996,6 +18123,257 @@ class ResponseSemanticsRuntimeOwner:
             return prompt_text
         return f'{prefixed_prompt_start}{prompt_text}'
 
+    @staticmethod
+    def _saved_audio_digest_equalities(evidence_type: str, evidence: Mapping[str, Any]) -> dict[str, Any]:
+        """Compare saved SHA-256 values with explicitly named representations.
+
+        This is a read-side projection, not new audio verification. In particular,
+        byte/text equality is not lexical fidelity, and missing values are unknown.
+        Keep original evidence, including conflicting saved flags, beside it.
+        """
+        pairs = {
+            'tts_audio_integrity_evidence': (
+                ('spoken_text_vs_declared_spoken_text', 'source_sha256', 'declared_source_sha256'),
+                ('audio_file_bytes_vs_spoken_text', 'artifact_sha256', 'source_sha256'),
+            ),
+            'audio_reference_input_evidence': (
+                ('audio_file_bytes_vs_audio_bytes_received_by_transcriber', 'file_sha256', 'provider_input_sha256'),
+            ),
+        }
+        comparisons = {}
+        for name, left, right in pairs.get(evidence_type, ()):
+            digests = [str(evidence.get(key) or '').strip().lower() for key in (left, right)]
+            comparisons[name] = (digests[0] == digests[1]
+                                 if all(re.fullmatch(r'[0-9a-f]{64}', digest) for digest in digests)
+                                 else None)
+        return comparisons
+
+    @staticmethod
+    def _artifact_readback_projection(entries: list[dict[str, Any]]) -> dict[str, Any]:
+        """Render saved verdicts/bindings once, not every diagnostic mirror.
+
+        This is model reference context only. Verification used the full records
+        above; omitted signal samples/thresholds remain in the named source frame.
+        Shared entries are exact-value interning, never cross-source substitution.
+        """
+        evidence_fields = (
+            'kind', 'authority', 'policy_id', 'status', 'reason_code', 'semantic_match',
+            'materialization_eligible', 'source_digest_match', 'artifact_ref',
+            'source_response_id', 'response_id', 'branch_id', 'phase_id', 'producer_branch_id',
+            'producer_phase_id', 'consumer_branch_id', 'consumer_phase_id',
+            'file_sha256', 'artifact_sha256', 'provider_input_sha256', 'source_sha256',
+            'declared_source_sha256', 'transcript_sha256', 'tts_source_text_sha256',
+            'transcript_text', 'tts_source_text', 'path', 'artifact_path', 'instance_id',
+            'image_sha256', 'attachment_sha256', 'image_reencoded', 'execution_scope',
+        )
+        sources: list[dict[str, Any]] = []
+        evidence: list[dict[str, Any]] = []
+        artifacts = []
+        for entry in entries:
+            source = {k: entry[k] for k in
+                      ('source_response_id', 'frame', 'lifecycle_state', 'closure_status') if k in entry}
+            if source not in sources:
+                sources.append(source)
+            item = {k: v for k, v in entry.items() if k not in
+                    {'source_response_id', 'frame', 'lifecycle_state', 'closure_status',
+                     'artifact', 'saved_evidence'}}
+            item['source_index'] = sources.index(source)
+            artifact = entry.get('artifact') or {}
+            item.update({k: artifact[k] for k in ('type', 'phase_id', 'branch_id') if k in artifact})
+            refs = []
+            for observation in entry.get('saved_evidence') or []:
+                for key, value in observation.items():
+                    if not isinstance(value, dict):
+                        continue
+                    record = {'evidence_type': key, **{k: value[k] for k in evidence_fields if k in value}}
+                    equalities = ResponseSemanticsRuntimeOwner._saved_audio_digest_equalities(key, value)
+                    if equalities:
+                        record['saved_digest_equalities'] = equalities
+                    # Preserve negative child verdicts too; a parent status must
+                    # never conceal a failed generation-limit/integrity check.
+                    for child, detail in value.items():
+                        if isinstance(detail, dict) and detail.get('status'):
+                            record[child] = {k: detail[k] for k in evidence_fields if k in detail}
+                    if record not in evidence:
+                        evidence.append(record)
+                    binding = {'evidence_index': evidence.index(record),
+                               **{k: observation[k] for k in ('branch_id', 'phase_id', 'fill_instance_id')
+                                  if k in observation}}
+                    if binding not in refs:
+                        refs.append(binding)
+            if refs:
+                item['saved_evidence_refs'] = refs
+            artifacts.append(item)
+        return {'projection': 'saved_artifact_verdicts_and_bindings_v1',
+                'sources': sources, 'artifacts': artifacts, 'evidence': evidence}
+
+    def _selected_artifact_state_projection(self, references: list[dict[str, Any]]) -> dict[str, Any]:
+        """Project exact saved evidence for explanation, without executing media.
+
+        Client reference metadata is an address, never proof. Resolve the source
+        and exact artifact first; retain producer/consumer identities on evidence.
+        This projection does not fulfill or modify the source's obligations.
+        """
+        lookup = self.hooks.get('get_response_lookup_record')
+        canonical_artifacts = self.hooks.get('build_canonical_response_artifacts')
+        resolve_path = self.hooks.get('resolve_semantic_review_artifact_path')
+        registry_lookup = self.hooks.get('find_artifact_registry_record_by_artifact_ref')
+        entries = []
+        sources: dict[str, Any] = {}
+        evidence_keys = ('audio_reference_input_evidence', 'tts_audio_integrity_evidence',
+                         'tts_stt_semantic_evidence', 'vision_input_evidence', 'tts_semantic_source')
+        for reference in references:
+            if reference.get('type') == 'message':
+                continue
+            ref = str(reference.get('artifact_ref') or reference.get('ref') or '')
+            source_id = str(reference.get('source_response_id') or '')
+            entry = {'artifact_ref': ref, 'source_response_id': source_id, 'status': 'unavailable'}
+            entries.append(entry)
+            if not source_id or not ref or not callable(lookup) or not callable(canonical_artifacts):
+                entry['reason'] = 'canonical source identity unavailable'
+                continue
+            try:
+                if source_id not in sources:
+                    sources[source_id] = lookup(source_id)
+                record = sources[source_id] or {}
+                source = record.get('response_payload') or {}
+                if record.get('id') != source_id or source.get('id', source_id) != source_id:
+                    entry['reason'] = 'canonical source identity mismatch'
+                    continue
+                saved_artifacts = source.get('artifacts')
+                if not isinstance(saved_artifacts, list):
+                    saved_artifacts = canonical_artifacts(source)
+                matches = [a for a in saved_artifacts if isinstance(a, dict)
+                           and (a.get('artifact_ref') or a.get('ref')) == ref]
+                if len(matches) != 1:
+                    entry['reason'] = 'canonical artifact absent or ambiguous'
+                    continue
+                artifact = matches[0]
+                if any(reference.get(key) and reference[key] != artifact.get(key)
+                       for key in ('path', 'artifact_id', 'type')):
+                    entry['reason'] = 'canonical artifact identity mismatch'
+                    continue
+                path = str(artifact.get('path') or '')
+                runtime = source.get('runtime') or {}
+                frame = source.get('response_frame') or {}
+                entry.update(status='saved_observation', artifact=artifact,
+                             lifecycle_state=source.get('lifecycle_state'),
+                             frame={key: frame.get(key) for key in ('frame_id', 'frame_sequence', 'status')},
+                             closure_status=(runtime.get('graph_closure_review') or {}).get('status'))
+                observations = []
+                carriers = [source, runtime, *((source.get('late_fill') or {}).get('fill_results') or [])]
+                for carrier in carriers:
+                    if not isinstance(carrier, dict):
+                        continue
+                    evidence = {k: carrier[k] for k in evidence_keys if isinstance(carrier.get(k), dict)}
+                    # Source-wide evidence is not automatically evidence for this
+                    # file. Match a producer output or the consumer's exact input.
+                    bindings = [carrier, *[v for k, v in evidence.items() if k != 'tts_stt_semantic_evidence']]
+                    bound = any(
+                        b.get('artifact_ref') in (None, '', ref)
+                        and b.get('source_response_id') in (None, '', source_id)
+                        and ((b.get('artifact_ref') == ref and b.get('path', path) == path)
+                             or any(b.get(k) == path for k in ('path', 'artifact_path', 'saved_audio_path', 'saved_image_path')))
+                        for b in bindings
+                    )
+                    if evidence and bound:
+                        observations.append({
+                            **{k: carrier[k] for k in ('branch_id', 'phase_id', 'capability', 'fill_instance_id') if k in carrier},
+                            **evidence,
+                        })
+                entry['saved_evidence'] = observations
+                # Hash only the confined selected file, never arbitrary paths
+                # recovered from model prose or client-supplied evidence.
+                resolved = resolve_path(path) if callable(resolve_path) else None
+                digests = {str(artifact[k]) for k in ('file_sha256', 'sha256') if artifact.get(k)}
+                for observation in observations:
+                    for key in ('audio_reference_input_evidence', 'tts_audio_integrity_evidence', 'vision_input_evidence'):
+                        item = observation.get(key) or {}
+                        if item.get('path', item.get('artifact_path')) == path:
+                            digests.update(str(item[k]) for k in ('file_sha256', 'artifact_sha256') if item.get(k))
+                if resolved:
+                    digest = hashlib.sha256()
+                    with Path(resolved).open('rb') as handle:
+                        before = os.fstat(handle.fileno())
+                        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+                            digest.update(chunk)
+                        after = os.fstat(handle.fileno())
+                        path_after = Path(resolved).stat()
+                    current_digest = digest.hexdigest()
+                    entry['current_file_sha256'] = current_digest
+                    identity = lambda stat: (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+                    moving = identity(before) != identity(after) or identity(after) != identity(path_after)
+                    entry['file_binding_status'] = ('changed_during_readback' if moving
+                                                    else 'matched' if digests == {current_digest}
+                                                    else 'changed_or_conflicting' if digests else 'no_saved_digest')
+                else:
+                    entry['file_binding_status'] = 'file_unavailable'
+                if callable(registry_lookup):
+                    registry = registry_lookup(ref) or {}
+                    saved = registry.get('artifact') or {}
+                    if saved.get('artifact_ref') == ref and saved.get('path') == path:
+                        entry['saved_enrichments'] = registry.get('enrichments') or {}
+                        if saved.get('image_state'):
+                            entry['saved_image_state'] = saved['image_state']
+            except Exception:  # noqa: BLE001 - unavailable evidence must not become proof or break chat
+                entry.clear()
+                entry.update(artifact_ref=ref, source_response_id=source_id, status='unavailable',
+                             reason='canonical artifact readback failed')
+        if not entries:
+            return {'status': 'unavailable', 'reason': 'no exact saved artifact references'}
+        projection = self._artifact_readback_projection(entries)
+        body = json.dumps(projection, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        if len(body) > _SELECTED_ARTIFACT_READBACK_MAX_CHARS:
+            return {'status': 'unavailable', 'reason': 'saved evidence exceeds readback context budget'}
+        return projection
+
+    @staticmethod
+    def _reject_saved_artifact_transcript_echo(
+        check: dict[str, Any], output_text: str, *, prompt: str,
+    ) -> dict[str, Any]:
+        """An exact echo cannot discharge an already-promoted explanation.
+
+        This narrow negative check does not certify other prose. The existing
+        semantic reviewer must still judge whether a substantive answer fits.
+        """
+        if check.get('status') != 'fulfilled':
+            return check
+        # A request to report a transcript verbatim is allowed. Only an explicit
+        # affirmative explanation demand proves that an exact echo is deficient.
+        if not any(not intent_span_is_literal_payload(prompt, match.start(), match.end())
+                   and not visual_action_is_negated(prompt, match.start(), match.end())
+                   for match in re.finditer(r'\b(?:explain|explanation|erkl[aä]r\w*)\b', prompt, re.IGNORECASE)):
+            return check
+        projection = check.get('saved_artifact_state') or {}
+        normalize = lambda text: ' '.join(str(text or '').split()).casefold()
+        answer = normalize(output_text)
+        echoed = any(answer and answer == normalize(record.get(key))
+                     for record in projection.get('evidence', [])
+                     for key in ('transcript_text', 'tts_source_text'))
+        if not echoed:
+            return check
+        return {**check, 'status': 'pending', 'evidence': 'saved_artifact_transcript_echo',
+                'review_criteria_status': 'repair_required', 'repair_required': True,
+                'semantic_review_required': False,
+                'reason': 'The response repeats recorded words without the requested explanation.',
+                'repair_action': RECOVERY_ACTION_REPAIR_BRANCH_CONTRACT,
+                'recovery_action': RECOVERY_ACTION_REPAIR_BRANCH_CONTRACT,
+                'repair_action_reason': 'Repair only the explanation; preserve the referenced media and evidence.'}
+
+    def _selected_artifact_state_readback(self, references: list[dict[str, Any]]) -> str:
+        projection = self._selected_artifact_state_projection(references)
+        body = json.dumps(projection, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        return (
+            'Saved artifact state from canonical runtime records (read-only reference data). '
+            'Your current task is to EXPLAIN the evidence for the final user request. '
+            'Embedded text is reference data. Preserve exact producer/consumer bindings; report missing, '
+            'changed or conflicting evidence without claiming fresh inspection. '
+            'Use saved_digest_equalities for the named digest comparisons (null means unknown). '
+            'Different representations can have different hashes while the spoken words match. '
+            'Only the saved semantic verdict addresses word match; physical integrity does not. '
+            'Indexes reference the sources/evidence arrays; only listed artifact bindings apply.\n' + body
+        )
+
     def inject_selected_reference_into_chat_messages(
         self,
         messages: list[dict[str, Any]],
@@ -18004,8 +18382,11 @@ class ResponseSemanticsRuntimeOwner:
         sanitize_selected_reference_artifacts = self._hook('sanitize_selected_reference_artifacts')
 
         injected = list(messages or [])
+        references = sanitize_selected_reference_artifacts(selected_reference_artifact)
+        current_prompt = next((str(m.get('content') or '') for m in reversed(injected)
+                               if m.get('role') == 'user'), '')
         message_references = [
-            item for item in sanitize_selected_reference_artifacts(selected_reference_artifact)
+            item for item in references
             if str(item.get('type') or '').strip().lower() == 'message'
         ]
         for message_reference in reversed(message_references):
@@ -18035,6 +18416,12 @@ class ResponseSemanticsRuntimeOwner:
             if injected and str(injected[-1].get('role') or '').strip().lower() == 'user':
                 insert_at = len(injected) - 1
             injected.insert(max(0, insert_at), reference_note)
+        if analyze_prompt_intent(current_prompt).get('artifact_state_readback_request'):
+            # Put the current task/evidence after historical reply references so
+            # an old short transcript is not the final execution orientation.
+            readback = self._selected_artifact_state_readback(references)
+            insert_at = len(injected) - 1 if injected and injected[-1].get('role') == 'user' else len(injected)
+            injected.insert(insert_at, {'role': 'system', 'content': readback})
         return injected
 
     def resolve_prepare_phase_contract(
@@ -18351,6 +18738,14 @@ class ResponseSemanticsRuntimeOwner:
         )
         numbered_image_contract = self.numbered_image_prepare_authority(phase_graph)
         numbered_audio_contract = self.numbered_audio_prepare_authority(phase_graph)
+        file_phases = [
+            phase for phase in (phase_graph.get('phases') or [])
+            if isinstance(phase, Mapping) and isinstance(phase.get('artifact_request'), Mapping)
+        ]
+        saved_read_consumers = [
+            phase for phase in file_phases
+            if phase.get('dependency_contract') == 'saved_file_read_required'
+        ]
         downstream_labels = [
             self._format_prepare_phase_capability_label(candidate)
             for candidate in downstream_capabilities
@@ -18432,7 +18827,7 @@ class ResponseSemanticsRuntimeOwner:
                 lines.append(
                     f'Numbered body {int(variant["index"])} must be in {language}{role_clause}.'
                 )
-        elif not numbered_image_contract:
+        elif not numbered_image_contract and not file_phases:
             lines.append(
                 'Do not add headings, labels, prompt wrappers, bullet framing, or meta commentary unless the user explicitly requested them.'
             )
@@ -18454,9 +18849,29 @@ class ResponseSemanticsRuntimeOwner:
             len(downstream_capabilities) > 1
             and not numbered_audio_contract
             and not numbered_image_contract
+            and not file_phases
         ):
             lines.append(
                 'When multiple downstream phases depend on the same text, produce one clean reusable body that all of them can consume.'
+            )
+        if (CAPABILITY_TEXT_TO_SPEECH in downstream_capabilities
+                and not numbered_audio_contract
+                and (file_phases or CAPABILITY_IMAGE_GENERATION in downstream_capabilities)):
+            lines.append(
+                'Before the file blocks, use exactly the heading ### Text-to-Speech Payload '
+                'and put only the narration beneath it as plain text. This is a speech-producer '
+                'input, not a WAV file body; never use a wav fence or a .wav filename heading.'
+            )
+        if file_phases:
+            lines.append(
+                'File contents use separate filename headings and language-labelled fenced blocks. '
+                'Each block contains only that file body, never a JSON object mapping filenames to contents.'
+            )
+        if saved_read_consumers:
+            lines.append(
+                'This workflow has a saved-file-read dependency. Prepare only the source file data now. '
+                'Do not prepare the consumer file or calculate its result before the actual saved-file '
+                'read; that dependent branch will receive the read bytes and author its own output.'
             )
         if reason:
             lines.append(f'Current phase reason: {reason}')
@@ -18505,7 +18920,17 @@ class ResponseSemanticsRuntimeOwner:
         *,
         route_payload: Optional[dict[str, Any]] = None,
         request_payload: Optional[dict[str, Any]] = None,
+        backend: Optional[str] = None,
     ) -> list[dict[str, Any]]:
+        normalized_backend = normalize_backend(backend)
+        current_prompt = extract_responses_current_turn_prompt(request_payload or {})
+        if (normalized_backend == 'apple_fm'
+                and analyze_prompt_intent(current_prompt).get('artifact_state_readback_request')):
+            return self._scope_saved_artifact_explanation_messages(messages, current_prompt)
+        if normalized_backend == 'apple_pcc' and not self._request_is_inference_owned(
+            route_payload=route_payload, request_payload=request_payload,
+        ):
+            return list(messages or [])
         prepare_contract = self.resolve_prepare_phase_contract(
             route_payload=route_payload,
             request_payload=request_payload,
@@ -18513,6 +18938,90 @@ class ResponseSemanticsRuntimeOwner:
         if not prepare_contract:
             return list(messages or [])
         injected = list(messages or [])
+        if normalized_backend in {'apple_fm', 'apple_pcc'}:
+            downstream = set(prepare_contract.get('downstream_capabilities') or [])
+            if CAPABILITY_IMAGE_GENERATION in downstream and CAPABILITY_TEXT_TO_SPEECH in downstream:
+                task = ('Write the requested image prompts, spoken text and file contents in the '
+                        'separate sections specified by the preparation contract. In HTML/CSS, '
+                        'place each image in its requested section using its own distinct filename. '
+                        'Include all requested images as img elements or CSS backgrounds, with '
+                        'responsive sizing. Label each image prompt with its requested page role. '
+                        'Check that every numbered image has a matching HTML/CSS reference. '
+                        'Do not replace their section placements with a gallery. '
+                        'Put the exact narration alone under ### Text-to-Speech Payload as plain text, '
+                        'never a wav code block or file-content section.')
+            elif CAPABILITY_IMAGE_GENERATION in downstream:
+                task = ('Write only the requested number of distinct, self-contained textual '
+                        'image-generation prompts. Apply the reference request\'s subjects, settings, '
+                        'poses, camera framing and style to each prompt. End after the last prompt.')
+            elif CAPABILITY_TEXT_TO_SPEECH in downstream:
+                task = ('Compose only the requested answer or creative passage as directly speakable '
+                        'text. Apply the reference request\'s sentence count, language, tone and exact '
+                        'wording. Return only the sentences to be spoken and end immediately after '
+                        'the last sentence.')
+            else:
+                task = ('Author only the substantive text or file contents required by the current '
+                        'preparation contract, using its declared output format. For separately '
+                        'requested files, provide each file\'s complete contents in its own '
+                        'filename-labelled fenced block; preserve all requested data values.')
+            phase_graph = prepare_contract.get('phase_graph') or {}
+            numbered_images = self.numbered_image_prepare_authority(phase_graph)
+            if numbered_images:
+                count = int(numbered_images['expected_count'])
+                task += (f' Start with ### Image Generation Prompts and exactly {count} numbered '
+                         f'paragraphs, labelled 1. through {count}. Use plain prompt text, not JSON. '
+                         'Describe only the scene for each image, including the requested camera framing.')
+            request_prompt = extract_responses_current_turn_prompt(request_payload or {})
+            if CAPABILITY_IMAGE_GENERATION in downstream and re.search(
+                r'\bselfies?\b', request_prompt, re.IGNORECASE,
+            ):
+                task += ' Every prompt must explicitly describe a selfie camera composition.'
+            if any(
+                isinstance(phase, Mapping)
+                and phase.get('dependency_contract') == 'saved_file_read_required'
+                for phase in (phase_graph.get('phases') or [])
+            ):
+                task = ('Prepare only the initial source file data in a filename heading and '
+                        'language-labelled fenced block. The saved-file-read consumer runs later: '
+                        'do not include its output file or a calculated result now. Do not return '
+                        'a JSON object mapping filenames to file contents.')
+                producers = [
+                    phase['artifact_request']
+                    for phase in (phase_graph.get('phases') or [])
+                    if isinstance(phase, Mapping)
+                    and isinstance(phase.get('artifact_request'), Mapping)
+                    and phase['artifact_request'].get('saved_file_producer')
+                ]
+                if producers:
+                    filenames = [
+                        f"{item.get('source_name')}.{item.get('extension')}"
+                        for item in producers
+                    ]
+                    task += (' The only file contents required in this response are: '
+                             + ', '.join(filenames) + '. End after the source file block(s).')
+                    if len(producers) == 1 and producers[0].get('extension') == 'json':
+                        task = (f'Return only the raw JSON source data for {filenames[0]}. '
+                                'Begin with { or [ and end with the matching } or ]. '
+                                'No heading, code fence, filename wrapper, HTML or consumer result. '
+                                'The consumer will be authored after the actual saved-file read.')
+            for index in range(len(injected) - 1, -1, -1):
+                item = injected[index]
+                if not isinstance(item, dict) or item.get('role') != 'user':
+                    continue
+                content = item.get('content')
+                if isinstance(content, str) and not (
+                    content.startswith('<fruth_bounded_task>')
+                    or (content.startswith('<fruth_promoted_context>')
+                        and content.endswith('</fruth_bounded_task>'))
+                ):
+                    injected[index] = {**item, 'content': (
+                        '<fruth_promoted_context>\n' + content + '\n</fruth_promoted_context>\n\n'
+                        'The workflow above is reference context. '
+                        'Later producers and evidence branches remain Fruth runtime work. '
+                        'Execute only the following current phase task:\n'
+                        '<fruth_bounded_task>\n' + task + '\n</fruth_bounded_task>'
+                    )}
+                break
         if any(
             str(item.get('role') or '').strip().lower() == 'system'
             and _PREPARE_PHASE_SYSTEM_MARKER in str(item.get('content') or '')
@@ -18524,6 +19033,42 @@ class ResponseSemanticsRuntimeOwner:
         if not system_message:
             return injected
         return [system_message] + injected
+
+    @staticmethod
+    def _scope_saved_artifact_explanation_messages(
+        messages: list[dict[str, Any]], current_prompt: str,
+    ) -> list[dict[str, Any]]:
+        """Keep selected history as data while making AFM's live task explicit.
+
+        No history or evidence is removed. Canonical request/history stays typed;
+        only this backend's execution projection uses the existing bounded-task
+        and promoted-context envelope instead of replaying old executable turns.
+        """
+        injected = list(messages or [])
+        if not injected or injected[-1].get('role') != 'user':
+            return injected
+        if str(injected[-1].get('content') or '').startswith('<fruth_promoted_context>'):
+            return injected
+        history = [item for item in injected[:-1] if item.get('role') in {'user', 'assistant'}]
+        if (any(item.get('role') not in {'system', 'user', 'assistant'}
+                or item.get('tool_calls') or item.get('function_call') for item in injected)
+                or any(not isinstance(item.get('content'), str) for item in [*history, injected[-1]])):
+            # Preserve typed multimodal/tool payloads; this text-only envelope
+            # must not serialize images as prose or discard current attachments.
+            return injected
+        preserved = [item for item in injected[:-1] if item.get('role') not in {'user', 'assistant'}]
+        context = json.dumps({'historical_messages': history}, ensure_ascii=False, separators=(',', ':'))
+        task = (
+            '<fruth_promoted_context>\n' + context + '\n</fruth_promoted_context>\n\n'
+            'The prior conversation above is reference-only. Answer the current evidence question; '
+            'do not execute an earlier speaking or transcription request.\n'
+            'Write a concise explanation to the user, not a semantic-review verdict or a lifecycle decision. '
+            'An artifact\'s producer instance is the saved observation whose branch_id and phase_id '
+            'match that artifact; other observations may belong to its consumers. State when that '
+            'identity is missing. Keep file-byte hashes separate from source/transcript text hashes.\n'
+            '<fruth_bounded_task>\n' + current_prompt + '\n</fruth_bounded_task>'
+        )
+        return [*preserved, {**injected[-1], 'content': task}]
 
     def build_response_semantic_phase_payload(
         self,

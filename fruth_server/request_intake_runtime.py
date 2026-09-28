@@ -95,6 +95,8 @@ class RequestIntakeRuntimeOwner:
         *,
         forced_instance_id: Optional[str] = None,
         excluded_instance_ids: Optional[list[str]] = None,
+        preferred_targets: Optional[list[dict[str, Any]]] = None,
+        candidate_filter: Any = None,
     ) -> tuple[Optional[str], Optional[dict], Optional[str], Optional[str]]:
         normalize_external_identifier = self._hook('normalize_external_identifier')
         lookup_instance = self._hook('lookup_instance')
@@ -123,6 +125,8 @@ class RequestIntakeRuntimeOwner:
                 )
             instance = lookup_instance(explicit_instance_id)
             if not instance:
+                if explicit_instance_id.startswith(('apple_fm:', 'apple_pcc:')) or normalize_backend(data.get('backend')) in {'apple_fm', 'apple_pcc'}:
+                    return None, None, None, f"Target instance '{explicit_instance_id}' is unavailable."
                 recovered_instance_id, recovered_instance = self._recover_missing_explicit_target_instance(
                     explicit_instance_id,
                     data,
@@ -139,6 +143,8 @@ class RequestIntakeRuntimeOwner:
                     return recovered_instance_id, recovered_instance, None, None
                 return None, None, None, f"Instance '{explicit_instance_id}' was not found."
             if self._instance_is_temporarily_quarantined(instance):
+                if normalize_backend(instance.get('backend')) in {'apple_fm', 'apple_pcc'}:
+                    return None, None, None, f"Target instance '{explicit_instance_id}' is unavailable."
                 recovery_payload = dict(data) if isinstance(data, dict) else dict(data)
                 for key in ('instance_id', 'model', 'modelName', 'request_model', 'requestModel'):
                     recovery_payload.pop(key, None)
@@ -184,6 +190,7 @@ class RequestIntakeRuntimeOwner:
                 isinstance(entry, dict)
                 and instance_supports_capability(entry, resolved_capability)
                 and not self._instance_is_temporarily_quarantined(entry)
+                and (candidate_filter is None or candidate_filter(entry))
             )
         ]
         selectable_candidates = [
@@ -196,7 +203,16 @@ class RequestIntakeRuntimeOwner:
                 f"No non-excluded running instance found for capability '{resolved_capability}'. "
                 f"Excluded instance ids: {excluded_text}."
             )
-        selected_instance_id = pick_default_capability_instance(selectable_candidates)
+        selected_instance_id = None
+        for target in preferred_targets or []:
+            matches = [entry for entry in selectable_candidates
+                       if self._hook('candidate_matches_inference_preference')(entry, target)]
+            if matches:
+                selected_instance_id = pick_default_capability_instance(matches)
+                if selected_instance_id:
+                    break
+        if not selected_instance_id:
+            selected_instance_id = pick_default_capability_instance(selectable_candidates)
         if not selected_instance_id:
             if alias_selector:
                 return None, None, resolved_capability, (
@@ -900,7 +916,7 @@ class RequestIntakeRuntimeOwner:
                 role = 'assistant'
             payload = {
                 'type': 'message',
-                'content': content[:12000],
+                'content': content,
                 'message_role': role,
                 'source_message_id': message_id,
                 'artifact_ref': str(raw_value.get('artifact_ref') or raw_value.get('artifactRef') or raw_value.get('ref') or '').strip() or message_id or None,
@@ -928,6 +944,9 @@ class RequestIntakeRuntimeOwner:
                 default_kind='message',
                 default_origin='conversation_reference',
                 include_content=True,
+                # Explicit reply context is not an artifact-content preview.
+                # Provider/context budget handling remains a separate owner.
+                content_limit=len(content),
             )
         raw_path = str(raw_value.get('path') or raw_value.get('source_path') or '').strip()
         if artifact_type == 'file':

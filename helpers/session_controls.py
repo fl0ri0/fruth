@@ -13,6 +13,7 @@ from helpers.model_capabilities import (
     normalize_capability,
 )
 from helpers.ocr_modes import get_ocr_model_family, get_ocr_mode_copy, get_ocr_mode_options
+from fruth_core.apple_fm_tools import available_apple_fm_image_tool_modes
 
 _DEFAULT_STT_LANGUAGES = ['de', 'en', 'fr', 'es', 'it', 'pt', 'ja', 'ko', 'ru', 'zh']
 _DEFAULT_STT_TASKS = ['transcribe', 'translate']
@@ -164,6 +165,30 @@ def build_session_controls(instance: dict | None) -> dict[str, Any]:
 
     capability = normalize_capability(instance.get('capability'))
     model_name = str(instance.get('model') or instance.get('modelName') or '').strip()
+    if instance.get('backend') == 'apple_pcc':
+        return {'enabled': False, 'fields': {},
+                'hint': 'Apple PCC chooses Cloud Pro when available, otherwise Cloud. Text and image analysis; no sampling controls.'}
+    if instance.get('backend') == 'apple_fm' and capability in {CAPABILITY_CHAT, CAPABILITY_VISION_ANALYSIS}:
+        fields = {}
+        if capability == CAPABILITY_CHAT:
+            fields.update({
+                'temperature': _field('number', label='Temperature', description='Optional; applies to image analysis and chat.'),
+                'top_p': _field('number', label='Top P', description='Optional; applies to image analysis and chat.'),
+            })
+        tool_modes = available_apple_fm_image_tool_modes()
+        if tool_modes:
+            fields['ocr_mode'] = {
+                **_field('select', label='Image Mode', default_first_option=True,
+                         options=['auto', *tool_modes],
+                         description='Attach an image or PDF. PDF pages are processed in order. OCR/barcode extract all detections; use Image analysis for questions or summaries.'),
+                'option_labels': {'auto': 'Image analysis', 'apple_ocr': 'Read text (OCR)',
+                                  'apple_barcode': 'Read barcodes / QR codes'},
+            }
+        return {
+            'enabled': bool(fields),
+            'hint': 'Local text and image analysis. OCR/barcode modes use local Apple tools. Speech input/output and variant selection are unavailable.',
+            'fields': fields,
+        }
     if capability == CAPABILITY_CHAT:
         fields = {
             'chat_meta': _field(

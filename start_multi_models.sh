@@ -96,18 +96,17 @@ if [[ -x "$MAIN_VENV_DIR/bin/python3" ]]; then
 fi
 echo "🐍 Virtual environment activated."
 
-# Install/update dependencies.
-if $NEEDS_INSTALL || { [ -f "$REQUIREMENTS_FILE" ] && [ "$REQUIREMENTS_FILE" -nt "$MAIN_VENV_DIR/bin/pip" ]; }; then
-     echo "🔧 Installing/updating dependencies from $REQUIREMENTS_FILE..."
+# Bootstrap only a newly created environment. Existing environments are managed
+# explicitly by the user; startup/restart must not install or update packages.
+if $NEEDS_INSTALL; then
+     echo "🔧 Installing dependencies from $REQUIREMENTS_FILE..."
     if [ -f "$REQUIREMENTS_FILE" ]; then
-        pip3 install -r "$REQUIREMENTS_FILE"
+        "$REPO_PYTHON" -m pip --disable-pip-version-check install -r "$REQUIREMENTS_FILE"
         if [ $? -ne 0 ]; then echo "❌ Failed to install dependencies."; deactivate; exit 1; fi
-        touch "$MAIN_VENV_DIR/bin/pip" # Refresh the timestamp.
     else
         echo "⚠️  $REQUIREMENTS_FILE not found. Installing required packages manually..."
-        pip3 install requests Flask Flask-Cors
+        "$REPO_PYTHON" -m pip --disable-pip-version-check install requests Flask Flask-Cors
         if [ $? -ne 0 ]; then echo "❌ Failed to install the fallback packages."; deactivate; exit 1; fi
-         touch "$MAIN_VENV_DIR/bin/pip"
     fi
 fi
 # --- End virtual environment & dependencies ---

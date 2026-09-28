@@ -39,6 +39,13 @@ Fetch exact details or artifact content when needed, not the entire response on
 every poll. Pending work is observed under the same response id, never restarted
 by posting its prompt again. The detailed projection rules below remain binding.
 
+Compatibility `output_text` may mirror a downstream canonical output. Rebuilding
+the display from compact slots must not assign that text to the preparation slot
+when an existing completed output already binds it to another owner. Slot-local
+text, matching canonical outputs and branch fill results remain independent
+evidence; equal wording alone does not collapse separately owned outputs. This
+holds without hydrating the omitted role/dependency sidecars.
+
 ## Response Frame
 
 Explicit inline/embedded implementation formats (for example embedded CSS or
@@ -154,6 +161,11 @@ bindings or rewrite historical frames.
 
 `response_frame` is the frozen response snapshot. It is immutable once written. Late fill and recovery do not edit an old frame; they produce successor lookup payloads and, outside tests, successor frame ledger entries.
 
+For direct image analysis, `runtime.vision_input_evidence` retains the runtime
+dispatch receipt (source image SHA-256, byte size and exact instance). A current
+vision phase can complete from generated text plus this matching receipt;
+provider prose or a missing/mismatched receipt alone cannot establish image input.
+
 Important surfaces:
 
 - `response_frame.request`: the request snapshot used for replay/audit.
@@ -213,6 +225,9 @@ Artifact registry split:
   take precedence over compatibility shortcuts for the same saved path/type.
 - `state/artifact_registry.jsonl` is the durable lookup surface for concrete artifacts across modalities. New output artifacts from `artifacts[]`, `saved_text_path`, `saved_text_artifacts`, `saved_audio_path`, and `saved_image_path` are persisted with `roles = ["output"]`, `artifact_ref`, path, type, provenance, metadata, and linked response ids. True external user inputs are persisted with `roles = ["input"]`.
 - Reused Fruth artifacts are references, not new inputs. Route reuse, selected reference artifacts, artifact bindings, and registry-known paths must carry stable refs/bindings and must not be re-materialized as fresh `input_artifacts`.
+- In the UI, **Reference Reply** selects the public reply text and its referenceable canonical artifacts together, including replies containing only artifacts. Multiple public text outputs remain in order; internal diagnostics and non-public work do not become reply content. Individual artifact selections accumulate, repeated selection of the same identity is idempotent, and selecting another reply preserves already-selected files. The current selected message and every selected artifact travel in `reference_artifacts` through preview, JSON/SSE, multipart and request snapshots.
+- Selected references retain `artifact_ref`, `artifact_id`, `source_response_id` and available branch/phase/slot/obligation identities. These are lookup addresses; client text or metadata does not prove a binding. The existing canonical source/artifact verification remains authoritative. A source supplied by an artifact is preserved when it differs from the containing reply. Selection is conversation-scoped, and removal or clearing changes only the selected context.
+- Explicit selected reply text is preserved in full at intake, including beyond 12,000 characters; the generic artifact-content preview limit is not applied to that message. Normal provider context and request limits still apply. Referencing a reply or file does not grant permission to repeat its original work or generate replacement artifacts.
 - Modality-specific provenance wins over generic output provenance. For example, generated-image provenance remains attached to the image artifact and generic output registration may add lookup metadata or linked responses without downgrading that provenance.
 
 Response artifact bundle operations fail closed on incomplete wire projections. A previewed, truncated, or emergency handle set is not enough to choose bundle contents: bundle creation resolves and recursively hydrates the exact CAS-backed response truth first. Missing, malformed, or corrupt refs return HTTP 409 instead of producing a silently incomplete bundle.
@@ -295,15 +310,44 @@ finishes. Readiness failure is secondary evidence failure: it neither rolls back
 the frame nor grants or removes semantic completion. Its diagnostics and final
 completion timings do not retroactively rewrite the persisted frame.
 
-Current failure limitation: the ordinary finalizer catches and logs Artifact
-Registry and frame-persistence exceptions. `ResponseFrameParentCASMismatch`
-propagates, but other persistence failures can leave a returned live payload with
-completed lifecycle and an in-memory frame. Neither HTTP 200, `persist_effective`,
-a frame-shaped object nor lifecycle alone is a commit receipt. Durable-completion
-claims need the matching latest Ledger/frame identity, valid referenced CAS and
-saved artifact evidence; use freshness and error metadata to distinguish live
-projection from recovered durable truth. Fixing this failure propagation is a
-separate runtime change.
+The native writer reports an additive, frame-bound `persistence` receipt to the
+finalizer. It is delivery metadata, outside the frozen frame: a row cannot attest
+its own subsequent fsync or Index publication. Its `status` distinguishes
+`not_committed` (no row append began), `uncertain` (append/flush/fsync did not
+return a confirmed outcome), and `committed` (Ledger flush/fsync and any new
+Ledger/parent-directory names were confirmed). `index_status` separately reports
+`published`, `failed`, or `not_attempted`; `artifact_registry` separately reports
+its publication outcome. A confirmed Ledger row with failed Index publication
+retains its exact frame identity and normal read-side Ledger fallback. Do not
+append the same work again to repair its Index.
+
+Unconfirmed persistence raises a typed finalizer error. The HTTP response is
+507 for a reported full disk, otherwise 503, with
+`error.code=response_persistence_failed`, `retryable=false` and
+`recovery_action=inspect_response_persistence`. The live outer response becomes
+`incomplete`/`blocked`; its candidate frozen frame, semantic Closure and existing
+outputs remain available for inspection. Status, UI, debug and full lookup retain
+that storage outcome. Streams emit `response.failed`, and Late Fill stops without
+classifying storage failure as a model failure or scheduling a branch retry.
+Explicit branch retry also rejects an unresolved storage outcome. Passive lookup
+does not erase uncertainty merely because bytes are readable from the OS cache.
+An operator must inspect the exact frame/Ledger and restore storage before
+continuing; repeating the original inference request is not storage recovery.
+Parent-CAS mismatches keep their existing rejection semantics.
+
+Before append, the writer rejects an unterminated final Ledger record with
+`response_frame_ledger_unterminated_tail`. This includes valid JSON missing its
+physical newline: no new record may be concatenated onto it. Existing bytes and
+the Index remain untouched. This is a controlled stop, not an automatic repair:
+preserve the original Ledger/tail and recover a validated copy under explicit
+operator authority before further writes. Read-only lookup never truncates,
+quarantines, rewrites or repairs historical state.
+
+Older recovered frames and non-persisting projections may have no write receipt.
+Neither receipt absence, HTTP success, `persist_effective`, a frame-shaped object
+nor lifecycle alone proves a fresh commit. Durable-completion claims still need
+the matching Ledger/frame identity, valid referenced CAS and saved artifact
+evidence. Storage confirmation does not establish semantic fulfillment.
 
 Readiness's Epoch is a verified source binding, not an execution epoch or an
 incrementing permission token. The verifier binds the physical Ledger/Index,
@@ -608,6 +652,11 @@ and successfully saved CSS cannot fulfill a missing media obligation.
 
 Artifact continuity is centered on durable identity, not copied paths. `artifact_dossiers` are keyed by `artifact_ref` and gather identity, provenance, metadata, enrichments, linked response/message ids, and availability.
 
+Public linked-dependency selection uses the exact registered file identity before
+falling back to a derived basename, consistently with bundle selection. A current
+authoritative replacement wins over an older linked copy of the same logical
+file; conflicting strongest identities remain unresolved.
+
 Explicit selected-file collections retain every valid reference, in order,
 including producer response/branch/phase provenance and supplied file digests.
 Repeated intake normalization must not reduce the collection to the last file.
@@ -666,6 +715,15 @@ Late branches should use existing dossier evidence when it satisfies the promote
 If the dossier evidence is missing, stale, or insufficient, the runtime may promote a new evidence branch. It should not silently pretend the evidence already exists.
 
 ## Explicit Recovery
+
+Dedicated Apple OCR/barcode requests preserve
+`runtime.apple_fm_image_tool_evidence` alongside `runtime.vision_input_evidence`.
+The tool receipt records a validated native call/result pair, exact result
+text/digest, source image digest and transcript attachment digest. Its transport is
+`fm.respond` with `execution_scope=local_cli_session`; it does not prove the
+selected HTTP server received the image. Apple may re-encode images, so original
+and transcript byte identities remain distinct. A real empty tool result is
+reported as no detections; model-only prose cannot establish tool execution.
 
 Generated-image vision analysis also has a bounded automatic evidence recovery.
 `vision_input_evidence` records the SHA-256, byte count and instance at actual

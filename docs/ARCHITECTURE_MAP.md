@@ -40,7 +40,9 @@ Fruth is currently organized around one main composition root plus a handful of 
 - `fruth_server/model_control_runtime.py`
   Owner for runtime/model control route bodies: backend-fabric payloads, available-model normalization, model pull/remove flows, and start/stop lifecycle route handling.
 - `fruth_server/infer_support_runtime.py`
-  Owner for infer-support helpers: input-artifact typing/persistence, generic file/audio/PDF intake support, infer-history append/read support, cached PDF insight lookup, and PDF infer event logging.
+  Owner for infer-support helpers: input-artifact typing/persistence, generic file/audio/PDF intake support, infer-history append/read support, and PDF infer event logging. Incoming PDFs are processed afresh; history remains available through explicit retrieval and references.
+- `fruth_core/ocr_pdf.py` / `fruth_services/ocr_pdf.py`
+  Existing PDF owner and service facade: pypdf text extraction and native macOS PDFKit/CoreGraphics page rendering through PyObjC. Rendered pages feed the selected OCR/vision route; rendering does not perform text recognition or establish its accuracy.
 - `fruth_server/late_fill_runtime.py`
   Owner for late fill continuation orchestration: deferred payload shaping, bounded execution-contract projection, repair-action scheduling gates, continuation route resolution, branch plan preparation, branch execution/batching, failed-branch recovery context, and worker scheduling.
 - `fruth_server/infer_runtime.py`
@@ -54,9 +56,9 @@ Fruth is currently organized around one main composition root plus a handful of 
 - `fruth_inference/`
   Fruth's interpretive inference layer (`fruth_inference`): provider-neutral current-phase routing, request phase graph derivation, pure candidate/promotion contracts, file-backed semantic roles projected into advisory `semantic_role_profile`, explicit advisory `semantic_role_ids`, interpretive inference-owned intent/phase decisions, control hints, the resolver surface under `execution_planner`, archive/diagnostic interpretive inference memory surfaces, accepted-learning soft-hint orientation, request metadata, diagnostics, and bounded self-healing context. This layer handles semantic/current-turn interpretation inside Fruth; it is not the whole runtime/control-plane substrate. It anchors intent; runtime evidence refines graph state before freeze.
 - `fruth_integrations/`
-  External-client integration boundary. It contains the implemented shared sync/unsync orchestration and the current Codex adapter.
+  External integration boundary. It contains shared sync/unsync orchestration, the Codex adapter, and the opt-in [Apple PCC Shortcuts bridge](../fruth_integrations/shortcuts/README.md). PCC uses a local loopback adapter for cloud text/image execution through the ordinary backend transport and Responses owners.
 - `fruth_runtime/`
-  Backend-specific runtime managers and lifecycle helpers for Ollama, MLX, and llama.cpp.
+  Backend-specific runtime managers and lifecycle helpers for Ollama, MLX, llama.cpp, Apple AI (`fm serve`), and the Apple PCC loopback adapter. PCC start/stop owns the local bridge process, not Apple's services; a running bridge does not prove cloud availability.
 - `fruth_core/`
   Shared substrate and compatibility backbone. Contains core registry/lifecycle/status logic plus older shared helpers that still sit underneath the service layer.
 - `helpers/`

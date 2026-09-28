@@ -48,6 +48,14 @@ from fruth_runtime.llama_cpp_model_manager import (
     start_llama_cpp_instance,
     stop_llama_cpp_instance,
 )
+from fruth_runtime.apple_fm_model_manager import (
+    list_available_apple_fm_models,
+    start_apple_fm_instance,
+    stop_apple_fm_instance,
+)
+from fruth_runtime.apple_pcc_model_manager import (
+    list_available_apple_pcc_models, start_apple_pcc_instance, stop_apple_pcc_instance,
+)
 
 try:
     from fruth_runtime.mlx_model_manager import (
@@ -249,11 +257,17 @@ def list_available_models(include_limits: bool = False) -> List[dict]:
     except Exception as exc:  # noqa: BLE001
         logging.warning('Could not list llama.cpp models: %s', exc)
 
+    aggregated.extend(list_available_apple_fm_models())
+    aggregated.extend(list_available_apple_pcc_models())
     return aggregated
 
 
 def pull_model(model_name: str, backend: str = 'ollama') -> Tuple[bool, str]:
     normalized_backend = normalize_backend(backend)
+    if normalized_backend == 'apple_pcc':
+        return False, 'PCC uses Apple Shortcuts; there are no model weights to download.'
+    if normalized_backend == 'apple_fm':
+        return False, 'Apple manages the system model. Fruth does not download Apple models.'
     if normalized_backend == 'mlx':
         if not mlx_pull_hf_model:
             return False, 'MLX/Hugging Face pull is not available.'
@@ -273,6 +287,10 @@ def remove_model(
     hf_file: Optional[str] = None,
 ) -> Tuple[bool, str]:
     normalized_backend = normalize_backend(backend)
+    if normalized_backend == 'apple_fm':
+        return False, 'Apple manages the system model. Stop individual instances instead.'
+    if normalized_backend == 'apple_pcc':
+        return False, 'Stop the PCC bridge instance; Fruth does not remove user-owned Shortcuts.'
     if normalized_backend == 'mlx':
         if not mlx_remove_hf_model:
             return False, 'MLX/Hugging Face remove is not available.'
@@ -536,6 +554,20 @@ def start_instance(
             status_code=400,
         )
     with start_instance_lock():
+        if normalized_backend == 'apple_pcc':
+            try:
+                return start_apple_pcc_instance(model_name, preferred_port=preferred_port,
+                    capability=normalized_capability, start_source=normalized_start_source)
+            except (ValueError, RuntimeError) as exc:
+                raise RuntimeRequestError(str(exc), status_code=400) from exc
+        if normalized_backend == 'apple_fm':
+            try:
+                return start_apple_fm_instance(
+                    model_name, preferred_port=preferred_port, capability=normalized_capability,
+                    start_source=normalized_start_source,
+                )
+            except (ValueError, RuntimeError) as exc:
+                raise RuntimeRequestError(str(exc), status_code=400) from exc
         if normalized_backend == 'ollama':
             if normalized_capability in {
                 CAPABILITY_CHAT,
@@ -600,6 +632,19 @@ def stop_instance(instance_id: str, config_path: str = 'model_ports.json') -> Tu
         if inst.get('instance_id') == instance_id:
             backend = inst.get('backend') or 'ollama'
             break
+
+    if backend == 'apple_pcc':
+        with start_instance_lock():
+            success, instance = stop_apple_pcc_instance(instance_id, config_path=config_path)
+        return StopResult(state='stopped' if success else 'failed',
+                          message=f"PCC bridge '{instance_id}' " + ('stopped.' if success else 'could not be stopped.'),
+                          details={'backend': 'apple_pcc'}), instance
+    if backend == 'apple_fm':
+        with start_instance_lock():
+            success, instance = stop_apple_fm_instance(instance_id, config_path=config_path)
+        return StopResult(state='stopped' if success else 'failed',
+                          message=f"AFM instance '{instance_id}' " + ('stopped.' if success else 'could not be stopped.'),
+                          details={'backend': 'apple_fm'}), instance
 
     if backend == 'mlx':
         if not stop_mlx_instance:

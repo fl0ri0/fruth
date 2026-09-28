@@ -236,7 +236,7 @@ class ModelControlRuntimeOwner:
             model_name = canonical_model_name(payload)
             raw_backend = str(payload.get('backend') or 'ollama').strip()
             backend = normalize_backend(raw_backend)
-            if backend not in {'ollama', 'mlx', 'llama_cpp'}:
+            if backend not in {'ollama', 'mlx', 'llama_cpp', 'apple_fm', 'apple_pcc'}:
                 raise start_model_request_error(
                     f"Unknown backend type '{raw_backend}'.",
                     status_code=400,

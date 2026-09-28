@@ -1,22 +1,28 @@
-# Known Limitations in Fruth 0.1.2
+# Known Limitations in Fruth 0.1.3
 
-This list records current limits of the 0.1.2 source package.
+This list records current limits of the 0.1.3 source package.
 It is not a roadmap or a general backlog.
 
 ## Platform and Packaging
 
 - The primary tested platform is macOS on Apple Silicon. Windows, Linux, and
-  Intel Mac behavior is not guaranteed for 0.1.2.
+  Intel Mac behavior is not guaranteed for 0.1.3.
 - Distribution is a source archive. It is not a signed or notarized macOS app,
   a container image, or a package-manager release.
 - Backend packages and model weights are not bundled. A capability can be
   listed but remain unavailable until its local backend and model are
   installed.
-- Multi-page scanned-PDF rendering can use PyMuPDF, but PyMuPDF is not part of
-  the default installation because its upstream terms are AGPL-3.0 or a
-  commercial Artifex license. Without it, text-layer extraction still uses
-  `pypdf`, and macOS may provide a limited first-page rendering fallback.
-- The bundled Fruth skill is Codex-specific in 0.1.2 and must be copied into
+- PDF page rendering for local OCR/vision requires macOS and the Quartz Python
+  binding from `requirements.txt`. Other platforms retain text-layer extraction
+  with `pypdf`, but have no supported local page renderer. A text layer alone
+  cannot cover scanned pages or text embedded in images. File-aware external
+  agent routes receive the original PDF under their existing sharing controls.
+- Rendering and OCR are separate: a successfully rendered page is not proof of
+  recognized text. Page limits and OCR failures remain visible in counts and
+  warnings; password-locked or unreadable PDFs fail explicitly. Python environments
+  that sandbox access to macOS application frameworks may prevent PDFKit from
+  initializing; native rendering tests need access to those system services.
+- The bundled Fruth skill is Codex-specific in 0.1.3 and must be copied into
   the user's Codex skills directory manually; marketplace/plugin distribution
   and other agent integrations are outside this release.
 - The dashboard currently requests Google Fonts, Axios, and Font Awesome from
@@ -39,6 +45,26 @@ It is not a roadmap or a general backlog.
   frame/CAS and saved artifact evidence; Readiness retention is secondary and
   cannot repair this guarantee. See the
   [finalization boundary](RESPONSES_CONTRACT.md#finalization-and-durable-completion).
+
+## Apple AI and Apple PCC
+
+- Local Apple AI requires a compatible Mac, available Apple Intelligence and
+  the installed `fm` command. Language, region and system configuration affect
+  availability; Fruth does not download or enable the Apple system model.
+- Apple PCC requires the user-installed Shortcuts in the
+  [PCC setup guide](../fruth_integrations/shortcuts/README.md). Its loopback adapter
+  can be running while cloud access is unavailable or usage-limited. Fruth has
+  no authoritative remaining-quota or reset-time API.
+- The dated AFM/PCC campaigns retain their INCOMPLETE coverage verdicts. They
+  predate later 0.1.3 changes; see the
+  [Apple conformance observations](SELF_ATTACK_STATUS_2026-09-27.md).
+- PDF page dispatch and model transcription quality are separate. The observed
+  four-page AFM response contained reading errors despite complete page coverage.
+  Native OCR tool receipts establish execution/source binding, not perfect text
+  recognition. Model safety refusals remain failures without an OCR bypass.
+- Automatic provider failover is bounded and respects input compatibility,
+  explicit targets/locks and refusal/evidence gates. It does not promise recovery
+  from every failure or switch producers after streamed content has begun.
 
 ## Optional ChatGPT Route
 
@@ -68,8 +94,8 @@ It is not a roadmap or a general backlog.
   interpreted semantically by the selected model and its available tools.
 - The fixed request limits are 5 files, 100 MiB per file, and 250 MiB in total.
   URLs, folders, and symbolic links are not accepted.
-- Direct API-key management and other external providers remain outside this
-  optional route's 0.1.2 contract.
+- Direct API-key management remains outside this optional route's 0.1.3 contract.
+  Apple PCC is a separate integration with its own availability and sharing rules.
 
 ## Compatibility
 
@@ -77,4 +103,4 @@ It is not a roadmap or a general backlog.
   predate 0.1.0.
 - Public `0.x` interfaces may evolve as the runtime contracts mature.
 
-See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.2 release boundary.
+See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.3 release boundary.

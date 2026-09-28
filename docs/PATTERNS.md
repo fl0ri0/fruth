@@ -395,3 +395,10 @@ Use:
 - closing HTML/CSS/media output before every surviving generated dependency path resolves to a saved local artifact
 
 A failed composed-site image repair may become `superseded` after all final materialization checks close and a fresh, applicable composed-site review reports no remaining defects. The target must still pass saved-file validation. This is not successful branch execution: retain the original error/attempt/recovery data as `superseded_failure` and record the resolving review plus target digest. Inapplicable reviews, open defects, missing targets, general revisions, active work, and cancellations cannot use this transition.
+
+That same transition retires the exact branch's recovery candidates and matching
+repair contracts through the existing contract-identity matcher. Resolved
+contracts retain the supersession evidence. Other branch/phase/target identities
+remain open. A persisted `superseded` label alone cannot settle a repair loop or
+publish a successful repair output. Terminal failure flags clear only when the
+final contract is fulfilled and no blocking Late Fill work remains.

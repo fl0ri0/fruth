@@ -51,6 +51,15 @@ Agent safety:
 - do not use `/api/responses` for observation or route selection; use runtime files, manifest/running-instance status, interpretive inference status, or route preview
 - read-like `fruthctl` status helpers default to no control-plane recovery; use the top-level `--recover-control-plane` flag only when you explicitly want local control-plane recovery/start behavior. For strict no-mutation observation, prefer local runtime files first.
 
+Apple PCC (`backend=apple_pcc`, `model=auto`) is a cloud text instance despite its
+local loopback transport. Respect local-only constraints. Once explicitly started,
+it participates in normal preferred-II selection. Inference-owned calls receive
+the full canonical policy and scoped Fruth role instructions; direct single-instance
+chat receives neither automatically. Shortcuts automatically prefers Pro
+and falls back to Cloud on recognized Pro access/availability errors. Its exact
+model variant/context remains unknown; native PCC SDK observations are separate.
+See [PCC setup and transport boundaries](fruth_integrations/shortcuts/README.md).
+
 Repo-local green-field reset:
 
 - `./fruth clean`
@@ -204,7 +213,7 @@ already-collected runtime evidence before recommending recovery.
 4. If an instance is only marked `degraded` while process, port, or backend truth still proves it live, treat that as advisory cache/readiness evidence. Refresh or inspect it; do not turn it into a provider ban, offline state, hard recovery, or learning/self-healing failure signal by itself.
 5. Treat Late Fill wave candidate snapshots as scheduling evidence, not the whole backend truth. If a snapshot is exhausted, excluded, or has no usable candidate, refresh live runtime truth before declaring that no route exists.
 6. Treat MLX/VLM instances by advertised capability, not by package name alone. A VLM with `provider_capabilities` including both `chat` and `vision_analysis` may serve either task when it is the best compatible route; vision-only/OCR-style VLMs remain vision routes.
-7. For Single Chat, a text-only selected MLX/VLM turn may rebound from the instance's startup `vision_analysis` label to effective `chat`. If that selected VLM then fails with a provider 5xx/load error, backend runtime may retry once through normal chat routing with the failed instance excluded. This is bounded transport fallback, not provider disablement or degraded truth.
+7. A text-only MLX/VLM turn may rebound from the instance's startup `vision_analysis` label to effective `chat`. Automatic chat/file/vision execution can recover quota, availability and transport failures through the configured fallback, then compatible running alternatives, retaining the accepted work. `runtime.provider_failover` records exclusions and the four-attempt total bound. Direct model tabs/`instance_id` and locked preferences stay fixed; refusals, invalid requests and evidence failures do not authorize failover. A stream can switch only before SSE publication. See [provider execution recovery](docs/INFERENCE_ROUTING.md).
 
 ## Artifact Rules
 

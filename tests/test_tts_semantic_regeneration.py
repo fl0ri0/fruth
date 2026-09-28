@@ -14,6 +14,7 @@ import pytest
 from fruth_server.late_fill_runtime import LateFillRuntimeOwner
 from fruth_server import tts_semantic_regeneration as policy
 from fruth_services.tts_audio_integrity import build_tts_semantic_source, build_tts_audio_integrity_evidence
+from fruth_services.response_persistence import ResponsePersistenceError, attach_persistence_failure
 
 TEXT = 'The lighthouse is quiet.'
 BAD = 'The night house is quiet.'
@@ -172,6 +173,30 @@ def test_checkpoint_failure_executes_nothing(env):
     env.owner.finalize_response_frame_payload=lambda p,**kw:p
     with pytest.raises(RuntimeError,match='not durable'):policy.run(env.owner,**env.args)
     assert env.calls==[]
+
+
+@pytest.mark.parametrize('checkpoint_number', [1, 2, 3])
+def test_uncertain_checkpoint_stops_without_failure_checkpoint_or_repeated_work(env, checkpoint_number):
+    persist = env.owner.finalize_response_frame_payload
+    attempts = []
+    failures = []
+    def uncertain(p, **kw):
+        attempts.append(copy.deepcopy(p))
+        if len(attempts) == checkpoint_number:
+            failure = ResponsePersistenceError(attach_persistence_failure(p, {
+                'status': 'uncertain', 'stage': 'ledger_fsync', 'automatic_retry': False,
+            }))
+            failures.append(failure)
+            raise failure
+        return persist(p, **kw)
+    env.owner.finalize_response_frame_payload = uncertain
+    with pytest.raises(ResponsePersistenceError) as raised:
+        policy.run(env.owner, **env.args)
+    assert raised.value is failures[0]
+    assert len(attempts) == checkpoint_number
+    assert len(env.checkpoints) == checkpoint_number - 1
+    assert env.calls == ['text_to_speech', 'speech_to_text'][:checkpoint_number - 1]
+    assert 'repair_exhausted' not in policy.states(raised.value.response_payload)['tts']['events']
 
 
 def test_restart_after_consumed_checkpoint_never_reexecutes(env):

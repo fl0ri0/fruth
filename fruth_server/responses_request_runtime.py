@@ -26,11 +26,13 @@ from fruth_services.artifact_contracts import execution_input_artifact_ref
 from fruth_inference.request_phase_graph import build_request_phase_graph
 from fruth_inference.execution_planner import resolve_internal_reasoning_effort
 from fruth_server.repair_gate_runtime import classify_repair_execution_policy
+from fruth_server.backend_transport_runtime import provider_failover_reason, provider_failure_prohibits_retry
 from fruth_server.response_semantics_runtime import (
     attach_phase_output_acceptance,
     classify_phase_output_text,
     control_json_envelope_suspected,
     phase_output_is_graph_preparation,
+    phase_output_defers_saved_file_materialization,
     phase_output_repair_notice,
     phase_output_repair_system_message,
     request_explicitly_allows_control_diagnostics,
@@ -72,6 +74,8 @@ from fruth_services.tts_audio_integrity import (
 )
 
 _DIRECT_BATCH_VARIANT_ASPECT_RATIO_CYCLE = ('16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3')
+# Includes the initial provider; each instance may be attempted only once.
+PROVIDER_FAILOVER_MAX_ATTEMPTS = 4
 _TRANSLATION_LANGUAGE_LABELS = {
     'de': 'German',
     'en': 'English',
@@ -6814,6 +6818,7 @@ class ResponsesRequestRuntimeOwner:
         forced_instance_id: Optional[str] = None,
         data_override: Optional[Any] = None,
         upload_override: Any = None,
+        _provider_retry: Optional[dict[str, Any]] = None,
     ):
         normalize_request_payload = self._hook('normalize_request_payload')
         parse_bool = self._hook('parse_bool')
@@ -6973,7 +6978,8 @@ class ResponsesRequestRuntimeOwner:
                 upload = None
                 uploads = []
         data = normalize_request_payload(data)
-        if callable(promote_current_predecessor_context):
+        direct_target = bool(forced_instance_id or data.get('instance_id'))
+        if callable(promote_current_predecessor_context) and _provider_retry is None:
             data = promote_current_predecessor_context(data)
         if uploads:
             for current_upload in uploads:
@@ -6984,7 +6990,14 @@ class ResponsesRequestRuntimeOwner:
             upload = None
 
         route_info = None
-        if not forced_instance_id and parse_bool(data.get('inference_route'), default=False):
+        if _provider_retry is not None:
+            # Internal execution continuation: never reinterpret the accepted work.
+            route_info = copy.deepcopy(_provider_retry['route_info'])
+            instance_id = route_info['instance_id']
+            instance = route_info['instance']
+            resolved_capability = route_info['capability']
+            direct_target = False
+        elif not forced_instance_id and parse_bool(data.get('inference_route'), default=False):
             route_info, resolution_error = resolve_inference_auto_route(data, upload=upload)
             if resolution_error:
                 status_code = 404 if 'was not found' in resolution_error or 'No running instance' in resolution_error else 400
@@ -7001,7 +7014,8 @@ class ResponsesRequestRuntimeOwner:
                 status_code = 404 if 'was not found' in resolution_error or 'No running instance' in resolution_error else 400
                 return jsonify({'error': resolution_error}), status_code
         if (
-            route_info
+            _provider_retry is None
+            and route_info
             and str((route_info or {}).get('route_source') or '').strip().lower() == 'inference_carried'
             and bool((route_info or {}).get('route_reuse_last_artifact'))
             and any(
@@ -7085,12 +7099,12 @@ class ResponsesRequestRuntimeOwner:
         is_external_target = (
             str(instance.get('target_kind') or '').strip().lower() == 'external'
         )
-        effective_data, route_info, _planner_meta, _control_hints = prepare_effective_request_data(
-            data,
-            route_info=route_info,
-            instance=instance if isinstance(instance, dict) else None,
-        )
-        data = effective_data
+        if _provider_retry is None:
+            data, route_info, _planner_meta, _control_hints = prepare_effective_request_data(
+                data,
+                route_info=route_info,
+                instance=instance if isinstance(instance, dict) else None,
+            )
         if is_external_target:
             route_info = dict(route_info or {})
             route_info.update(
@@ -7258,7 +7272,10 @@ class ResponsesRequestRuntimeOwner:
                 response_payload=response_payload,
             )
 
-        def build_runtime_error_payload(error_message: str, status_code: int, mode_hint: str) -> dict[str, Any]:
+        def build_runtime_error_payload(
+            error_message: str, status_code: int, mode_hint: str,
+            *, source_payload: Optional[dict[str, Any]] = None,
+        ) -> dict[str, Any]:
             error_payload = build_canonical_error_response_payload(
                 error_message=error_message,
                 status_code=status_code,
@@ -7271,10 +7288,28 @@ class ResponsesRequestRuntimeOwner:
                 response_id=requested_response_id,
                 message_id=response_lookup_message_id,
             )
+            if isinstance(source_payload, dict):
+                # A later PDF page can fail after earlier pages produced verified
+                # results. Preserve coverage and receipts before freezing failure.
+                for key in ('pdf_source', 'pdf_total_pages', 'pdf_processed_pages', 'warnings'):
+                    if key in source_payload:
+                        error_payload[key] = copy.deepcopy(source_payload[key])
+                image_tool_evidence = source_payload.get('apple_fm_image_tool_evidence')
+                if isinstance(image_tool_evidence, dict) and image_tool_evidence:
+                    error_payload['runtime'] = {
+                        **error_payload.get('runtime', {}),
+                        'apple_fm_image_tool_evidence': copy.deepcopy(image_tool_evidence),
+                    }
             return finalize_response_frame_payload(error_payload, request_payload=data)
 
-        def maybe_retry_self_healed_response(error_message: str, status_code: int) -> Optional[Response]:
-            if forced_instance_id:
+        def maybe_retry_self_healed_response(error_message: str, status_code: int, *, exception=None) -> Optional[Response]:
+            if direct_target or _provider_retry is not None:
+                return None
+            if provider_failover_reason(error_message, exception=exception, status_code=status_code):
+                return None
+            if provider_failure_prohibits_retry(error_message, exception=exception, status_code=status_code):
+                return None
+            if (((route_info or {}).get('route_runtime') or {}).get('inference_preferences') or {}).get('primary_mode') == 'lock':
                 return None
             if not route_info or not parse_bool(data.get('inference_route'), default=False):
                 return None
@@ -7359,69 +7394,121 @@ class ResponsesRequestRuntimeOwner:
                 )
             )
 
-        def maybe_retry_single_chat_transport_fallback(
-            error_message: str,
-            status_code: int,
-        ) -> Optional[Response]:
-            if forced_instance_id:
-                return None
-            if parse_bool(data.get('single_chat_transport_fallback_attempted'), default=False):
-                return None
-            if normalize_capability(capability) != self.capability_chat:
-                return None
-            if not selected_instance_is_mlx_vlm(instance):
-                return None
-            try:
-                normalized_status_code = int(status_code or 0)
-            except (TypeError, ValueError):
-                normalized_status_code = 0
-            if normalized_status_code and normalized_status_code < 500:
-                return None
-
-            failed_instance_id = str(instance_id or '').strip()
-            retry_payload = dict(data if isinstance(data, dict) else dict(data or {}))
-            retry_payload['single_chat_transport_fallback_attempted'] = True
-            retry_payload['capability'] = self.capability_chat
-            for key in ('instance_id', 'model', 'modelName', 'request_model', 'requestModel', 'backend'):
-                retry_payload.pop(key, None)
-            fallback_instance_id, fallback_instance, fallback_capability, fallback_error = resolve_responses_target_instance(
-                retry_payload,
-                excluded_instance_ids=[failed_instance_id] if failed_instance_id else None,
+        def maybe_retry_provider_failure(error_message, status_code, *, exception=None, response_id=None):
+            nonlocal route_info, requested_response_id
+            if response_id and not requested_response_id:
+                requested_response_id = response_id
+            reason = provider_failover_reason(
+                error_message, exception=exception, status_code=status_code,
             )
-            if fallback_error or not fallback_instance_id or not isinstance(fallback_instance, dict):
+            if direct_target or is_external_target or not reason:
                 return None
-            if failed_instance_id and fallback_instance_id == failed_instance_id:
+            if capability not in {self.capability_chat, 'vision_analysis'}:
                 return None
-
-            retry_payload['instance_id'] = fallback_instance_id
-            retry_payload['model'] = str(fallback_instance.get('model') or fallback_instance.get('modelName') or '').strip()
-            retry_payload['backend'] = normalize_backend(fallback_instance.get('backend'))
-            request_model = str(fallback_instance.get('request_model') or fallback_instance.get('requestModel') or '').strip()
-            if request_model:
-                retry_payload['request_model'] = request_model
-            retry_payload['runtime_transport_fallback'] = {
-                'reason': 'selected_mlx_vlm_text_chat_transport_failed',
-                'failed_instance_id': failed_instance_id or None,
-                'fallback_instance_id': fallback_instance_id,
-                'capability': fallback_capability or self.capability_chat,
-                'status_code': normalized_status_code or status_code,
-                'error_message': str(error_message or '').strip() or 'Request failed.',
+            runtime = (route_info or {}).get('route_runtime') or {}
+            preferences = runtime.get('inference_preferences') or {}
+            if str(preferences.get('primary_mode') or '').lower() == 'lock':
+                return None
+            attempts = copy.deepcopy((_provider_retry or {}).get('attempts') or [])
+            attempts.append({
+                'instance_id': instance_id, 'model': model_name, 'backend': backend,
+                'reason': reason, 'status_code': status_code,
+                **({'provider_status_code': exception.response.status_code}
+                   if getattr(getattr(exception, 'response', None), 'status_code', None) is not None else {}),
+                'error_message': str(error_message),
+            })
+            route_info = dict(route_info or {
+                'instance_id': instance_id, 'instance': instance, 'capability': capability,
+                'route_source': 'capability',
+            })
+            runtime = dict(runtime)
+            audit = {
+                'max_attempts': PROVIDER_FAILOVER_MAX_ATTEMPTS,
+                'attempts': attempts,
+                'status': 'exhausted',
             }
-            log_unified_event(
-                category='responses',
-                action='single_chat_transport_fallback',
-                status='ok',
-                instance_id=fallback_instance_id,
-                model=retry_payload.get('model'),
-                backend=retry_payload.get('backend'),
-                capability=fallback_capability or self.capability_chat,
-                previous_instance_id=failed_instance_id,
-                previous_model=request_model_override or model_name,
-                message=f'Single chat fallback after selected MLX/VLM transport failure: {error_message}',
+            runtime['provider_failover'] = audit
+            route_info['route_runtime'] = runtime
+            if len(attempts) >= PROVIDER_FAILOVER_MAX_ATTEMPTS:
+                audit['stop_reason'] = 'attempt_limit'
+                return None
+
+            retry_payload = copy.deepcopy(dict(data))
+            retry_payload['capability'] = capability
+            for key in ('instance_id', 'model', 'modelName', 'request_model', 'requestModel', 'backend', 'alias', 'profile'):
+                retry_payload.pop(key, None)
+            # Keep the exact execution input chosen for this attempt, even when
+            # it originated from an accepted artifact reference rather than file_path.
+            if raw_file_path:
+                retry_payload['file_path'] = raw_file_path
+            if response_id:
+                retry_payload['response_id'] = response_id
+
+            def compatible(candidate):
+                if str(candidate.get('target_kind') or '').lower() == 'external':
+                    return False
+                if not candidate.get('port'):
+                    return False
+                if normalize_backend(candidate.get('backend')) == 'apple_pcc' and any(
+                    value is not None for value in (temperature, top_p, max_tokens)
+                ):
+                    return False
+                # Attached text is extracted before chat. Image/PDF inputs need
+                # a provider that can honor the existing visual input path.
+                needs_vision = has_file_context and self._hook('file_kind_from_name')(raw_file_path) != 'text'
+                if needs_vision and not instance_supports_capability(candidate, 'vision_analysis'):
+                    return False
+                if build_missing_required_session_controls(candidate, retry_payload):
+                    return False
+                try:
+                    if reasoning_effort_explicit:
+                        validate_reasoning_effort_for_instance(reasoning_effort, candidate)
+                except ValueError:
+                    return False
+                return True
+
+            preferred_targets = []
+            # A failed primary is already excluded. Try a configured fallback
+            # before the same capability's ordinary automatic selection.
+            for key in ('fallback_target',):
+                target = preferences.get(key)
+                if isinstance(target, dict) and target:
+                    target_capability = normalize_capability(target.get('capability')) or self.capability_chat
+                    if target_capability == capability:
+                        preferred_targets.append(target)
+            fallback_id, fallback, _, error = resolve_responses_target_instance(
+                retry_payload,
+                excluded_instance_ids=[item['instance_id'] for item in attempts],
+                preferred_targets=preferred_targets,
+                candidate_filter=compatible,
             )
-            return handle_responses_request(
+            if error or not fallback_id or not isinstance(fallback, dict):
+                audit['stop_reason'] = 'no_compatible_running_alternative'
+                return None
+            if fallback_id in {item['instance_id'] for item in attempts} or not compatible(fallback):
+                audit['stop_reason'] = 'no_compatible_running_alternative'
+                return None
+            audit.update(status='selected', selected_instance_id=fallback_id)
+            retry_route = copy.deepcopy(route_info)
+            accepted_preview = data.get('inference_preview') or {}
+            if not retry_route['route_runtime'].get('working_frame') and accepted_preview.get('working_frame'):
+                retry_route['route_runtime']['working_frame'] = copy.deepcopy(accepted_preview['working_frame'])
+            retry_route.update(instance_id=fallback_id, instance=fallback, capability=capability)
+            retry_payload['backend'] = normalize_backend(fallback.get('backend'))
+            retry_payload['model'] = fallback.get('model') or fallback.get('modelName')
+            retry_payload['request_model'] = fallback.get('request_model') or fallback.get('requestModel')
+            retry_payload['inference_preview'] = self.build_inference_route_preview_payload(
+                retry_route, request_payload=retry_payload,
+            )
+            log_unified_event(
+                category='responses', action='provider_failover', status='retrying',
+                instance_id=fallback_id, previous_instance_id=instance_id,
+                backend=retry_payload['backend'], capability=capability,
+                message=f'{reason}: {error_message}',
+            )
+            return self.handle_responses_request(
                 data_override=retry_payload,
-                upload_override=upload,
+                _provider_retry={'route_info': retry_route, 'attempts': attempts},
             )
 
         normalized_payload = dict(data) if isinstance(data, dict) else dict(data)
@@ -7464,6 +7551,8 @@ class ResponsesRequestRuntimeOwner:
             )
         except ValueError as exc:
             return jsonify({'error': str(exc)}), 400
+        if backend == 'apple_pcc' and any(value is not None for value in (temperature, top_p, max_tokens)):
+            return jsonify({'error': 'PCC Shortcuts does not expose sampling or output-token controls.'}), 400
         if reasoning_effort is not None:
             # Keep the caller payload unchanged for retries that may select a
             # different model, but record the effective per-target value in
@@ -7499,7 +7588,7 @@ class ResponsesRequestRuntimeOwner:
             not raw_file_path
             and not upload
             and should_attach_selected_reference_file_context(
-                prompt=responses_prompt,
+                prompt=responses_current_turn_prompt,
                 capability=capability,
                 selected_reference_artifact=matched_selected_reference,
             )
@@ -7926,7 +8015,8 @@ class ResponsesRequestRuntimeOwner:
                 )
             return jsonify(project_response_payload_for_wire(response_payload))
 
-        if capability == self.capability_chat and not has_file_context:
+        if (capability == self.capability_chat and not has_file_context
+                and str(data.get('ocr_mode') or '').strip().lower() not in {'apple_ocr', 'apple_barcode'}):
             messages = extract_responses_messages(data)
             if not messages:
                 return jsonify({'error': 'No Responses input was provided.'}), 400
@@ -7935,11 +8025,13 @@ class ResponsesRequestRuntimeOwner:
                 messages,
                 route_payload=route_info,
                 request_payload=normalized_payload,
+                backend=backend,
             )
             messages = inject_prepare_phase_contract_into_chat_messages(
                 messages,
                 route_payload=route_info,
                 request_payload=normalized_payload,
+                backend=backend,
             )
             context_strategy = choose_context_strategy(
                 instance=instance,
@@ -7966,7 +8058,7 @@ class ResponsesRequestRuntimeOwner:
             except (TypeError, ValueError):
                 return jsonify({'error': f"Invalid target port '{port}'."}), 400
             if wants_stream:
-                return stream_chat_backend_as_responses(
+                streamed_response = stream_chat_backend_as_responses(
                     instance_id=instance_id,
                     target_port=target_port,
                     model_name=model_name,
@@ -7982,7 +8074,20 @@ class ResponsesRequestRuntimeOwner:
                     response_id=requested_response_id,
                     request_payload=normalized_payload,
                     artifact_prompt=responses_current_turn_prompt or responses_prompt,
+                    provider_failure_retry=maybe_retry_provider_failure,
                 )
+                # Opening failed before SSE was published. Persist the same
+                # canonical failure/attempt evidence as non-streaming requests.
+                if isinstance(streamed_response, tuple) and streamed_response[1] >= 400:
+                    failure = streamed_response[0].get_json() or {}
+                    if failure.get('object') == 'response':
+                        return streamed_response
+                    error_message = str(failure.get('error') or 'Chat stream failed to open.')
+                    status_code = streamed_response[1]
+                    error_payload = build_runtime_error_payload(error_message, status_code, 'chat')
+                    mark_response_lookup_failed(error_message, 'chat', response_payload=error_payload)
+                    return jsonify(project_response_payload_for_wire(error_payload)), status_code
+                return streamed_response
             ensure_response_lookup('chat')
             try:
                 assistant_message = execute_chat_backend_request(
@@ -7997,12 +8102,12 @@ class ResponsesRequestRuntimeOwner:
                     max_tokens=max_tokens,
                     reasoning_effort=reasoning_effort,
                 )
-            except self.request_timeout_error:
+            except self.request_timeout_error as exc:
                 error_message = f'Timeout Port {target_port}'
-                retried_response = maybe_retry_single_chat_transport_fallback(error_message, 504)
+                retried_response = maybe_retry_provider_failure(error_message, 504, exception=exc)
                 if retried_response is not None:
                     return retried_response
-                retried_response = maybe_retry_self_healed_response(error_message, 504)
+                retried_response = maybe_retry_self_healed_response(error_message, 504, exception=exc)
                 if retried_response is not None:
                     return retried_response
                 error_payload = build_runtime_error_payload(error_message, 504, 'chat')
@@ -8015,10 +8120,10 @@ class ResponsesRequestRuntimeOwner:
             except self.request_exception_error as exc:
                 details = request_exception_details(exc)
                 error_message = f'Request to port {target_port} failed: {details}'
-                retried_response = maybe_retry_single_chat_transport_fallback(error_message, 500)
+                retried_response = maybe_retry_provider_failure(error_message, 500, exception=exc)
                 if retried_response is not None:
                     return retried_response
-                retried_response = maybe_retry_self_healed_response(error_message, 500)
+                retried_response = maybe_retry_self_healed_response(error_message, 500, exception=exc)
                 if retried_response is not None:
                     return retried_response
                 error_payload = build_runtime_error_payload(error_message, 500, 'chat')
@@ -8030,10 +8135,10 @@ class ResponsesRequestRuntimeOwner:
                 return jsonify(project_response_payload_for_wire(error_payload)), 500
             except Exception as exc:  # noqa: BLE001
                 error_message = str(exc)
-                retried_response = maybe_retry_single_chat_transport_fallback(error_message, 500)
+                retried_response = maybe_retry_provider_failure(error_message, 500, exception=exc)
                 if retried_response is not None:
                     return retried_response
-                retried_response = maybe_retry_self_healed_response(error_message, 500)
+                retried_response = maybe_retry_self_healed_response(error_message, 500, exception=exc)
                 if retried_response is not None:
                     return retried_response
                 error_payload = build_runtime_error_payload(error_message, 500, 'chat')
@@ -8043,12 +8148,19 @@ class ResponsesRequestRuntimeOwner:
                     response_payload=error_payload,
                 )
                 return jsonify(project_response_payload_for_wire(error_payload)), 500
+            pcc_execution = getattr(assistant_message, 'pcc_execution', None)
+
+            def retain_chat_execution(value):
+                nonlocal pcc_execution
+                pcc_execution = getattr(value, 'pcc_execution', None)
+                return value
+
             assistant_text, phase_acceptance_attempts = accept_phase_output(
                 assistant_message,
                 effective_route_payload=route_info,
                 effective_request_payload=normalized_payload,
                 effective_capability=capability,
-                retry_same_phase=lambda: execute_chat_backend_request(
+                retry_same_phase=lambda: retain_chat_execution(execute_chat_backend_request(
                     target_port=target_port,
                     model_name=model_name,
                     backend=backend,
@@ -8059,7 +8171,7 @@ class ResponsesRequestRuntimeOwner:
                     top_p=top_p,
                     max_tokens=max_tokens,
                     reasoning_effort=reasoning_effort,
-                ),
+                )),
             )
             phase_output_repair_required = bool(
                 phase_acceptance_attempts
@@ -8067,7 +8179,11 @@ class ResponsesRequestRuntimeOwner:
             )
             text_artifact_payload = (
                 {}
-                if phase_output_repair_required
+                if phase_output_repair_required or phase_output_defers_saved_file_materialization(
+                    route_payload=route_info,
+                    request_payload=normalized_payload,
+                    capability=capability,
+                )
                 else persist_generated_text_artifact_if_requested(
                     assistant_text,
                     prompt=responses_current_turn_prompt or responses_prompt,
@@ -8076,6 +8192,8 @@ class ResponsesRequestRuntimeOwner:
                     request_payload=normalized_payload,
                 )
             )
+            if pcc_execution:
+                text_artifact_payload = {**text_artifact_payload, 'pcc_execution': pcc_execution}
             response_payload = build_canonical_response_payload(
                 instance_id=instance_id,
                 model_name=model_name,
@@ -8322,10 +8440,15 @@ class ResponsesRequestRuntimeOwner:
         )
         if status_code >= 400:
             error_message = str(infer_result.get('error') or 'Request failed.')
+            retried_response = maybe_retry_provider_failure(error_message, status_code)
+            if retried_response is not None:
+                return retried_response
             retried_response = maybe_retry_self_healed_response(error_message, status_code)
             if retried_response is not None:
                 return retried_response
-            error_payload = build_runtime_error_payload(error_message, status_code, capability or 'response')
+            error_payload = build_runtime_error_payload(
+                error_message, status_code, capability or 'response', source_payload=infer_result,
+            )
             mark_response_lookup_failed(
                 error_message,
                 capability or 'response',
@@ -8411,6 +8534,11 @@ class ResponsesRequestRuntimeOwner:
             and not phase_output_repair_required
             and not str(infer_result.get('saved_text_path') or infer_result.get('savedTextPath') or '').strip()
             and not infer_result.get('saved_text_artifacts')
+            and not phase_output_defers_saved_file_materialization(
+                route_payload=route_info,
+                request_payload=normalized_payload,
+                capability=capability,
+            )
         ):
             text_artifact_payload = persist_generated_text_artifact_if_requested(
                 final_output_text,

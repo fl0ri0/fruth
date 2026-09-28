@@ -6,11 +6,19 @@ from fruth_services.events import observe_call
 
 import json
 import logging
+import requests
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
+from fruth_integrations.shortcuts.transport import (
+    chat_payload as pcc_chat_payload, validate_response as validate_pcc_response,
+    stream_deltas as pcc_stream_deltas,
+)
 
 from fruth_services.transports import (
+    apple_fm_chat_payload,
+    validate_apple_fm_response,
+    iter_apple_fm_stream_deltas,
     apply_mlx_reasoning_controls,
     extract_generate_content,
     extract_generate_seed,
@@ -29,6 +37,56 @@ from fruth_services.transports import (
 )
 
 
+def provider_failure_prohibits_retry(error_message: str, *, exception=None, status_code=None) -> bool:
+    """Content, contract and evidence rejection cannot authorize another provider."""
+    message = str(error_message or '').lower()
+    if any(token in message for token in (
+        'guardrail', 'safety', 'refusal', 'refused to', 'content policy',
+        'content filter', 'content_filter', 'policy violation', 'blocked:',
+        'cannot provide a response for this request', 'please revise the request',
+        'invalid request', 'invalid argument', 'context size', 'context length',
+        'context_length', 'transcript exceeded', 'digest', 'hash mismatch',
+        'audio integrity', 'transcript mismatch', 'evidence', 'artifact',
+    )):
+        return True
+    response = getattr(exception, 'response', None)
+    upstream_status = getattr(response, 'status_code', None)
+    status = upstream_status if upstream_status is not None else status_code
+    return status in {400, 404, 405, 409, 413, 415, 422}
+
+
+def provider_failover_reason(error_message: str, *, exception=None, status_code=None) -> Optional[str]:
+    """Classify availability failures, including quota errors wrapped in HTTP 500.
+
+    Untyped internal errors require an explicit availability diagnostic rather
+    than a generic server-error code. Prefer the actual upstream HTTP status.
+    """
+    if provider_failure_prohibits_retry(error_message, exception=exception, status_code=status_code):
+        return None
+    message = str(error_message or '').lower()
+    upstream_status = getattr(getattr(exception, 'response', None), 'status_code', None)
+    status = upstream_status if upstream_status is not None else status_code
+    if status == 429 or any(token in message for token in (
+        'usage limit', 'rate limit', 'rate_limit', 'quota exceeded',
+        'insufficient_quota', 'too many requests',
+    )):
+        return 'provider_usage_limit'
+    if isinstance(exception, requests.Timeout):
+        return 'provider_timeout'
+    if isinstance(exception, requests.ConnectionError):
+        return 'provider_connection_failure'
+    if upstream_status in {401, 402, 403, 408, 500, 502, 503, 504}:
+        return 'provider_unavailable'
+    if any(token in message for token in (
+        'timeout port', 'timed out', 'connection refused', 'connection reset',
+        'connection aborted', 'service unavailable', 'model unavailable',
+        'model is unavailable', 'model not available', 'system model is not available',
+        'temporarily unavailable', 'access denied', 'not eligible',
+    )):
+        return 'provider_unavailable'
+    return None
+
+
 @dataclass
 class BackendTransportRuntimeOwner:
     hooks: dict[str, Any]
@@ -39,6 +97,27 @@ class BackendTransportRuntimeOwner:
 
     def _hook(self, name: str) -> Any:
         return self.hooks[name]
+
+    def _apple_fm_chat_completion(self, port: int, payload: dict, timeout_sec: int) -> dict:
+        response = self._hook('requests_post')(
+            f'http://127.0.0.1:{port}/v1/chat/completions', json=payload, timeout=timeout_sec)
+        try:
+            response.raise_for_status()
+            result = response.json()
+            return {'content': validate_apple_fm_response(result), 'result': result}
+        finally:
+            response.close()
+
+    def _apple_pcc_chat_completion(self, port, model, messages, timeout_sec):
+        response = self._hook('requests_post')(
+            f'http://127.0.0.1:{port}/v1/chat/completions',
+            json=pcc_chat_payload(model, messages, timeout_sec=timeout_sec), timeout=timeout_sec)
+        try:
+            response.raise_for_status()
+            result = response.json()
+            return {'content': validate_pcc_response(result), 'result': result}
+        finally:
+            response.close()
 
     @observe_call('backend_transport.execute_chat_backend_request',
                   record_kind='model_invocation',
@@ -64,6 +143,18 @@ class BackendTransportRuntimeOwner:
 
         chat_timeout_sec = int(timeout_override_sec or chat_timeout_seconds(model_name, backend, capability))
         prepared_messages = normalize_chat_messages_for_backend(messages, backend=backend)
+
+        if backend == 'apple_pcc':
+            # Shared II callers supply generic sampling defaults. Shortcuts has
+            # no sampling API, so these are not advertised or sent to the adapter.
+            return self._apple_pcc_chat_completion(target_port, request_model_override or model_name,
+                                                    messages, chat_timeout_sec)['content']
+
+        if backend == 'apple_fm':
+            payload = apple_fm_chat_payload(request_model_override or model_name, messages,
+                                            temperature=temperature, top_p=top_p,
+                                            max_tokens=max_tokens, reasoning_effort=reasoning_effort)
+            return self._apple_fm_chat_completion(target_port, payload, chat_timeout_sec)['content']
 
         if backend in {'mlx', 'llama_cpp'}:
             openai_url = f'http://127.0.0.1:{target_port}/v1/chat/completions'
@@ -260,13 +351,35 @@ class BackendTransportRuntimeOwner:
             payload['top_p'] = top_p
         if max_tokens is not None:
             payload['max_tokens'] = max_tokens
+        if backend == 'apple_fm':
+            payload = apple_fm_chat_payload(request_model_override or model_name, messages,
+                                            stream=True, temperature=temperature, top_p=top_p,
+                                            max_tokens=max_tokens, reasoning_effort=reasoning_effort)
+        if backend == 'apple_pcc':
+            payload = pcc_chat_payload(request_model_override or model_name, messages,
+                                       timeout_sec=timeout_sec, stream=True)
         response = requests_post(
             f'http://127.0.0.1:{target_port}/v1/chat/completions',
             json=payload,
             timeout=max(30, int(timeout_sec)),
             stream=True,
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except Exception:
+            try:
+                # Streaming leaves the error body unread. Cache it before close
+                # so the ordinary error formatter can retain the provider reason.
+                response.content
+            except Exception:  # noqa: BLE001
+                pass  # The original HTTP error remains the fallback.
+            finally:
+                response.close()
+            raise
+        if backend == 'apple_fm':
+            response.fruth_stream_protocol = 'apple_fm'
+        if backend == 'apple_pcc':
+            response.fruth_stream_protocol = 'apple_pcc'
         return response
 
     def request_exception_details(self, exc: Exception) -> str:
@@ -277,12 +390,27 @@ class BackendTransportRuntimeOwner:
         try:
             payload = response.json()
             if isinstance(payload, dict):
-                details = payload.get('error') or payload.get('message') or details
+                error = payload.get('error') or payload.get('message')
+                if isinstance(error, dict):
+                    error = error.get('message') or error.get('code')
+                if isinstance(error, str) and error.strip():
+                    details = error.strip()
         except Exception:  # noqa: BLE001
-            details = getattr(response, 'text', details)[:300]
+            try:
+                body = str(getattr(response, 'text', '') or '').strip()
+                if body:
+                    details = body[:300]
+            except Exception:  # noqa: BLE001
+                pass
         return details
 
     def iter_openai_stream_deltas(self, response) -> Any:
+        if getattr(response, 'fruth_stream_protocol', None) == 'apple_pcc':
+            yield from pcc_stream_deltas(response)
+            return
+        if getattr(response, 'fruth_stream_protocol', None) == 'apple_fm':
+            yield from iter_apple_fm_stream_deltas(response)
+            return
         try:
             for raw_line in response.iter_lines(decode_unicode=True):
                 if not raw_line:
@@ -530,6 +658,8 @@ class BackendTransportRuntimeOwner:
         top_p: Optional[float] = None,
         reasoning_effort: Optional[str] = None,
     ) -> dict:
+        if backend == 'apple_pcc':
+            return self._apple_pcc_chat_completion(port, model_name, messages, timeout_sec)
         if backend == 'mlx':
             return self.mlx_chat_completions(
                 port,
@@ -540,6 +670,10 @@ class BackendTransportRuntimeOwner:
                 top_p=top_p,
                 reasoning_effort=reasoning_effort,
             )
+        if backend == 'apple_fm':
+            payload = apple_fm_chat_payload(model_name, messages, temperature=temperature,
+                                            top_p=top_p, reasoning_effort=reasoning_effort)
+            return self._apple_fm_chat_completion(port, payload, timeout_sec)
         content = self.execute_chat_backend_request(
             target_port=port,
             model_name=model_name,

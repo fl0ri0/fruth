@@ -4,8 +4,22 @@ This note describes routing in Fruth's interpretive inference layer, behind the 
 
 Related runtime policy file:
 
-- `FRUTH_INFERENCE.md` in the repo root is the canonical runtime policy injected into interpretive inference routing prompts and interpretive inference-owned user-facing chat turns.
+- `FRUTH_INFERENCE.md` in the repo root is the complete canonical runtime policy, injected in full for ordinary backends. The actual executing Apple AI (`apple_fm`) backend uses the separately authored `common` plus current-role projection in `fruth_inference/policies/apple_fm.md`, with both source digests. Available AFM candidates do not change another executor's policy. Custom unmarked policies remain complete; missing or malformed AFM scopes fail visibly. Selection preserves branch contracts, current inputs and promoted references.
 - this `docs/INFERENCE_ROUTING.md` file is the human-facing routing contract.
+
+The shared root chat policy injection also carries the already-selected
+`route_runtime.semantic_role_profile` through the existing planner role-guidance
+renderer. Graph-resolved preparation can skip a model-backed planner call; that
+must not drop the selected role/lens orientation from execution. The guidance is
+advisory for every backend and cannot create review criteria, promote work or
+change Closure gates. Direct bounded workers retain their existing branch
+instructions; this does not enable interpretive inference on direct requests.
+
+Inference-owned PCC preparation uses the same focused current-task/reference
+framing as local AFM, while retaining the full canonical policy. Its scoped role
+instructions identify Shortcuts as model transport and Fruth as the owner of
+downstream media/file execution. Direct PCC chat does not acquire this role or
+preparation framing from a multi-step user prompt alone.
 
 ## Goal
 
@@ -22,6 +36,11 @@ The interpretive inference layer should help Fruth understand:
 The interpretive inference layer should decide the next truthful phase, not pretend the whole request is one flat capability choice.
 
 The layer handles semantic/current-turn interpretation inside Fruth; the larger runtime/control-plane substrate records phase truth, executes branches, persists artifacts, and preserves replayable outputs.
+
+For ordinary image analysis, naming or describing visible content belongs to the
+vision answer. Those verbs alone do not create an additional text branch. Explicit
+sequencing, separate text work such as writing a poem, and saved-file requests
+retain their own dependency/output contracts.
 
 The current request rule is: intent is anchored by interpretive inference, graph state is refined by runtime evidence, and each freeze records the current graph closure review. Closure may repeat after new evidence, reconciliation, repair or continuation; a frozen moment may truthfully remain blocked or incomplete.
 
@@ -69,6 +88,66 @@ Execution-resolution note:
 
 Fresh turns normally use `current_turn_only` context strategy. Recent conversation turns and generated artifacts are injected only when the current request is clearly referential, continuation-like, or explicitly selects a reference.
 
+Follow-ups that explain saved artifact state, provenance or runtime evidence stay
+on chat. An audio reference alone does not request another transcription, and an
+image reference does not override an explicit preservation/no-reinspection
+constraint. Affirmative requests for fresh transcription, inspection or generation
+retain their media work, including separate new work alongside a preserved image.
+STT cues respect action polarity and quoted reference text: "do not generate new
+audio or transcribe the recording again" prohibits both actions. A later explicit
+request to transcribe a new recording still requests STT. File extraction likewise
+requires an affirmative action; mentions of saved evidence alone cannot authorize
+an unspecified new text file or a closure repair to produce one.
+The chat execution path does not implicitly attach a selected media file for a
+state readback. It resolves the exact selected artifact in its canonical source
+response, carries saved producer/consumer evidence with its identities, and
+reports unavailable or changed evidence without substituting siblings. This
+readback does not change earlier closure truth. Automatic post-generation image
+enrichment remains enabled and its saved observations can accompany the readback.
+
+Saved-state chat receives a projection of recorded verdicts and exact bindings,
+not repeated copies of signal measurements, thresholds or scoring diagnostics.
+The projection carries source/frame and artifact identities, producer/consumer
+bindings, digests, text, authority, statuses and negative child verdicts. Exact
+duplicate evidence values share an indexed record; artifact-specific references
+still identify which records apply. Current-file binding checks use the full
+canonical records before projection. Full diagnostics remain in the source frame.
+This reduces context use without changing policy or re-running verification;
+it does not guarantee that every request fits a provider's context window.
+
+Audio records also project `saved_digest_equalities`, computed from valid saved
+SHA-256 values with explicit representation names: TTS input text versus declared
+text, audio-file bytes versus TTS input text, and audio-file bytes versus STT input
+bytes. A missing or malformed operand gives `null` (unknown), not a match. Original
+digests and saved flags remain visible, including contradictions. These read-side
+comparisons do not reverify media or replace `tts_stt_semantic_evidence`: a byte
+hash differing from a text hash is compatible with the spoken words matching.
+
+Ordinary saved-state explanations use the normal chat completion contract;
+selecting an artifact does not automatically add model-backed semantic reviews.
+For an explicit explanation request, an exact echo of the saved transcript or
+spoken source remains pending for explanation repair. Separately contracted
+semantic criteria still require the existing branch and whole-turn reviews,
+bound to the answer and canonical saved-state projection. Changed evidence
+invalidates those accepted reviews. Ordinary completion does not certify the
+correctness of every natural-language claim.
+Missing evidence can be explained honestly; it must not be invented or replaced
+with a sibling artifact. These checks do not authorize new media execution.
+
+For AFM text-only saved-state follow-ups, historical conversation turns retain
+their full role/content records inside reference-only context. The exact current
+request is the bounded execution task. Runtime policy and saved evidence remain
+present; canonical request/history is unchanged. Typed multimodal/tool messages
+keep their original representation. The explanation distinguishes file-byte
+digests from source/transcript text digests, and producer from consumer identity.
+These instructions improve the provider handoff; they do not certify model prose.
+
+A model's unsupported claim about an image or audio file remains a visible text
+truth defect. The claim guard can request materialization repair only for an
+already-promoted, current obligation of that capability. Reserved candidates,
+waived/superseded/cancelled work and model claims alone cannot create new media
+obligations, even when a suitable backend is available.
+
 ### Router Outputs
 
 Router and route-preview calls return strict JSON only:
@@ -82,7 +161,7 @@ Router and route-preview calls return strict JSON only:
 
 When a request phase graph already exists, that JSON must describe only the current truthful phase.
 
-Interpretive inference-owned user-facing chat is different. When the same `FRUTH_INFERENCE.md` policy is injected into a visible chat/materialization turn, the interpretive inference layer must render the requested user-facing answer or artifact payload normally. It must not expose router JSON, request IR, candidate graph JSON, or control-plane schemas unless the user explicitly asks to inspect them.
+Interpretive inference-owned user-facing chat is different. When the canonical policy or AFM execution projection is injected into a visible chat/materialization turn, the interpretive inference layer must render the requested user-facing answer or artifact payload normally. It must not expose router JSON, request IR, candidate graph JSON, or control-plane schemas unless the user explicitly asks to inspect them.
 
 ### Safety
 
@@ -101,7 +180,7 @@ Current flow:
 - the backend builds routing context from prompt, attachment metadata, explicit references, selected recent artifacts, interpretive inference payload, runtime manifest, and request-phase context when present
 - the default fresh-turn context strategy is `current_turn_only`; older message windows or compressed history may be available for budget/reference hygiene, but they are not fresh intent
 - recent artifact continuity should prefer durable `artifact_ref` identity and artifact-dossier truth over raw copied-path reuse when that data is already available
-- the backend injects the repo-local `FRUTH_INFERENCE.md` runtime policy into both interpretive inference routing context and interpretive inference-owned user-facing chat context so current-turn interpretation and visible interpretive inference replies share the same maintained policy source
+- ordinary backends receive the complete repo-local `FRUTH_INFERENCE.md` runtime policy; the actual executing Apple AI (`apple_fm`) backend receives the expanded common+role projection in `fruth_inference/policies/apple_fm.md`, with canonical and projection source digests. AFM preparation explicitly distinguishes `fruth_bounded_task` from `fruth_promoted_context`, preserving the whole workflow as reference and placing the current bounded task last as executable scope. AFM preparation names concrete image-prompt, narration and file sections. Save/read workflows prepare only the source data; the consumer is authored after its actual read. Other backends retain their existing task framing. Policy selection never truncates branch inputs or bypasses runtime evidence/closure.
 - the runtime manifest carries richer provider truth per instance, including package/contract identity, feature and modality summaries, compact session-control summaries, and compact backend metadata/runtime summaries where available
 - The interpretive inference layer derives or respects a request phase graph for interpretive inference-owned requests before treating the turn like a single flat route choice
 - the general candidate layer can describe possible outputs, workload tasks, context, references, evidence, repair paths, and continuations before any of them become executable obligations
@@ -141,6 +220,12 @@ Current frontend-to-backend fields for auto-routing:
 - `inference_messages` for JSON requests
 - `inference_messages_json` for multipart requests
 - optional `batch_prompts` as a client convenience input for repeated image prompts after one interpretive inference route decision
+
+`inference_messages` is routing context, not chat execution input. Clients that
+continue a preceding answer must also supply the actual conversation messages
+under Responses `input`, with the current user turn last. The conformance client
+does this from the exact captured predecessor answer and frame/message identity;
+it does not substitute lifecycle/output summaries for the assistant's answer.
 
 Batch image note:
 
@@ -241,7 +326,28 @@ Current preference boundary:
 - if the current request strongly resolves to a different capability such as `image_generation` or `text_to_speech`, incompatible chat-only preference targets are ignored during final execution selection
 - if an earlier preview payload stayed on chat but the fresh live interpretive inference/current-turn route strongly resolves to a non-chat capability, live execution ignores that stale preview route and recomputes against current truth
 
-Current response metadata surfaced back to the UI/client:
+Provider execution recovery:
+
+For automatic chat and file/vision execution, a provider quota, availability or
+transport failure before output can use the configured compatible fallback, then
+the existing automatic picker over other compatible running instances. This is
+execution recovery: it retains the accepted task, graph, controls and selected
+references, applies the replacement backend's normal context/policy shaping, and
+does not run interpretation or planning again. Explicit `instance_id`/model-tab
+targets and `primary_mode=lock` remain fixed. Unsupported controls or input
+modalities exclude a candidate; a text-only instance cannot replace image analysis.
+
+`runtime.provider_failover` records failed instances, reasons, HTTP/provider
+statuses, the selected replacement or exhaustion reason, and the attempt bound.
+`PROVIDER_FAILOVER_MAX_ATTEMPTS=4` includes the first provider, with no repeated
+instance and no model starts. Existing per-provider timeouts still apply. Safety
+refusals, invalid/context-overflow requests, artifact/evidence rejection and
+generic internal errors do not authorize provider failover. Streaming may switch
+only if opening the provider stream fails before SSE publication; failures after
+streaming starts remain failures. Existing media-branch recovery and Closure
+gates retain their own authority and budgets.
+
+Response routing metadata includes:
 
 - `route_source`
 - `route_reason`
@@ -402,7 +508,7 @@ Embedding-capable instances are runtime helpers for interpretive inference pre-r
 
 Helper eligibility is metadata-driven: primary capability, `provider_capabilities`, `outputs`, and backend-advertised endpoint paths can all contribute.
 
-The same rule applies to mixed MLX/VLM routing. A VLM whose runtime metadata advertises both `chat` and `vision_analysis` is multi-capability and should be selected by the current task contract, while OCR/vision-only VLMs stay vision routes. For Single Chat, a selected MLX/VLM instance with a startup `vision_analysis` label can still rebound to effective `chat` when the request has no upload, file path, or selected-reference file context. If that selected MLX/VLM text transport fails with a provider 5xx/load error, backend runtime may retry once with that instance excluded and a compatible chat route selected from live truth. Per-wave Late Fill candidate snapshots are scheduling evidence only; if they are exhausted or contain only excluded/unusable candidates, the resolver refreshes live runtime truth before returning a no-route failure.
+The same rule applies to mixed MLX/VLM routing. A VLM whose runtime metadata advertises both `chat` and `vision_analysis` is multi-capability and should be selected by the current task contract, while OCR/vision-only VLMs stay vision routes. For Single Chat, a selected MLX/VLM instance with a startup `vision_analysis` label can still rebound to effective `chat` when the request has no upload, file path, or selected-reference file context. Automatic selection uses the bounded provider execution recovery described above; explicitly targeted Single Chat stays on its selected instance even if transport fails. Per-wave Late Fill candidate snapshots are scheduling evidence only; if they are exhausted or contain only excluded/unusable candidates, the resolver refreshes live runtime truth before returning a no-route failure.
 
 Mixed-capability models can therefore act as helpers when they actually expose embeddings.
 

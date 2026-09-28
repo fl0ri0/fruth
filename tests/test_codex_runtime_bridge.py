@@ -73,6 +73,10 @@ class CodexRuntimeBridgeTests(unittest.TestCase):
             return read_chat_history(instance_id, *args, **kwargs)
 
         self.runtime_patchers = [
+            # Supplied instance/access fixtures own discovery; never inspect
+            # installed Apple/MLX/Ollama backends during bridge unit tests.
+            patch('fruth_core.backend_fabric._build_probe_map', return_value={}),
+            patch('fruth_core.status._port_listening', return_value=True),
             patch('fruth_webserver.CONFIG_FILE_NAME', str(self.runtime_registry_path)),
             patch('fruth_webserver.RUNTIME_STATUS_PATH', self.runtime_status_path),
             patch('fruth_webserver.RESPONSE_FRAMES_DIR', self.response_frames_dir),

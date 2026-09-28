@@ -126,6 +126,95 @@ def _passed_tts_audio_integrity_evidence(source_text, path):
 
 
 class ResponsesApiTests(unittest.TestCase):
+    def test_saved_artifact_state_followups_execute_chat_without_media_reinspection(self):
+        from tests.test_artifact_state_followups import AUDIO, AUDIO_NO_RETRANSCRIPTION, IMAGE, evidence_fixture
+        import fruth_webserver as server
+
+        instances = [
+            {'instance_id': 'chat-1', 'model': 'gemma4:26b', 'backend': 'ollama',
+             'capability': 'chat', 'provider_capabilities': ['chat', 'vision_analysis'],
+             'inputs': ['text', 'image'], 'outputs': ['text'], 'port': 11435,
+             'runtime_status': {'readiness': 'ready', 'activity': 'idle'}},
+            {'instance_id': 'stt-1', 'model': 'whisper', 'backend': 'mlx',
+             'capability': 'speech_to_text', 'port': 11503,
+             'runtime_status': {'readiness': 'ready', 'activity': 'idle'}},
+        ]
+        for prompt, kind in ((AUDIO, 'audio'), (AUDIO_NO_RETRANSCRIPTION, 'audio'), (IMAGE, 'image')):
+            with self.subTest(kind=kind, prompt=prompt), tempfile.TemporaryDirectory() as tmp:
+                _, source, reference, media = evidence_fixture(Path(tmp))
+                if kind == 'image':
+                    image = media.with_suffix('.png')
+                    media.rename(image)
+                    media = image
+                    reference.update(type='image', path=str(media))
+                    source['artifacts'][0].update(type='image', path=str(media))
+                    source['late_fill'] = {}
+                before = copy.deepcopy(source)
+                answer = 'The saved evidence remains bound to its recorded source.'
+                with patch('fruth_webserver.read_events', return_value=[]), \
+                     patch('fruth_webserver._schedule_response_late_fill', return_value=True), \
+                     patch('fruth_webserver._external_targets_payload', return_value=[]), \
+                     patch('fruth_webserver._codex_external_target_payload', return_value={'files_enabled': False}), \
+                     patch('fruth_webserver.build_inference_payload', return_value={'recommendations': [], 'issues': []}), \
+                     patch('fruth_webserver.load_running_instances', return_value=instances), \
+                     patch('fruth_webserver.merge_instances_with_runtime_status', return_value=instances), \
+                     patch('fruth_webserver._lookup_instance', side_effect=lambda iid: next((i for i in instances if i['instance_id'] == iid), None)), \
+                     patch('fruth_webserver._resolve_saved_downloadable_artifact_path', side_effect=lambda p: media if str(p) == str(media) else None), \
+                     patch('fruth_webserver._resolve_saved_viewable_artifact_path', return_value=media), \
+                     patch('fruth_webserver._execute_chat_backend_request', return_value=answer) as chat, \
+                     patch('fruth_webserver._invoke_internal_api_json_route', side_effect=AssertionError('unexpected media execution')) as media_call, \
+                     patch('fruth_webserver._attach_embedding_hints_to_route_context') as embeddings, \
+                     patch.dict(server._RESPONSE_SEMANTICS_RUNTIME.hooks, {
+                         'get_response_lookup_record': lambda rid: {'id': 'resp_root', 'response_payload': source},
+                         'find_artifact_registry_record_by_artifact_ref': lambda ref: {
+                             'artifact': source['artifacts'][0],
+                             'enrichments': {'image_state': {'summary': 'saved automatic enrichment'}}} if kind == 'image' else None,
+                     }):
+                    response = self.client.post('/api/responses', json={
+                        'prompt': prompt, 'inference_route': True,
+                        'reference_artifacts': [reference],
+                        'inference_preview': {'capability': 'vision_analysis' if kind == 'image' else 'speech_to_text',
+                                              'instance_id': 'chat-1' if kind == 'image' else 'stt-1',
+                                              'reuse_last_artifact': True, 'artifact_path': str(media), 'confidence': 0.99},
+                        'input': [{'type': 'message', 'role': 'assistant', 'content': 'Exact prior answer.'},
+                                  {'type': 'message', 'role': 'user', 'content': prompt}],
+                    })
+                    self.assertEqual(response.status_code, 200, response.get_json())
+                    result = response.get_json()
+                    self.assertEqual(result['capability'], 'chat')
+                    self.assertEqual(result['output_text'], answer)
+                    self.assertFalse(result.get('artifacts'))
+                    self.assertFalse(result.get('saved_text_artifacts'))
+                    truth_response = self.client.get(f"/api/responses/{result['id']}?view=truth")
+                    self.assertEqual(truth_response.status_code, 200)
+                    truth = truth_response.get_json()
+                    # Ordinary saved-state chat does not create review duties.
+                    # This checks closure and dispatch, not arbitrary prose quality.
+                    self.assertEqual(truth['lifecycle_state'], 'completed')
+                    closure = truth['runtime']['graph_closure_review']
+                    self.assertFalse(any(c.get('check_kind') in {'branch_semantic_review', 'global_semantic_closure'}
+                                         for c in closure['checks']))
+                    self.assertFalse(truth.get('artifacts'))
+                    graph = truth.get('runtime', {}).get('request_phase_graph', {})
+                    self.assertTrue(graph)
+                    self.assertFalse(graph.get('intent_obligations'))
+                    self.assertTrue(all(phase['capability'] == 'chat' for phase in graph['phases']))
+                    chat.assert_called_once()
+                    sent = chat.call_args.kwargs['messages']
+                    self.assertTrue(any(m.get('content') == 'Exact prior answer.' for m in sent))
+                    evidence_note = next(m['content'] for m in sent if 'Saved artifact state from canonical' in m.get('content', ''))
+                    self.assertIn('saved_observation', evidence_note)
+                    self.assertNotIn('FORGED_CLIENT_PROOF', evidence_note)
+                    if kind == 'audio':
+                        self.assertIn('The Bine House is quiet.', evidence_note)
+                        self.assertNotIn('SIBLING_ONLY', evidence_note)
+                    else:
+                        self.assertIn('saved automatic enrichment', evidence_note)
+                    self.assertFalse(result.get('input_artifacts'))
+                    media_call.assert_not_called()
+                    embeddings.assert_not_called()
+                self.assertEqual(source, before)
+
     def test_failed_composition_repair_is_superseded_only_by_fresh_applicable_review(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             target = Path(tmpdir) / 'app.js'
@@ -410,6 +499,12 @@ class ResponsesApiTests(unittest.TestCase):
             return read_chat_history(instance_id, *args, **kwargs)
 
         self._runtime_patchers = [
+            # Scenario fixtures supply available instances; advisory host probes
+            # must not contact installed backends during this offline API suite.
+            patch("fruth_core.backend_fabric._build_probe_map", return_value={}),
+            patch("fruth_core.status._port_listening", return_value=True),
+            patch("fruth_webserver._external_targets_payload", return_value=[]),
+            patch("fruth_webserver._codex_external_target_payload", return_value={'files_enabled': False}),
             # Exercise hygiene synchronously instead of letting status writes
             # race teardown. Its behavior is still executed and asserted.
             patch("fruth_webserver._POST_RESPONSE_SUBSTRATE_HYGIENE_RUNTIME.run_async", False),
@@ -441,6 +536,119 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.get(f"/api/responses/{response_id}?view=truth")
         self.assertEqual(response.status_code, 200)
         return response.get_json()
+
+    def test_pcc_responses_preserve_execution_evidence_in_stream_and_saved_frame(self):
+        from fruth_integrations.shortcuts.transport import PCCText
+        instance = {'instance_id': 'apple_pcc:auto:11651', 'model': 'auto',
+                    'backend': 'apple_pcc', 'capability': 'chat', 'port': 11651}
+        evidence = {'status': 'completed', 'model': 'cloud', 'requested_model': 'auto',
+                    'fallback_reason': 'pro_access_required', 'input_sha256': 'd' * 64}
+        for stream in (False, True):
+            _RESPONSE_LOOKUP.clear()
+            with self.subTest(stream=stream), \
+                 patch('fruth_webserver._lookup_instance', return_value=instance), \
+                 patch('fruth_webserver._execute_chat_backend_request', return_value=PCCText('Zürich — 100', evidence)), \
+                 patch('fruth_webserver._open_openai_chat_stream', return_value=Mock()), \
+                 patch('fruth_webserver._iter_openai_stream_deltas', return_value=iter([PCCText('Zürich — 100', evidence)])):
+                response = self.client.post('/api/responses', json={
+                    'instance_id': instance['instance_id'], 'input': 'hello', 'stream': stream,
+                })
+                self.assertEqual(response.status_code, 200)
+                response.get_data()  # Consume completion before inspecting persisted truth.
+                response_id = next(iter(_RESPONSE_LOOKUP))
+                saved = self.client.get(f'/api/responses/{response_id}?view=debug').get_json()
+                self.assertEqual(saved['status'], 'completed')
+                self.assertEqual(saved['output_text'], 'Zürich — 100')
+                self.assertEqual(saved['runtime']['pcc_execution'], evidence)
+                self.assertEqual(saved['response_frame']['runtime']['pcc_execution'], evidence)
+
+    def test_pcc_responses_image_dispatch_preserves_pixel_and_execution_evidence(self):
+        import base64
+        import hashlib
+        import io
+        from tests.fake_backends.fixtures import tiny_png_bytes
+        from fruth_integrations.shortcuts.transport import PCCText
+        pixels = tiny_png_bytes()
+        digest = hashlib.sha256(pixels).hexdigest()
+        instance = {'instance_id': 'apple_pcc:auto:11651', 'model': 'auto',
+                    'backend': 'apple_pcc', 'capability': 'chat', 'port': 11651,
+                    'inputs': ['text', 'image'], 'supported_capabilities': ['chat', 'vision_analysis']}
+        evidence = {'status': 'completed', 'model': 'cloud', 'requested_model': 'auto',
+                    'image_inputs': [{'attachment': 'image-0001.png', 'sha256': digest}]}
+        def execute(*args, **kwargs):
+            messages = kwargs.get('messages') or args[3]
+            part = messages[0]['content'][1]
+            self.assertEqual(base64.b64decode(part['image_url'].split(',',1)[1]), pixels)
+            return {'content': PCCText('A red rectangle.', evidence), 'result': {}}
+        for capability in ('chat', 'vision_analysis'):
+            with self.subTest(capability=capability), \
+                 patch('fruth_webserver._lookup_instance', return_value=instance), \
+                 patch('fruth_webserver._openai_chat_completions', side_effect=execute) as backend:
+                response = self.client.post('/api/responses', data={
+                    'instance_id': instance['instance_id'], 'capability': capability,
+                    'prompt': 'Describe this image.', 'stream': 'false',
+                    'file': (io.BytesIO(pixels), 'image.png', 'image/png'),
+                }, content_type='multipart/form-data')
+                payload = response.get_json()
+                self.assertEqual(response.status_code, 200, payload)
+                self.assertEqual(payload['output_text'], 'A red rectangle.')
+                backend.assert_called_once()
+                saved = self.client.get(f"/api/responses/{payload['id']}?view=debug").get_json()
+                self.assertEqual(saved['runtime']['pcc_execution'], evidence)
+                self.assertEqual(saved['response_frame']['runtime']['pcc_execution'], evidence)
+
+    def test_pcc_responses_reject_unsupported_controls_before_generation(self):
+        instance = {'instance_id': 'apple_pcc:auto:11651', 'model': 'auto',
+                    'backend': 'apple_pcc', 'capability': 'chat', 'port': 11651}
+        with patch('fruth_webserver._lookup_instance', return_value=instance), \
+             patch('fruth_webserver._execute_chat_backend_request') as execute:
+            for control in ('temperature', 'top_p', 'max_tokens'):
+                response = self.client.post('/api/responses', json={
+                    'instance_id': instance['instance_id'], 'input': 'hello', control: 1,
+                })
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('does not expose', response.get_json()['error'])
+            execute.assert_not_called()
+
+    def test_pcc_responses_arena_stream_surfaces_native_failure_reason(self):
+        from urllib3.response import HTTPResponse
+        instance = {'instance_id': 'apple_pcc:auto:11653', 'model': 'auto',
+                    'backend': 'apple_pcc', 'capability': 'chat', 'port': 11653}
+        reason = 'The model cannot provide a response for this request. Please revise the request and try again.'
+        upstream = requests.Response()
+        upstream.status_code = 502
+        upstream.url = 'http://127.0.0.1:11653/v1/chat/completions'
+        upstream.raw = HTTPResponse(body=io.BytesIO(json.dumps({
+            'error': {'message': reason, 'code': 'PCC_SHORTCUT_ERROR'},
+        }).encode()), preload_content=False)
+        with patch('fruth_webserver._lookup_instance', return_value=instance), \
+             patch('fruth_webserver.requests.post', return_value=upstream) as post:
+            response = self.client.post('/api/responses', json={
+                'instance_id': instance['instance_id'], 'stream': True,
+                'input': [{'role': 'user', 'content': 'explain in high detail the process of osmosis'}],
+            })
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.get_json()['error'], f'Request to port 11653 failed: {reason}')
+        post.assert_called_once()
+        self.assertTrue(upstream.raw.closed)
+
+    def test_apple_image_mode_without_image_uses_infer_error_not_chat(self):
+        instance = {'instance_id': 'apple_fm:system:11602', 'model': 'system',
+                    'backend': 'apple_fm', 'capability': 'chat', 'port': 11602}
+        for stream in (False, True):
+            with self.subTest(stream=stream), \
+                 patch('fruth_webserver._lookup_instance', return_value=instance), \
+                 patch('fruth_webserver._execute_chat_backend_request') as chat, \
+                 patch('fruth_webserver._invoke_internal_api_json_route', return_value=(
+                     {'error': 'Apple OCR and barcode modes require one image.'}, 400)) as infer:
+                response = self.client.post('/api/responses', json={
+                    'instance_id': instance['instance_id'], 'input': 'Read text',
+                    'ocr_mode': 'apple_ocr', 'stream': stream,
+                })
+                self.assertEqual(response.status_code, 400, response.get_json())
+                self.assertIn('require one image', response.get_json()['error'])
+                self.assertEqual(infer.call_args.kwargs['payload']['ocr_mode'], 'apple_ocr')
+                chat.assert_not_called()
 
     def test_route_history_reads_use_isolated_root_and_preserve_explicit_override(self):
         from fruth_services import chat_history as chat_history_service
@@ -6517,7 +6725,7 @@ class ResponsesApiTests(unittest.TestCase):
 
     @patch("fruth_webserver._execute_chat_backend_request")
     @patch("fruth_webserver._resolve_responses_target_instance")
-    def test_canonical_responses_text_only_selected_mlx_vlm_rebounds_to_chat_and_falls_back(
+    def test_canonical_responses_text_only_auto_selected_mlx_vlm_rebounds_to_chat_and_falls_back(
         self,
         mock_resolve_target,
         mock_execute,
@@ -6557,7 +6765,9 @@ class ResponsesApiTests(unittest.TestCase):
         def execute_side_effect(**kwargs):
             if kwargs["target_port"] == 11501:
                 self.assertEqual(kwargs["capability"], "chat")
-                raise requests.exceptions.HTTPError("500 Server Error: Internal Server Error")
+                error_response = requests.Response()
+                error_response.status_code = 500
+                raise requests.exceptions.HTTPError("500 Server Error: Internal Server Error", response=error_response)
             self.assertEqual(kwargs["target_port"], 11437)
             return "Fallback hello."
 
@@ -6567,7 +6777,6 @@ class ResponsesApiTests(unittest.TestCase):
         response = self.client.post(
             "/api/responses",
             json={
-                "instance_id": "mlx-vlm-1",
                 "capability": "vision_analysis",
                 "input": "hi",
             },
@@ -6579,7 +6788,7 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertEqual(payload["capability"], "chat")
         self.assertEqual(payload["output_text"], "Fallback hello.")
         self.assertEqual(mock_execute.call_count, 2)
-        self.assertEqual(mock_resolve_target.call_count, 3)
+        self.assertEqual(mock_resolve_target.call_count, 2)
 
     @patch("fruth_webserver._execute_chat_backend_request")
     @patch("fruth_webserver._invoke_internal_api_json_route")
@@ -6721,6 +6930,32 @@ class ResponsesApiTests(unittest.TestCase):
         self.assertIn('Fruth Interpretive Inference Policy', sent_messages[0]['content'])
         self.assertEqual(sent_messages[-1]['role'], 'user')
         self.assertEqual(sent_messages[-1]['content'], prompt)
+
+    @patch('fruth_webserver._execute_chat_backend_request', return_value='Hello back.')
+    @patch('fruth_webserver._resolve_inference_auto_route')
+    def test_inference_policy_uses_resolved_backend_for_stream_and_nonstream(self, resolve, execute):
+        for backend in ['ollama', 'apple_fm']:
+            for streaming in [False, True]:
+                with self.subTest(backend=backend, streaming=streaming):
+                    resolve.return_value = ({
+                        'instance_id': 'policy-test', 'instance': {
+                            'instance_id': 'policy-test', 'model': 'system' if backend == 'apple_fm' else 'gemma4:e4b',
+                            'backend': backend, 'capability': 'chat', 'port': 11435},
+                        'capability': 'chat', 'route_source': 'inference_carried',
+                        'route_reason': 'test resolved backend', 'route_runtime': {},
+                    }, None)
+                    with patch('fruth_webserver._stream_chat_backend_as_responses',
+                               return_value=Response('data: {}\n\n', mimetype='text/event-stream')) as stream:
+                        response = self.client.post('/api/responses', json={
+                            'inference_route': True, 'prompt': 'Hello.', 'stream': streaming,
+                        })
+                        self.assertEqual(response.status_code, 200)
+                        sent = (stream if streaming else execute).call_args.kwargs['messages']
+                    policy = sent[0]['content']
+                    self.assertEqual('source: fruth_inference/policies/apple_fm.md' in policy,
+                                     backend == 'apple_fm')
+                    full = (Path(__file__).resolve().parents[1] / 'FRUTH_INFERENCE.md').read_text().strip()
+                    self.assertEqual(full in policy, backend != 'apple_fm')
 
     def test_truth_gate_response_output_claims_rewrites_false_local_artifact_claim_without_real_file(self):
         payload = {
@@ -23227,10 +23462,10 @@ class ResponsesApiTests(unittest.TestCase):
         )
 
         self.assertIn('actual attached generated image', payload['prompt'])
-        self.assertIn('Do not generate a new image', payload['prompt'])
+        self.assertIn('Base every observation on this attachment', payload['prompt'])
         self.assertIn('exactly one', payload['prompt'])
-        self.assertIn('sibling images', payload['prompt'])
-        self.assertIn('a later text branch owns that global formatting task', payload['prompt'])
+        self.assertIn('Other images, image generation, and the combined table, list, or JSON output belong to separate tasks', payload['prompt'])
+        self.assertIn('a later text branch can combine it with other reports', payload['prompt'])
         self.assertIn('Dependency evidence:', payload['prompt'])
         self.assertIn(artifact_path, payload['prompt'])
         self.assertNotEqual(payload['prompt'], original_prompt)
@@ -25884,7 +26119,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             self.assertEqual(pending_html[0]['repair_action'], 'rebind_dependency_evidence')
             self.assertEqual(
                 pending_html[0]['content_payload_source'],
-                'closure_linked_artifact_binding_review',
+                'closure_composed_site_image_composition',
             )
 
     def test_terminal_materialization_contract_blocks_missing_local_stylesheet_link(self):
@@ -25995,7 +26230,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 pending_css[0]['content_payload'],
             )
 
-    def test_terminal_materialization_contract_repairs_generated_page_image_not_represented(self):
+    def test_terminal_materialization_contract_promotes_in_place_missing_image_repairs(self):
         prompt = (
             'Create a landing page as local artifacts. Generate exactly three image artifacts, '
             'one index.html, and one styles.css. The final composed page must use all three saved images.'
@@ -26144,20 +26379,24 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             late_fill = updated['late_fill']
             html = html_path.read_text(encoding='utf-8')
             css = styles_path.read_text(encoding='utf-8')
-            self.assertEqual(effective_status, 'completed')
-            self.assertEqual(late_fill['final_materialization_contract_status'], 'fulfilled')
-            self.assertFalse(late_fill['materialization_contract_unmet'])
-            self.assertFalse(late_fill.get('materialization_contract_open_checks'))
-            self.assertEqual(late_fill['composed_page_image_representation_repair_status'], 'applied')
-            self.assertIn(f'src="../images/{missing_image.name}"', html)
+            self.assertEqual(effective_status, 'pending')
+            self.assertEqual(late_fill['final_materialization_contract_status'], 'unmet')
+            self.assertNotIn(f'src="../images/{missing_image.name}"', html)
             self.assertIn(f'src="../images/{detail_image.name}"', html)
             self.assertIn(f"url('../images/{represented_image.name}')", css)
-            self.assertEqual(updated['artifacts'][0]['content'], html)
-            repairs = late_fill['composed_page_image_representation_repairs']
-            self.assertEqual(repairs[0]['operation'], 'replace_duplicate_image_link')
-            self.assertEqual(repairs[0]['to_path'], str(missing_image))
+            composition = _LATE_FILL_RUNTIME._terminal_composed_page_image_representation_open_checks(updated)
+            self.assertEqual({b['execution_contract']['target_path'] for b in late_fill['pending_branches']
+                              if b.get('execution_contract', {}).get('repair_mode') == 'composed_site_image_cohort_target'},
+                             {str(html_path), str(styles_path)})
+            self.assertEqual(len(composition), 2)
+            self.assertEqual({c['execution_contract']['target_path'] for c in composition},
+                             {str(html_path), str(styles_path)})
+            self.assertTrue(all(c['missing_image_paths'] == [str(missing_image)] for c in composition))
+            self.assertTrue(all(c['execution_contract']['sibling_write_allowed'] is False for c in composition))
+            self.assertNotIn('composed_page_image_representation_repairs', late_fill)
 
-    def test_terminal_materialization_contract_repairs_partial_html_sample_with_all_generated_images(self):
+
+    def test_terminal_materialization_contract_promotes_partial_gallery_cohort_repair(self):
         prompt = (
             'Create a Rooary landing page as local artifacts. Generate exactly twelve image artifacts, '
             'one index.html, and one styles.css. The final HTML must include all twelve saved images, '
@@ -26309,28 +26548,23 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
 
             late_fill = updated['late_fill']
             html = html_path.read_text(encoding='utf-8')
-            self.assertEqual(effective_status, 'completed')
-            self.assertEqual(late_fill['final_materialization_contract_status'], 'fulfilled')
-            self.assertFalse(late_fill['materialization_contract_unmet'])
-            self.assertFalse(late_fill.get('materialization_contract_open_checks'))
-            for image_path in image_paths:
-                self.assertIn(f'../images/{image_path.name}', html)
+            self.assertEqual(effective_status, 'pending')
+            self.assertEqual(late_fill['final_materialization_contract_status'], 'unmet')
             self.assertNotIn('fruth-generated-media', html)
-            feed_start = html.index('<section class="feed">')
-            feed_end = html.index('</section>', feed_start)
-            feed_html = html[feed_start:feed_end]
-            for image_path in image_paths:
-                self.assertIn(f'../images/{image_path.name}', feed_html)
-            repairs = late_fill['composed_page_image_representation_repairs']
-            append_repairs = [
-                repair for repair in repairs if repair.get('operation') == 'append_missing_image_link'
-            ]
-            self.assertEqual(len(append_repairs), 9)
-            self.assertTrue(
-                all(repair.get('placement') == 'existing_image_container' for repair in append_repairs)
-            )
-            self.assertTrue(all(repair.get('container_tag') == 'section' for repair in append_repairs))
-            self.assertEqual(updated['artifacts'][0]['content'], html)
+            for image_path in represented_images:
+                self.assertIn(f'../images/{image_path.name}', html)
+            for image_path in image_paths[len(represented_images):]:
+                self.assertNotIn(f'../images/{image_path.name}', html)
+            checks = _LATE_FILL_RUNTIME._terminal_composed_page_image_representation_open_checks(updated)
+            self.assertEqual({b['execution_contract']['target_path'] for b in late_fill['pending_branches']
+                              if b.get('execution_contract', {}).get('repair_mode') == 'composed_site_image_cohort_target'},
+                             {str(html_path), str(styles_path)})
+            self.assertEqual({c['execution_contract']['target_path'] for c in checks},
+                             {str(html_path), str(styles_path)})
+            self.assertTrue(all(c['missing_image_count'] == 9 for c in checks))
+            self.assertTrue(all(c['execution_contract']['root_prompt_replay_allowed'] is False for c in checks))
+            self.assertNotIn('composed_page_image_representation_repairs', late_fill)
+
 
     def test_terminal_materialization_contract_keeps_content_rich_repeat_gallery_repair_needed(self):
         prompt = (
@@ -26505,14 +26739,15 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 if item.get('text_artifact_extension') == 'css'
             ]
             self.assertEqual(len(pending_html), 1)
-            self.assertFalse(pending_css)
+            self.assertEqual(len(pending_css), 1)
+            self.assertEqual(pending_css[0]['execution_contract']['target_path'], str(styles_path))
             self.assertEqual(
                 Path(pending_html[0]['artifact_request']['target_path']).resolve(strict=False),
                 html_path.resolve(strict=False),
             )
             self.assertEqual(
-                pending_html[0]['content_payload_source'],
-                'closure_linked_artifact_binding_review',
+                pending_html[0]['execution_contract']['repair_mode'],
+                'composed_site_image_cohort_target',
             )
             self.assertIn(image_paths[2].name, pending_html[0]['content_payload'])
 
@@ -26544,7 +26779,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             html_path.write_text(
                 '<!doctype html><html><head>'
                 f'<link rel="stylesheet" href="{styles_path.name}">'
-                '</head><body>'
+                '<style>img {max-width:100%;height:auto;}</style></head><body>'
                 '<header class="hero"><h1>Mon Repos</h1></header>'
                 f'<main><img src="../images/{image_paths[0].name}">'
                 f'<img src="../images/{image_paths[1].name}">'
@@ -26793,7 +27028,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
         styles_path.write_text(
             'body { color: #eee; background: #111; \n'
             if unrepaired_css
-            else 'body { color: #eee; background: #111; }\n',
+            else 'body { color: #eee; background: #111; } img {max-width:100%;height:auto;}\n',
             encoding='utf-8',
         )
         artifacts = [
@@ -27131,6 +27366,38 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             repair_prompt,
         )
 
+    def test_terminal_materialization_contract_retires_exact_superseded_composition_recovery(self):
+        from tests.test_composed_site_closure import failed_repair, repair_state
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            prompt, graph, payload, index_path, _, _ = (
+                self._terminal_materialization_contract_payload_with_stale_open_checks(Path(tmpdir))
+            )
+            completed = payload['late_fill']['completed_branches']
+            payload['late_fill'].update(repair_state(failed_repair(index_path)))
+            payload['late_fill']['completed_branches'] = completed
+            payload['late_fill']['failed_at'] = '2026-09-20T17:29:12Z'
+            updated, status = _LATE_FILL_RUNTIME.finalize_terminal_materialization_contract(
+                payload,
+                request_payload={'inference_route': True, 'prompt': prompt},
+                route_payload={'route_runtime': {'request_phase_graph': graph}},
+                artifact_gap={'expected_capability': 'chat'}, terminal_status='partial_failed',
+            )
+            self.assertEqual(status, 'completed')
+            late_fill = updated['late_fill']
+            self.assertEqual(late_fill['status'], 'completed')
+            self.assertFalse(late_fill.get('partial_failure'))
+            self.assertFalse(late_fill.get('failed_at'))
+            self.assertFalse(late_fill.get('recovery_candidates'))
+            self.assertEqual(late_fill['repair_loop']['status'], 'completed')
+            retired = next(b for b in late_fill['completed_branches'] if b['branch_id'] == 'branch-repair-html')
+            self.assertEqual(retired['status'], 'superseded')
+            self.assertEqual(retired['superseded_failure']['error']['code'], 'TEXT_ARTIFACT_REPAIR_OUTPUT_MISSING')
+            finalized = _finalize_response_frame_payload(
+                updated, request_payload={'inference_route': True, 'prompt': prompt}, persist=False,
+            )
+            self.assertEqual(finalized['lifecycle_state'], 'completed')
+
     def test_terminal_materialization_contract_clears_stale_open_checks_after_saved_rebind(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             prompt, graph, payload, index_path, styles_path, image_paths = (
@@ -27182,7 +27449,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 )
             )
             long_valid_css = (
-                'body { color: #eee; background: #111; }\n'
+                'body { color: #eee; background: #111; } img {max-width:100%;height:auto;}\n'
                 + (' ' * 17_000)
                 + '\n.late-rule { display: grid; }\n'
             )
@@ -28920,7 +29187,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
             '```\n'
             '```css\n'
             'body { color: #111; background: #ffef5a; }\n'
-            'img { border-radius: 16px; }\n'
+            'img { border-radius: 16px; max-width:100%; height:auto; }\n'
             '```'
         )
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -29285,7 +29552,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 + '</body></html>',
                 encoding='utf-8',
             )
-            styles_path.write_text('body { color: #eee; background: #111; }\n', encoding='utf-8')
+            styles_path.write_text('body { color: #eee; background: #111; } img {max-width:100%;height:auto;}\n', encoding='utf-8')
             payload = {
                 'id': 'resp_redundant_failed_css_branch',
                 'output_text': 'Nocturne artifacts saved.',
@@ -29570,7 +29837,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 + '</body></html>',
                 encoding='utf-8',
             )
-            styles_path.write_text('body { color: #eee; background: #111; }\n', encoding='utf-8')
+            styles_path.write_text('body { color: #eee; background: #111; } img {max-width:100%;height:auto;}\n', encoding='utf-8')
             pending_text_branches = [
                 {
                     'branch_id': 'branch-text_artifact-1',
@@ -30128,7 +30395,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 ".hero { min-height: 60vh; background: linear-gradient(#0008, #0008), "
                 "url('https://via.placeholder.com/1920x1080') center/cover; }"
                 '</style></head><body>'
-                '<section class="hero"><h1>The Hive</h1></section>'
+                '<section class="hero"><h1>The Hive</h1></section><style>img {max-width:100%;height:auto;}</style>'
                 '<main>'
                 + ''.join(
                     f'<article><img src="../images/{image_path.name}" alt="Hive {index}"></article>'
@@ -30383,7 +30650,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 encoding='utf-8',
             )
             styles_path.write_text(
-                'body { color: #eee; background: #111; }\n.hero { display: grid; }\n',
+                'body { color: #eee; background: #111; } img {max-width:100%;height:auto;}\n.hero { display: grid; }\n',
                 encoding='utf-8',
             )
             selector_repair_branch = {

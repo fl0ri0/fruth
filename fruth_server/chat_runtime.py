@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from fruth_services.response_persistence import ResponsePersistenceError
+
 import json
 import logging
 import threading
@@ -20,6 +22,7 @@ from fruth_server.response_semantics_runtime import (
     attach_phase_output_acceptance,
     classify_phase_output_text,
     control_json_envelope_suspected,
+    phase_output_defers_saved_file_materialization,
     phase_output_is_graph_preparation,
     phase_output_repair_notice,
     phase_output_repair_system_message,
@@ -59,6 +62,7 @@ class ChatRuntimeOwner:
         response_id: Optional[str] = None,
         request_payload: Optional[dict[str, Any]] = None,
         artifact_prompt: Optional[str] = None,
+        provider_failure_retry: Any = None,
     ):
         normalize_backend = self._hook('normalize_backend')
         build_runtime_status_stub = self._hook('build_runtime_status_stub')
@@ -168,7 +172,7 @@ class ChatRuntimeOwner:
         started_at = time.time()
 
         try:
-            if normalized_backend in {'mlx', 'llama_cpp'}:
+            if normalized_backend in {'mlx', 'llama_cpp', 'apple_fm', 'apple_pcc'}:
                 upstream_response = open_openai_chat_stream(
                     backend=normalized_backend,
                     target_port=target_port,
@@ -193,12 +197,7 @@ class ChatRuntimeOwner:
                     max_tokens=max_tokens,
                 )
                 delta_iter = iter_ollama_stream_deltas(upstream_response)
-        except self.request_timeout_error:
-            touch_response_lookup(
-                response_id,
-                status='failed',
-                error_message=f'Timeout Port {target_port}',
-            )
+        except self.request_timeout_error as exc:
             if upstream_response is not None:
                 try:
                     upstream_response.close()
@@ -211,14 +210,16 @@ class ChatRuntimeOwner:
                 message='Chat stream timed out.',
             )
             log_runtime_status_transition(previous_status, current_status)
+            if callable(provider_failure_retry):
+                retried = provider_failure_retry(
+                    f'Timeout Port {target_port}', 504, exception=exc, response_id=response_id,
+                )
+                if retried is not None:
+                    return retried
+            touch_response_lookup(response_id, status='failed', error_message=f'Timeout Port {target_port}')
             return jsonify({'error': f'Timeout Port {target_port}'}), 504
         except self.request_exception_error as exc:
             details = request_exception_details(exc)
-            touch_response_lookup(
-                response_id,
-                status='failed',
-                error_message=f'Request to port {target_port} failed: {details}',
-            )
             if upstream_response is not None:
                 try:
                     upstream_response.close()
@@ -231,6 +232,16 @@ class ChatRuntimeOwner:
                 message=f'Chat stream failed: {details}',
             )
             log_runtime_status_transition(previous_status, current_status)
+            if callable(provider_failure_retry):
+                retried = provider_failure_retry(
+                    f'Request to port {target_port} failed: {details}', 500,
+                    exception=exc, response_id=response_id,
+                )
+                if retried is not None:
+                    return retried
+            touch_response_lookup(
+                response_id, status='failed', error_message=f'Request to port {target_port} failed: {details}',
+            )
             return jsonify({'error': f'Request to port {target_port} failed: {details}'}), 500
         except Exception:
             touch_response_lookup(
@@ -299,11 +310,13 @@ class ChatRuntimeOwner:
 
         def stream_worker():
             accumulated = ''
+            pcc_execution = None
             try:
                 for delta in delta_iter:
                     if not delta:
                         continue
                     accumulated += delta
+                    pcc_execution = getattr(delta, 'pcc_execution', pcc_execution)
                     if not buffer_phase_output:
                         touch_response_lookup(response_id, output_text=accumulated)
                         append_response_stream_events(
@@ -355,6 +368,7 @@ class ChatRuntimeOwner:
                             phase_acceptance_attempts.append(
                                 classify_phase_output_text(retried_text)
                             )
+                            pcc_execution = getattr(retried_text, 'pcc_execution', pcc_execution)
                         except Exception as exc:  # noqa: BLE001
                             phase_acceptance_attempts.append(
                                 {
@@ -401,7 +415,11 @@ class ChatRuntimeOwner:
                     ).strip()
                 text_artifact_payload = (
                     {}
-                    if phase_output_repair_required
+                    if phase_output_repair_required or phase_output_defers_saved_file_materialization(
+                        route_payload=route_payload,
+                        request_payload=request_payload,
+                        capability=capability,
+                    )
                     else persist_generated_text_artifact_if_requested(
                         accumulated,
                         prompt=current_artifact_prompt,
@@ -410,6 +428,9 @@ class ChatRuntimeOwner:
                         request_payload=request_info,
                     )
                 )
+                if pcc_execution:
+                    text_artifact_payload = {**text_artifact_payload,
+                        'pcc_execution': pcc_execution}
                 final_payload = build_canonical_response_payload(
                     instance_id=instance_id,
                     model_name=model_name,
@@ -519,6 +540,14 @@ class ChatRuntimeOwner:
                         artifact_gap=artifact_completion_gap,
                         source_route_payload=route_payload,
                     )
+            except ResponsePersistenceError as exc:
+                # The finalizer retained the exact work and storage failure in
+                # live lookup. No backend failure/cooldown or branch retry.
+                append_response_stream_events(
+                    response_id,
+                    [f"event: response.failed\ndata: {json.dumps({'type': 'response.failed', 'response': exc.response_payload, 'error': exc.response_payload.get('error')}, ensure_ascii=False)}\n\n"],
+                    done=True,
+                )
             except Exception as exc:  # noqa: BLE001
                 error_message = str(exc)
                 touch_response_lookup(
@@ -627,7 +656,15 @@ class ChatRuntimeOwner:
         if instance_id:
             instances = load_running_instances()
             instance_info = next((inst for inst in instances if inst.get('instance_id') == instance_id), None)
+            if not instance_info:
+                return jsonify({'error': f"Target instance '{instance_id}' is unavailable."}), 404
             if instance_info:
+                if instance_info.get('backend') in {'apple_fm', 'apple_pcc'}:
+                    # Registry identity wins over caller-supplied transport hints.
+                    target_port = instance_info.get('port')
+                    model_name = instance_info.get('model')
+                    backend = instance_info['backend']
+                    request_model_override = instance_info.get('request_model')
                 target_port = target_port or instance_info.get('port')
                 model_name = model_name or instance_info.get('model')
                 backend = backend or instance_info.get('backend', 'ollama')
@@ -635,6 +672,8 @@ class ChatRuntimeOwner:
                 request_model_override = request_model_override or instance_info.get('request_model')
 
         backend = normalize_backend(backend)
+        if backend == 'apple_pcc' and any(value is not None for value in (temperature, top_p, max_tokens)):
+            return jsonify({'error': 'PCC Shortcuts does not expose sampling or output-token controls.'}), 400
         capability = capability or infer_capability(model_name, backend)
         try:
             reasoning_effort = validate_reasoning_effort_for_instance(
@@ -649,7 +688,7 @@ class ChatRuntimeOwner:
         except ValueError as exc:
             return jsonify({'error': str(exc)}), 400
 
-        if backend not in ('ollama', 'mlx', 'llama_cpp'):
+        if backend not in ('ollama', 'mlx', 'llama_cpp', 'apple_fm', 'apple_pcc'):
             logging.error('Unknown backend type: %s', backend)
             return jsonify({'error': f"Unknown backend type '{backend}'"}), 400
 
@@ -739,7 +778,10 @@ class ChatRuntimeOwner:
                     latency_sec=round(time.time() - started_at, 3),
                 )
                 log_runtime_status_transition(previous_status, current_status)
-            return jsonify({'role': 'assistant', 'content': assistant_message})
+            result = {'role': 'assistant', 'content': assistant_message}
+            if getattr(assistant_message, 'pcc_execution', None):
+                result['pcc_execution'] = assistant_message.pcc_execution
+            return jsonify(result)
 
         except self.request_timeout_error:
             logging.error('Timeout Port %s', target_port)

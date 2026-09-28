@@ -13,7 +13,8 @@ from typing import Any, Mapping, Optional
 
 from flask import jsonify
 
-from helpers.model_capabilities import CAPABILITY_SPEECH_TO_TEXT
+from helpers.model_capabilities import CAPABILITY_SPEECH_TO_TEXT, supports_capability
+from fruth_core.apple_fm_tools import APPLE_FM_IMAGE_TOOL_MODES
 from fruth_services.artifact_contracts import DirectAudioDependency, execution_input_artifact_ref, selected_audio_source_binding
 from helpers.session_controls import (
     normalize_reasoning_effort,
@@ -764,7 +765,6 @@ class InferRuntimeOwner:
         to_base64 = self._hook('to_base64')
         read_text_file = self._hook('read_text_file')
         hash_file_sha256 = self._hook('hash_file_sha256')
-        find_cached_pdf_insight = self._hook('find_cached_pdf_insight')
         extract_pdf_text_content = self._hook('extract_pdf_text_content')
         render_pdf_pages_to_base64 = self._hook('render_pdf_pages_to_base64')
         log_pdf_infer_event = self._hook('log_pdf_infer_event')
@@ -823,9 +823,26 @@ class InferRuntimeOwner:
             data.get("request_model") or instance.get("request_model"),
             model_name,
         )
+        if instance.get('backend') == 'apple_fm':
+            backend = 'apple_fm'
+            model_name = instance.get('model') or 'system'
+            request_model_name = instance.get('request_model') or 'system'
+        if instance.get('backend') == 'apple_pcc':
+            backend, model_name, request_model_name = 'apple_pcc', 'auto', 'auto'
         capability = normalize_capability(data.get("capability")) or normalize_capability(instance.get("capability"))
+        if backend == 'apple_pcc' and capability not in (None, '', 'chat', 'vision_analysis'):
+            return jsonify({'error': 'PCC Shortcuts supports chat and vision_analysis; speech and image generation are unsupported.'}), 400
+        if backend == 'apple_fm' and capability not in (None, '', 'chat', 'vision_analysis'):
+            return jsonify({'error': 'Apple AI supports chat and vision_analysis; speech and image generation are unsupported.'}), 400
         if not capability:
             capability = infer_capability(model_name, backend)
+        supports_vision_input = capability in {'chat', self.capability_vision_analysis} and supports_capability(
+            self.capability_vision_analysis,
+            model_name=model_name,
+            backend=backend,
+            capability=capability,
+            metadata=instance,
+        )
         if capability == self.capability_embedding:
             return jsonify(
                 {
@@ -836,7 +853,7 @@ class InferRuntimeOwner:
                 }
             ), 400
 
-        if backend not in {"ollama", "mlx", "llama_cpp"}:
+        if backend not in {"ollama", "mlx", "llama_cpp", "apple_fm", "apple_pcc"}:
             return jsonify({"error": f"Unknown backend type '{backend}'."}), 400
 
         port = instance.get("port")
@@ -961,7 +978,6 @@ class InferRuntimeOwner:
                 image_seed = parse_int_with_bounds(raw_seed, default=0, minimum=0, maximum=2_147_483_647)
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
-        reuse_cached_pdf = parse_bool(data.get("reuse_cached"), default=True)
         pdf_prefer_text = parse_bool(data.get("pdf_prefer_text"), default=False)
         infer_timeout_min = 5 if parse_bool(data.get("internal_fast_timeout"), default=False) else 60
         infer_timeout_sec = parse_int_with_bounds(
@@ -1104,31 +1120,9 @@ class InferRuntimeOwner:
                         file_size_mb,
                         capability,
                     )
-                    if reuse_cached_pdf:
-                        cached_entry = find_cached_pdf_insight(
-                            file_sha256=file_sha256,
-                            model_name=model_name,
-                            backend=backend,
-                            capability=capability,
-                            prompt=user_prompt,
-                        )
-                        if cached_entry:
-                            return jsonify(
-                                {
-                                    "instance_id": instance_id,
-                                    "capability": capability,
-                                    "mode": cached_entry.get("mode") or "vision_analysis_pdf_cached",
-                                    "content": cached_entry.get("content") or "",
-                                    "warnings": cached_entry.get("warnings") or [],
-                                    "pdf_source": cached_entry.get("pdf_source"),
-                                    "pdf_total_pages": cached_entry.get("pdf_total_pages"),
-                                    "pdf_processed_pages": cached_entry.get("pdf_processed_pages"),
-                                    "saved_text_path": cached_entry.get("artifact_path"),
-                                    "cached": True,
-                                    "cache_id": cached_entry.get("id"),
-                                    "input_artifacts": input_artifacts,
-                                }
-                            ), 200
+                    native_pdf_tool = backend == 'apple_fm' and ocr_mode in APPLE_FM_IMAGE_TOOL_MODES
+                    # Native recognition needs page images even when a text layer exists.
+                    use_text_first = not native_pdf_tool and (bool(pdf_prefer_text) or not supports_vision_input)
                     pdf_max_pages_raw = data.get("pdf_max_pages")
                     if str(pdf_max_pages_raw or "").strip():
                         pdf_max_pages = parse_int_with_bounds(
@@ -1154,9 +1148,8 @@ class InferRuntimeOwner:
                     )
                     if pdf_page_retry_dpi >= pdf_render_dpi:
                         pdf_page_retry_dpi = max(96, pdf_render_dpi - 40)
-                    use_text_first = bool(pdf_prefer_text) or capability != self.capability_vision_analysis
                     if use_text_first:
-                        text_from_file = extract_pdf_text_content(temp_path)
+                        text_from_file = extract_pdf_text_content(temp_path, warnings=pdf_warnings)
                         if text_from_file:
                             logging.info("PDF text layer extracted: chars=%s", len(text_from_file))
                     if not text_from_file:
@@ -1174,16 +1167,12 @@ class InferRuntimeOwner:
                             pdf_max_image_side,
                             len(pdf_warnings),
                         )
-                    if not use_text_first and not pdf_page_images:
-                        text_from_file = extract_pdf_text_content(temp_path)
+                    if not use_text_first and not pdf_page_images and not native_pdf_tool:
+                        text_from_file = extract_pdf_text_content(temp_path, warnings=pdf_warnings)
                         if text_from_file:
                             logging.info("PDF text fallback extracted: chars=%s", len(text_from_file))
                     if not text_from_file and not pdf_page_images:
-                        base_error = (
-                            "PDF could not be analyzed. Install 'pypdf' for text-based PDFs. "
-                            "Scanned PDFs can use optional 'PyMuPDF' after its separate "
-                            "AGPL-3.0 or commercial upstream terms are reviewed."
-                        )
+                        base_error = "The PDF could not be read for this request."
                         if pdf_warnings:
                             base_error = f"{base_error} Notes: {' '.join(pdf_warnings)}"
                         log_pdf_infer_event(
@@ -1240,6 +1229,7 @@ class InferRuntimeOwner:
                 ),
                 reasoning_effort=reasoning_effort,
                 phase_system_prompt=phase_system_prompt,
+                supports_vision_input=supports_vision_input,
             )
             infer_artifacts = InferArtifacts(
                 temp_path=temp_path,

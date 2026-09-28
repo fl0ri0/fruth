@@ -13,7 +13,6 @@ from fruth_webserver import (
     _GENERATED_IMAGE_STATE_CACHE,
     _GENERATED_IMAGE_STATE_ENRICHMENT_IN_FLIGHT,
     _build_image_state_for_generated_image,
-    _find_cached_pdf_insight,
     _invoke_internal_api_json_route,
     _pick_image_state_helper_instance,
     _schedule_generated_image_payload_enrichment,
@@ -38,6 +37,16 @@ class InferApiTests(unittest.TestCase):
         self._artifact_inputs_tmpdir = tempfile.TemporaryDirectory()
         self._artifact_inputs_root = Path(self._artifact_inputs_tmpdir.name) / "artifacts" / "inputs"
         self._ocr_output_root = Path(self._artifact_inputs_tmpdir.name) / "artifacts" / "ocr"
+        # These provider fixtures do not own a listening host process. Keep the
+        # real status transitions, but supply fixture liveness and storage.
+        for target, value in (
+            ("fruth_core.status._port_listening", Mock(return_value=True)),
+            ("fruth_core.status.DEFAULT_RUNTIME_STATUS_PATH",
+             Path(self._artifact_inputs_tmpdir.name) / "runtime_status.json"),
+        ):
+            patcher = patch(target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         # Exercise the real OCR writer without publishing test fixtures into user work.
         self._ocr_export_dir_patcher = patch("fruth_webserver.OCR_EXPORT_DIR", self._ocr_output_root)
         self._ocr_export_dir_patcher.start()
@@ -1076,6 +1085,79 @@ class InferApiTests(unittest.TestCase):
         self.assertEqual(mock_mlx_chat.call_args.kwargs["reasoning_effort"], "xhigh")
         mock_activity.assert_called_once()
         mock_success.assert_called_once()
+
+    def test_apple_fm_image_upload_reaches_exact_transport_with_source_evidence(self):
+        import base64
+        import hashlib
+        source = b"image-input-for-transport-test"
+        for capability in ("chat", "vision_analysis"):
+            with self.subTest(capability=capability), \
+                 patch("fruth_webserver._lookup_instance") as lookup, \
+                 patch("fruth_webserver.record_instance_activity", return_value=({}, {})), \
+                 patch("fruth_webserver.record_instance_success", return_value=({}, {})), \
+                 patch("fruth_webserver.requests.post") as post:
+                lookup.return_value = {
+                    "instance_id": "apple_fm:system:11602", "port": 11602,
+                    "model": "system", "request_model": "system", "backend": "apple_fm",
+                    "capability": "chat", "inputs": ["text", "image"], "outputs": ["text"],
+                    "provider_capabilities": ["chat", "vision_analysis"],
+                    "features": {"vision_input": True},
+                }
+                post.return_value.json.return_value = {"model": "system", "choices": [
+                    {"finish_reason": "stop", "message": {"content": "Two shapes."}}]}
+                response = self.client.post("/api/infer", data={
+                    "instance_id": "apple_fm:system:11602", "backend": "ollama", "model": "other",
+                    "capability": capability, "prompt": "Describe this image",
+                    "file": (io.BytesIO(source), "sample.png"),
+                }, content_type="multipart/form-data")
+                self.assertEqual(response.status_code, 200, response.get_json())
+                payload = response.get_json()
+                self.assertEqual(payload["content"], "Two shapes.")
+                self.assertEqual(payload["instance_id"], "apple_fm:system:11602")
+                post.assert_called_once()
+                self.assertEqual(post.call_args.args[0], "http://127.0.0.1:11602/v1/chat/completions")
+                wire = post.call_args.kwargs["json"]
+                self.assertEqual(wire["model"], "system")
+                part = wire["messages"][-1]["content"][1]
+                self.assertEqual(part["type"], "image_url")
+                self.assertEqual(base64.b64decode(part["image_url"]["url"].split(",", 1)[1]), source)
+                self.assertEqual(Path(payload["input_artifacts"][0]["path"]).read_bytes(), source)
+                if capability == "vision_analysis":
+                    self.assertEqual(payload["vision_input_evidence"]["image_sha256"], hashlib.sha256(source).hexdigest())
+
+    def test_apple_image_tool_controls_reach_selected_instance_and_preserve_upload(self):
+        import base64
+        import hashlib
+        source = b'image-for-native-tool'
+        for port, mode in ((11601, 'apple_ocr'), (11602, 'apple_barcode')):
+            instance_id = f'apple_fm:system:{port}'
+            evidence = {'source_image_sha256': hashlib.sha256(source).hexdigest(),
+                'source_size_bytes': len(source), 'attachment_sha256': 'native-attachment',
+                'image_reencoded': True, 'result': {'empty': False},
+                'instance_id': instance_id, 'transport': 'fm.respond'}
+            with self.subTest(mode=mode), \
+                 patch('fruth_webserver._lookup_instance', return_value={
+                     'instance_id': instance_id, 'port': port, 'model': 'system',
+                     'backend': 'apple_fm', 'capability': 'chat',
+                     'provider_capabilities': ['chat', 'vision_analysis'], 'inputs': ['text', 'image'],
+                 }), \
+                 patch('fruth_webserver.record_instance_activity', return_value=({}, {})), \
+                 patch('fruth_webserver.record_instance_success', return_value=({}, {})), \
+                 patch('fruth_webserver.requests.post') as http, \
+                 patch('fruth_core.inference.run_apple_fm_image_tool', return_value=('Exact tool text', evidence)) as tool:
+                response = self.client.post('/api/infer', data={
+                    'instance_id': instance_id, 'ocr_mode': mode, 'prompt': 'Read image',
+                    'file': (io.BytesIO(source), 'input.png'),
+                }, content_type='multipart/form-data')
+                self.assertEqual(response.status_code, 200, response.get_json())
+                payload = response.get_json()
+                self.assertEqual(payload['mode'], mode)
+                self.assertEqual(payload['content'], 'Exact tool text')
+                self.assertEqual(payload['apple_fm_image_tool_evidence'], evidence)
+                self.assertEqual(Path(payload['input_artifacts'][0]['path']).read_bytes(), source)
+                self.assertEqual(tool.call_args.kwargs['instance_id'], instance_id)
+                self.assertEqual(base64.b64decode(tool.call_args.kwargs['image_b64']), source)
+                http.assert_not_called()
 
     @patch("fruth_webserver._lookup_instance")
     def test_infer_rejects_invalid_reasoning_effort(self, mock_lookup):
@@ -2281,50 +2363,37 @@ class InferApiTests(unittest.TestCase):
         mock_append_history.assert_called_once()
 
     @patch("fruth_webserver._lookup_instance")
-    @patch("fruth_webserver._find_cached_pdf_insight")
-    @patch("fruth_webserver._hash_file_sha256")
-    @patch("fruth_webserver._ollama_generate")
-    def test_pdf_cached_result_is_reused(
-        self,
-        mock_generate,
-        mock_hash,
-        mock_find_cached,
-        mock_lookup,
+    @patch("fruth_webserver._append_infer_history")
+    @patch("fruth_webserver._read_infer_history")
+    @patch("fruth_webserver._render_pdf_pages_to_base64")
+    @patch("fruth_webserver._ocr_pdf_page_with_ollama")
+    def test_pdf_repeated_input_is_processed_again(
+        self, mock_ocr, mock_render, mock_read_history, mock_append_history, mock_lookup,
     ):
         mock_lookup.return_value = {
-            "instance_id": "ocr-1",
-            "port": 11437,
-            "model": "deepseek-ocr:latest",
-            "backend": "ollama",
-            "capability": "vision_analysis",
+            "instance_id": "ocr-1", "port": 11437, "model": "deepseek-ocr:latest",
+            "backend": "ollama", "capability": "vision_analysis",
         }
-        mock_hash.return_value = "abc123"
-        mock_find_cached.return_value = {
-            "id": "infer-1",
-            "mode": "vision_analysis_pdf_scan",
-            "content": "Cached OCR summary",
-            "warnings": ["from cache"],
-            "pdf_source": "rendered_pages",
-            "pdf_total_pages": 12,
-            "pdf_processed_pages": 8,
-        }
-
-        response = self.client.post(
-            "/api/infer",
-            data={
-                "instance_id": "ocr-1",
-                "prompt": "Summarize this",
-                "file": (io.BytesIO(b"%PDF-1.4 fake"), "cached.pdf"),
-            },
-            content_type="multipart/form-data",
-        )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertTrue(payload["cached"])
-        self.assertEqual(payload["cache_id"], "infer-1")
-        self.assertEqual(payload["content"], "Cached OCR summary")
-        mock_generate.assert_not_called()
+        mock_read_history.side_effect = AssertionError("Incoming PDFs must not consult old outcomes")
+        mock_render.return_value = (["ZmFrZQ=="], 1, [])
+        mock_ocr.side_effect = [(f"Fresh result {i}", None) for i in range(3)]
+        saved_paths = []
+        for i, controls in enumerate(({}, {"reuse_cached": "true"}, {"reuse_cached": "false"})):
+            response = self.client.post("/api/infer", data={
+                "instance_id": "ocr-1", "prompt": "Read this document.",
+                "file": (io.BytesIO(b"%PDF-1.4 identical bytes"), "same.pdf"), **controls,
+            })
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertIn(f"Fresh result {i}", payload["content"])
+            self.assertFalse(payload.get("cached", False))
+            saved_paths.append(payload["saved_text_path"])
+            self.assertEqual(Path(saved_paths[-1]).parent, self._ocr_output_root.resolve())
+        self.assertEqual(len(set(saved_paths)), 3)
+        self.assertEqual(mock_render.call_count, 3)
+        self.assertEqual(mock_ocr.call_count, 3)
+        self.assertEqual(mock_append_history.call_count, 3)
+        mock_read_history.assert_not_called()
 
     @patch("fruth_webserver._read_infer_history")
     def test_infer_history_endpoint_filters(self, mock_read_history):
@@ -2338,48 +2407,6 @@ class InferApiTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["count"], 1)
         self.assertEqual(payload["items"][0]["id"], "1")
-
-    @patch("fruth_webserver._read_infer_history")
-    def test_find_cached_pdf_insight_skips_prompt_echo_entries(self, mock_read_history):
-        mock_read_history.return_value = [
-            {
-                "id": "bad-echo",
-                "status": "ok",
-                "file_kind": "pdf",
-                "file_sha256": "abc123",
-                "model": "deepseek-ocr:latest",
-                "backend": "ollama",
-                "capability": "vision_analysis",
-                "prompt": "For each page: verbatim transcription.",
-                "mode": "vision_analysis_pdf_scan",
-                "pdf_processed_pages": 4,
-                "content": "User request/context:\nFor each page:\n1) Verbatim transcription...",
-            },
-            {
-                "id": "good-entry",
-                "status": "ok",
-                "file_kind": "pdf",
-                "file_sha256": "abc123",
-                "model": "deepseek-ocr:latest",
-                "backend": "ollama",
-                "capability": "vision_analysis",
-                "prompt": "For each page: verbatim transcription.",
-                "mode": "vision_analysis_pdf_scan",
-                "pdf_processed_pages": 4,
-                "content": "[Page 1]\nActual OCR content",
-            },
-        ]
-
-        cached = _find_cached_pdf_insight(
-            file_sha256="abc123",
-            model_name="deepseek-ocr:latest",
-            backend="ollama",
-            capability="vision_analysis",
-            prompt="For each page: verbatim transcription.",
-        )
-
-        self.assertIsNotNone(cached)
-        self.assertEqual(cached["id"], "good-entry")
 
     @patch("fruth_webserver._open_path_in_file_manager")
     @patch("fruth_webserver._resolve_generated_image_path")

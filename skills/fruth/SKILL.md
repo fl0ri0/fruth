@@ -126,6 +126,24 @@ Registry reads already default to `prune=False`; unexpected pruning is a source
 defect to report, not permission to repair through cleanup.
 
 Prefer current process/port/backend evidence over stale readiness labels.
+
+Apple AI is the display label for backend `apple_fm`; AFM is the generic model
+label and `system` remains its required API model identifier. Attribute a specific
+variant only to evidence from the serving instance. Fruth injects the appropriate
+full or AFM policy and bounded phase instructions; do not duplicate those policies
+inside a client task or treat a display name as a new transport/model key.
+Apple PCC is a separate cloud backend `apple_pcc`, API model `auto`, with normal
+startable chat/vision instances and preferred-II selection. It sends task text,
+attached images and promoted context to Apple's cloud through user-installed
+Shortcuts, preferring Pro then
+Cloud on confirmed Pro availability/access failures. Respect local-only constraints.
+Image analysis includes model-based OCR; it does not expose the local `fm` native
+OCR/barcode tools or PCC audio. Use normal vision branches and retain exact image
+input/tier evidence; a model's barcode answer is not a verified decode.
+Fruth injects the full policy and scoped Fruth roles for inference-owned PCC calls.
+Direct single-instance chat receives neither automatically. SDK context observations
+do not prove the
+exact Shortcuts model's variant or context limit; preserve that provenance.
 Degraded, busy, timeout, cooldown and provider-family warnings are advisory unless
 hard runtime evidence proves unavailability; do not convert them into provider
 bans, failed obligations or graph-repair authority.
@@ -137,10 +155,17 @@ permitted evidence is checked. A clear `EPERM`, socket denial, or a connection
 that works in the user's Terminal but is denied here indicates a tool boundary.
 
 Do not route around it through raw ports, other forbidden tools, lifecycle,
-registry edits or config sync. Answer observation questions from available files
-with their freshness and the HTTP limitation stated. For execution, stop after
-the first clear sandbox denial and provide the same bounded request as a
-Terminal-safe command for the user.
+registry edits or config sync. Stop repeating the denied route under unchanged
+permissions. When the host offers an approved permission/escalation mechanism,
+use it for the same authorized, bounded operation before asking the user to run
+it manually; an approved permission change is not a bypass. Do not silently
+broaden network permissions or retry an operation that may already have executed.
+If approval is denied or unavailable, answer observation questions from available
+files with their freshness and the HTTP limitation stated. For execution, provide
+the same bounded request as a Terminal-safe command for the user.
+Scope a denial to the observed tool, operation and permission context. A historical
+denial is not proof that current access is blocked; use a permitted passive check
+when reassessing access, never a duplicate execution request.
 Do not reinterpret tool denial as a model failure. If a response exists, preserve
 its lifecycle/output/artifact truth. Use direct HTTP when it works; Terminal
 fallback is not a mandatory detour.
@@ -215,7 +240,7 @@ relevant section, not every document on each invocation.
 | Artifact fulfillment, terminal projection, multimodal evidence, bundles | `<fruth>/docs/RESPONSES_CONTRACT.md`: Artifact fulfillment, terminal, TTS, bundle; `<fruth>/docs/TRUTH_SOURCES.md` for competing owners |
 | Repair, learning, promotion or rebase | `<fruth>/docs/CONTROL_KNOBS.md`: Graph Repair, Reviewed Graph Rebase, redraw, accepted learning; `<fruth>/docs/PATTERNS.md` for branch-local and preservation invariants |
 | Cleanup/archive or evidence retention | `<fruth>/FRUTH_FOR_AGENTS.md`: First Commands (clean/archive) and Context And Learning Contract (retention); `<fruth>/docs/TRUTH_SOURCES.md`: Cleanup Contract |
-| Routing policy explanation/debugging | `<fruth>/docs/INFERENCE_ROUTING.md`; read `<fruth>/FRUTH_INFERENCE.md` only when its runtime policy is relevant |
+| Routing policy explanation/debugging | `<fruth>/docs/INFERENCE_ROUTING.md`; read `<fruth>/FRUTH_INFERENCE.md` and, for Apple AI execution, `<fruth>/fruth_inference/policies/apple_fm.md` only when their runtime policy is relevant |
 | Engineering and test selection | `<fruth>/AGENTS.md`, then `<fruth>/docs/TESTING_PROTOCOL.md`; injected policy is behavioral code |
 | Monitoring | `<fruth>/skills/fruth-run-monitor/SKILL.md`; helper execution writes monitor state |
 | Downstream Codex isolation or provider projections | `<fruth>/FRUTH_FOR_AGENTS.md`: External Integrations |

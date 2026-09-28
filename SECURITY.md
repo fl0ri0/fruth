@@ -1,6 +1,6 @@
 # Security Policy
 
-Fruth 0.1.2 is experimental, local-first software intended for one trusted
+Fruth 0.1.3 is experimental, local-first software intended for one trusted
 user on one machine.
 
 ## Local Boundary
@@ -8,7 +8,7 @@ user on one machine.
 The web control plane binds to `127.0.0.1` by default. Do not expose it through
 a public interface, reverse proxy, tunnel, or shared host without a separate
 security review and an authentication/authorization layer. Remote and
-multi-user deployment are not supported in 0.1.2.
+multi-user deployment are not supported in 0.1.3.
 
 Runtime state, prompts, history, logs, and generated artifacts can contain
 sensitive information. Keep the Fruth directory private and review files
@@ -37,6 +37,26 @@ not grant generated code HTTP(S) top-navigation or broader network access.
 
 Do not weaken this boundary by adding `allow-same-origin`, `unsafe-eval`, broad
 `connect-src`, or cross-origin access to the ordinary saved-artifact route.
+
+Saved SVG documents are also untrusted active content. Ordinary SVG views and
+their asset/download responses carry a CSP sandbox with no script or same-origin
+permission. Inline styles and embedded image/font data remain available for
+rendering; network resources, forms and embedded browsing contexts are blocked.
+This also covers `.svgz` and case-insensitive SVG extensions. The saved bytes
+are unchanged. Downloading a file and opening it outside Fruth is a separate
+browser/application trust boundary.
+
+## Apple PCC Through Shortcuts
+
+Apple PCC is a separate optional cloud backend. Starting its local adapter does
+not start local model inference: selected task text, images and context are sent
+to Apple when the user routes a request through the installed PCC Shortcuts.
+The user installs and controls those Shortcuts; see the
+[setup and sharing boundary](fruth_integrations/shortcuts/README.md).
+Fruth does not sign into Apple accounts, change Apple Intelligence settings or
+establish cloud access merely by observing a running local adapter. Provider
+usage limits and refusals remain visible; automatic failover does not bypass
+refusal or evidence gates. Local Apple AI is a separate on-device backend.
 
 ## ChatGPT Through Codex and Cloud Processing
 

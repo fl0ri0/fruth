@@ -358,6 +358,50 @@ def _extract_trailing_tts_meta_note(text: str) -> tuple[Optional[str], Optional[
     return content_payload, note
 
 
+def extract_atx_tts_sections(text: str) -> list[str]:
+    """Extract explicitly labelled narration from Markdown heading sections.
+
+    Fence contents cannot declare headings. An audio-labelled text fence is
+    only a speakable source, never evidence that an audio file exists.
+    """
+    headings: list[tuple[str, int, int]] = []
+    lines = str(text or '').splitlines(keepends=True)
+    fence = ''
+    offset = 0
+    for line in lines:
+        marker = re.match(r'^ {0,3}(`{3,}|~{3,})', line)
+        if marker:
+            token = marker.group(1)
+            if not fence:
+                fence = token
+            elif token[0] == fence[0] and len(token) >= len(fence):
+                fence = ''
+        elif not fence:
+            match = re.match(r'^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$', line)
+            if match:
+                headings.append((match.group(1), offset, offset + len(line)))
+        offset += len(line)
+    candidates: list[str] = []
+    for index, (label, _start, body_start) in enumerate(headings):
+        normalized = label.casefold().replace('_', ' ')
+        if any(token in normalized for token in ('transcript', 'transkript', 'json')):
+            continue
+        if not any(token in normalized for token in _SEMANTIC_TTS_SECTION_TOKENS):
+            continue
+        body_end = headings[index + 1][1] if index + 1 < len(headings) else len(text)
+        body = text[body_start:body_end].strip()
+        wrapped = re.fullmatch(r'(`{3,}|~{3,})([^\n]*)\n(.*?)\n\1\s*', body, re.S)
+        if wrapped:
+            if wrapped.group(2).strip().casefold() not in {'', 'text', 'txt', 'plaintext', 'wav', 'mp3', 'audio'}:
+                continue
+            body = wrapped.group(3).strip()
+        # A narration heading must not make code or another control payload speakable.
+        if not body or re.search(r'(?m)^\s*(?:```|~~~|[<{\[])', body):
+            continue
+        candidates.append(body)
+    return candidates
+
+
 def split_visible_tts_payload(display_text: str) -> dict[str, Optional[str]]:
     text = str(display_text or '').strip()
     payload: dict[str, Optional[str]] = {
@@ -368,6 +412,15 @@ def split_visible_tts_payload(display_text: str) -> dict[str, Optional[str]]:
         'content_payload_source': None,
     }
     if not text:
+        return payload
+
+    heading_bodies = extract_atx_tts_sections(text)
+    if len(heading_bodies) == 1:
+        payload.update(content_payload=heading_bodies[0], content_payload_source='heading_section')
+        return payload
+    if len(heading_bodies) > 1:
+        # Preserve alternatives for the branch's existing selection/ambiguity gate.
+        payload.update(content_payload=text, content_payload_source='full_display_text')
         return payload
 
     stage_match = None

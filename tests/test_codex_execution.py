@@ -464,6 +464,36 @@ class CodexExecutionTests(unittest.TestCase):
         self.assertNotIn('inputs/AGENTS.md', payload['prompt'])
         self.assertFalse(Path(payload['cwd']).exists())
 
+    def test_execution_hands_original_multipage_pdf_to_file_aware_agent(self) -> None:
+        from pypdf import PdfWriter
+
+        executable = self._write_codex(self.root / 'codex')
+        capture = self.root / 'pdf-handoff.json'
+        pdf_path = self.root / 'document.pdf'
+        writer = PdfWriter()
+        writer.add_blank_page(width=200, height=300)
+        writer.add_blank_page(width=300, height=200)
+        writer.write(pdf_path)
+        original = pdf_path.read_bytes()
+        digest = hashlib.sha256(original).hexdigest()
+
+        result = execute_codex_request(
+            'Read every page of the selected PDF.', timeout_seconds=2,
+            discovery=self._discovery(executable),
+            env=self._base_env(FAKE_CODEX_EXEC_CAPTURE=str(capture)),
+            inputs=[CodexExecutionInput(path=pdf_path, kind='pdf', artifact_ref='artifact:pdf:original')],
+        )
+
+        self.assertEqual(result.status, CodexExecutionState.COMPLETED)
+        self.assertEqual(result.input_handoff[0].sha256, digest)
+        self.assertEqual(result.input_handoff[0].artifact_ref, 'artifact:pdf:original')
+        payload = json.loads(capture.read_text(encoding='utf-8'))
+        self.assertEqual(payload['staged_files'], [{
+            'path': 'inputs/input-01.pdf', 'byte_size': len(original), 'sha256': digest,
+        }])
+        self.assertNotIn('--image', payload['args'])
+        self.assertEqual(pdf_path.read_bytes(), original)
+
     def test_execution_rejects_symlink_and_file_limit_before_codex_exec(self) -> None:
         executable = self._write_codex(self.root / 'codex')
         calls = self.root / 'calls.jsonl'

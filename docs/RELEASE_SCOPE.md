@@ -1,10 +1,37 @@
 # Fruth source packaging scope
 
-This document defines the contents and support boundaries of the Fruth `0.1.2`
+This document defines the contents and support boundaries of the Fruth `0.1.3`
 source package. See the [installation guide](../README.md#install-and-start)
 for setup and [known limitations](KNOWN_LIMITATIONS.md) for current constraints.
 
-## What 0.1.2 Provides
+## Added in 0.1.3
+
+This package adds the following to the published 0.1.2 baseline:
+
+- [Apple AI](APPLE_FOUNDATION_MODELS.md), the fourth local backend, with `fm serve`
+  text generation, image analysis, streaming and instance management.
+- Optional [Apple PCC](../fruth_integrations/shortcuts/README.md) text/image
+  execution through user-installed Shortcuts and a locally managed loopback
+  adapter. Requests send selected inputs to Apple; local readiness does not
+  establish cloud access or remaining quota.
+- Bounded provider failover, saved-artifact follow-up/reference fixes and scoped
+  local AFM context, preserving existing request and evidence gates.
+- Native macOS PDFKit/CoreGraphics rendering through PyObjC, with pypdf text
+  extraction and the existing OCR/vision routes. Each incoming PDF is processed
+  afresh; explicit history retrieval remains available. Page coverage and model
+  transcription accuracy remain separate guarantees.
+- Reusable offline Research evidence review and explicit Gold curation, including
+  retained validation and recoverable publication of reviewed cases.
+
+See the [changelog](../CHANGELOG.md) and the dated
+[AFM/PCC conformance observations](SELF_ATTACK_STATUS_2026-09-27.md). AFM's correct
+mismatch rejections and PCC's quota-limited coverage retain their native
+INCOMPLETE verdicts. Those runs predate the latest failover, Research and PDF
+changes; they do not establish full conformance of the complete 0.1.3 source.
+Release preparation validates the selected source package separately; building
+it does not publish it or change those historical verdicts.
+
+## What 0.1.3 Provides
 
 - A local Flask control plane and browser interface.
 - A standalone static repository landing page, packaged with all of its local
@@ -14,7 +41,8 @@ for setup and [known limitations](KNOWN_LIMITATIONS.md) for current constraints.
   the root of a dedicated Pages branch and activated manually; the release
   includes no publication workflow.
 - Local model discovery and lifecycle support for the backends already
-  implemented by Fruth, including Ollama, MLX, and llama.cpp paths.
+  implemented by Fruth, including Ollama, MLX, llama.cpp and Apple AI paths,
+  plus a locally managed bridge for optional Apple PCC cloud execution.
 - The canonical `/api/responses` and `/v1/responses` execution surfaces.
 - Interpretive inference routing, durable response frames, runtime status, history, and
   materialized artifact tracking.
@@ -48,7 +76,8 @@ modalities remain experimental.
 
 `scripts/build_release_archive.py` owns the current source allowlist and verifier.
 `PUBLIC_DOCS` includes the normative contracts, `SELF_ATTACK.md`, the dated
-[September 19 conformance summary](SELF_ATTACK_STATUS_2026-09-19.md), causal
+[September 19 conformance summary](SELF_ATTACK_STATUS_2026-09-19.md) and
+[September 25–27 Apple results](SELF_ATTACK_STATUS_2026-09-27.md), causal
 telemetry and state-flow diagnostics. The dated summary records the tested
 source and scope; packaging it does not establish a new conformance result.
 `PUBLIC_CONFIG_PATHS` includes exactly `config/self_attack_corpus.json` and
@@ -56,6 +85,11 @@ source and scope; packaging it does not establish a new conformance result.
 and test code are included through the normal source-tree rules. Raw captures,
 production ledgers, local forensic corpora and generated `state/` are excluded;
 running conformance creates new local evidence.
+
+`PUBLIC_INTEGRATION_DOC_PATHS` includes the exact PCC setup guide at
+`fruth_integrations/shortcuts/README.md`. The bridge's Python sources are selected
+through the normal integration source rules; unrelated integration notes are not
+included. The user creates or installs the two named Shortcuts as documented.
 
 The four exact companion-skill files are `skills/fruth/SKILL.md`,
 `skills/fruth/NOTICE`, `skills/fruth/agents/openai.yaml` and
@@ -84,7 +118,7 @@ separate actions.
 The primary tested environment is a recent macOS release on Apple Silicon
 with Python 3.11 or newer. Individual local capabilities additionally require
 their own backend and model packages. Other operating systems and processor
-architectures are not part of the 0.1.2 support promise.
+architectures are not part of the 0.1.3 support promise.
 
 Fruth is intended for local, single-user use and binds its web control plane
 to `127.0.0.1` by default. Remote and multi-user deployment are outside this
@@ -92,8 +126,13 @@ release scope.
 
 ## Local-First and Optional Cloud Use
 
-Local execution is the default product posture. ChatGPT is a separate optional
-cloud path:
+Local execution is the default product posture. Apple PCC is an optional cloud
+backend reached through user-installed Shortcuts; selected task text, images and
+context leave the device for Apple. Availability and usage limits are checked
+per call; starting its local adapter does not establish cloud access. See the
+[PCC guide](../fruth_integrations/shortcuts/README.md).
+
+ChatGPT is a separate optional cloud path:
 
 - it must be explicitly enabled before Fruth can route a prompt or selected
   files to it;
@@ -120,8 +159,8 @@ cloud path:
   bounded relevant context for a referential turn, but no provider session is
   silently resumed.
 
-Direct provider API-key management and other external providers are not part of
-0.1.2.
+Direct provider API-key management and external providers beyond the documented
+ChatGPT and Apple PCC integrations are not part of 0.1.3.
 
 ## Compatibility
 
@@ -131,9 +170,10 @@ will be changed deliberately and documented, but may still evolve.
 
 ## Research packaging
 
-The explicit `RESEARCH_SOURCE_FILES` allowlist includes Research initialization,
-status, candidate synchronization, Gold schema/validator/evidence resolver,
-documentation and synthetic validator tests. Accumulated candidates, Gold cases,
-retained evidence and generated manifests are excluded. Fruth startup creates
+The current `RESEARCH_SOURCE_FILES` allowlist includes Research initialization,
+status, candidate synchronization, offline evidence audit/inspection, explicit
+Gold curation, schema/validator/evidence resolver, documentation and synthetic
+tests. Accumulated candidates, Gold cases, retained evidence, review reports,
+curation receipts and generated manifests are excluded. Fruth startup creates
 missing empty stores automatically and preserves existing Research data.
 No Research absence is treated as an optional test skip.

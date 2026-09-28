@@ -91,6 +91,10 @@ class FakeBackendHarness:
         self._stack = ExitStack()
         self._stack.enter_context(patch.object(fruth_webserver, "CONFIG_FILE_NAME", str(self.runtime_registry_path)))
         self._stack.enter_context(patch.object(fruth_webserver, "RUNTIME_STATUS_PATH", self.runtime_status_path))
+        # Fake instances have no listening host process. Status bookkeeping must
+        # remain inside the harness even when a real transport owner is exercised.
+        self._stack.enter_context(patch("fruth_core.status._port_listening", return_value=False))
+        self._stack.enter_context(patch("fruth_core.status.DEFAULT_RUNTIME_STATUS_PATH", self.runtime_status_path))
         self._stack.enter_context(patch.object(fruth_webserver, "RESPONSE_FRAMES_DIR", self.response_frames_dir))
         self._stack.enter_context(patch.object(fruth_webserver, "ARTIFACT_REGISTRY_LEDGER", self.registry_path))
         self._stack.enter_context(patch.object(fruth_webserver, "CHAT_HISTORY_DIR", self.chat_history_dir))

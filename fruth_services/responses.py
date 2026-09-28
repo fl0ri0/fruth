@@ -1273,10 +1273,14 @@ def _include_linked_public_dependencies(
     ordered: list[dict[str, Any]] = []
     queue: list[Path] = []
     authoritative_by_identity: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    inventory_by_path: dict[str, list[dict[str, Any]]] = {}
     inventory = artifact_inventory if isinstance(artifact_inventory, list) else artifacts
     for candidate in inventory:
         if not isinstance(candidate, Mapping):
             continue
+        candidate_path = _resolved_artifact_path(candidate)
+        if candidate_path is not None:
+            inventory_by_path.setdefault(str(candidate_path), []).append(dict(candidate))
         identity = artifact_logical_identity(candidate)
         if identity and artifact_is_current_authoritative(candidate, response_id=response_id):
             authoritative_by_identity.setdefault(identity, []).append(dict(candidate))
@@ -1314,7 +1318,16 @@ def _include_linked_public_dependencies(
             dependency_key = str(dependency)
             if dependency_key in by_path:
                 continue
-            record = _dependency_artifact_record(dependency)
+            known = inventory_by_path.get(dependency_key, [])
+            if known:
+                # Keep the exact registered file identity, as bundle selection
+                # does; reconstructing it from a basename can revive stale files.
+                selected = select_authoritative_artifact_records(known, response_id=response_id)
+                if len(selected) != 1:
+                    continue
+                record = selected[0]
+            else:
+                record = _dependency_artifact_record(dependency)
             if not record:
                 continue
             identity = artifact_logical_identity(record)
@@ -1899,6 +1912,28 @@ def _canonical_output_text_value(
     if _looks_like_internal_public_text(explicit_content):
         explicit_content = ''
     if explicit_content:
+        # Compatibility text may already project a later canonical output.
+        # Compact lookups omit the role/dependency sidecars used to suppress
+        # consumed preparation/evidence; do not reassign that text to the root.
+        # Slot-local, fill-result and matching-owner values above remain valid,
+        # even when independent outputs happen to contain identical prose.
+        existing_outputs = payload.get('outputs') if isinstance(payload.get('outputs'), list) else []
+        for existing in existing_outputs:
+            if not isinstance(existing, Mapping):
+                continue
+            if clean_text(existing.get('type')).lower() not in {'text', 'document'}:
+                continue
+            if clean_text(existing.get('status')).lower() not in {'completed', 'fulfilled'}:
+                continue
+            if clean_text(existing.get('value')) != explicit_content:
+                continue
+            if any(
+                clean_text(slot.get(key))
+                and clean_text(existing.get(key))
+                and clean_text(slot.get(key)) != clean_text(existing.get(key))
+                for key in ('slot_id', 'phase_id', 'branch_id')
+            ):
+                return None
         return explicit_content
     return None
 
@@ -2916,6 +2951,26 @@ def build_canonical_response_payload(
             response_payload['context_reason'] = context_strategy.get('reason')
         if isinstance(route_runtime.get('route_traits'), dict) and route_runtime.get('route_traits'):
             response_payload['route_traits'] = route_runtime.get('route_traits')
+    vision_evidence = payload.get('vision_input_evidence')
+    if isinstance(vision_evidence, dict) and vision_evidence:
+        # Keep dispatch evidence in the persisted runtime snapshot. Provider text
+        # alone cannot establish that the selected instance received an image.
+        response_payload['runtime'] = {
+            **response_payload.get('runtime', {}),
+            'vision_input_evidence': dict(vision_evidence),
+        }
+    image_tool_evidence = payload.get('apple_fm_image_tool_evidence')
+    if isinstance(image_tool_evidence, dict) and image_tool_evidence:
+        response_payload['runtime'] = {
+            **response_payload.get('runtime', {}),
+            'apple_fm_image_tool_evidence': dict(image_tool_evidence),
+        }
+    pcc_execution = payload.get('pcc_execution')
+    if backend == 'apple_pcc' and isinstance(pcc_execution, dict) and pcc_execution:
+        response_payload['runtime'] = {
+            **response_payload.get('runtime', {}),
+            'pcc_execution': dict(pcc_execution),
+        }
     request_meta = route_info.get('request_meta') if isinstance(route_info.get('request_meta'), dict) else (
         route_runtime.get('request_meta') if isinstance(route_runtime.get('request_meta'), dict) else {}
     )

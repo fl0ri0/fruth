@@ -1380,7 +1380,7 @@ function getConversationDisplayLabel(conversationId) {
     if (isExternalConversationTarget(instance)) {
         return String(instance.label || 'ChatGPT').replace(/\s*\(automatic\)\s*$/i, '');
     }
-    return formatModelDisplayName(instance?.model || metadata?.model || sourceInstanceId || conversationId);
+    return formatModelDisplayName(instance?.model || metadata?.model || sourceInstanceId || conversationId, instance?.backend || metadata?.backend);
 }
 
 function isResponsesWorkbenchActive() {
@@ -1489,7 +1489,7 @@ function formatResponsesAutoLabel() {
     if (!resolved) return 'Fruth';
     const modelLabel = isExternalConversationTarget(resolved)
         ? 'ChatGPT'
-        : formatModelDisplayName(resolved.model || resolved.instance_id);
+        : formatModelDisplayName(resolved.model || resolved.instance_id, resolved.backend);
     const backendLabel = isExternalConversationTarget(resolved)
         ? 'external provider'
         : formatBackendLabel(resolved.backend || 'runtime');
@@ -1526,7 +1526,7 @@ function buildResponsesAutoStatusText() {
     }
     const modelLabel = isExternalConversationTarget(resolved)
         ? 'ChatGPT'
-        : formatModelDisplayName(resolved.model || resolved.instance_id);
+        : formatModelDisplayName(resolved.model || resolved.instance_id, resolved.backend);
     const backendLabel = isExternalConversationTarget(resolved)
         ? 'external provider'
         : formatBackendLabel(resolved.backend || 'runtime');
@@ -1696,8 +1696,8 @@ function renderResponsesWorkbenchTargetOptions() {
             const backendLabel = formatBackendLabel(instance.backend || 'ollama');
             const truth = getInstanceRuntimeTruthSummary(instance);
             option.textContent = truth
-                ? `${formatModelDisplayName(instance.model || instance.instance_id)} (${backendLabel} • ${truth})`
-                : `${formatModelDisplayName(instance.model || instance.instance_id)} (${backendLabel})`;
+                ? `${formatModelDisplayName(instance.model || instance.instance_id, instance.backend)} (${backendLabel} • ${truth})`
+                : `${formatModelDisplayName(instance.model || instance.instance_id, instance.backend)} (${backendLabel})`;
         }
         option.selected = option.value === state.responsesWorkbench.targetInstanceId;
         elements.responsesTargetSelect.appendChild(option);

@@ -21,7 +21,11 @@ from helpers.model_capabilities import (
     CAPABILITY_VISION_ANALYSIS,
 )
 from helpers.ocr_modes import GENERIC_OCR_FALLBACK_PROMPT, resolve_ocr_prompt
+from fruth_core.apple_fm_tools import (
+    APPLE_FM_IMAGE_TOOL_MODES, AppleFMImageToolError, run_apple_fm_image_tool,
+)
 from fruth_core.transports import (
+    AppleFMTransportError,
     join_pcm_wav_bytes,
     text_artifact_content_is_materializer_instruction_echo,
 )
@@ -373,7 +377,7 @@ _TEXT_ARTIFACT_CARDINALITY_CONSTRAINT_RE = re.compile(
 _TEXT_ARTIFACT_GENERIC_FALLBACK_CUE_RE = re.compile(
     r'\b('
     r'file|files|datei|dateien|document|documents|dokument|dokumente|'
-    r'download|downloadable|save|saved|speicher|speichere|persist|persistiere|'
+    r'download|downloadable|save|speicher|speichere|persist|persistiere|'
     r'write\s+to|as\s+a\s+file|als\s+datei|'
     r'(?:text|code|markdown|html|css|json)\s+(?:artifact|artefact|artefakt)'
     r')\b',
@@ -860,7 +864,11 @@ def _text_artifact_format_match_is_negated(text: str, match: re.Match[str]) -> b
     # Wrapped exclusion lists remain one command. Only an actual sentence,
     # contrast or new action starts a fresh polarity scope, not a character cap.
     scope_start = 0
-    for boundary in _TEXT_ARTIFACT_FORMAT_SCOPE_BOUNDARY_RE.finditer(prefix):
+    # Include the matched token for lookahead when the token itself is a new
+    # action (", create ..."); it still stays outside the governing prefix.
+    for boundary in _TEXT_ARTIFACT_FORMAT_SCOPE_BOUNDARY_RE.finditer(text[:match.end()]):
+        if boundary.end() > match.start():
+            break
         if (
             boundary.group().strip().lower() in {'and', 'und'}
             and _TEXT_ARTIFACT_COMMAND_PROHIBITION_RE.search(
@@ -1469,7 +1477,18 @@ def _text_artifact_prompt_has_positive_request_outside_negation(
 
 
 def _text_artifact_prompt_is_negated(text: str) -> bool:
-    matches = list(_TEXT_ARTIFACT_NEGATION_RE.finditer(str(text or '')))
+    # The broad exclusion matcher can cross a contrast ("do not generate
+    # audio, but write a file"). Check the file cue's actual polarity before
+    # treating that span as an instruction to suppress materialization.
+    file_cues = list(_TEXT_ARTIFACT_FILE_CUE_RE.finditer(str(text or '')))
+    matches = [
+        match for match in _TEXT_ARTIFACT_NEGATION_RE.finditer(str(text or ''))
+        if any(
+            match.start() <= cue.start() < match.end()
+            and _text_artifact_format_match_is_negated(text, cue)
+            for cue in file_cues
+        )
+    ]
     if not matches:
         return False
     return not _text_artifact_prompt_has_positive_request_outside_negation(text, matches)
@@ -1620,7 +1639,13 @@ def detect_text_artifact_requests(
         )
 
     has_file_cue = bool(_TEXT_ARTIFACT_FILE_CUE_RE.search(text))
-    has_action_cue = bool(_TEXT_ARTIFACT_ACTION_CUE_RE.search(text))
+    has_action_cue = any(
+        not _text_artifact_format_match_is_negated(text, match)
+        and not _json_text_artifact_span_is_inside_quoted_instruction(
+            text, match.start(), match.end(),
+        )
+        for match in _TEXT_ARTIFACT_ACTION_CUE_RE.finditer(text)
+    )
     has_web_page_need_cue = bool(_TEXT_ARTIFACT_WEB_PAGE_NEED_CUE_RE.search(text))
     # A web possibility cannot borrow an action from an unrelated sentence
     # (for example, "create an image ... keep website ideas reserved").
@@ -1791,6 +1816,8 @@ def detect_text_artifact_requests(
         return requests
     if json_intent.suppress_generic_fallback:
         return requests
+    # "Saved" evidence describes a predecessor. It cannot by itself request
+    # an unspecified new text file, even alongside another affirmative action.
     if not _TEXT_ARTIFACT_GENERIC_FALLBACK_CUE_RE.search(text):
         return requests
 
@@ -2546,6 +2573,7 @@ class InferContext:
     prompt_is_semantic_materializer_payload: bool = False
     reasoning_effort: Optional[str] = None
     phase_system_prompt: Optional[str] = None
+    supports_vision_input: bool = False
 
 
 @dataclass
@@ -2571,6 +2599,46 @@ def dispatch_infer_request(
     artifacts: InferArtifacts,
     ops: Dict[str, Callable[..., Any]],
 ) -> Tuple[dict, int]:
+    if ctx.backend == 'apple_pcc' and ctx.capability not in {'chat', CAPABILITY_VISION_ANALYSIS}:
+        return {'error': 'PCC Shortcuts supports chat and vision_analysis; speech and image generation are unsupported.'}, 400
+    image_tool_mode = str(ctx.ocr_mode or '').strip().lower()
+    if image_tool_mode in APPLE_FM_IMAGE_TOOL_MODES:
+        if ctx.backend != 'apple_fm' or ctx.capability not in {'chat', CAPABILITY_VISION_ANALYSIS}:
+            return {'error': 'Apple image tool modes require an Apple AI chat or vision instance.'}, 400
+        if artifacts.file_kind == 'pdf':
+            if not artifacts.pdf_page_images:
+                return {'error': 'Apple PDF tools require rendered page images.'}, 400
+            return _run_pdf_vision_analysis(ctx, artifacts, ops)
+        if artifacts.file_kind != 'image' or not artifacts.image_b64:
+            return {'error': 'Apple OCR and barcode modes require an image or PDF.'}, 400
+        try:
+            content, evidence = run_apple_fm_image_tool(
+                mode=image_tool_mode, image_b64=artifacts.image_b64,
+                instance_id=ctx.instance_id, timeout_sec=ctx.infer_timeout_sec,
+            )
+        except ValueError as exc:
+            return {'error': str(exc)}, 400
+        except AppleFMImageToolError as exc:
+            return {'error': str(exc), 'mode': image_tool_mode, 'instance_id': ctx.instance_id}, 502
+        if evidence['result']['empty']:
+            content = 'No text detected.' if image_tool_mode == 'apple_ocr' else 'No barcodes detected.'
+        return {
+            'instance_id': ctx.instance_id, 'capability': ctx.capability,
+            'mode': image_tool_mode, 'content': content,
+            'apple_fm_image_tool_evidence': evidence,
+            'vision_input_evidence': {
+                'kind': 'fruth.vision_input_evidence', 'version': 1,
+                'authority': 'runtime_vision_image_dispatch', 'status': 'supplied',
+                'instance_id': ctx.instance_id,
+                'image_sha256': evidence['source_image_sha256'],
+                'size_bytes': evidence['source_size_bytes'],
+                'transport': 'fm.respond', 'execution_scope': 'local_cli_session',
+                'attachment_sha256': evidence['attachment_sha256'],
+                'image_reencoded': evidence['image_reencoded'],
+            },
+        }, 200
+    if ctx.backend == 'apple_fm' and image_tool_mode not in {'', 'auto'}:
+        return {'error': 'Invalid Apple AI image mode. Choose auto, apple_ocr or apple_barcode.'}, 400
     if ctx.capability == CAPABILITY_SPEECH_TO_TEXT:
         return _run_speech_to_text(ctx, artifacts, ops)
     if ctx.capability == CAPABILITY_TEXT_TO_SPEECH:
@@ -2579,6 +2647,11 @@ def dispatch_infer_request(
         return _run_image_generation(ctx, artifacts, ops)
     if ctx.capability == CAPABILITY_VISION_ANALYSIS:
         return _run_vision_analysis(ctx, artifacts, ops)
+    if (
+        ctx.capability == 'chat' and ctx.supports_vision_input
+        and artifacts.file_kind == 'pdf' and artifacts.pdf_page_images
+    ):
+        return _run_pdf_vision_analysis(ctx, artifacts, ops)
     return _run_chat_fallback(ctx, artifacts, ops)
 
 
@@ -4091,7 +4164,7 @@ def _run_vision_analysis(
                 'size_bytes': len(image_bytes),
             }
         del image_bytes
-    if ctx.backend in {'mlx', 'llama_cpp'}:
+    if ctx.backend in {'mlx', 'llama_cpp', 'apple_fm', 'apple_pcc'}:
         mlx_out = _run_backend_chat_completion(
             ctx,
             ops,
@@ -4106,6 +4179,8 @@ def _run_vision_analysis(
                 'content': mlx_out.get('content', ''),
                 'result': mlx_out.get('result'),
                 'vision_input_evidence': input_evidence,
+                **({'pcc_execution': mlx_out['content'].pcc_execution}
+                   if ctx.backend == 'apple_pcc' and getattr(mlx_out.get('content'), 'pcc_execution', None) else {}),
             },
             200,
         )
@@ -4182,8 +4257,15 @@ def _run_pdf_vision_analysis(
     ops: Dict[str, Callable[..., Any]],
 ) -> Tuple[dict, int]:
     effective_prompt = _effective_vision_prompt(ctx)
-    if ctx.backend in {'mlx', 'llama_cpp'}:
-        if artifacts.text_from_file:
+    image_tool_mode = str(ctx.ocr_mode or '').strip().lower()
+    native_tool_mode = (
+        image_tool_mode if ctx.backend == 'apple_fm' and image_tool_mode in APPLE_FM_IMAGE_TOOL_MODES else None
+    )
+    phase_system_prompt = (
+        str(getattr(ctx, 'phase_system_prompt', None) or '').strip() if ctx.capability == 'chat' else ''
+    )
+    if ctx.backend in {'mlx', 'llama_cpp', 'apple_fm', 'apple_pcc'}:
+        if artifacts.text_from_file and not native_tool_mode:
             mlx_out = _run_backend_chat_completion(
                 ctx,
                 ops,
@@ -4253,38 +4335,122 @@ def _run_pdf_vision_analysis(
             return payload, 200
 
         page_results = []
+        processed_pages = 0
+        total_pages = artifacts.pdf_total_pages or len(artifacts.pdf_page_images)
+        tool_evidence = {
+            'kind': 'fruth.apple_fm_pdf_tool_evidence', 'version': 1,
+            'instance_id': ctx.instance_id, 'mode': native_tool_mode,
+            'source_pdf_sha256': artifacts.file_sha256,
+            'pdf_total_pages': total_pages, 'pages': [],
+        } if native_tool_mode else None
         for idx, page_image_b64 in enumerate(artifacts.pdf_page_images, start=1):
-            mlx_out = ops['mlx_chat_completions'](
-                ctx.port,
-                ctx.model_name,
-                [
+            if native_tool_mode:
+                try:
+                    content, evidence = run_apple_fm_image_tool(
+                        mode=native_tool_mode, image_b64=page_image_b64,
+                        instance_id=ctx.instance_id, timeout_sec=ctx.pdf_page_timeout_sec,
+                    )
+                except (ValueError, AppleFMImageToolError) as exc:
+                    return {
+                        'error': f'PDF page {idx}: {exc}',
+                        'instance_id': ctx.instance_id, 'capability': ctx.capability,
+                        'mode': f'{native_tool_mode}_pdf',
+                        'pdf_source': 'rendered_pages', 'pdf_total_pages': total_pages,
+                        'pdf_processed_pages': processed_pages,
+                        'warnings': artifacts.pdf_warnings,
+                        'apple_fm_image_tool_evidence': tool_evidence,
+                    }, 400 if isinstance(exc, ValueError) else 502
+                tool_evidence['pages'].append({'page_index': idx, 'evidence': evidence})
+                if evidence['result']['empty']:
+                    content = 'No text detected.' if native_tool_mode == 'apple_ocr' else 'No barcodes detected.'
+            else:
+                messages = [
                     _build_mlx_multimodal_user_message(
-                        f'{effective_prompt}\n\nPage {idx} of {len(artifacts.pdf_page_images)}.',
+                        f'{effective_prompt}\n\nPage {idx} of {total_pages}.',
                         page_image_b64,
                     )
-                ],
-                timeout_sec=ctx.pdf_page_timeout_sec,
-                reasoning_effort=ctx.reasoning_effort,
-            )
-            content = str(mlx_out.get('content') or '').strip()
+                ]
+                if phase_system_prompt:
+                    messages.insert(0, {'role': 'system', 'content': phase_system_prompt})
+                try:
+                    mlx_out = _run_backend_chat_completion(
+                        ctx,
+                        ops,
+                        messages,
+                        timeout_sec=ctx.pdf_page_timeout_sec,
+                    )
+                except (
+                    ops['request_timeout_error'], ops['request_connection_error'],
+                    ops['request_exception_error'], AppleFMTransportError,
+                ) as exc:
+                    # Keep the failed page and completed coverage at the boundary
+                    # where they are known. Refusals never retry or switch mode.
+                    status_code = 502
+                    if isinstance(exc, ops['request_timeout_error']):
+                        status_code = 504
+                        details = (
+                            'Timed out while waiting for the model request. '
+                            'The model process may still be running locally. '
+                            'Use smaller PDF chunks or increase infer_timeout_sec/pdf_page_timeout_sec.'
+                        )
+                    elif isinstance(exc, ops['request_connection_error']):
+                        status_code = 503
+                        details = f'The connection to the model instance was interrupted ({exc}).'
+                    else:
+                        details = str(exc)
+                        response = getattr(exc, 'response', None)
+                        if response is not None:
+                            try:
+                                body = response.json()
+                                if isinstance(body, dict):
+                                    error = body.get('error') or body.get('message')
+                                    if isinstance(error, dict):
+                                        error = error.get('message') or error.get('code')
+                                    details = str(error or details)
+                            except (ValueError, TypeError):
+                                details = str(getattr(response, 'text', '') or details)[:300]
+                    error_message = f'PDF page {idx} of {total_pages}: {details}'
+                    mode = 'vision_analysis_pdf_scan'
+                    ops['log_pdf_infer_event'](
+                        instance_id=ctx.instance_id, model_name=ctx.model_name,
+                        backend=ctx.backend, capability=ctx.capability,
+                        prompt=ctx.user_prompt, file_name=artifacts.file_name,
+                        file_sha256=artifacts.file_sha256, status='error', mode=mode,
+                        error=error_message, warnings=artifacts.pdf_warnings,
+                        pdf_source='rendered_pages', pdf_total_pages=total_pages,
+                        pdf_processed_pages=processed_pages,
+                    )
+                    return {
+                        'error': error_message, 'instance_id': ctx.instance_id,
+                        'capability': ctx.capability, 'mode': mode,
+                        'pdf_source': 'rendered_pages', 'pdf_total_pages': total_pages,
+                        'pdf_processed_pages': processed_pages, 'warnings': artifacts.pdf_warnings,
+                    }, status_code
+                content = str(mlx_out.get('content') or '').strip()
             if content:
-                page_results.append(f"[Page {idx}]\n{content}")
+                processed_pages += 1
+            else:
+                artifacts.pdf_warnings.append(f'Page {idx}: the vision model returned no text.')
+                content = '[No text returned by the vision model.]'
+            page_results.append(f"[Page {idx}]\n{content}")
 
-        if not page_results:
+        if not processed_pages:
             return (
                 {
-                    'error': 'The PDF was processed, but the MLX VLM model returned no text.',
+                    'error': 'The PDF was processed, but the vision model returned no text.',
+                    'pdf_total_pages': total_pages, 'pdf_processed_pages': 0,
                     'warnings': artifacts.pdf_warnings,
                 },
                 502,
             )
 
         final_content = '\n\n---\n\n'.join(page_results)
+        mode = f'{native_tool_mode}_pdf' if native_tool_mode else 'vision_analysis_pdf_scan'
         saved_text_path = ops['persist_text_markdown_locally'](
             final_content,
             model_name=ctx.model_name,
             source_file_name=artifacts.file_name,
-            mode='vision_analysis_pdf_scan',
+            mode=mode,
         )
         response_content, content_truncated = _build_pdf_inline_response_content(
             final_content,
@@ -4294,17 +4460,19 @@ def _run_pdf_vision_analysis(
         payload = {
             'instance_id': ctx.instance_id,
             'capability': ctx.capability,
-            'mode': 'vision_analysis_pdf_scan',
+            'mode': mode,
             'content': response_content,
             'pdf_source': 'rendered_pages',
-            'pdf_total_pages': artifacts.pdf_total_pages or len(artifacts.pdf_page_images),
-            'pdf_processed_pages': len(page_results),
+            'pdf_total_pages': total_pages,
+            'pdf_processed_pages': processed_pages,
             'warnings': artifacts.pdf_warnings,
             'saved_text_path': saved_text_path,
             'content_truncated': content_truncated,
             'full_content_chars': len(final_content),
             'inline_content_chars': len(response_content),
         }
+        if tool_evidence is not None:
+            payload['apple_fm_image_tool_evidence'] = tool_evidence
         ops['log_pdf_infer_event'](
             instance_id=ctx.instance_id,
             model_name=ctx.model_name,
@@ -4390,7 +4558,9 @@ def _run_pdf_vision_analysis(
 
     page_results_by_number: dict[int, str] = {}
     page_errors: dict[int, str] = {}
-    total_for_prompt = len(artifacts.pdf_page_images)
+    total_for_prompt = artifacts.pdf_total_pages or len(artifacts.pdf_page_images)
+    if phase_system_prompt:
+        effective_prompt = f'{phase_system_prompt}\n\n{effective_prompt}'
     for idx, page_image_b64 in enumerate(artifacts.pdf_page_images, start=1):
         page_content, page_error = ops['ocr_pdf_page_with_ollama'](
             port=ctx.port,
@@ -4677,7 +4847,28 @@ def _build_mlx_multimodal_user_message(prompt: str, image_b64: Optional[str] = N
     text = str(prompt or '').strip()
     if not image_b64:
         return {'role': 'user', 'content': text}
-    data_url = image_b64 if str(image_b64).startswith('data:') else f'data:image/png;base64,{image_b64}'
+    if str(image_b64).startswith('data:'):
+        data_url = image_b64
+    else:
+        # Inspect only the signature, without decoding/re-encoding the full image.
+        # Keep the existing PNG default for opaque legacy payloads; the backend
+        # still owns image decoding and unsupported-format errors.
+        mime = 'image/png'
+        try:
+            header = base64.b64decode(image_b64[:16], validate=True)
+        except ValueError:
+            header = b''
+        if header.startswith(b'\xff\xd8\xff'):
+            mime = 'image/jpeg'
+        elif header.startswith((b'GIF87a', b'GIF89a')):
+            mime = 'image/gif'
+        elif header.startswith(b'RIFF') and header[8:12] == b'WEBP':
+            mime = 'image/webp'
+        elif header.startswith(b'BM'):
+            mime = 'image/bmp'
+        elif header.startswith((b'II*\x00', b'MM\x00*', b'II+\x00', b'MM\x00+')):
+            mime = 'image/tiff'
+        data_url = f'data:{mime};base64,{image_b64}'
     return {
         'role': 'user',
         'content': [
@@ -4734,7 +4925,7 @@ def _run_chat_fallback(
         )
         return {'error': error_message, 'warnings': warnings}, 400
     if artifacts.image_b64:
-        if ctx.backend in {'mlx', 'llama_cpp'}:
+        if ctx.backend in {'mlx', 'llama_cpp', 'apple_fm', 'apple_pcc'}:
             messages = [
                 _build_mlx_multimodal_user_message(
                     prompt or 'Describe the attached image.',
@@ -4760,6 +4951,8 @@ def _run_chat_fallback(
                     'content': mlx_out.get('content', ''),
                     'warnings': warnings,
                     'result': mlx_out.get('result'),
+                    **({'pcc_execution': mlx_out['content'].pcc_execution}
+                       if ctx.backend == 'apple_pcc' and getattr(mlx_out.get('content'), 'pcc_execution', None) else {}),
                 },
                 200,
             )
@@ -4795,7 +4988,7 @@ def _run_chat_fallback(
             0,
             {'role': 'system', 'content': phase_system_prompt},
         )
-    if ctx.backend in {'mlx', 'llama_cpp'}:
+    if ctx.backend in {'mlx', 'llama_cpp', 'apple_fm', 'apple_pcc'}:
         chat_result = _run_backend_chat_completion(
             ctx,
             ops,
@@ -4818,6 +5011,8 @@ def _run_chat_fallback(
         'content': content,
         'warnings': warnings,
     }
+    if ctx.backend == 'apple_pcc' and getattr(content, 'pcc_execution', None):
+        payload['pcc_execution'] = content.pcc_execution
     artifact_requests = [
         dict(item)
         for item in (ctx.text_artifact_requests or [])

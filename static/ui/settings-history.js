@@ -38,6 +38,9 @@ function getSessionControlsHint(instance) {
         return 'Image controls for the current model.';
     }
     if (fields.ocr_mode || fields.pdf_max_pages || fields.pdf_dpi) {
+        if (fields.ocr_mode?.option_labels?.apple_ocr || fields.ocr_mode?.option_labels?.apple_barcode) {
+            return 'Image analysis, OCR and barcode controls.';
+        }
         return 'OCR controls for the current model.';
     }
     if (fields.stt_language || fields.stt_task) {
@@ -89,7 +92,9 @@ function applySessionControlFieldPresentation(node, field) {
             node.dataset.defaultMeta = metaNode.textContent || '';
         }
         const fallbackMeta = getSessionControlDefaultMeta(fieldKey) || String(node.dataset.defaultMeta || '');
-        metaNode.textContent = fallbackMeta;
+        metaNode.textContent = fieldKey === 'ocr_mode' && field.description
+            ? String(field.description)
+            : fallbackMeta;
     }
     const inputNode = node.querySelector('input, select, textarea');
     if (inputNode) {
@@ -387,7 +392,10 @@ function refreshSessionControlSelectOptions(instance = getCurrentSettingsOwnerIn
         elements.settingOcrMode,
         Array.isArray(ocrModeField?.options) ? ocrModeField.options : ['auto'],
         state.settings.ocrMode,
-        { includeEmptyOption: false }
+        {
+            includeEmptyOption: false,
+            labelForValue: (value) => getSessionControlOptionLabel('ocr_mode', ocrModeField, value),
+        }
     );
 
     const ttsVoiceOptions = Array.isArray(ttsVoiceField?.options) ? ttsVoiceField.options : [];

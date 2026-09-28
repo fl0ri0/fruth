@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from fruth_services.response_persistence import ResponsePersistenceError, response_persistence_blocked
+
 from fruth_services.state_flow import observe_state
 
 from fruth_services.artifact_contracts import (
@@ -34,6 +36,7 @@ import time
 import unicodedata
 from collections import Counter
 from difflib import SequenceMatcher
+from html.parser import HTMLParser
 from flask import current_app, has_app_context
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +47,7 @@ from helpers.session_controls import (
     resolve_reasoning_effort_for_instance,
 )
 from fruth_inference.control_hints import infer_tts_language_from_prompt
+from fruth_inference.execution_planner import extract_atx_tts_sections
 from fruth_core.inference import TEXT_ARTIFACT_EXTENSIONS, extract_text_artifact_payloads
 from fruth_core.runtime_liveness import (
     runtime_instance_liveness,
@@ -119,6 +123,93 @@ from fruth_services.tts_audio_integrity import (
     build_tts_audio_integrity_evidence,
     build_tts_semantic_source,
 )
+
+
+
+class _SectionImageMarkup(HTMLParser):
+    """Collect image markup inside an explicitly named semantic section."""
+
+    _void_tags = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+                  'link', 'meta', 'param', 'source', 'track', 'wbr'}
+
+    def __init__(self, role: str):
+        super().__init__()
+        self.role = role
+        self.stack: list[tuple[str, bool]] = []
+        self.markup: list[str] = []
+        self.styles: list[str] = []
+        self.elements: list[list[tuple[str, dict[str, Any]]]] = []
+        self.element_stack: list[tuple[str, dict[str, Any]]] = []
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        hooks = ' '.join(str(attributes.get(key) or '') for key in ('id', 'class'))
+        owns_role = bool(self.role) and self.role in re.split(r'[^a-z0-9]+', hooks.lower())
+        active = owns_role or bool(self.stack and self.stack[-1][1])
+        element = (tag, attributes)
+        self.elements.append([*self.element_stack, element])
+        if active and (tag in {'img', 'source'} or attributes.get('style')):
+            self.markup.append(self.get_starttag_text())
+        if tag not in self._void_tags:
+            self.stack.append((tag, active))
+            self.element_stack.append(element)
+
+    def handle_data(self, data):
+        if self.stack and self.stack[-1][0] == 'style':
+            self.styles.append(data)
+
+    def handle_endtag(self, tag):
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] == tag:
+                del self.stack[index:]
+                del self.element_stack[index:]
+                break
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in self._void_tags:
+            self.handle_endtag(tag)
+
+    @staticmethod
+    def selector_matches(selector: str, lineage: list[tuple[str, dict[str, Any]]]) -> bool:
+        """Prove simple tag/class/id descendant or child bindings, not a CSS cascade.
+
+        Unsupported selectors do not establish layout evidence. In particular,
+        a sibling, pseudo-class or negated selector must not style every image.
+        """
+        selector = selector.strip()
+        if not re.fullmatch(r'[\w.*#\s>\-]+', selector):
+            return False
+        parts = re.findall(r'[^\s>]+|>', selector)
+        if not parts or parts[0] == '>' or parts[-1] == '>':
+            return False
+
+        def matches(part, element):
+            tag, attrs = element
+            tokens = re.findall(r'^[\w*-]+|[.#][\w-]+', part)
+            if ''.join(tokens) != part:
+                return False
+            for token in tokens:
+                if token.startswith('.'):
+                    if token[1:] not in str(attrs.get('class') or '').split():
+                        return False
+                elif token.startswith('#'):
+                    if token[1:] != attrs.get('id'):
+                        return False
+                elif token != '*' and token.lower() != tag:
+                    return False
+            return True
+
+        def match_at(part_index, element_index):
+            if element_index < 0 or not matches(parts[part_index], lineage[element_index]):
+                return False
+            if part_index == 0:
+                return True
+            if parts[part_index - 1] == '>':
+                return part_index >= 2 and match_at(part_index - 2, element_index - 1)
+            return any(match_at(part_index - 1, i) for i in range(element_index - 1, -1, -1))
+
+        return bool(lineage) and match_at(len(parts) - 1, len(lineage) - 1)
 
 
 _DEPENDENCY_INPUT_MISSING_RE = re.compile(
@@ -8110,6 +8201,9 @@ class LateFillRuntimeOwner:
 
     @classmethod
     def _late_fill_labeled_speakable_sections(cls, content: Any) -> list[str]:
+        heading_sections = extract_atx_tts_sections(str(content or ''))
+        if heading_sections:
+            return heading_sections
         candidates: list[str] = []
         lines = str(content or '').splitlines()
         for line_index, raw_line in enumerate(lines):
@@ -15175,177 +15269,6 @@ class LateFillRuntimeOwner:
         updated_payload['late_fill'] = late_fill
         return updated_payload
 
-    def _terminal_composed_page_image_representation_legacy_open_check(
-        self,
-        payload: Mapping[str, Any],
-    ) -> Optional[dict[str, Any]]:
-        records = self._collect_link_rebind_artifact_records(payload)
-        text_records = self._unique_artifact_records_by_path(
-            [
-                record
-                for record in records
-                if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-                and self._artifact_record_extension(record) in _LINK_REBIND_TEXT_EXTENSIONS
-                and self._artifact_record_path(record)
-            ]
-        )
-        html_records = [
-            record
-            for record in text_records
-            if self._artifact_record_extension(record) in {'html', 'htm'}
-        ]
-        if not html_records:
-            return None
-
-        late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-        image_branch_ids = {
-            self.branch_id(item)
-            for item in [
-                *(late_fill.get('completed_branches') or []),
-                *(late_fill.get('fill_results') or []),
-            ]
-            if isinstance(item, Mapping)
-            and (
-                self.normalize_capability(item.get('capability')) == self.capability_image_generation
-                or str(item.get('output_type') or '').strip().lower() == 'image'
-                or str(item.get('saved_image_path') or '').strip()
-            )
-            and self.branch_id(item)
-        }
-        if not image_branch_ids:
-            return None
-
-        image_records = self._unique_artifact_records_by_path(
-            [
-                record
-                for record in records
-                if (
-                    str(record.get('type') or record.get('kind') or '').strip().lower() == 'image'
-                    or self._artifact_record_extension(record) in _LINK_REBIND_IMAGE_EXTENSIONS
-                )
-                and self._artifact_record_path(record)
-            ]
-        )
-        generated_image_records: list[dict[str, Any]] = []
-        for record in image_records:
-            record_branch_id = self.branch_id(record)
-            if record_branch_id and record_branch_id in image_branch_ids:
-                generated_image_records.append(record)
-            elif not record_branch_id and len(image_records) == len(image_branch_ids):
-                generated_image_records.append(record)
-        if not generated_image_records:
-            generated_image_records = image_records if image_records else []
-        generated_image_records.sort(key=self._image_artifact_record_sort_key)
-        if len(generated_image_records) <= 1:
-            return None
-
-        content_by_path: dict[str, str] = {}
-        for record in text_records:
-            source_path = self._artifact_record_path(record)
-            content = self._terminal_materialization_text_record_content(record)
-            if source_path and content:
-                content_by_path[source_path] = content
-        if not content_by_path:
-            return None
-
-        represented_paths: set[str] = set()
-        for image_record in generated_image_records:
-            image_path = self._artifact_record_path(image_record)
-            if not image_path:
-                continue
-            for source_path, content in content_by_path.items():
-                if self._terminal_exact_content_has_artifact_link(
-                    content,
-                    source_path=source_path,
-                    target_path=image_path,
-                ):
-                    represented_paths.add(image_path)
-                    break
-
-        generated_paths = [
-            self._artifact_record_path(record)
-            for record in generated_image_records
-            if self._artifact_record_path(record)
-        ]
-        missing_paths = [path for path in generated_paths if path not in represented_paths]
-        if not missing_paths:
-            return None
-
-        target_record = html_records[0] if html_records else text_records[0]
-        target_extension = self._artifact_record_extension(target_record) or 'html'
-        target_name = self._artifact_record_source_name(target_record) or 'index'
-        target_path = self._artifact_record_path(target_record)
-        target_content = content_by_path.get(target_path, '') if target_path else ''
-        bounded_content = target_content
-        if len(bounded_content) > 90_000:
-            bounded_content = f'{bounded_content[:90_000].rstrip()}\n\n[content truncated for repair prompt size]'
-        generated_lines = [
-            f'- {path} (relative from target: {self._relative_artifact_link(from_path=target_path, to_path=path)})'
-            for path in generated_paths
-        ]
-        missing_lines = [
-            f'- {path} (relative from target: {self._relative_artifact_link(from_path=target_path, to_path=path)})'
-            for path in missing_paths
-        ]
-        represented_lines = [
-            f'- {path}'
-            for path in sorted(represented_paths)
-        ]
-        content_payload = '\n'.join(
-            [
-                f'Target text artifact: {target_path or target_name}',
-                'Composed page image representation defect:',
-                f'- Generated image artifacts: {len(generated_paths)}',
-                f'- Represented image artifacts: {len(represented_paths)}',
-                f'- Missing image artifacts: {len(missing_paths)}',
-                'Missing generated image artifact paths to add:',
-                *(missing_lines or ['- none']),
-                'All generated image artifact paths:',
-                *generated_lines,
-                'Already represented generated image artifact paths:',
-                *(represented_lines or ['- none']),
-                'Current saved target file content:',
-                '--- CURRENT SAVED FILE START ---',
-                bounded_content,
-                '--- CURRENT SAVED FILE END ---',
-                'Update only the target HTML artifact. Add concrete references for the missing generated image artifact paths above, using relative paths from the target file when practical. Preserve existing valid links, copy, layout intent, and unrelated structure.',
-            ]
-        ).strip()
-        return {
-            'check_kind': 'composed_page_image_representation',
-            'status': 'pending',
-            'evidence': 'generated_image_not_represented_in_composed_page',
-            'reason': 'final composed page does not represent every required generated image artifact',
-            'capability': 'chat',
-            'output_type': 'text',
-            'role': 'linked_artifact_binding_review',
-            'branch_id': str(target_record.get('branch_id') or '').strip() or None,
-            'phase_id': str(target_record.get('phase_id') or target_record.get('branch_id') or '').strip() or None,
-            'requires_artifact': True,
-            'repair_action': RECOVERY_ACTION_REBIND_DEPENDENCY_EVIDENCE,
-            'recovery_action': RECOVERY_ACTION_REBIND_DEPENDENCY_EVIDENCE,
-            'repair_action_reason': 'final composed page must reference every required generated image artifact',
-            'content_payload': content_payload,
-            'content_payload_source': 'closure_composed_page_image_representation',
-            'stage_direction': 'materialize_requested_text_artifact',
-            'generated_image_count': len(generated_paths),
-            'represented_image_count': len(represented_paths),
-            'missing_image_count': len(missing_paths),
-            'generated_image_paths': generated_paths,
-            'missing_image_paths': missing_paths,
-            'represented_image_paths': sorted(represented_paths),
-            'text_artifact_extension': target_extension,
-            'text_artifact_source_name': target_name,
-            'text_artifact_source': 'closure_composed_page_image_representation',
-            'text_artifact_target_path': target_path,
-            'artifact_request': {
-                'extension': target_extension,
-                'source_name': target_name,
-                'source': 'closure_composed_page_image_representation',
-                'target_path': target_path,
-            },
-        }
-
     @staticmethod
     def _terminal_composed_site_role_label(
         prompt: str,
@@ -15355,6 +15278,12 @@ class LateFillRuntimeOwner:
         text = str(prompt or '').strip()
         if not text:
             return ''
+        section_roles = [
+            role for role in ('hero', 'listening')
+            if re.search(rf'\b{role}\b', text, re.IGNORECASE)
+        ]
+        if len(section_roles) == 1:
+            return section_roles[0]
         candidates = [
             str(match.group(1) or match.group(2) or '').strip()
             for match in re.finditer(r'["“]([^"”]{2,80})["”]|\'([^\']{2,80})\'', text)
@@ -15384,6 +15313,31 @@ class LateFillRuntimeOwner:
         label = str(role_label or '').strip().lower()
         if not label or not image_path:
             return True
+        if label in {'hero', 'listening'}:
+            for source_path, content in content_by_path.items():
+                candidates: list[str] = []
+                css_sources: list[str] = []
+                if Path(source_path).suffix.lower() in {'.html', '.htm'}:
+                    parser = _SectionImageMarkup(label)
+                    parser.feed(str(content or ''))
+                    candidates = parser.markup
+                    css_sources = parser.styles
+                elif Path(source_path).suffix.lower() == '.css':
+                    css_sources = [str(content or '')]
+                for css in css_sources:
+                    for selectors, declarations in re.findall(r'(?is)([^{}]+)\{([^{}]*)\}', css):
+                        for selector in selectors.split(','):
+                            # Sibling combinators and functional pseudo-classes
+                            # do not prove that the image belongs inside this role.
+                            if re.search(r'[+~()]', selector):
+                                continue
+                            if re.search(rf'[.#]{label}(?:[-_][\w-]+)?(?![\w-])', selector):
+                                candidates.append(declarations)
+                if any(cls._terminal_exact_content_has_artifact_link(
+                    candidate, source_path=source_path, target_path=image_path,
+                ) for candidate in candidates):
+                    return True
+            return False
         normalized_label = re.sub(r'[^a-z0-9]+', ' ', label).strip()
         for source_path, content in content_by_path.items():
             source = str(content or '')
@@ -15420,40 +15374,114 @@ class LateFillRuntimeOwner:
         return False
 
     @staticmethod
-    def _terminal_composed_site_has_image_layout_css(
-        css_contents: list[str],
+    def _terminal_composed_site_unstyled_image_paths(
         *,
         generated_paths: list[str],
-        css_paths: list[str],
-    ) -> bool:
-        for css_path, content in zip(css_paths, css_contents):
-            text = str(content or '')
-            if not text.strip():
-                continue
-            for selector, declarations in re.findall(r'(?is)([^{}]+)\{([^{}]*)\}', text):
-                if not re.search(r'(?i)(?:img\b|image|photo|media|gallery|card)', selector):
-                    continue
-                if re.search(
-                    r'(?is)(?:object-fit|aspect-ratio|background(?:-image)?|grid-template|'
-                    r'display\s*:\s*(?:grid|flex)|max-width|height\s*:)',
-                    declarations,
+        html_content_by_path: Mapping[str, str],
+        css_content_by_path: Mapping[str, str],
+        script_content_by_path: Mapping[str, str],
+    ) -> list[str]:
+        """Require layout evidence for each generated image, on its actual page.
+
+        This is a static binding check, not browser rendering or aesthetic review.
+        Parent section sizing and another image's CSS cannot satisfy an img.
+        """
+        owner = LateFillRuntimeOwner
+        covered: set[str] = set()
+        unstyled: set[str] = set()
+
+        def rules(content):
+            text = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
+            return [
+                (selector.strip(), declarations)
+                for selectors, declarations in re.findall(r'([^{}]+)\{([^{}]*)\}', text)
+                for selector in selectors.split(',')
+            ]
+
+        def sizes_image(declarations):
+            return any(
+                property_name.lower() in {'width', 'max-width', 'height', 'max-height'}
+                and value.strip().lower().removesuffix('!important').strip()
+                    not in {'', 'auto', 'none', 'initial', 'inherit', 'unset', 'revert'}
+                for property_name, value in re.findall(r'(?:^|;)\s*([\w-]+)\s*:([^;]+)', declarations)
+            )
+
+        for html_path, content in html_content_by_path.items():
+            parser = _SectionImageMarkup('')
+            parser.feed(content)
+            page_rules = [(html_path, selector, declarations)
+                          for style in parser.styles for selector, declarations in rules(style)]
+            for css_path, css in css_content_by_path.items():
+                if any(
+                    lineage[-1][0] == 'link'
+                    and 'stylesheet' in str(lineage[-1][1].get('rel') or '').lower().split()
+                    and owner._terminal_exact_content_has_artifact_link(
+                        str(lineage[-1][1].get('href') or ''),
+                        source_path=html_path, target_path=css_path,
+                    )
+                    for lineage in parser.elements
                 ):
-                    return True
-            linked_image_count = sum(
-                1
-                for image_path in generated_paths
-                if LateFillRuntimeOwner._terminal_exact_content_has_artifact_link(
-                    text,
-                    source_path=css_path,
-                    target_path=image_path,
+                    page_rules.extend((css_path, selector, declarations)
+                                      for selector, declarations in rules(css))
+            # Preserve the existing layout evidence for script-rendered cards.
+            # This check does not execute JS or prove its data/DOM contract;
+            # the shared web-binding review owns that. It must never excuse
+            # an unstyled concrete img occurrence checked below.
+            dynamic_sources = [(html_path, script) for script in re.findall(
+                r'(?is)<script\b[^>]*>(.*?)</script\s*>', content,
+            )]
+            dynamic_sources.extend(
+                (script_path, script) for script_path, script in script_content_by_path.items()
+                if any(
+                    lineage[-1][0] == 'script'
+                    and owner._terminal_exact_content_has_artifact_link(
+                        str(lineage[-1][1].get('src') or ''),
+                        source_path=html_path, target_path=script_path,
+                    ) for lineage in parser.elements
                 )
             )
-            if linked_image_count > 1 and re.search(
-                r'(?is)(?:background(?:-image)?|object-fit|aspect-ratio|grid-template)',
-                text,
-            ):
-                return True
-        return False
+            if any(sizes_image(css) and re.search(r'(?i)(?:img\b|image|photo|media|gallery|card)', selector)
+                   for _, selector, css in page_rules):
+                for script_path, script in dynamic_sources:
+                    if not re.search(r'''(?i)<img\b|createElement\(\s*['"]img['"]''', script):
+                        continue
+                    covered.update(path for path in generated_paths
+                                   if owner._terminal_exact_content_has_artifact_link(
+                                       script, source_path=script_path, target_path=path,
+                                   ))
+            for lineage in parser.elements:
+                tag, attrs = lineage[-1]
+                bound_styles = [(html_path, str(attrs.get('style') or ''))]
+                bound_styles.extend(
+                    (path, declarations) for path, selector, declarations in page_rules
+                    if parser.selector_matches(selector, lineage)
+                )
+                if tag == 'img':
+                    sources = ' '.join(str(attrs.get(k) or '') for k in ('src', 'srcset'))
+                    # A picture source is displayed by its sibling img element.
+                    if len(lineage) > 1 and lineage[-2][0] == 'picture':
+                        sources += ' ' + ' '.join(
+                            str(other[-1][1].get('srcset') or '')
+                            for other in parser.elements
+                            if len(other) > 1 and other[-2] is lineage[-2] and other[-1][0] == 'source'
+                        )
+                    for image_path in generated_paths:
+                        if owner._terminal_exact_content_has_artifact_link(
+                            sources, source_path=html_path, target_path=image_path,
+                        ):
+                            covered.add(image_path)
+                            if not any(sizes_image(css) for _, css in bound_styles):
+                                unstyled.add(image_path)
+                for style_path, declarations in bound_styles:
+                    backgrounds = re.findall(
+                        r'(?:^|;)\s*background(?:-image)?\s*:([^;]+)', declarations, re.IGNORECASE,
+                    )
+                    for image_path in generated_paths:
+                        if any(owner._terminal_exact_content_has_artifact_link(
+                            background, source_path=style_path, target_path=image_path,
+                        ) for background in backgrounds):
+                            covered.add(image_path)
+        return [path for path in generated_paths if path in unstyled or path not in covered]
 
     def _terminal_composed_site_image_composition_open_checks(
         self,
@@ -15484,11 +15512,9 @@ class LateFillRuntimeOwner:
             for record in text_records
             if self._artifact_record_extension(record) in {'js', 'mjs', 'cjs'}
         ]
-        is_composed_site = bool(
-            len(html_records) >= 2
-            and css_records
-        )
-        if not is_composed_site:
+        # Every generated HTML cohort uses the same closure/repair owner,
+        # including single pages with embedded CSS and one generated image.
+        if not html_records:
             return None
 
         late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
@@ -15506,7 +15532,7 @@ class LateFillRuntimeOwner:
             )
             and self.branch_id(item)
         }
-        if len(image_branch_ids) <= 1:
+        if not image_branch_ids:
             return None
         image_records = self._unique_artifact_records_by_path(
             [
@@ -15529,7 +15555,7 @@ class LateFillRuntimeOwner:
         if not generated_image_records:
             generated_image_records = image_records
         generated_image_records.sort(key=self._image_artifact_record_sort_key)
-        if len(generated_image_records) <= 1:
+        if not generated_image_records:
             return None
 
         content_by_path: dict[str, str] = {}
@@ -15595,15 +15621,16 @@ class LateFillRuntimeOwner:
                 role_binding_defects.append(
                     {'path': image_path, 'role_label': role_label}
                 )
-        css_paths = [self._artifact_record_path(record) for record in css_records]
-        has_image_layout_css = self._terminal_composed_site_has_image_layout_css(
-            [content_by_path.get(path, '') for path in css_paths],
+        unstyled_image_paths = self._terminal_composed_site_unstyled_image_paths(
             generated_paths=generated_paths,
-            css_paths=css_paths,
+            html_content_by_path={self._artifact_record_path(record): content_by_path.get(
+                self._artifact_record_path(record), '') for record in html_records},
+            css_content_by_path={self._artifact_record_path(record): content_by_path.get(
+                self._artifact_record_path(record), '') for record in css_records},
+            script_content_by_path={self._artifact_record_path(record): content_by_path.get(
+                self._artifact_record_path(record), '') for record in script_records},
         )
-        layout_binding_defect = bool(
-            len(generated_paths) > 1 and not has_image_layout_css
-        )
+        layout_binding_defect = bool(unstyled_image_paths)
         if not (
             missing_paths
             or detached_marker_present
@@ -15650,7 +15677,10 @@ class LateFillRuntimeOwner:
             f'- Missing concrete image references: {len(missing_paths)}',
             f'- Detached runtime repair section present: {str(detached_marker_present).lower()}',
             f'- Unbound named image roles: {len(role_binding_defects)}',
-            f'- Shared image layout CSS missing: {str(layout_binding_defect).lower()}',
+            *(f'- Image {item["path"]} must be inside the {item["role_label"]} section or its CSS background.'
+              for item in role_binding_defects),
+            f'- Image layout CSS missing: {str(layout_binding_defect).lower()}',
+            *(f'- Image lacks bound sizing/layout: {path}' for path in unstyled_image_paths),
         ]
         image_phase_ids = list(
             dict.fromkeys(
@@ -15691,15 +15721,38 @@ class LateFillRuntimeOwner:
             if target_extension in {'html', 'htm'}:
                 target_instruction = (
                     'Keep this page in its existing role. Add or preserve semantic hooks and direct image markup '
-                    'only where this page owns it. Remove any Fruth detached repair section from this target. '
+                    'only where this page owns it. For embedded styles, provide responsive image sizing and cropping. '
+                    'Remove any Fruth detached repair section from this target. '
                     'If JavaScript owns repeated cards, keep the shell compatible with that renderer.'
                 )
+                if detached_marker_present:
+                    target_instruction += (
+                        ' Delete the entire section marked class="fruth-generated-media" or '
+                        'data-fruth-repair="composed-page-image-representation", including its wrapper. '
+                        'Keep its required images only in their assigned site sections.'
+                    )
+                for defect in role_binding_defects:
+                    label = defect['role_label']
+                    if label in {'hero', 'listening'} and re.search(
+                        rf'(?i)\b(?:class|id)\s*=\s*[\'"][^\'"]*\b{label}\b', target_content,
+                    ):
+                        link = self._relative_artifact_link(from_path=target_path, to_path=defect['path'])
+                        target_instruction += (
+                            f' Inside the existing {label} element, insert an img element '
+                            f'whose src is "{link}". Preserve its existing text and controls.'
+                        )
             elif target_extension == 'css':
                 target_instruction = (
                     'Give the existing image-bearing hero, cards, galleries, or media regions a deliberate '
                     'responsive layout. Style the exact hooks used by the cohort; include stable sizing and '
                     'cropping such as aspect-ratio/object-fit where appropriate.'
                 )
+                if layout_binding_defect:
+                    target_instruction += (
+                        ' Add an img sizing rule, for example img {max-width:100%;height:auto;}, '
+                        'or equivalent rules for the existing image selectors. A flex/grid rule '
+                        'on the surrounding section alone does not constrain an oversized img.'
+                    )
             else:
                 target_instruction = (
                     'Bind the ordered image paths to the existing semantic data/items and rendered markup. '
@@ -15713,17 +15766,24 @@ class LateFillRuntimeOwner:
                     *defect_lines,
                     'Ordered generated-image assignments:',
                     *assignment_lines,
+                    '<fruth_promoted_context>',
                     'Read-only cohort snapshots for cross-file consistency:',
                     *cohort_snapshots,
                     'Current saved target file content:',
                     '--- CURRENT SAVED TARGET START ---',
                     bounded_target_content,
                     '--- CURRENT SAVED TARGET END ---',
+                    '</fruth_promoted_context>',
+                    '<fruth_bounded_task>',
+                    f'Repair only {target_path} ({target_extension}).',
+                    'Correct these defects in place; copying the defective snapshot is not a repair:',
+                    *defect_lines,
                     f'Target-specific instruction: {target_instruction}',
-                    'Return the complete replacement content for this target file only.',
+                    f'Return exactly one {target_extension} fenced block with the complete replacement for {Path(target_path).name}.',
                     'Do not create a new sibling file. Do not rewrite another cohort file from this branch.',
                     'Do not append a catch-all image dump or a fruth-generated-media detached repair section.',
                     'Preserve existing valid local links and use concrete relative paths from this target when it references an image.',
+                    '</fruth_bounded_task>',
                 ]
             ).strip()
             target_token = hashlib.sha256(target_path.encode('utf-8')).hexdigest()[:12]
@@ -15795,6 +15855,7 @@ class LateFillRuntimeOwner:
                     'role_binding_defects': role_binding_defects,
                     'detached_repair_section_present': detached_marker_present,
                     'layout_binding_defect': layout_binding_defect,
+                    'unstyled_image_paths': unstyled_image_paths,
                     'text_artifact_extension': target_extension,
                     'text_artifact_source_name': target_name,
                     'text_artifact_source': 'closure_composed_site_image_composition',
@@ -15817,10 +15878,7 @@ class LateFillRuntimeOwner:
         payload: Mapping[str, Any],
     ) -> list[dict[str, Any]]:
         cohort_checks = self._terminal_composed_site_image_composition_open_checks(payload)
-        if cohort_checks is not None:
-            return cohort_checks
-        legacy_check = self._terminal_composed_page_image_representation_legacy_open_check(payload)
-        return [legacy_check] if legacy_check else []
+        return cohort_checks if cohort_checks is not None else []
 
     def _terminal_composed_page_image_representation_open_check(
         self,
@@ -15838,654 +15896,6 @@ class LateFillRuntimeOwner:
             .replace('<', '&lt;')
             .replace('>', '&gt;')
         )
-
-    @staticmethod
-    def _html_fragment_has_balanced_common_containers(fragment: str) -> bool:
-        text = str(fragment or '')
-        for tag_name in ('section', 'article', 'div', 'figure', 'ul', 'ol', 'li'):
-            open_count = len(
-                re.findall(
-                    rf'(?is)<\s*{tag_name}\b(?![^>]*?/>)',
-                    text,
-                )
-            )
-            close_count = len(re.findall(rf'(?is)</\s*{tag_name}\s*>', text))
-            if open_count != close_count:
-                return False
-        return True
-
-    @staticmethod
-    def _html_image_container_is_suspect_repair_target(
-        *,
-        attrs: str,
-        body: str,
-        image_count: int,
-        missing_link_count: int,
-    ) -> bool:
-        haystack = f'{attrs}\n{body}'.lower()
-        if not LateFillRuntimeOwner._html_fragment_has_balanced_common_containers(body):
-            return True
-        if (
-            image_count <= 1
-            and missing_link_count > 1
-            and re.search(
-                r'\b(?:template|repeatable|populate|populated|placeholder|sample|additional|remaining|manifest)\b',
-                haystack,
-            )
-        ):
-            return True
-        if (
-            image_count <= 1
-            and missing_link_count > 1
-            and re.search(r'\b(?:gallery-card|card|tile|post|item|image-wrapper)\b', haystack)
-            and re.search(
-                r'\b(?:username|user-tag|handle|caption|influencer|card-info|'
-                r'card-overlay|post-meta|overlay|gallery-card)\b',
-                haystack,
-            )
-        ):
-            return True
-        if (
-            missing_link_count > max(1, image_count)
-            and re.search(
-                r'\b(?:for brevity|repeated for all|repeat(?:ed)? for all|following the same pattern|'
-                r'template below|structural logic|will be injected|assets? will be injected|'
-                r'additional|remaining|populate|up to \d+|all \d+)\b',
-                haystack,
-            )
-            and re.search(
-                r'\b(?:username|user-tag|handle|caption|influencer|gallery-card|card-info|'
-                r'card-overlay|post-meta|overlay)\b',
-                haystack,
-            )
-        ):
-            return True
-        return False
-
-    @staticmethod
-    def _html_has_unfinished_generated_image_template(
-        content: str,
-        *,
-        missing_link_count: int,
-    ) -> bool:
-        text = str(content or '')
-        if missing_link_count <= 1 or not text.strip():
-            return False
-        haystack = text.lower()
-        if not re.search(
-            r'\b(?:template|repeatable|repeat|populate|populated|placeholder|sample|additional|remaining|manifest|asset block)\b',
-            haystack,
-        ):
-            return False
-        image_count = len(re.findall(r'(?is)<\s*img\b', text))
-        if image_count <= 1:
-            return True
-        if missing_link_count > image_count and re.search(
-            r'\b(?:repeat|populate|sample|additional|remaining|up to|all \d+|assets? will be rendered)\b',
-            haystack,
-        ):
-            return True
-        return False
-
-    @staticmethod
-    def _extract_social_manifest_card_metadata(
-        content: Any,
-        *,
-        expected_count: int = 0,
-    ) -> list[dict[str, str]]:
-        text = str(content or '')
-        if not text.strip():
-            return []
-        records: list[dict[str, str]] = []
-        for raw_line in text.splitlines():
-            line = re.sub(
-                r'^\s*(?:[-*#>\u2022]+\s*)?(?:\d{1,3}|[ivx]+)[.)]\s+',
-                '',
-                str(raw_line or '').strip(),
-                flags=re.IGNORECASE,
-            ).strip()
-            if not line:
-                continue
-            match = re.match(
-                r'(?is)^(?:\*\*+|__+|`+|\*+)?\s*'
-                r'(?P<handle>@[A-Za-z0-9][\w.-]{1,100})'
-                r'\s*(?:\*\*+|__+|`+|\*+)?\s*:\s*(?P<body>.+)$',
-                line,
-            )
-            if not match:
-                continue
-            handle = str(match.group('handle') or '').strip()
-            prompt = _strip_social_manifest_image_prompt_metadata(line)
-            if not prompt:
-                prompt = _strip_social_manifest_image_prompt_metadata(match.group('body'))
-            prompt = re.sub(r'\s+', ' ', prompt).strip(' ,;')
-            if not handle or not prompt:
-                continue
-            caption = re.split(r'[.;]', prompt, maxsplit=1)[0].strip(' ,;')
-            if len(caption) > 120:
-                caption = f'{caption[:117].rstrip()}...'
-            records.append(
-                {
-                    'handle': handle,
-                    'caption': caption or prompt,
-                    'prompt': prompt,
-                    'alt': f'{handle} - {prompt}',
-                }
-            )
-            if expected_count > 0 and len(records) >= expected_count:
-                break
-        if expected_count > 0 and len(records) < expected_count:
-            return []
-        return records
-
-    @staticmethod
-    def _social_manifest_card_metadata_from_payload(
-        payload: Mapping[str, Any],
-        *,
-        expected_count: int = 0,
-    ) -> list[dict[str, str]]:
-        late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-        for source in (
-            late_fill.get('content_payload'),
-            late_fill.get('phase_summary'),
-            payload.get('content_payload'),
-            payload.get('output_text'),
-        ):
-            records = LateFillRuntimeOwner._extract_social_manifest_card_metadata(
-                source,
-                expected_count=expected_count,
-            )
-            if records:
-                return records
-        return []
-
-    @staticmethod
-    def _matching_html_element_end(text: str, *, tag: str, open_end: int) -> tuple[int, int]:
-        tag_name = re.escape(str(tag or '').strip().lower())
-        if not tag_name:
-            return -1, -1
-        token_re = re.compile(rf'(?is)<\s*(?P<close>/)?\s*{tag_name}\b[^>]*>')
-        depth = 1
-        for match in token_re.finditer(text, open_end):
-            token = match.group(0)
-            if match.group('close'):
-                depth -= 1
-                if depth == 0:
-                    return match.start(), match.end()
-                continue
-            if not re.search(r'/\s*>$', token):
-                depth += 1
-        return -1, -1
-
-    @staticmethod
-    def _manifest_gallery_card_html(*, link: str, metadata: Mapping[str, str]) -> str:
-        escaped_link = LateFillRuntimeOwner._html_attribute_escape(link)
-        handle = LateFillRuntimeOwner._html_attribute_escape(str(metadata.get('handle') or '@generated'))
-        caption = LateFillRuntimeOwner._html_attribute_escape(
-            str(metadata.get('caption') or metadata.get('prompt') or 'Generated image')
-        )
-        alt = LateFillRuntimeOwner._html_attribute_escape(str(metadata.get('alt') or handle))
-        return (
-            '                <div class="feed-card" data-fruth-repair="manifest-backed-gallery-expansion">\n'
-            '                    <div class="card-image-wrapper">\n'
-            f'                        <img src="{escaped_link}" alt="{alt}" loading="lazy">\n'
-            '                        <div class="card-overlay"></div>\n'
-            '                    </div>\n'
-            '                    <div class="card-content">\n'
-            f'                        <span class="username">{handle}</span>\n'
-            f'                        <p class="caption">{caption}</p>\n'
-            '                    </div>\n'
-            '                </div>'
-        )
-
-    @staticmethod
-    def _expand_manifest_backed_unfinished_gallery(
-        content: str,
-        *,
-        target_path: str,
-        generated_paths: list[str],
-        metadata_records: list[dict[str, str]],
-    ) -> tuple[str, bool]:
-        text = str(content or '')
-        paths = [str(path or '').strip() for path in generated_paths if str(path or '').strip()]
-        if not text or not paths or len(metadata_records) < len(paths):
-            return text, False
-        if not LateFillRuntimeOwner._html_has_unfinished_generated_image_template(
-            text,
-            missing_link_count=max(2, len(paths) - 1),
-        ):
-            return text, False
-        best: Optional[tuple[int, int, int, int]] = None
-        container_re = re.compile(r'(?is)<(?P<tag>div|section|ul|ol)\b(?P<attrs>[^>]*)>')
-        for match in container_re.finditer(text):
-            tag = str(match.group('tag') or '').lower()
-            attrs = str(match.group('attrs') or '')
-            haystack = attrs.lower()
-            if not re.search(r'\b(?:image-grid|feed-grid|gallery|grid|posts?|trending)\b', haystack):
-                continue
-            close_start, _close_end = LateFillRuntimeOwner._matching_html_element_end(
-                text,
-                tag=tag,
-                open_end=match.end(),
-            )
-            if close_start < 0:
-                continue
-            body = text[match.end():close_start]
-            body_haystack = body.lower()
-            if '<img' not in body_haystack:
-                continue
-            if not re.search(
-                r'\b(?:repeat(?:ed)? for all|following the same pattern|for brevity|template|all \d+|assets? will be)',
-                body_haystack,
-            ):
-                continue
-            score = len(re.findall(r'(?is)<\s*img\b', body))
-            if re.search(r'\b(?:image-grid|feed-grid)\b', haystack):
-                score += 20
-            if re.search(r'\b(?:gallery|trending|feed)\b', haystack):
-                score += 10
-            candidate = (score, match.start(), match.end(), close_start)
-            if best is None or candidate[:2] > best[:2]:
-                best = candidate
-        if best is None:
-            return text, False
-        _score, _open_start, open_end, close_start = best
-        cards = [
-            LateFillRuntimeOwner._manifest_gallery_card_html(
-                link=LateFillRuntimeOwner._relative_artifact_link(
-                    from_path=target_path,
-                    to_path=path,
-                ),
-                metadata=metadata_records[index],
-            )
-            for index, path in enumerate(paths)
-        ]
-        replacement_body = '\n'.join(cards)
-        updated = f'{text[:open_end].rstrip()}\n{replacement_body}\n{text[close_start:]}'
-        return updated, updated != text
-
-    @staticmethod
-    def _replace_first_link_token(content: str, tokens: list[str], replacement: str) -> tuple[str, str]:
-        text = str(content or '')
-        for token in sorted({str(item or '').strip() for item in tokens if str(item or '').strip()}, key=len, reverse=True):
-            if token in text:
-                return text.replace(token, replacement, 1), token
-        return text, ''
-
-    @staticmethod
-    def _insert_html_before_terminal_anchor(content: str, insertion: str) -> str:
-        text = str(content or '')
-        if not insertion:
-            return text
-        for pattern in (r'</main\s*>', r'</body\s*>', r'</html\s*>'):
-            match = re.search(pattern, text, flags=re.IGNORECASE)
-            if match:
-                return f'{text[:match.start()]}{insertion}\n{text[match.start():]}'
-        return f'{text.rstrip()}\n{insertion}\n'
-
-    @staticmethod
-    def _generated_image_repair_tags_for_container(links: list[str], *, container_body: str = '') -> list[str]:
-        body = str(container_body or '')
-        use_card_wrapper = bool(re.search(r'(?is)\bclass\s*=\s*[\'"][^\'"]*\b(?:card|tile|post|item)\b', body))
-        use_list_item = bool(re.search(r'(?is)<\s*li\b', body))
-        tags: list[str] = []
-        for index, link in enumerate(links, start=1):
-            escaped_link = LateFillRuntimeOwner._html_attribute_escape(link)
-            image_tag = f'<img src="{escaped_link}" alt="Generated image {index}">'
-            if use_list_item:
-                tags.append(f'            <li data-fruth-repair="composed-page-image-representation">{image_tag}</li>')
-            elif use_card_wrapper:
-                tags.append(
-                    '            '
-                    '<div class="card" data-fruth-repair="composed-page-image-representation">'
-                    f'{image_tag}</div>'
-                )
-            else:
-                tags.append(f'            {image_tag}')
-        return tags
-
-    @staticmethod
-    def _insert_html_into_existing_image_container(
-        content: str,
-        links: list[str],
-    ) -> tuple[str, bool, str]:
-        text = str(content or '')
-        clean_links = [str(link or '').strip() for link in links if str(link or '').strip()]
-        if not text or not clean_links:
-            return text, False, ''
-        best: Optional[tuple[int, int, int, int, str, str]] = None
-        tag_patterns = ('section', 'ul', 'ol', 'div', 'main')
-        for tag_name in tag_patterns:
-            container_re = re.compile(
-                rf'(?is)<(?P<tag>{tag_name})\b(?P<attrs>[^>]*)>(?P<body>.*?)</(?P=tag)>'
-            )
-            for match in container_re.finditer(text):
-                tag = str(match.group('tag') or '').lower()
-                attrs = str(match.group('attrs') or '')
-                body = str(match.group('body') or '')
-                haystack = f'{attrs}\n{body}'.lower()
-                image_count = len(re.findall(r'(?is)<\s*img\b', body))
-                if image_count <= 0:
-                    continue
-                if LateFillRuntimeOwner._html_image_container_is_suspect_repair_target(
-                    attrs=attrs,
-                    body=body,
-                    image_count=image_count,
-                    missing_link_count=len(clean_links),
-                ):
-                    continue
-                score = image_count
-                if re.search(r'\b(?:gallery|feed|grid|cards?|posts?|trending|images?|media|portfolio)\b', haystack):
-                    score += 10
-                if re.search(r'\b(?:sample|placeholder|continue|continues|additional|remaining|populate|up to)\b', haystack):
-                    score += 6
-                if re.search(r'(?is)\bclass\s*=\s*[\'"][^\'"]*\b(?:card|tile|post|item)\b', body):
-                    score += 3
-                if tag in {'section', 'ul', 'ol'}:
-                    score += 2
-                if score < 10:
-                    continue
-                close_start = match.end() - len(f'</{tag}>')
-                tag_priority = 0 if tag == 'main' else 1
-                candidate = (tag_priority, score, image_count, close_start, tag, body)
-                if best is None or candidate[:4] > best[:4]:
-                    best = candidate
-        if best is None:
-            return text, False, ''
-        _tag_priority, _score, _image_count, close_start, tag, body = best
-        insertion = '\n'.join(LateFillRuntimeOwner._generated_image_repair_tags_for_container(clean_links, container_body=body))
-        if not insertion:
-            return text, False, ''
-        updated = f'{text[:close_start].rstrip()}\n{insertion}\n{text[close_start:]}'
-        return updated, True, tag
-
-    def _repair_terminal_composed_page_image_representation(
-        self,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        if not isinstance(payload, dict):
-            return payload
-        check = self._terminal_composed_page_image_representation_open_check(payload)
-        if not check:
-            return payload
-        execution_contract = (
-            check.get('execution_contract')
-            if isinstance(check.get('execution_contract'), Mapping)
-            else {}
-        )
-        if str(execution_contract.get('repair_mode') or '').strip() == 'composed_site_image_cohort_target':
-            # A composed site must be repaired through the target-bound cohort
-            # branches projected by Closure. Appending all missing images to
-            # the first HTML file would destroy their semantic roles while
-            # creating misleading path-only evidence of completion.
-            return payload
-        target_path = str(check.get('text_artifact_target_path') or '').strip()
-        if not target_path:
-            return payload
-        missing_paths = [
-            str(path or '').strip()
-            for path in (check.get('missing_image_paths') or [])
-            if str(path or '').strip()
-        ]
-        if not missing_paths:
-            return payload
-        generated_paths = [
-            str(path or '').strip()
-            for path in (check.get('generated_image_paths') or [])
-            if str(path or '').strip()
-        ]
-        represented_paths = [
-            str(path or '').strip()
-            for path in (check.get('represented_image_paths') or [])
-            if str(path or '').strip()
-        ]
-        try:
-            target = Path(target_path).expanduser()
-            if not target.is_file() or target.stat().st_size > 512_000:
-                return payload
-            original = target.read_text(encoding='utf-8', errors='replace')
-        except OSError:
-            return payload
-
-        records = self._collect_link_rebind_artifact_records(payload)
-        text_records = self._unique_artifact_records_by_path(
-            [
-                record
-                for record in records
-                if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-                and self._artifact_record_extension(record) in _LINK_REBIND_TEXT_EXTENSIONS
-                and self._artifact_record_path(record)
-            ]
-        )
-        content_by_path: dict[str, str] = {}
-        for record in text_records:
-            source_path = self._artifact_record_path(record)
-            content = self._terminal_materialization_text_record_content(record)
-            if source_path and content:
-                content_by_path[source_path] = content
-
-        target_record = next(
-            (
-                record
-                for record in text_records
-                if self._text_artifact_path_matches_target(
-                    self._artifact_record_path(record),
-                    target_path,
-                )
-            ),
-            {},
-        )
-        dependency_records = self._terminal_linked_artifact_dependency_records(records, text_records)
-        consumer_dependency_records, _dependency_ids, _selection_policy = (
-            self._link_rebind_asset_records_for_consumer(
-                payload,
-                target_record,
-                dependency_records,
-            )
-        )
-        unresolved_detection_records = consumer_dependency_records
-        if (
-            _selection_policy == 'consumer_declared_media_dependency_missing'
-            or (_dependency_ids and not unresolved_detection_records)
-        ):
-            unresolved_detection_records = dependency_records
-        if self._terminal_content_has_unresolved_link_placeholder(
-            original,
-            unresolved_detection_records,
-            target_path=target_path,
-        ):
-            return payload
-
-        def represented_outside_target(image_path: str) -> bool:
-            for source_path, content in content_by_path.items():
-                if self._text_artifact_path_matches_target(source_path, target_path):
-                    continue
-                if self._terminal_exact_content_has_artifact_link(
-                    content,
-                    source_path=source_path,
-                    target_path=image_path,
-                ):
-                    return True
-            return False
-
-        unsafe_duplicate_paths = [
-            represented_path
-            for represented_path in represented_paths
-            if any(
-                original.count(token) > 1
-                for token in self._terminal_exact_link_tokens_for_artifact(
-                    source_path=target_path,
-                    target_path=represented_path,
-                )
-            )
-            and not represented_outside_target(represented_path)
-        ]
-        if unsafe_duplicate_paths:
-            return payload
-
-        updated_content = original
-        repair_entries: list[dict[str, Any]] = []
-        missing_for_append: list[str] = []
-        for missing_path in missing_paths:
-            if self._terminal_exact_content_has_artifact_link(
-                updated_content,
-                source_path=target_path,
-                target_path=missing_path,
-            ):
-                continue
-            missing_link = self._relative_artifact_link(from_path=target_path, to_path=missing_path)
-            replaced = False
-            for represented_path in represented_paths:
-                represented_link = self._relative_artifact_link(from_path=target_path, to_path=represented_path)
-                target_tokens = [
-                    token
-                    for token in (represented_link, represented_path)
-                    if token and token in updated_content
-                ]
-                if not target_tokens:
-                    continue
-                if not represented_outside_target(represented_path):
-                    continue
-                next_content, replaced_token = self._replace_first_link_token(
-                    updated_content,
-                    target_tokens,
-                    missing_link,
-                )
-                if not replaced_token or next_content == updated_content:
-                    continue
-                updated_content = next_content
-                repair_entries.append(
-                    {
-                        'kind': 'fruth.composed_page_image_representation_repair',
-                        'operation': 'replace_duplicate_image_link',
-                        'target_path': target_path,
-                        'from_path': represented_path,
-                        'from_token': replaced_token,
-                        'to_path': missing_path,
-                        'to_token': missing_link,
-                        'status': 'applied',
-                        'source': 'terminal_composed_page_image_representation_repair',
-                    }
-                )
-                replaced = True
-                break
-            if not replaced:
-                missing_for_append.append(missing_path)
-
-        if missing_for_append:
-            manifest_expanded = False
-            all_generated_paths = generated_paths or [*represented_paths, *missing_for_append]
-            metadata_records = self._social_manifest_card_metadata_from_payload(
-                payload,
-                expected_count=len(all_generated_paths),
-            )
-            if metadata_records and self._html_has_unfinished_generated_image_template(
-                updated_content,
-                missing_link_count=len(missing_for_append),
-            ):
-                next_content, manifest_expanded = self._expand_manifest_backed_unfinished_gallery(
-                    updated_content,
-                    target_path=target_path,
-                    generated_paths=all_generated_paths,
-                    metadata_records=metadata_records,
-                )
-                if manifest_expanded and next_content != updated_content:
-                    updated_content = next_content
-            if manifest_expanded:
-                for missing_path in missing_for_append:
-                    repair_entries.append(
-                        {
-                            'kind': 'fruth.composed_page_image_representation_repair',
-                            'operation': 'expand_manifest_gallery_card',
-                            'target_path': target_path,
-                            'to_path': missing_path,
-                            'to_token': self._relative_artifact_link(
-                                from_path=target_path,
-                                to_path=missing_path,
-                            ),
-                            'placement': 'manifest_backed_template_expansion',
-                            'container_tag': 'manifest_gallery',
-                            'status': 'applied',
-                            'source': 'terminal_composed_page_image_representation_repair',
-                        }
-                    )
-                missing_for_append = []
-
-        if missing_for_append:
-            image_links: list[str] = []
-            for index, missing_path in enumerate(missing_for_append, start=1):
-                link = self._relative_artifact_link(from_path=target_path, to_path=missing_path)
-                image_links.append(link)
-                repair_entries.append(
-                    {
-                        'kind': 'fruth.composed_page_image_representation_repair',
-                        'operation': 'append_missing_image_link',
-                        'target_path': target_path,
-                        'to_path': missing_path,
-                        'to_token': link,
-                        'placement': 'pending',
-                        'status': 'applied',
-                        'source': 'terminal_composed_page_image_representation_repair',
-                    }
-                )
-            next_content, inserted_in_container, container_tag = self._insert_html_into_existing_image_container(
-                updated_content,
-                image_links,
-            )
-            if inserted_in_container and next_content != updated_content:
-                updated_content = next_content
-                for entry in repair_entries[-len(image_links):]:
-                    entry['placement'] = 'existing_image_container'
-                    entry['container_tag'] = container_tag
-            else:
-                if self._html_has_unfinished_generated_image_template(
-                    updated_content,
-                    missing_link_count=len(image_links),
-                ):
-                    return payload
-                image_tags = self._generated_image_repair_tags_for_container(image_links)
-                insertion = '\n'.join(
-                    [
-                        '',
-                        '    <section class="fruth-generated-media" data-fruth-repair="composed-page-image-representation">',
-                        '        <div class="container">',
-                        *image_tags,
-                        '        </div>',
-                        '    </section>',
-                    ]
-                )
-                updated_content = self._insert_html_before_terminal_anchor(updated_content, insertion)
-                for entry in repair_entries[-len(image_links):]:
-                    entry['placement'] = 'detached_repair_section'
-
-        if not repair_entries or updated_content == original:
-            return payload
-        try:
-            target.write_text(updated_content, encoding='utf-8')
-        except OSError as exc:
-            logging.warning('Could not repair composed-page image representation in %s: %s', target_path, exc)
-            return payload
-
-        updated_payload = dict(payload or {})
-        late_fill = (
-            dict(updated_payload.get('late_fill') or {})
-            if isinstance(updated_payload.get('late_fill'), Mapping)
-            else {}
-        )
-        existing_repairs = [
-            dict(item)
-            for item in (late_fill.get('composed_page_image_representation_repairs') or [])
-            if isinstance(item, Mapping)
-        ]
-        late_fill['composed_page_image_representation_repairs'] = [*existing_repairs, *repair_entries]
-        late_fill['composed_page_image_representation_repair_status'] = 'applied'
-        late_fill['composed_page_image_representation_repaired_paths'] = [
-            entry.get('to_path')
-            for entry in repair_entries
-            if entry.get('to_path')
-        ]
-        updated_payload['late_fill'] = late_fill
-        return updated_payload
 
     def _terminal_materialization_branch_has_canonical_evidence(
         self,
@@ -16781,14 +16191,24 @@ class LateFillRuntimeOwner:
             ]
             if not matching_checks:
                 return {}
-            preferred = next(
-                (
-                    check for check in matching_checks
-                    if str(check.get('content_payload') or '').strip()
-                    and str(check.get('text_artifact_target_path') or '').strip()
-                ),
-                matching_checks[0],
-            )
+            bounded_checks = [
+                check for check in matching_checks
+                if str(check.get('content_payload') or '').strip()
+                and str(check.get('text_artifact_target_path') or '').strip()
+            ]
+            # The cohort contract includes roles, layout and exact sibling/target
+            # boundaries. A generic link check for this same file must not erase
+            # it merely because the generic check was collected first. Other
+            # defects stay open and are rechecked against the saved replacement.
+            preferred = (bounded_checks or matching_checks)[0]
+            if (preferred.get('check_kind') == 'linked_artifact_binding'
+                    or preferred.get('content_payload_source') == 'closure_linked_artifact_binding_review'):
+                preferred = next(
+                    (check for check in bounded_checks
+                     if isinstance(check.get('execution_contract'), Mapping)
+                     and check['execution_contract'].get('repair_mode') == 'composed_site_image_cohort_target'),
+                    preferred,
+                )
             fields: dict[str, Any] = {}
             for key in (
                 'repair_action',
@@ -16951,6 +16371,8 @@ class LateFillRuntimeOwner:
     @observe_state('late_fill.reconcile', 'terminal_response_state', 'reconciled_response_state', labels=('NEW_AUTHORITY_BOUNDARY',), new_authority_boundary=True)
     def _reconcile_terminal_satisfied_repair_loop(
         late_fill: Mapping[str, Any],
+        *,
+        verified_superseded_branches: Optional[list[dict[str, Any]]] = None,
     ) -> dict[str, Any]:
         updated = dict(late_fill or {})
         repair_loop = (
@@ -16970,6 +16392,20 @@ class LateFillRuntimeOwner:
             dict(item)
             for item in (updated.get('completed_branches') or [])
             if isinstance(item, Mapping)
+        ]
+        # The composition owner may supply only branches it has just retired
+        # after a fresh applicable review and saved-target hash. Match their
+        # exact identities through the normal matcher without publishing a
+        # successful execution or changing the persisted superseded status.
+        superseded_resolutions = {
+            str(branch.get('branch_id') or ''): branch
+            for branch in (verified_superseded_branches or [])
+        }
+        completed_branches = [
+            {**branch, 'status': 'completed'}
+            if branch == superseded_resolutions.get(str(branch.get('branch_id') or ''))
+            else branch
+            for branch in completed_branches
         ]
         available_branches = list(completed_branches)
         satisfied_contracts: list[dict[str, Any]] = []
@@ -17002,6 +16438,9 @@ class LateFillRuntimeOwner:
                     'task_id': contract.get('task_id'),
                     'artifact_request': contract.get('artifact_request'),
                     'execution_binding': contract.get('execution_binding'),
+                    'supersession_evidence': superseded_resolutions.get(
+                        str(contract.get('branch_id') or ''), {}
+                    ).get('supersession_evidence'),
                 }.items()
                 if value not in (None, '', [], {})
             }
@@ -17187,6 +16626,28 @@ class LateFillRuntimeOwner:
             updated['failed_branch_count'] = len(updated['failed_branches'])
             updated['completed_branches'] = completed
             updated['completed_branch_count'] = len(completed)
+            retired = [branch for branch in completed if self.branch_id(branch) in superseded_ids]
+
+            def matches_retired_recovery(item):
+                return isinstance(item, Mapping) and any(
+                    repair_contract_matches_completion(item, {**branch, 'status': 'completed'})
+                    for branch in retired
+                )
+
+            # A candidate is not a separate obligation. Remove only retries
+            # belonging to the exact branches just retired; retain others.
+            if isinstance(updated.get('recovery_candidates'), list):
+                updated['recovery_candidates'] = [
+                    item for item in updated['recovery_candidates']
+                    if not matches_retired_recovery(item)
+                ]
+            recovery_state = updated.get('recovery_state')
+            if matches_retired_recovery(recovery_state):
+                updated.pop('recovery_state', None)
+            updated = self._reconcile_terminal_satisfied_repair_loop(
+                updated,
+                verified_superseded_branches=retired,
+            )
         return updated
 
     @observe_state('late_fill.terminal_materialization', 'branch_artifact_response_state', 'terminal_materialization_state', labels=('NEW_AUTHORITY_BOUNDARY',), new_authority_boundary=True)
@@ -17213,7 +16674,6 @@ class LateFillRuntimeOwner:
             updated_payload, current_outputs=current_output_state['outputs'],
         )
         updated_payload = self._repair_terminal_text_artifact_syntax(updated_payload)
-        updated_payload = self._repair_terminal_composed_page_image_representation(updated_payload)
         updated_payload = self._repair_terminal_hero_image_composition(
             updated_payload,
             request_payload=request_payload,
@@ -17455,6 +16915,8 @@ class LateFillRuntimeOwner:
             in {'failed', 'partial_failed', 'blocked', 'repair_needed'}
         ):
             late_fill['status'] = 'completed'
+            late_fill.pop('partial_failure', None)
+            late_fill.pop('failed_at', None)
         late_fill = self._reconcile_terminal_satisfied_repair_loop(late_fill)
         updated_payload = self.attach_late_fill_state(updated_payload, late_fill)
         # The first Closure pass intentionally runs before terminal contract
@@ -18073,13 +17535,12 @@ class LateFillRuntimeOwner:
         requires_identity_handoff = cls._branch_local_vision_requires_identity_handoff(
             original_prompt
         )
+        # Express the bounded task directly. The previous authority/override
+        # wording triggered AFM rejections on ordinary image inspections.
         lines = [
-            'Analyze exactly one actual attached generated image: the artifact supplied to this branch.',
-            'The attachment and dependency evidence below are the complete execution authority for this branch.',
-            'Do not generate a new image, do not describe hypothetical images, and do not restart the original multi-step request.',
-            'Do not evaluate, compare, enumerate, label, or emit claims for sibling images or other artifacts that are not attached to this branch.',
-            'Ignore root-level instructions to produce a multi-artifact table, list, or JSON join; a later text branch owns that global formatting task.',
-            'Return one concise visual-evidence report for this attachment only so that a later text branch can safely use it.',
+            'Inspect exactly one actual attached generated image and return one concise report of what is visibly present.',
+            'Base every observation on this attachment. Other images, image generation, and the combined table, list, or JSON output belong to separate tasks.',
+            'Use the attached image and its reference below. Keep the report specific to this image so a later text branch can combine it with other reports.',
         ]
         if local_analysis_directive:
             lines.append(
@@ -21530,6 +20991,8 @@ class LateFillRuntimeOwner:
                 ):
                     return durable_payload, None
                 return finalized_parent_payload, None
+            except ResponsePersistenceError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 logging.warning(
                     'Could not persist terminal graph-patch review audit: %s',
@@ -23891,6 +23354,14 @@ class LateFillRuntimeOwner:
                             route_payload=source_route_payload,
                             reason='late_fill_terminal',
                         )
+        except ResponsePersistenceError as exc:
+            # Stop this worker. The finalizer retained the candidate frame and
+            # exact outputs in lookup; storage recovery must not execute again.
+            successor_handoff = None
+            self.log_unified_event(
+                category='responses', action='persistence', status='failed',
+                response_id=response_id, message=str(exc),
+            )
         except Exception as exc:  # noqa: BLE001
             existing_record = self.get_response_lookup_record(response_id) or {}
             current_payload = dict(existing_record.get('response_payload') or response_payload or {})
@@ -23962,11 +23433,15 @@ class LateFillRuntimeOwner:
                 },
             )
             updated_payload = self.attach_late_fill_state(current_payload, failed_late_fill)
-            finalized_payload = self.finalize_response_frame_payload(
-                updated_payload,
-                request_payload=request_payload,
-                persist=True,
-            )
+            try:
+                finalized_payload = self.finalize_response_frame_payload(
+                    updated_payload,
+                    request_payload=request_payload,
+                    persist=True,
+                )
+            except ResponsePersistenceError:
+                successor_handoff = None
+                return
             self.touch_response_lookup(
                 response_id,
                 status='incomplete' if completed_branch_records else 'failed',
@@ -24054,6 +23529,8 @@ class LateFillRuntimeOwner:
         complete_response_late_fill: Optional[Callable[..., None]] = None,
     ) -> bool:
         response_id = str((response_payload or {}).get('id') or '').strip()
+        if response_persistence_blocked(response_payload):
+            return False
         if not response_id or not self.claim_response_late_fill(response_id):
             return False
         if has_app_context() and bool(current_app.config.get('TESTING')):

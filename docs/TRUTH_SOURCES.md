@@ -56,14 +56,33 @@ When sources disagree, use the narrowest source that owns the fact:
 
 ## Completion, retention and lookup freshness
 
+Recent-event reads walk backwards from the initial end of a freshly opened log
+and stop after the requested number of matching JSON objects. The 64 KiB read
+chunk is an I/O batch size, not a history or record limit; selective filters may
+scan to the beginning. Ordering, filtering and malformed-JSON skipping remain
+unchanged. Reads do not cache, truncate or rewrite history, and decode encountered
+complete lines as UTF-8 without replacement. A later read sees later appends or
+file replacement. This optimizes diagnostics without adding execution authority.
+
 Artifact bytes, accepted artifact identities, Closure, durable frame persistence
 and client delivery are different facts. The normal finalizer attempts Artifact
 Registry persistence before CAS/Ledger/Index persistence. Relevant settled
 Readiness retention follows synchronously after that durable path returns.
 Readiness and telemetry cannot certify user obligations or undo a committed frame.
-Ordinary Artifact Registry/frame-persistence errors are currently logged and
-swallowed; parent-CAS mismatch propagates. Therefore a live completed payload or
-HTTP success is not a durable-commit receipt. See
+Frame-persistence failures now retain an explicit `persistence` outcome.
+Uncommitted/uncertain outcomes block delivery and further execution while keeping
+the exact candidate frame and saved outputs inspectable. A confirmed Ledger append
+with failed Index publication remains committed; the derived Index and Artifact
+Registry have separate publication outcomes. Parent-CAS mismatch propagates.
+An unterminated Ledger tail stops append without modifying historical bytes.
+Index publication uses compact JSON whitespace with the same schema, values and
+map digest; older pretty-printed Indexes remain readable. A new response append
+may skip the parent Ledger scan only when the complete current map proves the id
+absent and both Index and Ledger physical identities stayed stable during that
+proof. Uncertain or moving evidence retains the Ledger fallback. A recovered
+existing parent supplies both snapshot ancestry and successor sequence metadata.
+Passive reads cannot clear a live uncertain write outcome. HTTP success and
+semantic lifecycle remain distinct from a fresh durable-commit receipt. See
 [Finalization](RESPONSES_CONTRACT.md#finalization-and-durable-completion).
 
 Lookup arbitration compares exact frame identity and sequence before overlaying

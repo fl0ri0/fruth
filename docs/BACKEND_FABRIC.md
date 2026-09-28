@@ -1,6 +1,7 @@
 # Backend Fabric
 
-This note describes the normalized backend discovery and lifecycle contract that sits above the Ollama, MLX, and llama.cpp runtime managers.
+This note describes the normalized backend discovery and lifecycle contract above
+Ollama, MLX, llama.cpp, local Apple Foundation Models, and the Apple PCC Shortcuts bridge.
 
 ## Purpose
 
@@ -41,6 +42,8 @@ It does not own durable response truth. Response frames, successor ledgers, `cur
 
 The current contract covers:
 
+- `apple_fm` (Apple AI, installed `fm serve`, API model `system`)
+- `apple_pcc` (Apple PCC, installed Shortcuts, API model `auto`)
 - `ollama`
 - `llama_cpp`
 - `mlx_lm`
@@ -71,7 +74,45 @@ Catalog discovery remains broader than startup eligibility. A backend can have v
 
 For `llama.cpp` pull/download behavior, Fruth now expects a non-interactive Hugging Face download path rather than abusing `llama-cli` as a downloader. When the system `hf` binary is not on `PATH`, Fruth also checks the MLX virtualenv sibling `hf` binary so the existing local MLX toolchain can satisfy `llama.cpp` catalog pulls.
 
+Apple AI exposes local text chat, image analysis and streaming, with missing CLI/license/model
+prerequisites represented explicitly. It does not offer pull/remove or variant
+selection. Its instance metadata preserves source/time and raw `/v1/models`
+observations. Optional macOS 27 Swift discovery records the host-default AFM
+variant and context size under `backend_metadata.system_model`, with source/time.
+Startup and catalog descriptions show these values. This cached host observation
+does not fill the exact HTTP server's unknown variant, revision or context fields,
+and a failed metadata probe does not make an otherwise runnable backend unavailable.
+Its session controls also expose explicit OCR and barcode image modes when local
+`fm respond --help` advertises them. These use a separate CLI session with verified
+tool-result evidence; they do not advertise general HTTP tool-calling support.
+See [Apple Foundation Models](APPLE_FOUNDATION_MODELS.md) for its tested transport
+contract and context limitation in interpretive inference.
+
 ## Payload Shape
+
+PCC installation discovery invokes `shortcuts list`, so ordinary backend-fabric,
+runtime-manifest and routing snapshots must not perform it. They project the last
+explicit catalog/start observation from the existing PCC owner, retaining its
+`detection.observed_at` and marking `detection.cached=true`. Before discovery in
+this server process, `detection.status=not_observed`, `observed_at=null` and an
+advisory `runtime_state=degraded` distinguish unknown installation from a missing
+shortcut or confirmed readiness. Explicit model-catalog discovery and PCC start
+refresh installation prerequisites; actual PCC execution alone runs the inference
+shortcut. A cached observation never verifies cloud access. The observation cache
+is process-local and resets when Fruth restarts; passive reads never fill it.
+
+Apple PCC uses an explicitly started loopback adapter and the ordinary instance,
+transport and preferred-II paths. Its `runnable` state proves the bridge and at
+least one uniquely named shortcut are installed; cloud account access is checked
+only during execution. Selection prefers Pro and falls back once to Cloud for
+confirmed Pro access/availability errors. It supports text and image input,
+including model-based OCR; native scanner and audio tools are not exposed. Inference-owned calls
+receive the full ordinary inference policy and scoped Fruth roles. Direct chat
+gets no automatic Fruth policy or role. Optional `backend_metadata.sdk_model` observes the
+default native PCC API's context size; it never fills unknown exact Shortcuts
+context/variant fields. Fresh `backend_runtime.last_execution` is a last-call
+observation, while response-local `pcc_execution` identifies the call's shortcut
+target and fallback evidence. See the [PCC guide](../fruth_integrations/shortcuts/README.md).
 
 The normalized payload is built by `fruth_core/backend_fabric.py`.
 

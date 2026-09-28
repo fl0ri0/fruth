@@ -8,9 +8,84 @@ from fruth_inference.request_phase_graph import (
     build_request_phase_graph,
 )
 from fruth_server.late_fill_runtime import LateFillRuntimeOwner
+from fruth_services.responses import build_canonical_response_payload
 
 
 class RequestPhaseGraphRuntimeTests(unittest.TestCase):
+    def test_direct_image_dispatch_evidence_survives_response_and_closes_current_phase(self):
+        receipt = {
+            'kind': 'fruth.vision_input_evidence', 'version': 1,
+            'authority': 'runtime_vision_image_dispatch', 'status': 'supplied',
+            'instance_id': 'apple_fm:system:11603', 'image_sha256': 'a' * 64,
+            'size_bytes': 4000,
+        }
+        response = build_canonical_response_payload(
+            instance_id=receipt['instance_id'], model_name='system', backend='apple_fm',
+            capability='vision_analysis', mode='vision_analysis',
+            output_text='A red circle is left of a blue square.',
+            source_payload={'vision_input_evidence': receipt},
+        )
+        self.assertEqual(response['runtime']['vision_input_evidence'], receipt)
+        prompt = 'Describe the attached image.'
+        graph = build_request_phase_graph(
+            prompt, request_payload={'prompt': prompt},
+            route_payload={'capability': 'vision_analysis'}, response_payload=response,
+        )
+        self.assertEqual(graph['phases'][0]['status'], 'completed')
+
+        invalid_receipts = [
+            {}, {**receipt, 'instance_id': 'apple_fm:system:11604'},
+            {**receipt, 'image_sha256': ''}, {**receipt, 'size_bytes': 0},
+            {**receipt, 'authority': 'provider_claim'}, {**receipt, 'status': 'missing'},
+        ]
+        for invalid in invalid_receipts:
+            with self.subTest(receipt=invalid):
+                incomplete = deepcopy(response)
+                incomplete['runtime']['vision_input_evidence'] = invalid
+                graph = build_request_phase_graph(
+                    prompt, request_payload={'prompt': prompt},
+                    route_payload={'capability': 'vision_analysis'}, response_payload=incomplete,
+                )
+                self.assertNotEqual(graph['phases'][0]['status'], 'completed')
+
+    def test_plain_image_description_does_not_invent_dependent_text_work(self):
+        prompt = (
+            'Analyze the attached image. Name the shapes and colors, '
+            'and describe their left-to-right positions.'
+        )
+        graph = build_request_phase_graph(
+            prompt,
+            request_payload={
+                'prompt': prompt,
+                'inference_route': True,
+                'input_artifacts': [{'type': 'image', 'path': '/uploads/shapes.png'}],
+            },
+            route_payload={'capability': 'vision_analysis', 'route_source': 'inference_carried'},
+        )
+        self.assertEqual(graph['current_phase_capability'], 'vision_analysis')
+        self.assertEqual(graph['mode'], 'single_phase')
+        self.assertEqual(graph['downstream_branches'], [])
+
+    def test_explicit_image_analysis_follow_up_keeps_its_dependency(self):
+        for prompt in (
+            'Analyze the attached image, then write a poem based on that analysis.',
+            'Analyze the attached image and write a poem.',
+            'Analyze the attached image, then describe its contents.',
+        ):
+            with self.subTest(prompt=prompt):
+                graph = build_request_phase_graph(
+                    prompt,
+                    request_payload={
+                        'prompt': prompt,
+                        'inference_route': True,
+                        'input_artifacts': [{'type': 'image', 'path': '/uploads/shapes.png'}],
+                    },
+                    route_payload={'capability': 'vision_analysis', 'route_source': 'inference_carried'},
+                )
+                text_branches = [b for b in graph['downstream_branches'] if b['capability'] == 'chat']
+                self.assertTrue(text_branches)
+                self.assertTrue(text_branches[-1]['depends_on'])
+
     def _executable_image_branches(self, graph):
         return [
             branch for branch in (graph.get('downstream_branches') or [])

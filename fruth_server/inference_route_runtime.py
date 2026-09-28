@@ -2898,11 +2898,25 @@ class InferenceRouteRuntimeOwner:
             if route_payload:
                 return False
 
+            if (prompt_analysis.get('artifact_state_readback_request')
+                    and phase_graph_current_capability == CAPABILITY_CHAT
+                    and not phase_graph_downstream_capabilities):
+                resolution_status = 'current_turn_resolved'
+                resolution_message = 'explain saved artifact state and evidence without fresh media execution'
+                route_payload = build_inference_carried_route_payload(reason_override=resolution_message)
+                preferred_instance = pick_primary_chat_instance_id()
+                if preferred_instance:
+                    route_payload['instance_id'] = preferred_instance
+                route_source = 'inference_carried'
+                return True
+
             vision_anchor_path = self._current_turn_artifact_anchor_path(
                 CAPABILITY_VISION_ANALYSIS,
                 route_context=route_context,
             )
-            if vision_anchor_path and self._prompt_prefers_artifact_vision_analysis(route_context.get('prompt') or ''):
+            if (vision_anchor_path
+                    and not prompt_analysis.get('visual_analysis_execution_suppressed_by_preservation')
+                    and self._prompt_prefers_artifact_vision_analysis(route_context.get('prompt') or '')):
                 validated_vision_route, vision_validation_error = validate_route_decision(
                     {
                         'capability': CAPABILITY_VISION_ANALYSIS,

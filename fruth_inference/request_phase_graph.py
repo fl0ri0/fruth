@@ -489,6 +489,12 @@ _TEXT_OUTPUT_ACTION_RE = re.compile(
     r')\b',
     re.IGNORECASE,
 )
+_VISION_DESCRIPTION_ACTION_RE = re.compile(
+    r'(?:describe|caption|name|list|enumerate|visible\s+details|'
+    r'sichtbare(?:n)?\s+details|beschreib(?:e|en|st|t)?|nenn(?:e|en|st|t)?|'
+    r'auflist(?:e|en|est|et)?|aufzaehl(?:e|en|st|t)?|aufzähl(?:e|en|st|t)?)',
+    re.IGNORECASE,
+)
 _TRANSCRIBE_ACTION_RE = re.compile(
     r'\b('
     r'transcribe|speech[-\s]?to[-\s]?text|stt|'
@@ -2594,6 +2600,7 @@ def _downstream_capabilities(
         or (
             _has_audio_input_artifact(request_payload)
             and _prompt_references_current_input_audio(prompt_analysis)
+            and not prompt_analysis.get('artifact_state_readback_request')
         )
     )
     capabilities: list[Any] = []
@@ -3116,6 +3123,18 @@ def _post_artifact_continuation_sequence(prompt_analysis: Mapping[str, Any]) -> 
 
     if sequence and sequence[0] == CAPABILITY_CHAT:
         sequence = sequence[1:]
+    # Naming or describing visible content is the vision answer itself. A text
+    # action verb alone does not establish a separate downstream deliverable.
+    if (
+        sequence == [CAPABILITY_VISION_ANALYSIS, CAPABILITY_CHAT]
+        and not _DEPENDENT_CHAIN_MARKER_RE.search(prompt_text)
+        and not prompt_analysis.get('requests_text_artifact_output')
+        and all(
+            _VISION_DESCRIPTION_ACTION_RE.fullmatch(match.group(0))
+            for match in _TEXT_OUTPUT_ACTION_RE.finditer(action_prompt_text)
+        )
+    ):
+        return []
     if len(sequence) < 2:
         return []
     return _sequence_with_media_analysis_dependencies(sequence, prompt_text)
@@ -5449,6 +5468,23 @@ def _current_phase_status(
     status = _clean_text(response_payload.get('status')).lower()
     if status in {'failed', 'error', 'cancelled'}:
         return 'blocked'
+    if current_capability == CAPABILITY_VISION_ANALYSIS:
+        receipt = _mapping(_mapping(response_payload.get('runtime')).get('vision_input_evidence'))
+        size_bytes = receipt.get('size_bytes')
+        if (
+            response_payload.get('capability') == CAPABILITY_VISION_ANALYSIS
+            and response_payload.get('mode') == 'vision_analysis'
+            and _clean_text(response_payload.get('output_text'))
+            and receipt.get('kind') == 'fruth.vision_input_evidence'
+            and receipt.get('authority') == 'runtime_vision_image_dispatch'
+            and receipt.get('status') == 'supplied'
+            and receipt.get('version') == 1
+            and receipt.get('instance_id')
+            and receipt.get('instance_id') == response_payload.get('instance_id')
+            and isinstance(size_bytes, int) and not isinstance(size_bytes, bool) and size_bytes > 0
+            and re.fullmatch(r'[0-9a-f]{64}', _clean_text(receipt.get('image_sha256')))
+        ):
+            return 'completed'
     if current_capability == CAPABILITY_CHAT:
         if _clean_text(response_payload.get('output_text')) or _artifact_matches_output_type(
             response_payload.get('artifacts'),
@@ -5808,6 +5844,8 @@ def build_request_phase_graph(
         normalized_candidate = normalize_capability(candidate)
         if not normalized_candidate:
             continue
+        if prompt_analysis.get('artifact_state_readback_request') and normalized_candidate != CAPABILITY_CHAT:
+            continue
         if (
             normalized_candidate == CAPABILITY_CHAT
             and normalize_capability(prompt_analysis.get('primary_capability')) == CAPABILITY_VISION_ANALYSIS
@@ -5883,6 +5921,13 @@ def build_request_phase_graph(
     }
     if current_phase_reason:
         current_phase['reason'] = current_phase_reason
+    if (prompt_analysis.get('artifact_state_readback_request')
+            and current_phase_capability == CAPABILITY_CHAT
+            and not promoted_downstream_branches):
+        current_phase['role'] = 'saved_artifact_state_explanation'
+        # Saved evidence is input to ordinary chat, not an automatic obligation
+        # to run model-backed reviews. Exact transcript echoes are checked by
+        # Closure; separately contracted semantic criteria retain their gates.
 
     phases: list[dict[str, Any]] = [current_phase]
     downstream_phase_ids: list[str] = []

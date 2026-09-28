@@ -17,8 +17,11 @@ class OcrPdfRuntimeOwner:
     def _hook(self, name: str) -> Any:
         return self.hooks[name]
 
-    def extract_pdf_text_content(self, pdf_path: Path, max_chars: Optional[int] = None) -> str:
-        return self._hook('extract_pdf_text_content')(pdf_path, max_chars=max_chars)
+    def extract_pdf_text_content(
+        self, pdf_path: Path, max_chars: Optional[int] = None,
+        *, warnings: Optional[list[str]] = None,
+    ) -> str:
+        return self._hook('extract_pdf_text_content')(pdf_path, max_chars=max_chars, warnings=warnings)
 
     def render_pdf_pages_to_base64(
         self,

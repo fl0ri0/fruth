@@ -35,6 +35,99 @@ def finding(code, path, detail):
                 signature=stable_digest({'code': code, 'path': path})[:20])
 
 
+def rejected_audio_mismatch_evidence(payload: dict) -> list[dict]:
+    """Recognize a saved rejection for reporting, without satisfying coverage.
+
+    This observes the runtime gate, not the audio itself. A generic failed TTS,
+    an error string, or a mismatch on a sibling cannot prove correct rejection.
+    """
+    def mapping(value):
+        return value if isinstance(value, dict) else {}
+
+    def identifiers(value):
+        return value if isinstance(value, list) and all(isinstance(v, str) for v in value) else []
+
+    payload = mapping(payload)
+    runtime = mapping(payload.get('runtime'))
+    graph = mapping(runtime.get('request_phase_graph'))
+    closure = mapping(runtime.get('graph_closure_review'))
+    frame = mapping(payload.get('response_frame'))
+    late = mapping(payload.get('late_fill'))
+    if (payload.get('lifecycle_state') not in ('repair_needed', 'failed')
+            or closure.get('status') != 'blocked' or late.get('status') != 'failed'
+            or records(late.get('active_branches')) or records(late.get('pending_branches'))
+            or frame.get('status') not in ('completed', 'frozen')
+            or not all(isinstance(v, str) and v for v in (payload.get('id'), frame.get('frame_id')))):
+        return []
+    phases = records(graph.get('phases'))
+    failed = records(late.get('failed_branches'))
+    checks = records(closure.get('checks'))
+    possible_acceptances = (phases + records(graph.get('downstream_branches'))
+                            + records(payload.get('outputs')) + checks
+                            + records(late.get('fill_results')) + records(late.get('completed_branches')))
+    observations = []
+    for index, consumer in enumerate(failed):
+        error = mapping(consumer.get('error'))
+        evidence = mapping(error.get('semantic_evidence'))
+        if (consumer.get('capability') != 'speech_to_text' or consumer.get('status') != 'failed'
+                or error.get('stage') != 'semantic_evidence_gate'
+                or error.get('materialization_blocked') is not True
+                or error.get('reason_code') != 'TTS_STT_SEMANTIC_MISMATCH'
+                or evidence.get('kind') != 'fruth.tts_stt_semantic_evidence'
+                or evidence.get('authority') != 'runtime_deterministic_verification'
+                or evidence.get('status') != 'mismatched'
+                or evidence.get('semantic_match') is not False
+                or evidence.get('reason_code') != 'TTS_STT_SEMANTIC_MISMATCH'):
+            continue
+        source_digest, transcript_digest = evidence.get('source_sha256'), evidence.get('transcript_sha256')
+        transcript = evidence.get('transcript_text')
+        if (not all(isinstance(d, str) and len(d) == 64 and all(c in '0123456789abcdef' for c in d)
+                    for d in (source_digest, transcript_digest))
+                or not isinstance(transcript, str) or not transcript
+                or hashlib.sha256(transcript.encode('utf-8')).hexdigest() != transcript_digest
+                or source_digest == transcript_digest):
+            continue
+        producer_id, consumer_id = evidence.get('producer_phase_id'), evidence.get('consumer_phase_id')
+        if (not all(isinstance(value, str) and value for value in (producer_id, consumer_id))
+                or producer_id == consumer_id):
+            continue
+        producer_phases = [p for p in phases if p.get('phase_id') == producer_id and p.get('capability') == 'text_to_speech']
+        consumer_phases = [p for p in phases if p.get('phase_id') == consumer_id and p.get('capability') == 'speech_to_text']
+        producers = [p for p in failed if p.get('phase_id') == producer_id and p.get('capability') == 'text_to_speech']
+        if (len(producer_phases) != 1 or len(consumer_phases) != 1 or len(producers) != 1
+                or len([b for b in failed if b.get('phase_id') == consumer_id]) != 1):
+            continue
+        producer = producers[0]
+        if (consumer.get('phase_id') != consumer_id
+                or not all(isinstance(b.get('branch_id'), str) and b['branch_id'] for b in (consumer, producer))
+                or consumer.get('branch_id') != evidence.get('consumer_branch_id')
+                or producer.get('branch_id') != evidence.get('producer_branch_id')
+                or producer.get('branch_id') == consumer.get('branch_id')
+                or consumer_phases[0].get('branch_id') != consumer.get('branch_id')
+                or producer_phases[0].get('branch_id') != producer.get('branch_id')
+                or producer_id not in identifiers(consumer.get('depends_on'))
+                or producer_id not in identifiers(consumer_phases[0].get('depends_on'))
+                or producer_id not in identifiers(error.get('failed_dependency_ids'))
+                or producer.get('status') != 'failed'
+                or mapping(producer.get('error')).get('code') != 'TTS_STT_SEMANTIC_MISMATCH'):
+            continue
+        if not all(any(c.get('phase_id') == phase_id and c.get('status') == 'blocked' for c in checks)
+                   for phase_id in (producer_id, consumer_id)):
+            continue
+        ids = {producer_id, consumer_id, producer['branch_id'], consumer['branch_id']}
+        if any(isinstance(r.get('status'), str) and r['status'] in SUCCESS
+               and any(r.get(k) == identity for k in ('phase_id', 'branch_id') for identity in ids)
+               for r in possible_acceptances):
+            continue
+        observations.append(dict(
+            response_id=payload['id'], frame_id=frame['frame_id'],
+            producer_phase_id=producer_id, consumer_phase_id=consumer_id,
+            source_sha256=source_digest, transcript_sha256=transcript_digest,
+            evidence_path=f'/late_fill/failed_branches/{index}/error/semantic_evidence',
+        ))
+    return observations
+
+
 def audit_truth(payload: dict, *, artifact_evidence=None) -> dict:
     failures, missing, exercised = [], [], []
     runtime = payload.get('runtime') or {}

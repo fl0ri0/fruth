@@ -5,6 +5,8 @@ compare words, change obligations, or own Closure/Registry truth.
 """
 from __future__ import annotations
 
+from fruth_services.response_persistence import ResponsePersistenceError
+
 import copy
 import hashlib
 from pathlib import Path
@@ -336,6 +338,10 @@ def run(owner, *, branch, result, payload, consumer_plan, request_payload,
         accepted = checkpoint(owner, accepted, request_payload, pid)
         return {'payload': accepted, 'infer_result': verified_result, 'accepted': True,
                 'producer_branch_id': pid, 'attempt_id': entry['attempt_id']}
+    except ResponsePersistenceError:
+        # Preserve the exact uncertain checkpoint; do not replace it with a
+        # second repair/failure checkpoint or misclassify it as model evidence.
+        raise
     except Exception as exc:
         # Once consumed, all failure classes stay blocked. Never recursively repair.
         entry['status'] = 'exhausted'

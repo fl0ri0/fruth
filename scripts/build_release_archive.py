@@ -55,6 +55,7 @@ REQUIRED_ROOT_FILES = frozenset(
 
 PUBLIC_DOCS = frozenset(
     {
+        'APPLE_FOUNDATION_MODELS.md',
         'ARCHITECTURE_MAP.md',
         'BACKEND_FABRIC.md',
         'CANONICAL_GLOSSARY.md',
@@ -72,6 +73,7 @@ PUBLIC_DOCS = frozenset(
         'RESPONSES_CONTRACT.md',
         'SELF_ATTACK.md',
         'SELF_ATTACK_STATUS_2026-09-19.md',
+        'SELF_ATTACK_STATUS_2026-09-27.md',
         'STATE_FLOW_DIAGNOSTICS.md',
         'TESTING_PROTOCOL.md',
         'TRUTH_SOURCES.md',
@@ -95,6 +97,9 @@ PUBLIC_DOC_PATHS = frozenset(
     {Path('docs') / name for name in PUBLIC_DOCS}
     | set(CURRENT_DIAGRAM_PATHS)
     | set(PUBLIC_DOC_ASSET_PATHS)
+)
+PUBLIC_INTEGRATION_DOC_PATHS = frozenset(
+    {Path('fruth_integrations/shortcuts/README.md')}
 )
 PUBLIC_CONFIG_PATHS = frozenset(
     {
@@ -179,12 +184,15 @@ RELEASE_REFERENCE_EXAMPLE_DIRECTORIES = frozenset(
 RESEARCH_SOURCE_FILES = frozenset({
     Path('fruth_research/__init__.py'),
     Path('fruth_research/README.md'),
+    Path('fruth_research/review.py'),
+    Path('fruth_research/test_review.py'),
     Path('fruth_research/candidates/README.md'),
     Path('fruth_research/candidates/sync.py'),
     Path('fruth_research/gold-core/README.md'),
     Path('fruth_research/gold-core/schema.json'),
     Path('fruth_research/gold-core/validate.py'),
     Path('fruth_research/gold-core/evidence.py'),
+    Path('fruth_research/gold-core/curate.py'),
     Path('fruth_research/gold-core/test_validate.py'),
 })
 RESEARCH_SOURCE_DIRECTORIES = frozenset(parent for path in RESEARCH_SOURCE_FILES for parent in path.parents if parent != Path("."))
@@ -288,7 +296,7 @@ REQUIRED_RELEASE_PATHS = frozenset(
         Path('start_multi_models.sh'),
         Path('stop_multi_models.sh'),
     }
-) | CURRENT_DIAGRAM_PATHS | PUBLIC_DOC_ASSET_PATHS | PUBLIC_CONFIG_PATHS | RELEASE_SKILL_FILES | RELEASE_REFERENCE_EXAMPLE_FILES | RESEARCH_SOURCE_FILES
+) | CURRENT_DIAGRAM_PATHS | PUBLIC_DOC_ASSET_PATHS | PUBLIC_INTEGRATION_DOC_PATHS | PUBLIC_CONFIG_PATHS | RELEASE_SKILL_FILES | RELEASE_REFERENCE_EXAMPLE_FILES | RESEARCH_SOURCE_FILES
 
 FORBIDDEN_ROOT_COMPONENTS = frozenset(
     {
@@ -494,7 +502,7 @@ def discover_release_files(source_root: Path) -> dict[Path, Path]:
         selected[relative_path] = source_path
 
     for relative_path in sorted(
-        RELEASE_REFERENCE_EXAMPLE_FILES | RESEARCH_SOURCE_FILES,
+        RELEASE_REFERENCE_EXAMPLE_FILES | RESEARCH_SOURCE_FILES | PUBLIC_INTEGRATION_DOC_PATHS,
         key=lambda item: item.as_posix(),
     ):
         source_path = source_root / relative_path

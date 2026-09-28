@@ -549,7 +549,7 @@ _AUDIO_COUNT_INTERVENING_NON_AUDIO_NOUN_RE = re.compile(
 )
 _VISUAL_PRESERVATION_RE = re.compile(
     r'\b(?:bewahr|behalt|erhalt|preserv|keep|retain)\w*\b'
-    r'[^.;!?]{0,120}\b(?:bild(?:analyse)?|image(?:\s+analysis)?|picture|visual(?:\s+analysis)?)\b'
+    r'[^.;!?]{0,120}\b(?:bild(?:analyse)?|image(?:\s+analysis)?|picture|visual(?:\s+analysis)?|them|it|sie|es)\b'
     r'[^.;!?]{0,96}\b(?:unverandert|unveraendert|unchanged|intact|as[\s-]?is)\b',
     re.IGNORECASE,
 )
@@ -569,7 +569,7 @@ _VISUAL_NO_REANALYSIS_RE = re.compile(
     r'[^.;!?]{0,48}\b(?:das\s+bild|bildanalyse|bild|image\s+analysis|analysis|image|picture|es|it|sie|them|diese)\b'
     r'[^.;!?]{0,36}\b(?:nicht|not|never)\b[^.;!?]{0,24}\b(?:neu|erneut|again|anew)?\b|'
     r'\b(?:do\s+not|don[\'’]?t|never|nicht)\b[^.;!?]{0,32}'
-    r'\b(?:re[-\s]?analy[sz]|erneut\s+analysier)\w*\b',
+    r'\b(?:re[-\s]?analy[sz]|erneut\s+analysier|analy[sz]|inspect|review)\w*\b',
     re.IGNORECASE,
 )
 _VISUAL_GENERATION_ACTION_RE = re.compile(
@@ -1111,6 +1111,21 @@ def _score_rules(
     return score, cues
 
 
+def _score_speech_to_text_rules(text: str) -> tuple[int, list[str]]:
+    """Only affirmative, executable STT cues can request another media read."""
+    score = 0
+    cues: list[str] = []
+    for pattern, weight, cue in _STT_POSITIVE_RULES:
+        if any(
+            not intent_span_is_literal_payload(text, match.start(), match.end())
+            and not visual_action_is_negated(text, match.start(), match.end())
+            for match in pattern.finditer(text)
+        ):
+            score += weight
+            cues.append(cue)
+    return score, cues
+
+
 def infer_prompt_languages(prompt: str) -> list[str]:
     normalized = normalize_intent_text(prompt)
     languages: list[str] = []
@@ -1414,6 +1429,8 @@ def _infer_requested_audio_output_count(
 
 def _visual_preservation_flags(normalized_prompt: str) -> tuple[bool, bool, list[str]]:
     prompt = str(normalized_prompt or '').strip()
+    if not _VISUAL_ACTION_TARGET_RE.search(prompt):
+        return False, False, []
     preservation_match = _VISUAL_PRESERVATION_RE.search(prompt) if prompt else None
     if not preservation_match:
         return False, False, []
@@ -1429,6 +1446,35 @@ def _visual_preservation_flags(normalized_prompt: str) -> tuple[bool, bool, list
     if preserve_analysis:
         cues.append('visual_analysis_preservation_without_reanalysis')
     return preserve_artifact, preserve_analysis, cues
+
+
+def _artifact_state_readback_request(prompt: str) -> bool:
+    """Saved state/provenance is text context; an affirmative media task wins.
+
+    This classifies the requested operation, never the availability or validity
+    of its evidence. Missing evidence must remain missing at readback.
+    """
+    if not re.search(r'\b(?:explain|summari[sz]e|describe|report|erklar\w*|beschreib\w*)\b', prompt):
+        return False
+    if not re.search(
+        r'\b(?:runtime\s+(?:state|evidence)|provenance|source\s+binding|'
+        r'(?:saved|existing|previous|prior)\s+(?:transcript|inspection|analysis)|'
+        r'laufzeit\w*|herkunft\w*|gespeichert\w*\s+(?:transkript|analyse))\b',
+        prompt,
+    ):
+        return False
+    # Reuse the action-polarity owner so coordinated prohibitions do not turn
+    # "do not regenerate or inspect" into an affirmative inspection request.
+    for pattern in (
+        _VISUAL_GENERATION_ACTION_RE,
+        re.compile(r'\b(?:analy[sz]e|inspect|examine|review|analysier(?:e|en)?|pruf(?:e|en)?)\b'),
+        re.compile(r'\b(?:transcribe|transkribier(?:e|en)?|listen|hear|re[- ]?transcribe|read\s+aloud|speak|narrate)\b'),
+    ):
+        if any(not intent_span_is_literal_payload(prompt, m.start(), m.end())
+               and not visual_action_is_negated(prompt, m.start(), m.end())
+               for m in pattern.finditer(prompt)):
+            return False
+    return True
 
 
 def _visual_action_window(prompt: str, start: int, *, limit: int = 180) -> str:
@@ -2120,7 +2166,7 @@ def analyze_prompt_intent(prompt: str) -> dict[str, Any]:
         image_cues.append('direct_raster_generation_request')
     image_negative, image_negative_cues = _score_rules(visual_command_text, _IMAGE_NEGATIVE_RULES)
     vision_positive, vision_cues = _score_rules(visual_command_text, _VISION_POSITIVE_RULES)
-    stt_positive, stt_cues = _score_rules(command_text, _STT_POSITIVE_RULES)
+    stt_positive, stt_cues = _score_speech_to_text_rules(command_text)
     (
         requested_audio_output_count,
         counted_audio_output_obligation,
@@ -2578,6 +2624,11 @@ def analyze_prompt_intent(prompt: str) -> dict[str, Any]:
     
     temperament_hint, temperament_cues = infer_temperament_hint(prompt)
     return {
+        'artifact_state_readback_request': bool(
+            _artifact_state_readback_request(command_text)
+            and not (requests_audio_output or requests_visual_output or requests_speech_to_text_output
+                     or separate_visual_generation_request or separate_visual_analysis_request)
+        ),
         'normalized_prompt': normalized,
         'capability_scores': capability_scores,
         'capability_cues': {

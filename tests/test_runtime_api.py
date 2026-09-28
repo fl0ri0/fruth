@@ -10,6 +10,7 @@ class RuntimeApiTests(unittest.TestCase):
     def setUp(self):
         app.config["TESTING"] = True
         self.client = app.test_client()
+        self.enterContext(patch("fruth_webserver._active_global_log_paths", return_value=[]))
 
     @patch("fruth_webserver.build_backend_fabric_snapshot")
     @patch("fruth_webserver.merge_instances_with_runtime_status")

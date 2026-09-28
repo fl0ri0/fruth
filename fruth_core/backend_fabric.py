@@ -9,8 +9,12 @@ from helpers.model_capabilities import normalize_backend
 from fruth_runtime.llama_cpp_model_manager import describe_llama_cpp_runtime_probe
 from fruth_runtime.mlx_model_manager import describe_mlx_runtime_variants
 from fruth_runtime.ollama_model_manager import describe_ollama_runtime_probe
+from fruth_runtime.apple_fm_model_manager import describe_apple_fm_runtime_probe
+from fruth_runtime.apple_pcc_model_manager import describe_apple_pcc_runtime_probe
 
 BACKEND_VARIANT_ORDER = (
+    'apple_fm',
+    'apple_pcc',
     'ollama',
     'llama_cpp',
     'mlx_lm',
@@ -20,6 +24,8 @@ BACKEND_VARIANT_ORDER = (
 )
 
 BACKEND_VARIANT_DEFAULTS = {
+    'apple_pcc': {'family': 'apple_pcc', 'variant': 'apple_pcc', 'label': 'Apple PCC'},
+    'apple_fm': {'family': 'apple_fm', 'variant': 'apple_fm', 'label': 'Apple AI'},
     'ollama': {
         'family': 'ollama',
         'variant': 'ollama',
@@ -59,6 +65,10 @@ def _now_iso() -> str:
 
 def _variant_from_entry(entry: dict[str, Any]) -> str | None:
     backend = normalize_backend(entry.get('backend'))
+    if backend == 'apple_pcc':
+        return 'apple_pcc'
+    if backend == 'apple_fm':
+        return 'apple_fm'
     if backend == 'ollama':
         return 'ollama'
     if backend == 'llama_cpp':
@@ -123,6 +133,8 @@ def _compute_auto_wiring_state(
 
 def _build_probe_map() -> dict[str, dict[str, Any]]:
     payload = {
+        'apple_pcc': describe_apple_pcc_runtime_probe(),
+        'apple_fm': describe_apple_fm_runtime_probe(),
         'ollama': describe_ollama_runtime_probe(),
         'llama_cpp': describe_llama_cpp_runtime_probe(),
     }

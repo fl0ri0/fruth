@@ -10,6 +10,7 @@ import pytest
 
 from fruth_server import tts_semantic_regeneration as policy
 from fruth_services.response_frames import load_latest_response_state
+from fruth_services.response_persistence import ResponsePersistenceError
 
 
 @pytest.fixture
@@ -88,8 +89,10 @@ def test_actual_append_failure_never_calls_backend(real_checkpoint, monkeypatch)
     def fail(*a, **kw):
         raise OSError('injected disk append failure')
     monkeypatch.setattr(web, '_append_response_frame_with_parent_cas', fail)
-    with pytest.raises(RuntimeError, match='checkpoint not durable'):
+    with pytest.raises(ResponsePersistenceError) as raised:
         policy.run(e.owner, **e.args)
+    assert raised.value.response_payload['persistence']['status'] == 'uncertain'
+    assert raised.value.response_payload['error']['retryable'] is False
     assert e.calls == []
     state = load_latest_response_state(e.payload['id'], frames_dir=e.frames)
     assert state['response_frame']['frame_sequence'] == 1

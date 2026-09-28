@@ -99,6 +99,7 @@ IN_MEMORY_PUBLIC_KEYS = (
     'saved_text_artifacts',
     'error',
     'error_detail',
+    'persistence',
     'error_ref',
     'recovery_hint',
     'batch_count',

@@ -80,6 +80,53 @@ replacement truth store nor permission to mutate or execute runtime state.
 
 ## Validation
 
+### Add reviewed cases
+
+After [evidence review](../README.md#review-new-evidence), prepare explicit case
+JSON files conforming to `schema.json`. Keep judgments bounded by the evidence:
+a correctly rejected audio mismatch can be a correct negative while successful
+handoff coverage remains incomplete; a provider usage limit is not proof of a
+runtime defect or a successful request.
+
+```sh
+.venv/bin/python fruth_research/gold-core/curate.py --case /path/to/reviewed-case.json
+.venv/bin/python fruth_research/gold-core/curate.py --case /path/to/reviewed-case.json --apply
+.venv/bin/python fruth_research/gold-core/validate.py --retained-only
+```
+
+Repeat `--case` for a batch. Without `--apply`, curation stages and validates a
+temporary combined corpus and retained store, then removes that staging. It
+checks schema, assertions, semantic duplicates, existing-case immutability,
+candidate identity and source bytes. Explicit eval ids must retain their exact
+current candidate annotation. Curation does not independently establish the
+correctness of a curator's natural-language judgment.
+
+`--apply` adds only new case ids, retains their exact evidence and updates the
+derived manifests. Existing Gold cases and retained bytes stay unchanged. Old
+Gold is validated against retained evidence; new references must match the live
+root. Changed live historical rows are never silently rebound. Only candidates
+explicitly linked by new cases are marked promoted, pinned to the reviewed source
+digest. Repeating identical case files is a no-op; conflicting bytes fail.
+
+Retention uses the existing disk/digest/source-stability preflight. Existing store
+bytes are hard-linked in temporary validation staging instead of copied again.
+Publication spans multiple files and is **recoverable, not atomic**: while
+`fruth_research/.curation-pending` exists, treat corpus/count views as unfinished.
+The journal preserves before/after digests and original metadata. After an
+interruption, finish the exact publication with:
+
+```sh
+.venv/bin/python fruth_research/gold-core/curate.py --resume
+```
+
+Resume checks all targets for conflicts before writing and refuses to overwrite
+intervening queue or corpus changes. Inspect any reported conflict before manual
+recovery; do not delete the pending journal or resync the queue to conceal it.
+Completed receipts and original metadata live under `fruth_research/curation-receipts/`.
+No runtime state, accepted learning or native conformance verdict is rewritten.
+
+### Check the corpus
+
 From the checkout, use the existing Python environment:
 
 ```sh

@@ -79,12 +79,29 @@ access provided by Apple on that Mac.
 
 ### Import
 
+In [current repository builds](https://github.com/fl0ri0/fruth/archive/refs/heads/main.zip),
+choose **Set up** on the Apple PCC Models card, or select PCC
+in the interactive startup list when it says **setup required**. Fruth checks
+the installed names and opens only missing bundled shortcuts on the Mac running
+Fruth. Review and click **Add Shortcut** in Apple's import previews. In the web
+UI, refresh Models and select Start; in the terminal, press Enter after adding
+them. Startup checks installation again before launching the adapter.
+
+Opening a preview does not install a shortcut or establish cloud access. Existing
+shortcuts are left alone; duplicate names require manual resolution. Background
+status, routing and ordinary model requests never open import previews.
+Noninteractive startup skips setup and reports how to complete it in Models.
+If using Fruth remotely, complete the native import on its host Mac.
+
+To import manually:
+
 Open [Fruth PCC.shortcut](Fruth%20PCC.shortcut) and
 [Fruth PCC Pro.shortcut](Fruth%20PCC%20Pro.shortcut) in the Shortcuts app, review
 their actions, then add them. Keep the exact names shown below. If either name
 already exists, inspect the existing shortcut first and avoid adding duplicates.
 
-The original 0.1.3 source archive predates these exports. For that archive, use
+The original 0.1.3 source archive predates these exports and assisted setup.
+For that archive, import manually using
 the companion `fruth-pcc-shortcuts.zip` from the
 [0.1.3 release](https://github.com/fl0ri0/fruth/releases/tag/v0.1.3).
 Current repository downloads and subsequent source builds include both files

@@ -104,7 +104,11 @@ is process-local and resets when Fruth restarts; passive reads never fill it.
 Apple PCC uses an explicitly started loopback adapter and the ordinary instance,
 transport and preferred-II paths. Its `runnable` state proves the bridge and at
 least one uniquely named shortcut are installed; cloud account access is checked
-only during execution. Selection prefers Pro and falls back once to Cloud for
+only during execution. The catalog's separate `setup_available`
+flag identifies missing bundled shortcuts that can be opened for user-confirmed
+import; it does not make the model runnable. Only explicit Models setup or
+interactive startup selection opens previews. Passive snapshots and ordinary
+model starts never open them. Selection prefers Pro and falls back once to Cloud for
 confirmed Pro access/availability errors. It supports text and image input,
 including model-based OCR; native scanner and audio tools are not exposed. Inference-owned calls
 receive the full ordinary inference policy and scoped Fruth roles. Direct chat

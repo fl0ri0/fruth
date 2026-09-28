@@ -243,6 +243,23 @@ class ModelControlRuntimeOwner:
                 )
 
             requested_capability = normalize_capability(payload.get('capability')) or None
+            if payload.get('setup_shortcuts') is not None:
+                if (payload['setup_shortcuts'] is not True or backend != 'apple_pcc'
+                        or model_name != 'auto' or start_source != 'frontend_button'):
+                    raise start_model_request_error(
+                        'Shortcut setup requires an explicit Apple PCC setup button action.',
+                        status_code=400,
+                    )
+                from fruth_integrations.shortcuts.setup import open_pcc_shortcut_imports
+                setup = open_pcc_shortcut_imports()
+                log_unified_event(
+                    category='runtime', action='setup_pcc_shortcuts', status=setup['status'],
+                    model=model_name, backend=backend, start_source=start_source,
+                    message=setup.get('message') or setup.get('error'),
+                )
+                return {**setup, 'start_source': start_source}, (
+                    200 if setup['status'] in {'setup_required', 'setup_complete'} else 409)
+
             preferred_port = payload.get('preferred_port')
             if preferred_port is not None:
                 try:

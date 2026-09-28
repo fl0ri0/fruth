@@ -769,6 +769,13 @@ empty body retains the HTTP error fallback across compatible backends.
 
 These isolated tests never launch Shortcuts.
 
+For PCC first-use setup, also run `tests/test_pcc_shortcut_setup.py` and
+`tests/test_startup_model_manager.py`. Mock native discovery/import and isolate
+runtime paths. Cover explicit setup intent, unchanged installed shortcuts,
+ambiguous names, missing bundled files, import errors, pending UI status and
+interactive versus noninteractive startup. Preview opening is not installation
+or readiness; the ordinary start must still recheck installation.
+
 For PCC observation boundaries, include `tests/test_backend_fabric.py` alongside
 `tests/test_apple_pcc_backend.py`: cold and warm passive snapshots must never
 contact Shortcuts or query native PCC metadata. Explicit discovery/start refreshes

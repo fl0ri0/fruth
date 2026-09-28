@@ -363,6 +363,7 @@ function renderAvailableModelsList() {
         const backend = normalizeBackend(entry.backend);
         const displayName = formatModelDisplayName(modelName, backend, entry);
         const runnable = entry.runnable !== false;
+        const setupAvailable = backend === 'apple_pcc' && !runnable && entry.setup_available === true;
         const opKey = makeModelKey(modelName, backend);
         const isStarting = state.modelOperations.starting.has(opKey);
         const backendBadgeClass = 'badge-soft badge-muted';
@@ -376,14 +377,14 @@ function renderAvailableModelsList() {
         const singleRunningInstance = runningCount === 1 ? runningInstances[0] : null;
         const hasMultipleRunning = runningCount > 1;
         const hasOtherStarts = state.modelOperations.starting.size > 0 && !isStarting;
-        const startDisabled = isStarting || !runnable;
-        const startIcon = isStarting ? 'fa-spinner fa-spin' : 'fa-play';
-        const buttonTitle = !runnable
+        const startDisabled = isStarting || (!runnable && !setupAvailable);
+        const startIcon = isStarting ? 'fa-spinner fa-spin' : setupAvailable ? 'fa-download' : 'fa-play';
+        const buttonTitle = setupAvailable ? 'Set up Apple PCC shortcuts on this Mac' : !runnable
             ? (entry.disabled_reason || `Model ${displayName} is not runnable via the current ${backendLabel} path.`)
             : hasOtherStarts
                 ? 'Finish current action before launching'
                 : `Start new ${displayName} instance`;
-        let statusLabel = runnable ? 'Idle' : 'Unavailable';
+        let statusLabel = setupAvailable ? 'Set up' : runnable ? 'Idle' : 'Unavailable';
         let statusIcon = '<i class="fas fa-circle"></i>';
         let statusClass = 'status-pill--pending';
         let runtimeSummary = '';
@@ -454,7 +455,7 @@ function renderAvailableModelsList() {
         const startBtn = item.querySelector('.icon-button--launch');
         startBtn.addEventListener('click', (event) => {
             event.stopPropagation();
-            if (!runnable) {
+            if (!runnable && !setupAvailable) {
                 updateGlobalModelStatus(entry.disabled_reason || `Model ${displayName} is known but not startable via the current backend path.`);
                 return;
             }
@@ -463,6 +464,7 @@ function renderAvailableModelsList() {
                 return;
             }
             startModel(modelName, backend, {
+                setupShortcuts: setupAvailable,
                 capability: entry.capability || null,
                 forceStart: runningCount > 0,
                 modelName: entry.modelName || modelName,
@@ -611,7 +613,7 @@ async function startModel(modelName, backend = 'ollama', options = {}) {
     const previousInstanceIds = new Set((state.runningInstances || []).map((instance) => instance.instance_id).filter(Boolean));
     state.modelOperations.starting.add(opKey);
     renderAvailableModelsList();
-    updateGlobalModelStatus(`Starting ${displayName} (${backendLabel})...`);
+    updateGlobalModelStatus(options.setupShortcuts ? 'Opening PCC shortcut setup on this Mac...' : `Starting ${displayName} (${backendLabel})...`);
     try {
         const payload = {
             model: modelName,
@@ -621,6 +623,7 @@ async function startModel(modelName, backend = 'ollama', options = {}) {
         if (options.forceStart) payload.force_start = true;
         if (options.modelName) payload.modelName = options.modelName;
         if (options.capability) payload.capability = options.capability;
+        if (normalizedBackend === 'apple_pcc' && options.setupShortcuts === true) payload.setup_shortcuts = true;
         if (normalizedBackend === 'mlx' || normalizedBackend === 'llama_cpp' || normalizedBackend === 'apple_fm' || normalizedBackend === 'apple_pcc') {
             if (options.modelPath) payload.model_path = options.modelPath;
             if (options.preferredPort) payload.preferred_port = options.preferredPort;
@@ -628,6 +631,10 @@ async function startModel(modelName, backend = 'ollama', options = {}) {
             if (options.launchDefaults) payload.launch_defaults = options.launchDefaults;
         }
         const response = await axios.post(`${state.flaskServerUrl}/api/start_model`, payload);
+        if (['setup_required', 'setup_complete'].includes(response?.data?.status)) {
+            updateGlobalModelStatus(response.data.message);
+            return null;
+        }
         await fetchRunningInstances();
         const normalizedCapability = normalizeCapability(options.capability || '');
         const startedInstance = (

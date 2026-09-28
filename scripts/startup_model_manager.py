@@ -80,6 +80,7 @@ class CatalogEntry:
     type_label: str = ''
     details: str = ''
     model_path: str = ''
+    setup_required: bool = False
 
 
 def _backend_label(backend: str) -> str:
@@ -322,8 +323,27 @@ def _discover_apple_pcc_entries() -> List[CatalogEntry]:
     return [CatalogEntry(backend='apple_pcc', model_name='auto', display_label='Apple PCC',
                          capability='chat', capability_badge=format_capability_badge('chat'),
                          size='cloud', backend_label='Apple PCC', type_label='Chat + Vision',
-                         details='Apple Private Cloud Compute')
-            for item in list_available_apple_pcc_models() if item['runnable']]
+                         details='Apple Private Cloud Compute' + (' · setup required' if not item['runnable'] else ''),
+                         setup_required=not item['runnable'])
+            for item in list_available_apple_pcc_models() if item['runnable'] or item.get('setup_available')]
+
+
+def _prepare_pcc_shortcuts() -> bool:
+    if not sys.stdin.isatty():
+        print('ℹ️  PCC needs shortcut setup. Open Models → Apple PCC → Set up on this Mac.')
+        return False
+    from fruth_integrations.shortcuts.setup import open_pcc_shortcut_imports
+    result = open_pcc_shortcut_imports()
+    if result['status'] == 'setup_complete':
+        return True
+    if result['status'] != 'setup_required':
+        print(f"⚠️  PCC setup unavailable: {result.get('error')}")
+        return False
+    print('ℹ️  Review and click Add Shortcut in Shortcuts for: ' + ', '.join(result['opened_shortcuts']))
+    try:
+        return input('Press Enter after adding the shortcuts to start PCC, or type skip: ').strip() == ''
+    except (EOFError, KeyboardInterrupt):
+        return False
 
 
 def _discover_llama_cpp_entries() -> List[CatalogEntry]:
@@ -509,6 +529,8 @@ def main() -> int:
         if entry.backend in {'apple_fm', 'apple_pcc'}:
             from fruth_core.lifecycle import start_instance
             try:
+                if entry.backend == 'apple_pcc' and entry.setup_required and not _prepare_pcc_shortcuts():
+                    continue
                 record = start_instance(entry.model_name, entry.backend, 'chat', start_source='startup_policy')
                 started_servers.append(record)
                 current_instances.append(record)

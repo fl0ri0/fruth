@@ -106,7 +106,8 @@ and multi-user operation are outside the 0.1.3 support promise.
 
 ## Install and Start
 
-Extract the source archive, enter its `fruth-0.1.3` directory, and run:
+Extract the source archive, enter its directory (`fruth-0.1.3` for the release,
+or `fruth-main` for the current repository ZIP), and run:
 
 ```bash
 ./fruth start
@@ -117,9 +118,13 @@ start. Python 3.11 or newer and internet access for that initial dependency
 installation are required. Backend runtimes, model weights, Apple Intelligence
 availability and installed PCC Shortcuts are separate prerequisites for their
 respective capabilities. Backend runtimes and model weights are not bundled.
-For Apple PCC, import the two provided shortcuts following the
+For Apple PCC, choose **Set up** on its Models card or select PCC in the startup
+list. Fruth opens the bundled shortcuts on the Mac; review and click **Add
+Shortcut**, then start PCC. Manual import is also available in the
 [PCC setup guide](fruth_integrations/shortcuts/README.md#import); the original
 0.1.3 source archive uses the companion shortcut download on its release page.
+Assisted setup is included in [current repository downloads](https://github.com/fl0ri0/fruth/archive/refs/heads/main.zip).
+The original 0.1.3 release archive requires manual shortcut import.
 
 Fruth startup initializes missing Research stores automatically and preserves
 existing candidates, reviews and Gold data. No separate Research startup command

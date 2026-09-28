@@ -39,6 +39,15 @@ Models or startup selection. It prefers Cloud Pro, then permits one Cloud attemp
 on a recognized Pro eligibility/availability failure. There is no automatic model
 start on routing or observation, and no separate tier preference to configure.
 
+First-use setup opens missing bundled shortcuts only through an explicit Models
+setup action or interactive startup selection. The user must click Add Shortcut.
+The Models button sends `setup_shortcuts: true` with `start_source: frontend_button`
+to the existing `/api/start_model` endpoint for `apple_pcc` / `auto`. This returns
+`setup_required` (preview opened), `setup_complete` (already installed), or
+`setup_unavailable`; none starts an instance. An ordinary start follows after
+installation. `PCC_SETUP_TIMEOUT_SEC=10` bounds each installation check and native
+preview-opening command. Noninteractive startup never opens previews or waits.
+
 `APPLE_PCC_START_PORT`–`APPLE_PCC_PORT_MAX` is 11651–11700, separate from local AFM.
 `APPLE_PCC_START_TIMEOUT_SEC=30` bounds adapter startup and
 `APPLE_PCC_METADATA_TIMEOUT_SEC=20` bounds optional native SDK discovery.

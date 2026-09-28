@@ -18,6 +18,7 @@ import requests
 from fruth_core.registry import read_registry_entries, write_registry_entries, pid_is_running
 from fruth_core.start_policy import attach_start_audit, validate_start_source
 from fruth_integrations.shortcuts.pcc import list_pcc_shortcuts
+from fruth_integrations.shortcuts.setup import pcc_setup_available
 from fruth_runtime.apple_fm_model_manager import (
     APPLE_FM_PORT_MAX, process_identity, owns_listener, _terminate_child, _now,
 )
@@ -118,6 +119,7 @@ def list_available_apple_pcc_models():
             description += f" SDK reports {sdk['context_size']:,} tokens; Shortcuts limit unreported."
     item = {'name': 'auto', 'model': 'auto', 'display_name': 'Apple PCC', 'request_model': 'auto',
             'model_source': 'apple_private_cloud_compute', 'runnable': probe['runtime_state'] == 'runnable',
+            'setup_available': pcc_setup_available(probe.get('detection', {})),
             'disabled_reason': '; '.join(probe['issues']) or None, 'description': description,
             'removable': False, 'provider_capabilities': ['chat', 'vision_analysis'],
             'inputs': ['text', 'image'], 'outputs': ['text'],

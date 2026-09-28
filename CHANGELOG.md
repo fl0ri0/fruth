@@ -3,6 +3,12 @@
 Fruth changes are recorded here. The original Ollmo release history is retained
 below.
 
+## Unreleased
+
+- Offer PCC first-use setup from Models and the interactive startup selector.
+  Open missing bundled shortcuts for the user's Add Shortcut confirmation,
+  preserve existing installations, and recheck installation before starting PCC.
+
 ## [0.1.3] - 2026-09-28
 
 Adds local Apple Foundation Models and optional Apple PCC integration, native

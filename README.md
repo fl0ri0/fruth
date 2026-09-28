@@ -115,8 +115,11 @@ Extract the source archive, enter its `fruth-0.1.3` directory, and run:
 The executable launcher creates `.venv` and installs `requirements.txt` on first
 start. Python 3.11 or newer and internet access for that initial dependency
 installation are required. Backend runtimes, model weights, Apple Intelligence
-availability and user-installed PCC Shortcuts are separate prerequisites for
-their respective capabilities; they are not bundled in the download.
+availability and installed PCC Shortcuts are separate prerequisites for their
+respective capabilities. Backend runtimes and model weights are not bundled.
+For Apple PCC, import the two provided shortcuts following the
+[PCC setup guide](fruth_integrations/shortcuts/README.md#import); the original
+0.1.3 source archive uses the companion shortcut download on its release page.
 
 Fruth startup initializes missing Research stores automatically and preserves
 existing candidates, reviews and Gold data. No separate Research startup command

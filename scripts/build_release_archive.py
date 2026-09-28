@@ -101,6 +101,12 @@ PUBLIC_DOC_PATHS = frozenset(
 PUBLIC_INTEGRATION_DOC_PATHS = frozenset(
     {Path('fruth_integrations/shortcuts/README.md')}
 )
+PUBLIC_SHORTCUT_PATHS = frozenset(
+    {
+        Path('fruth_integrations/shortcuts/Fruth PCC.shortcut'),
+        Path('fruth_integrations/shortcuts/Fruth PCC Pro.shortcut'),
+    }
+)
 PUBLIC_CONFIG_PATHS = frozenset(
     {
         Path('config/graph_rebase_shadow_corpus.json'),
@@ -502,7 +508,10 @@ def discover_release_files(source_root: Path) -> dict[Path, Path]:
         selected[relative_path] = source_path
 
     for relative_path in sorted(
-        RELEASE_REFERENCE_EXAMPLE_FILES | RESEARCH_SOURCE_FILES | PUBLIC_INTEGRATION_DOC_PATHS,
+        RELEASE_REFERENCE_EXAMPLE_FILES
+        | RESEARCH_SOURCE_FILES
+        | PUBLIC_INTEGRATION_DOC_PATHS
+        | PUBLIC_SHORTCUT_PATHS,
         key=lambda item: item.as_posix(),
     ):
         source_path = source_root / relative_path
@@ -708,8 +717,21 @@ def validate_release_tree(
             continue
         if not path.is_file():
             raise ReleaseArchiveError(f'Unsupported staged entry: {relative_path}')
+        if (
+            relative_path.suffix.lower() == '.shortcut'
+            and relative_path not in PUBLIC_SHORTCUT_PATHS
+        ):
+            raise ReleaseArchiveError(
+                f'Release tree contains a non-public shortcut: {relative_path}'
+            )
         files.append(relative_path)
         _scan_release_file(relative_path, path.read_bytes())
+
+    # New builds require both exports in discovery. Older published archives
+    # shipped neither; keep verification compatible without accepting a partial pair.
+    shortcuts = set(files) & PUBLIC_SHORTCUT_PATHS
+    if shortcuts and shortcuts != PUBLIC_SHORTCUT_PATHS:
+        raise ReleaseArchiveError('Release tree must include both PCC shortcuts or neither.')
 
     actual_artifact_directories = {
         path.relative_to(release_root)

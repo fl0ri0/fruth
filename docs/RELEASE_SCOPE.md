@@ -89,7 +89,16 @@ running conformance creates new local evidence.
 `PUBLIC_INTEGRATION_DOC_PATHS` includes the exact PCC setup guide at
 `fruth_integrations/shortcuts/README.md`. The bridge's Python sources are selected
 through the normal integration source rules; unrelated integration notes are not
-included. The user creates or installs the two named Shortcuts as documented.
+included. `PUBLIC_SHORTCUT_PATHS` selects exactly `Fruth PCC.shortcut` and
+`Fruth PCC Pro.shortcut` from that directory. Both exports are required for new
+builds; unrelated shortcut exports are excluded. Archive verification accepts
+older releases with neither file, but rejects a partial pair or an unlisted
+`.shortcut` file. Packaging checks establish inclusion and byte integrity, not
+Apple signature validity or workflow behavior.
+
+The original 0.1.3 source archive and tag remain unchanged. Its two shortcuts
+are distributed as a companion ZIP on the release page and in the subsequent
+repository update. Users import them explicitly as documented in the setup guide.
 
 The four exact companion-skill files are `skills/fruth/SKILL.md`,
 `skills/fruth/NOTICE`, `skills/fruth/agents/openai.yaml` and

@@ -72,9 +72,28 @@ cryptographically attested model identity.
 
 ## Set up the shortcuts
 
-On a compatible Mac with Apple Intelligence, create the following shortcuts in
-the Shortcuts app. Only create the choices exposed by that system. A shortcut's
-presence in the library does not prove access to its model.
+On a compatible Mac with Apple Intelligence, import the provided shortcuts or
+create them using the recipe below. A shortcut's presence in the library does
+not prove access to its model; availability depends on the options and account
+access provided by Apple on that Mac.
+
+### Import
+
+Open [Fruth PCC.shortcut](Fruth%20PCC.shortcut) and
+[Fruth PCC Pro.shortcut](Fruth%20PCC%20Pro.shortcut) in the Shortcuts app, review
+their actions, then add them. Keep the exact names shown below. If either name
+already exists, inspect the existing shortcut first and avoid adding duplicates.
+
+The original 0.1.3 source archive predates these exports. For that archive, use
+the companion `fruth-pcc-shortcuts.zip` from the
+[0.1.3 release](https://github.com/fl0ri0/fruth/releases/tag/v0.1.3).
+Current repository downloads and subsequent source builds include both files
+in this directory. Import remains an explicit user step; Fruth does not install
+or replace shortcuts automatically.
+
+### Manual recipe
+
+Only create the model choices exposed by your system:
 
 | Bridge selection | Exact shortcut name | Use Model selection |
 | --- | --- | --- |
@@ -254,11 +273,23 @@ not included in the source distribution. The public
 records the later integration campaign, evidence identities and quota-limited
 coverage without converting its INCOMPLETE verdict into a pass.
 
-No downloadable `.shortcut` file is bundled yet. Exporting a signed shortcut on
-the test Mac required iCloud sign-in, while ordinary Cloud execution succeeded.
-The manual recipe above is reproducible without changing account settings.
+The September 21 export attempt reported an iCloud sign-in error, while ordinary
+Cloud execution succeeded. The original 0.1.3 source archive therefore shipped the
+bridge and manual recipe without exported shortcuts. The companion download
+and later repository addition provide the files separately from that archive.
 Apple's [CLI guide](https://support.apple.com/guide/shortcuts-mac/run-shortcuts-from-the-command-line-apd455c82f02/mac)
 describes invocation, input/output files and signing for redistribution.
+
+For maintainers exporting replacements, use **File → Export → For: Anyone**.
+Apple validates a copy through iCloud for public sharing. If export reports that
+you must sign into iCloud even though the Mac is signed in, check both
+**Shortcuts → Settings → General → iCloud Sync** and
+**System Settings → iCloud → See All → Shortcuts**. In the distribution check,
+the app setting was on but the system setting was off; enabling system access
+resolved the export error. That setting also enables library syncing across
+devices. The provided files were exported for Anyone, their two-action workflows
+were inspected, and both opened in Shortcuts' import preview without installing
+duplicates. Import acceptance does not establish access to Apple's model tiers.
 
 ## Usage limits observed during conformance
 

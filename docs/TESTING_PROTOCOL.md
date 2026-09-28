@@ -652,8 +652,8 @@ For prose-only work, check local Markdown links and fragments, repository owner
 paths, command flags and referenced config files against the current checkout.
 Distinguish generated runtime paths and illustrative placeholders from shipped
 files. Compare public references with `scripts/build_release_archive.py`:
-`PUBLIC_DOCS`, `PUBLIC_CONFIG_PATHS`, `PUBLIC_INTEGRATION_DOC_PATHS` and
-`RELEASE_SKILL_FILES` govern inclusion;
+`PUBLIC_DOCS`, `PUBLIC_CONFIG_PATHS`, `PUBLIC_INTEGRATION_DOC_PATHS`,
+`PUBLIC_SHORTCUT_PATHS` and `RELEASE_SKILL_FILES` govern inclusion;
 a file existing in a development checkout does not prove it is packaged.
 
 The existing packaging/static checks mostly use temporary fixture source trees;
@@ -663,7 +663,12 @@ the exact reference allowlist:
     .venv/bin/python -m pytest tests/test_release_archive.py -q
 
 They validate allowlisting, exact manifest coverage, reproducibility and unsafe
-archive rejection. They do not certify current runtime behavior or reproduce a
+archive rejection. Shortcut packaging fixtures use synthetic bytes: they check
+the exact pair, preservation, missing-file errors and exclusion of unrelated
+exports, including compatibility with archives that predate the pair. Before
+distributing real shortcuts, separately inspect their actions and metadata and
+check importability in Shortcuts. The packaging tests do not establish those
+properties. They do not certify current runtime behavior or reproduce a
 historical release. Inspect actual source selection as well when documenting
 packaging; do not build/upload a release or run inference merely to validate prose.
 No standalone repository-wide Markdown-link validator is currently provided.

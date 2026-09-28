@@ -270,7 +270,13 @@ def _make_release_source(tmp_path: Path) -> Path:
         _write(source / research_path, '{}\n' if research_path.suffix == '.json' else '# Research source fixture\n')
     for integration_doc in release.PUBLIC_INTEGRATION_DOC_PATHS:
         _write(source / integration_doc, '# Public integration setup\n')
+    for shortcut in release.PUBLIC_SHORTCUT_PATHS:
+        target = source / shortcut
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # Packaging-only bytes: never used as an importable Apple workflow.
+        target.write_bytes(b'\x00synthetic packaging fixture: ' + shortcut.name.encode())
     _write(source / 'fruth_integrations/shortcuts/private-note.md', '# Private note\n')
+    _write(source / 'fruth_integrations/shortcuts/private.shortcut', 'Private export\n')
     _write(source / 'fruth_research/candidates/candidates.jsonl', '{"internal_only": true}\n')
     _write(source / 'fruth_research/retained-evidence/gold-core-v0/files/private.bin', 'private retained bytes\n')
     _write(source / '.env', 'SHOULD_NOT_ENTER_ARCHIVE=1\n')
@@ -299,6 +305,9 @@ def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> No
     assert all((staged_root / path).is_file() for path in release.RESEARCH_SOURCE_FILES)
     assert (staged_root / 'fruth_integrations/shortcuts/README.md').is_file()
     assert not (staged_root / 'fruth_integrations/shortcuts/private-note.md').exists()
+    assert not (staged_root / 'fruth_integrations/shortcuts/private.shortcut').exists()
+    for shortcut in release.PUBLIC_SHORTCUT_PATHS:
+        assert (staged_root / shortcut).read_bytes() == (source / shortcut).read_bytes()
     assert not (staged_root / 'fruth_research/candidates/candidates.jsonl').exists()
     assert not (staged_root / 'fruth_research/retained-evidence').exists()
     assert not (staged_root / 'logs').exists()
@@ -476,6 +485,64 @@ def test_pcc_setup_guide_is_required(tmp_path: Path) -> None:
     (source / 'fruth_integrations/shortcuts/README.md').unlink()
     with pytest.raises(release.ReleaseArchiveError, match='Required regular file'):
         release.build_release_archive(source_root=source, output_dir=tmp_path / 'dist')
+
+
+@pytest.mark.parametrize(
+    'shortcut', sorted(release.PUBLIC_SHORTCUT_PATHS), ids=lambda item: item.name,
+)
+def test_each_pcc_shortcut_is_required_for_new_builds(tmp_path: Path, shortcut: Path) -> None:
+    source = _make_release_source(tmp_path)
+    (source / shortcut).unlink()
+    with pytest.raises(release.ReleaseArchiveError, match='Required regular file'):
+        release.build_release_archive(source_root=source, output_dir=tmp_path / 'dist')
+
+
+@pytest.mark.parametrize(
+    'shortcut', sorted(release.PUBLIC_SHORTCUT_PATHS), ids=lambda item: item.name,
+)
+def test_verify_rejects_partial_pcc_shortcut_pair(tmp_path: Path, shortcut: Path) -> None:
+    source = _make_release_source(tmp_path)
+    result = release.build_release_archive(source_root=source, output_dir=tmp_path / 'dist')
+    staged_root = Path(str(result['staging_root']))
+    (staged_root / shortcut).unlink()
+    (staged_root / release.MANIFEST_NAME).unlink()
+    release.write_manifest(staged_root)
+    archive = tmp_path / 'partial-shortcuts.tar.gz'
+    release.write_deterministic_archive(staged_root, archive)
+    with pytest.raises(release.ReleaseArchiveError, match='both PCC shortcuts'):
+        release.verify_archive(archive)
+
+
+def test_verify_accepts_legacy_archive_without_pcc_shortcuts(tmp_path: Path) -> None:
+    source = _make_release_source(tmp_path)
+    result = release.build_release_archive(source_root=source, output_dir=tmp_path / 'dist')
+    staged_root = Path(str(result['staging_root']))
+    for shortcut in release.PUBLIC_SHORTCUT_PATHS:
+        (staged_root / shortcut).unlink()
+    (staged_root / release.MANIFEST_NAME).unlink()
+    release.write_manifest(staged_root)
+    archive = tmp_path / 'legacy-without-shortcuts.tar.gz'
+    release.write_deterministic_archive(staged_root, archive)
+    release.verify_archive(archive)
+
+
+@pytest.mark.parametrize(
+    'relative_path',
+    [Path('fruth_integrations/shortcuts/private.shortcut'), Path('static/private.SHORTCUT')],
+)
+def test_verify_rejects_unlisted_shortcut_even_with_manifest(
+    tmp_path: Path, relative_path: Path,
+) -> None:
+    source = _make_release_source(tmp_path)
+    result = release.build_release_archive(source_root=source, output_dir=tmp_path / 'dist')
+    staged_root = Path(str(result['staging_root']))
+    _write(staged_root / relative_path, 'Private export\n')
+    (staged_root / release.MANIFEST_NAME).unlink()
+    release.write_manifest(staged_root)
+    archive = tmp_path / 'unlisted-shortcut.tar.gz'
+    release.write_deterministic_archive(staged_root, archive)
+    with pytest.raises(release.ReleaseArchiveError, match='non-public shortcut'):
+        release.verify_archive(archive)
 
 
 @pytest.mark.parametrize(

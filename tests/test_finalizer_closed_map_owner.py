@@ -82,7 +82,7 @@ def test_one_real_selection_proof_two_reuses_and_registry_bytes(stable):
         verified_epoch=epoch, frames_dir=frames, registry_path=path.with_suffix('.ordinary'),
     )
     with patch.object(registry, 'verify_response_frame_epoch', wraps=registry.verify_response_frame_epoch) as verify, \
-         patch.object(rf, '_response_map_digest', wraps=rf._response_map_digest) as digest, \
+         patch.object(rf, '_index_response_map_digest', wraps=rf._index_response_map_digest) as digest, \
          patch.object(rf, '_read_indexed_response_frame', wraps=rf._read_indexed_response_frame) as row, \
          patch.object(rf, '_read_observation_snapshot_bytes', wraps=rf._read_observation_snapshot_bytes) as cas, \
          patch.object(rf, 'state_flow_note', wraps=rf.state_flow_note) as note:
@@ -226,7 +226,9 @@ def test_guard_is_fixed_cost_without_map_access_io_or_digest(stable, entries):
                  patch.object(Path, 'open', side_effect=AssertionError('open')), \
                  patch.object(rf, '_response_frame_file_state', wraps=rf._response_frame_file_state) as stat:
                 assert proof._matches(context, index, stable[0], stable[0]/'responses.jsonl', 'hydration')
-                assert stat.call_count == 3
+                # SQLite adds fixed physical DB/checkpoint/selector bindings;
+                # both the 1-entry and 10,000-entry maps retain the same count.
+                assert stat.call_count == (7 if index.get('storage_backend') == 'sqlite' else 3)
         finally:
             index['responses'] = original; index['response_map_entry_count'] = count
             proof._FinalizerMapProof__responses = original; proof._FinalizerMapProof__header = header
@@ -235,6 +237,7 @@ def test_guard_is_fixed_cost_without_map_access_io_or_digest(stable, entries):
         assert run(stable)['status'] == 'appended'
 
 
+@pytest.mark.legacy_response_index
 @pytest.mark.parametrize('source', ['current_index.json', 'responses.jsonl'])
 @pytest.mark.parametrize('mutation', ['append', 'replace', 'same_size', 'move'])
 @pytest.mark.parametrize('seam', ['hydration', 'retention'])
@@ -392,7 +395,7 @@ def test_reentrant_registration_cannot_borrow_foreign_proof(stable):
 
 def test_ordinary_wrappers_never_accept_finalizer_proof(stable):
     epoch = rf.verify_response_frame_epoch(frames_dir=stable[0]); index = epoch['index_state']
-    with patch.object(rf, '_response_map_digest', wraps=rf._response_map_digest) as digest:
+    with patch.object(rf, '_index_response_map_digest', wraps=rf._index_response_map_digest) as digest:
         rf.select_graph_rebase_observation_response_ids(frames_dir=stable[0], index_state=index)
         assert digest.call_count == 1
         rf.load_latest_response_observation_state('reuse-response', frames_dir=stable[0], index_state=index)
@@ -412,6 +415,7 @@ def test_public_signatures_and_single_private_bind_callsite():
     proof = rf._FinalizerMapProof()
     assert not rf._finalizer_map_proof_matches((proof, object(), object(), {}), {}, Path('.'), Path('responses.jsonl'), 'hydration')
 
+@pytest.mark.legacy_response_index
 @pytest.mark.parametrize('mutation', ['missing_coverage','bad_count','bad_digest','malformed_index'])
 def test_real_verifier_rejects_malformed_index_before_proof(stable, mutation):
     path = stable[0] / 'current_index.json'
@@ -460,7 +464,7 @@ def test_relative_paths_preserve_reuse_or_existing_rebound_fallback(stable, monk
     if not rebound:
         frames = Path('relative_frames')
         rf.persist_response_frame(frame(), frames_dir=frames)
-    with patch.object(rf, '_response_map_digest', wraps=rf._response_map_digest) as digest:
+    with patch.object(rf, '_index_response_map_digest', wraps=rf._index_response_map_digest) as digest:
         assert run((frames, stable[1], Path('registry.jsonl')))['status'] == 'appended'
     assert digest.call_count == (5 if rebound else 2)
 

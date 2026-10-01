@@ -1207,6 +1207,30 @@ def _finalize_response_frame_payload(
     registry_outcome = {'status': 'not_attempted'}
     if persist and not app.config.get("TESTING"):
         step_started_at = time.perf_counter()
+        # Migration guidance precedes Artifact Registry or Response Ledger writes.
+        # This read-only preflight never initializes/migrates storage.
+        from fruth_services.response_frames import check_response_frame_index_write
+        try:
+            check_response_frame_index_write(frames_dir=RESPONSE_FRAMES_DIR)
+        except Exception as exc:  # noqa: BLE001
+            receipt = {
+                'kind': 'fruth.response_persistence', 'version': 1,
+                'status': 'not_committed', 'stage': 'prepare', 'index_status': 'not_attempted',
+                'automatic_retry': False,
+                'artifact_registry': {'status': 'not_attempted'},
+                'error': {'code': getattr(exc, 'code', 'response_frame_persistence_failed'),
+                          'message': str(exc), 'errno': getattr(exc, 'errno', None)},
+            }
+            failed_payload = attach_persistence_failure(framed_payload, receipt)
+            _publish_finalize_timing(failed_payload)
+            failed_payload = _attach_response_status_semantics(failed_payload)
+            _ensure_response_lookup_for_payload(failed_payload, mode_hint='chat')
+            _touch_response_lookup(
+                str(failed_payload.get('id') or '').strip(), status='incomplete',
+                output_text=str(failed_payload.get('output_text') or ''),
+                error_message=failed_payload['error']['message'], response_payload=failed_payload,
+            )
+            raise ResponsePersistenceError(failed_payload) from exc
         try:
             _persist_output_artifact_registry_records(
                 framed_payload,
@@ -2416,7 +2440,9 @@ def _response_wire_payload_from_index(
     include_observation: bool = False,
 ) -> tuple[Optional[dict[str, Any]], dict[str, Any]]:
     normalized_id = _normalize_response_lookup_id(response_id)
-    index_state = _load_response_frame_index(frames_dir=RESPONSE_FRAMES_DIR)
+    index_state = _load_response_frame_index(
+        frames_dir=RESPONSE_FRAMES_DIR, response_id=normalized_id,
+    )
     state = _load_latest_response_wire_state(
         normalized_id,
         frames_dir=RESPONSE_FRAMES_DIR,

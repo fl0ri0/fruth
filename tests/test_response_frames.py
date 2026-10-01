@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import pytest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -7742,6 +7743,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(second_entry["frame_relation"]["kind"], "late_fill_successor")
         self.assertEqual(second_entry["frame_relation"]["parent_frame_id"], ledger_lines[0]["frame_id"])
 
+    @pytest.mark.legacy_response_index
     def test_response_frame_append_repairs_legacy_line_count_drift(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -8871,6 +8873,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(second_state["response_payload"]["output_text"], body)
         self.assertEqual(temp_residue, [])
 
+    @pytest.mark.legacy_response_index
     def test_atomic_index_replace_failure_preserves_prior_verified_index(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -9714,6 +9717,7 @@ class ResponseFrameTests(unittest.TestCase):
             "insufficient",
         )
 
+    @pytest.mark.legacy_response_index
     def test_load_latest_response_state_uses_index_and_falls_back_safely(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -9831,6 +9835,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertTrue(state["error"]["index_used"])
         self.assertFalse(state["error"]["ledger_fallback_used"])
 
+    @pytest.mark.legacy_response_index
     def test_load_latest_response_state_scans_when_response_map_coverage_is_unverified(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -9867,6 +9872,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertGreaterEqual(iter_ledger.call_count, 1)
         self.assertEqual(state["response_payload"]["id"], hidden_response_id)
 
+    @pytest.mark.legacy_response_index
     def test_eof_fresh_unverified_index_cannot_hide_newer_response_frame(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -9957,6 +9963,7 @@ class ResponseFrameTests(unittest.TestCase):
             "response_frame_index_unverified",
         )
 
+    @pytest.mark.legacy_response_index
     def test_attest_response_frame_index_streams_and_preserves_legacy_entries_exactly(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -10034,6 +10041,7 @@ class ResponseFrameTests(unittest.TestCase):
         )
         atomic_replace.assert_called_once()
 
+    @pytest.mark.legacy_response_index
     def test_attest_response_frame_index_rejects_incomplete_legacy_map_without_writing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -10074,6 +10082,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(result["error"]["code"], "response_frame_index_response_set_mismatch")
         self.assertEqual(after, before)
 
+    @pytest.mark.legacy_response_index
     def test_attest_response_frame_index_rejects_latest_coordinate_mismatch_without_writing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -10112,6 +10121,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(result["error"]["code"], "response_frame_index_latest_entry_mismatch")
         self.assertEqual(after, before)
 
+    @pytest.mark.legacy_response_index
     def test_attest_response_frame_index_rejects_malformed_ledger_without_writing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -10155,6 +10165,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(result["error"]["code"], "response_frame_ledger_malformed")
         self.assertEqual(after, before)
 
+    @pytest.mark.legacy_response_index
     def test_attest_response_frame_index_rejects_moving_ledger_and_index_evidence(self):
         for moving_target in ("ledger", "index"):
             with self.subTest(moving_target=moving_target), tempfile.TemporaryDirectory() as tmpdir:
@@ -10206,6 +10217,7 @@ class ResponseFrameTests(unittest.TestCase):
                 self.assertEqual(result["error"]["code"], f"response_frame_{moving_target}_moved")
                 self.assertEqual(json.loads(index_path.read_bytes())["version"], 1)
 
+    @pytest.mark.legacy_response_index
     def test_response_frame_index_attestation_script_updates_only_exact_temp_fixture(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -10254,6 +10266,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(attested["version"], 2)
         self.assertEqual(attested["response_map_entry_count"], 1)
 
+    @pytest.mark.legacy_response_index
     def test_attest_response_frame_index_supports_temp_index_with_symlinked_source_ledger(self):
         with tempfile.TemporaryDirectory() as source_tmpdir, tempfile.TemporaryDirectory() as index_tmpdir:
             source_frames_dir = Path(source_tmpdir)
@@ -10302,6 +10315,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(source_index_after, source_index_before)
         self.assertEqual(source_ledger_after, source_ledger_before)
 
+    @pytest.mark.legacy_response_index
     def test_load_latest_response_state_rejects_stale_but_valid_index(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -10345,6 +10359,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(state["response_payload"]["artifacts"][0]["path"], "/tmp/generated/stale-index.png")
         self.assertEqual(state["response_frame"]["frame_relation"]["kind"], "late_fill_successor")
 
+    @pytest.mark.legacy_response_index
     def test_persist_response_frame_rejects_stale_index_parent_before_append(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -10404,6 +10419,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(ledger_lines[2]["frame_relation"]["parent_frame_id"], ledger_lines[1]["frame_id"])
         self.assertEqual(latest_state["response_frame"]["frame_sequence"], 3)
 
+    @pytest.mark.legacy_response_index
     def test_load_latest_response_state_falls_back_when_index_points_to_missing_frame(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -10448,6 +10464,7 @@ class ResponseFrameTests(unittest.TestCase):
         self.assertEqual(state["response_frame"]["frame_sequence"], 2)
         self.assertEqual(state["response_payload"]["artifacts"][0]["path"], "/tmp/generated/missing-index.png")
 
+    @pytest.mark.legacy_response_index
     def test_load_latest_response_state_tolerates_mixed_corrupt_ledger_lines(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)

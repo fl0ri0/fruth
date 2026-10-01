@@ -179,7 +179,10 @@ Lifecycle:
 This is a logical lifecycle, not a cross-store transaction. Artifact bytes exist
 before fulfillment review. Readiness is secondary evidence and remains synchronous
 after canonical persistence; it does not grant completion or operator authority.
-Ordinary finalizer persistence failures are currently logged rather than propagated.
+Unconfirmed finalizer persistence raises a typed storage failure, retaining the
+candidate frame and saved outputs while blocking delivery/continuation and
+automatic retries. Confirmed Ledger commits survive failed Index publication;
+Artifact Registry and Index outcomes are reported separately.
 See [Finalization and durable completion](RESPONSES_CONTRACT.md#finalization-and-durable-completion)
 for the actual persistence and failure boundary.
 

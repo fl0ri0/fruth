@@ -31,6 +31,7 @@ from fruth_services.redraw_scope import (
     canonicalize_duplicate_artifact_refs,
 )
 from fruth_services import response_wire as _response_wire_policy
+from fruth_services import response_index_sqlite as _sqlite_index
 from fruth_services.responses import (
     build_canonical_response_artifacts,
     build_canonical_outputs,
@@ -1699,7 +1700,9 @@ def _index_path(
     frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
     index_name: str = DEFAULT_RESPONSE_FRAME_INDEX,
 ) -> Path:
-    return Path(frames_dir) / (str(index_name or '').strip() or DEFAULT_RESPONSE_FRAME_INDEX)
+    return _sqlite_index.selected_path(
+        Path(frames_dir), str(index_name or '').strip() or DEFAULT_RESPONSE_FRAME_INDEX,
+    )
 
 
 def _frame_response_id(response_frame: Mapping[str, Any]) -> str:
@@ -2397,6 +2400,20 @@ def _response_frame_index_is_fresh(
         return False
     if not _response_frame_index_targets_ledger(index_state, ledger_path):
         return False
+    if index_state.get('storage_backend') == 'sqlite':
+        if index_state.get('sqlite_active_generation') is not True:
+            return False
+        if '_sqlite_lookup_proof' in index_state:
+            return _sqlite_index.lookup_proof_matches(index_state, ledger_path)
+        if (index_state.get('sqlite_ledger_state') != _response_frame_file_state(ledger_path)
+                or index_state.get('sqlite_database_identity') != _sqlite_index.identity(
+                    _response_frame_file_state(Path(str(index_state.get('index_path') or ''))))
+                or index_state.get('sqlite_index_state') != _response_frame_file_state(
+                    Path(str(index_state.get('index_path') or '')))
+                or index_state.get('sqlite_checkpoint_index_state') != index_state.get('sqlite_index_state')
+                or index_state.get('sqlite_selector_state') != _response_frame_file_state(
+                    ledger_path.parent / _sqlite_index.SELECTOR_NAME)):
+            return False
     indexed_size = _coerce_frame_sequence(index_state.get('ledger_size_bytes'))
     actual_size = ledger_path.stat().st_size if ledger_path.exists() else None
     return indexed_size is not None and actual_size is not None and indexed_size == actual_size
@@ -2408,6 +2425,8 @@ def _response_frame_index_has_verified_map_header(
 ) -> bool:
     """Check the ordinary fixed-size coverage predicates, without proving the map."""
 
+    if '_sqlite_lookup_proof' in index_state:
+        return False
     if not _response_frame_index_is_fresh(index_state, ledger_path):
         return False
     responses = index_state.get('responses')
@@ -2434,11 +2453,26 @@ def _response_frame_index_has_verified_response_map(
     ledger_path: Path,
 ) -> bool:
     """Return whether index absence is authoritative for the current ledger size."""
+    if '_sqlite_lookup_proof' in index_state:
+        return False
     return (
         _response_frame_index_has_verified_map_header(index_state, ledger_path)
         and str(index_state.get('response_map_digest') or '').strip()
-        == _response_map_digest(index_state['responses'])
+        == _index_response_map_digest(index_state, index_state['responses'])
     )
+
+
+def _index_response_map_digest(index_state, responses):
+    if index_state.get('storage_backend') == 'sqlite':
+        return hashlib.sha256(_sqlite_index.encode(responses)).hexdigest()
+    return _response_map_digest(responses)
+
+
+def _response_frame_index_proves_response(index_state, ledger_path, response_id):
+    """A scoped proof cannot prove another key or enumerate the whole map."""
+    if '_sqlite_lookup_proof' in index_state:
+        return _sqlite_index.lookup_proof_matches(index_state, ledger_path, response_id)
+    return _response_frame_index_has_verified_response_map(index_state, ledger_path)
 
 
 @timed_operation('index_parent_frame_stub', role='canonical_parent_lookup')
@@ -2448,19 +2482,22 @@ def _index_parent_frame_stub(
     frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
     ledger_name: str = DEFAULT_RESPONSE_FRAME_LEDGER,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    index_state = load_response_frame_index(frames_dir=frames_dir)
+    index_state = load_response_frame_index(
+        frames_dir=frames_dir, response_id=response_id, ledger_name=ledger_name,
+    )
     mutable_index_state = dict(index_state)
     responses = index_state.get('responses') if isinstance(index_state.get('responses'), Mapping) else {}
     entry = responses.get(response_id) if isinstance(responses, Mapping) else None
     if not index_state.get('ok') or not isinstance(entry, Mapping):
-        mutable_index_state['_response_index_entry_missing'] = True
+        if index_state.get('storage_backend') != 'sqlite':
+            mutable_index_state['_response_index_entry_missing'] = True
         return [], mutable_index_state
     ledger_path = Path(str(entry.get('ledger_path') or '').strip() or _ledger_path(frames_dir=frames_dir, ledger_name=ledger_name))
     expected_path = _ledger_path(frames_dir=frames_dir, ledger_name=ledger_name)
     if ledger_path.name != expected_path.name:
         mutable_index_state['_response_index_entry_stale'] = True
         return [], mutable_index_state
-    if not _response_frame_index_has_verified_response_map(index_state, expected_path):
+    if not _response_frame_index_proves_response(index_state, expected_path, response_id):
         mutable_index_state['_response_index_entry_stale'] = True
         return [], mutable_index_state
     frame_id = str(entry.get('latest_frame_id') or '').strip()
@@ -5370,6 +5407,29 @@ def compact_response_frame_for_ledger(
     return _json_safe(frame)
 
 
+def _response_frame_index_entry(
+    frame: Mapping[str, Any], *, ledger_path: Path, line_offset: int,
+    byte_offset: int, line_length: int, ledger_size_bytes: int,
+    effective_snapshot_manifest: Mapping[str, Any], source_frame_sha256: str,
+) -> dict[str, Any]:
+    current = frame.get('current_state') if isinstance(frame.get('current_state'), Mapping) else {}
+    entry = _json_safe({
+        'response_id': _frame_response_id(frame),
+        'latest_frame_id': str(frame.get('frame_id') or '').strip(),
+        'latest_frame_sequence': frame.get('frame_sequence'),
+        'frame_relation': frame.get('frame_relation'),
+        'ledger_path': str(ledger_path), 'ledger_name': ledger_path.name,
+        'line_offset': line_offset, 'byte_offset': byte_offset,
+        'line_length': line_length, 'ledger_size_bytes': ledger_size_bytes,
+        'current_lifecycle_state': current.get('lifecycle_state'),
+        'updated_at': current.get('updated_at'), 'source_frame_sha256': source_frame_sha256,
+    })
+    # An explicitly empty verified manifest is meaningful: no inherited refs
+    # need recovery. It is not a missing/unknown parent manifest.
+    entry['effective_snapshot_manifest'] = _json_safe(effective_snapshot_manifest)
+    return entry
+
+
 @timed_operation('write_response_frame_index', role='derived_recovery_index')
 @observe_state('response_index.write', 'ledger_representation', 'response_index', labels=('NEW_REPRESENTATION',))
 def _write_response_frame_index(
@@ -5383,11 +5443,63 @@ def _write_response_frame_index(
     frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
     index_name: str = DEFAULT_RESPONSE_FRAME_INDEX,
     effective_snapshot_manifest: Optional[Mapping[str, Any]] = None,
+    prior_ledger_state: Optional[Mapping[str, int]] = None,
+    source_frame_sha256: str | None = None,
 ) -> None:
     response_id = _frame_response_id(enriched_frame)
     if not response_id:
         return
     target = _index_path(frames_dir=frames_dir, index_name=index_name)
+    selected = _sqlite_index.selection(Path(frames_dir)) if index_name == DEFAULT_RESPONSE_FRAME_INDEX else None
+    if selected and selected['backend'] == 'sqlite':
+        if byte_offset is None or line_length is None or ledger_size_bytes is None or not source_frame_sha256:
+            raise _sqlite_index.IndexInvalid('SQLite publication requires exact committed Ledger coordinates.')
+        entry = _response_frame_index_entry(
+            enriched_frame, ledger_path=ledger_path, line_offset=line_offset,
+            byte_offset=byte_offset, line_length=line_length, ledger_size_bytes=ledger_size_bytes,
+            effective_snapshot_manifest=effective_snapshot_manifest or {},
+            source_frame_sha256=source_frame_sha256,
+        )
+        checkpoint_digest = _sqlite_index.update(
+            target, selected=selected, entry=entry, ledger_path=ledger_path,
+            prior_ledger_state=dict(prior_ledger_state) if prior_ledger_state else None,
+            ledger_state=_response_frame_file_state(ledger_path), line_count=line_offset + 1,
+        )
+        # The fixed-size selector seals the independently established coverage.
+        # A transaction can neither forge that proof nor atomically append the
+        # separate Ledger. Failure here leaves a committed, unpublished frame.
+        selected['metadata_sha256'] = checkpoint_digest
+        selected['index_state'] = _sqlite_index.file_state(target)
+        _atomic_replace_file_bytes(
+            Path(frames_dir) / _sqlite_index.SELECTOR_NAME,
+            _sqlite_index.encode(selected) + b'\n',
+        )
+        return
+    if index_name == DEFAULT_RESPONSE_FRAME_INDEX:
+        raise ResponseFrameIndexMigrationRequired(Path(frames_dir))
+    # Explicit alternate JSON export/compatibility files only. Normal response
+    # writers always publish the selected SQLite generation.
+    _write_legacy_response_frame_index(
+        enriched_frame, ledger_path=ledger_path, line_offset=line_offset,
+        byte_offset=byte_offset, line_length=line_length, ledger_size_bytes=ledger_size_bytes,
+        frames_dir=frames_dir, index_name=index_name,
+        effective_snapshot_manifest=effective_snapshot_manifest,
+    )
+
+
+def _write_legacy_response_frame_index(
+    enriched_frame: Mapping[str, Any], *, ledger_path: Path, line_offset: int,
+    byte_offset: int | None = None, line_length: int | None = None,
+    ledger_size_bytes: int | None = None,
+    frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
+    index_name: str = DEFAULT_RESPONSE_FRAME_INDEX,
+    effective_snapshot_manifest: Optional[Mapping[str, Any]] = None,
+) -> None:
+    """Explicit legacy/export publisher; never choose or activate a backend."""
+    response_id = _frame_response_id(enriched_frame)
+    target = Path(frames_dir) / index_name
+    if target.suffix != '.json':
+        raise ValueError('Legacy Index export requires a JSON filename.')
     index_payload: dict[str, Any] = {}
     prior_index_loaded = False
     if target.exists():
@@ -5522,8 +5634,34 @@ def load_response_frame_index(
     *,
     frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
     index_name: str = DEFAULT_RESPONSE_FRAME_INDEX,
+    response_id: str | None = None,
+    ledger_name: str | None = None,
+    allow_legacy_index: bool = False,
 ) -> dict[str, Any]:
     target = _index_path(frames_dir=frames_dir, index_name=index_name)
+    try:
+        selected = _sqlite_index.selection(Path(frames_dir)) if index_name == DEFAULT_RESPONSE_FRAME_INDEX else None
+        if target.suffix == '.sqlite3':
+            result = _sqlite_index.read(
+                target,
+                ledger_path=_ledger_path(frames_dir=frames_dir, ledger_name=(
+                    ledger_name or (selected or {}).get('ledger_name') or DEFAULT_RESPONSE_FRAME_LEDGER)),
+                selected=selected, response_id=response_id,
+            )
+            return result
+        if not allow_legacy_index:
+            root = Path(frames_dir)
+            ledger = _ledger_path(frames_dir=root, ledger_name=ledger_name or DEFAULT_RESPONSE_FRAME_LEDGER)
+            if selected or target.exists() or (ledger.exists() and ledger.stat().st_size):
+                exc = ResponseFrameIndexMigrationRequired(root)
+                return {'ok': False, 'migration_required': True, 'index_path': str(target), 'responses': {},
+                        'error': {'code': exc.code, 'message': str(exc)}}
+            return {'ok': False, 'missing': True, 'index_path': str(target), 'responses': {}}
+    except (OSError, ValueError, KeyError, TypeError, _sqlite_index.sqlite3.Error) as exc:
+        return {
+            'ok': False, 'corrupt': True, 'index_path': str(target), 'responses': {},
+            'error': {'code': 'response_frame_index_unverified', 'message': str(exc)},
+        }
     if not target.exists():
         return {'ok': False, 'missing': True, 'index_path': str(target), 'responses': {}}
     try:
@@ -5783,9 +5921,18 @@ def _stable_response_frame_index_snapshot(
             'message': 'Response-frame index does not exist.',
         }
     try:
-        with index_path.open('rb') as handle:
-            raw = handle.read()
-    except OSError as exc:
+        if index_path.suffix == '.sqlite3':
+            selected = _sqlite_index.selection(index_path.parent)
+            payload = _sqlite_index.read(
+                index_path, ledger_path=index_path.parent / (
+                    (selected or {}).get('ledger_name') or DEFAULT_RESPONSE_FRAME_LEDGER),
+                selected=selected, require_binding=False,
+            )
+            raw = _sqlite_index.encode(payload)
+        else:
+            with index_path.open('rb') as handle:
+                raw = handle.read()
+    except (OSError, ValueError, KeyError, TypeError, _sqlite_index.sqlite3.Error) as exc:
         return None, None, {
             'code': 'response_frame_index_read_failed',
             'message': str(exc),
@@ -5801,6 +5948,8 @@ def _stable_response_frame_index_snapshot(
 
 def _scan_response_frame_ledger_index_truth(
     ledger_path: Path,
+    *,
+    include_entries: bool = False,
 ) -> dict[str, Any]:
     """Stream the ledger once and retain only each response's latest coordinates."""
 
@@ -5818,6 +5967,9 @@ def _scan_response_frame_ledger_index_truth(
     byte_offset = 0
     ledger_hasher = hashlib.sha256()
     epoch_anchor: dict[str, Any] = {}
+    entries: dict[str, dict[str, Any]] = {}
+    manifests_by_frame_id: dict[tuple[str, str], dict[str, Any]] = {}
+    chain_digest = _sqlite_index.CHAIN_SEED
     try:
         with ledger_path.open('rb') as handle:
             opened_stat = os.fstat(handle.fileno())
@@ -5844,6 +5996,12 @@ def _scan_response_frame_ledger_index_truth(
                 line_offset = line_count
                 line_count += 1
                 line_length = len(raw_line)
+                if not raw_line.endswith(b'\n'):
+                    return {'ok': False, 'error': {
+                        'code': 'response_frame_ledger_unterminated_tail',
+                        'message': 'Canonical Ledger scan requires a terminated physical row.',
+                        'line_offset': line_offset, 'byte_offset': byte_offset,
+                    }}
                 if raw_line.isspace():
                     return {
                         'ok': False,
@@ -5902,14 +6060,31 @@ def _scan_response_frame_ledger_index_truth(
                         'frame_sequence': frame_sequence,
                         'source_frame_sha256': hashlib.sha256(raw_line).hexdigest(),
                     }
+                source_frame_sha256 = hashlib.sha256(raw_line).hexdigest()
+                chain_digest = _sqlite_index.advance_chain(chain_digest, source_frame_sha256)
                 latest_by_response[response_id] = {
                     'latest_frame_id': frame_id,
                     'latest_frame_sequence': frame_sequence,
                     'line_offset': line_offset,
                     'byte_offset': byte_offset,
                     'line_length': line_length,
-                    'source_frame_sha256': hashlib.sha256(raw_line).hexdigest(),
+                    'source_frame_sha256': source_frame_sha256,
                 }
+                if include_entries:
+                    relation = frame.get('frame_relation') if isinstance(frame.get('frame_relation'), Mapping) else {}
+                    parent_id = str(relation.get('parent_frame_id') or '').strip()
+                    previous = entries.get(response_id, {})
+                    parent_manifest = manifests_by_frame_id.get(
+                        (response_id, parent_id), previous.get('effective_snapshot_manifest', {}) if parent_id else {},
+                    )
+                    effective = _effective_snapshot_manifest(frame, parent_manifest=parent_manifest)
+                    manifests_by_frame_id[(response_id, frame_id)] = effective
+                    entries[response_id] = _response_frame_index_entry(
+                        frame, ledger_path=ledger_path, line_offset=line_offset,
+                        byte_offset=byte_offset, line_length=line_length,
+                        ledger_size_bytes=byte_offset + line_length,
+                        effective_snapshot_manifest=effective, source_frame_sha256=source_frame_sha256,
+                    )
                 byte_offset += line_length
                 del frame
             closed_stat = os.fstat(handle.fileno())
@@ -5948,6 +6123,8 @@ def _scan_response_frame_ledger_index_truth(
         'ledger_line_count': line_count,
         'ledger_sha256': ledger_hasher.hexdigest(),
         'epoch_anchor': epoch_anchor,
+        'entries': entries,
+        'ledger_chain_digest': chain_digest,
     }
 
 
@@ -6040,6 +6217,13 @@ def attest_response_frame_index(
 
     ledger_path = _ledger_path(frames_dir=frames_dir, ledger_name=ledger_name)
     index_path = _index_path(frames_dir=frames_dir, index_name=index_name)
+    if index_path.suffix == '.sqlite3':
+        result = verify_response_frame_epoch(
+            frames_dir=frames_dir, ledger_name=ledger_name, index_name=index_name,
+        )
+        result.pop('index_state', None)
+        result.update(changed=False, mode='write' if write else 'check_only')
+        return result
     with _RESPONSE_FRAME_APPEND_LOCK:
         raw_index, index_start_state, index_read_error = _stable_response_frame_index_snapshot(
             index_path
@@ -6292,6 +6476,7 @@ def verify_response_frame_epoch(
     ledger_name: str = DEFAULT_RESPONSE_FRAME_LEDGER,
     index_name: str = DEFAULT_RESPONSE_FRAME_INDEX,
     allow_relocated: bool = False,
+    allow_legacy_index: bool = False,
 ) -> dict[str, Any]:
     """Verify one complete response-frame epoch without mutating its index.
 
@@ -6328,25 +6513,50 @@ def verify_response_frame_epoch(
         }
 
     with _RESPONSE_FRAME_APPEND_LOCK:
-        raw_index, index_start_state, index_error = _stable_response_frame_index_snapshot(
-            index_path
+        if index_path.suffix != '.sqlite3' and not allow_legacy_index:
+            inspected = load_response_frame_index(frames_dir=resolved_frames_dir,
+                                                   ledger_name=ledger_name, index_name=index_name)
+            error = inspected.get('error') or {'code': 'response_frame_index_missing',
+                                               'message': 'Response-frame Index does not exist.'}
+            return rejected(error['code'], error['message'])
+        selector_start_state = _response_frame_file_state(
+            resolved_frames_dir / _sqlite_index.SELECTOR_NAME,
         )
-        if index_error is not None or raw_index is None or index_start_state is None:
-            error = index_error or {
-                'code': 'response_frame_index_read_failed',
-                'message': 'Response-frame index could not be read.',
-            }
-            return rejected(
-                str(error.get('code') or 'response_frame_index_read_failed'),
-                str(error.get('message') or 'Response-frame index could not be read.'),
-            )
-        index_sha256 = hashlib.sha256(raw_index).hexdigest()
-        try:
-            index_payload = json.loads(raw_index)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            return rejected('response_frame_index_corrupt', str(exc))
-        finally:
-            del raw_index
+        if index_path.suffix == '.sqlite3':
+            index_start_state = _response_frame_file_state(index_path)
+            try:
+                # One full authenticated audit. Keep its private mapping rather
+                # than encode/decode the entire compatibility projection twice.
+                # Relocation still requires complete Ledger correspondence below.
+                index_payload = _sqlite_index.read(
+                    index_path, ledger_path=ledger_path,
+                    selected=_sqlite_index.selection(resolved_frames_dir),
+                    require_binding=False,
+                )
+            except (OSError, ValueError, KeyError, TypeError, _sqlite_index.sqlite3.Error) as exc:
+                return rejected('response_frame_index_read_failed', str(exc))
+            index_sha256 = _file_sha256(index_path)[0]
+            if (index_start_state is None or index_sha256 is None
+                    or _response_frame_file_state(index_path) != index_start_state
+                    or _response_frame_file_state(resolved_frames_dir / _sqlite_index.SELECTOR_NAME) != selector_start_state):
+                return rejected('response_frame_index_moved',
+                                'SQLite Index/selector changed during its verification audit.')
+        else:
+            raw_index, index_start_state, index_error = _stable_response_frame_index_snapshot(index_path)
+            if index_error is not None or raw_index is None or index_start_state is None:
+                error = index_error or {
+                    'code': 'response_frame_index_read_failed',
+                    'message': 'Response-frame index could not be read.',
+                }
+                return rejected(str(error.get('code') or 'response_frame_index_read_failed'),
+                                str(error.get('message') or 'Response-frame index could not be read.'))
+            index_sha256 = hashlib.sha256(raw_index).hexdigest()
+            try:
+                index_payload = json.loads(raw_index)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                return rejected('response_frame_index_corrupt', str(exc))
+            finally:
+                del raw_index
         if not isinstance(index_payload, dict):
             return rejected(
                 'response_frame_index_corrupt',
@@ -6398,8 +6608,14 @@ def verify_response_frame_epoch(
                 indexed_ledger_path=indexed_path_text,
                 relocated=relocated,
             )
+        if (index_path.suffix == '.sqlite3' and not allow_relocated
+                and not _response_frame_index_is_fresh(index_payload, ledger_path)):
+            return rejected('response_frame_index_epoch_mismatch',
+                            'SQLite coverage does not bind these physical Index/Ledger files.')
 
-        scan = _scan_response_frame_ledger_index_truth(ledger_path)
+        scan = _scan_response_frame_ledger_index_truth(
+            ledger_path, include_entries=index_path.suffix == '.sqlite3',
+        )
         if scan.get('ok') is not True:
             scan_error = scan.get('error') if isinstance(scan.get('error'), Mapping) else {}
             return rejected(
@@ -6445,7 +6661,7 @@ def verify_response_frame_epoch(
                     verified_value=expected,
                 )
         response_map_digest = str(index_payload.get('response_map_digest') or '').strip()
-        verified_response_map_digest = _response_map_digest(responses)
+        verified_response_map_digest = _index_response_map_digest(index_payload, responses)
         if not response_map_digest or response_map_digest != verified_response_map_digest:
             return rejected(
                 'response_frame_index_response_map_digest_mismatch',
@@ -6463,6 +6679,20 @@ def verify_response_frame_epoch(
                 missing_from_index=sorted(scanned_response_ids - indexed_response_ids),
                 absent_from_ledger=sorted(indexed_response_ids - scanned_response_ids),
             )
+        if index_path.suffix == '.sqlite3':
+            if (index_payload.get('ledger_chain_digest') != scan['ledger_chain_digest']
+                    or any(_sqlite_index.encode({**entry, 'ledger_path': str(ledger_path), 'ledger_name': ledger_path.name})
+                           != _sqlite_index.encode(scan['entries'][response_id])
+                           for response_id, entry in responses.items())):
+                return rejected(
+                    'response_frame_index_ledger_correspondence_mismatch',
+                    'SQLite authenticated map/coverage does not match complete Ledger truth.',
+                )
+            # The exact key set was checked above; comparing every canonical
+            # entry byte string is equivalent to comparing both whole-map byte
+            # strings. Completeness still comes from the authenticated tree and
+            # the complete Ledger scan, not from independent per-row hashes.
+            del scan['entries']
 
         coordinate_keys = (
             'latest_frame_id',
@@ -6511,14 +6741,24 @@ def verify_response_frame_epoch(
                 scanned_entry.get('source_frame_sha256') or ''
             ).strip()
 
-        end_raw, index_end_state, index_end_error = _stable_response_frame_index_snapshot(
-            index_path
-        )
+        if index_path.suffix == '.sqlite3':
+            # The same full DB digest and mutation-sensitive physical state
+            # prove that the audited tree is unchanged; a second decode/audit
+            # of identical DB bytes adds no correspondence evidence.
+            end_raw = b''
+            index_end_error = None
+            end_digest = _file_sha256(index_path)[0]
+            index_end_state = _response_frame_file_state(index_path)
+        else:
+            end_raw, index_end_state, index_end_error = _stable_response_frame_index_snapshot(index_path)
+            end_digest = hashlib.sha256(end_raw).hexdigest() if end_raw is not None else None
         if (
             index_end_error is not None
             or end_raw is None
             or index_end_state != index_start_state
-            or hashlib.sha256(end_raw).hexdigest() != index_sha256
+            or end_digest != index_sha256
+            or (index_path.suffix == '.sqlite3' and selector_start_state != _response_frame_file_state(
+                resolved_frames_dir / _sqlite_index.SELECTOR_NAME))
         ):
             return rejected(
                 'response_frame_index_moved',
@@ -6548,11 +6788,19 @@ def verify_response_frame_epoch(
             # path spelling) still requires a new digest. This does not reuse
             # file freshness evidence or bypass downstream map verification.
             'response_map_digest': (
-                _response_map_digest(rebound_responses)
+                _index_response_map_digest(index_payload, rebound_responses)
                 if response_map_rebound
                 else verified_response_map_digest
             ),
         })
+        if index_path.suffix == '.sqlite3':
+            rebound_index['sqlite_ledger_state'] = dict(ledger_state)
+            rebound_index['sqlite_index_state'] = dict(index_start_state)
+            rebound_index['sqlite_checkpoint_index_state'] = dict(index_start_state)
+            rebound_index['sqlite_database_identity'] = _sqlite_index.identity(dict(index_start_state))
+            rebound_index['sqlite_selector_state'] = _response_frame_file_state(
+                resolved_frames_dir / _sqlite_index.SELECTOR_NAME,
+            )
         return {
             'ok': True,
             'status': 'verified',
@@ -6858,6 +7106,49 @@ class ResponseFrameLedgerTailError(ValueError):
     code = 'response_frame_ledger_unterminated_tail'
 
 
+class ResponseFrameIndexMigrationRequired(ValueError):
+    code = 'response_frame_index_migration_required'
+
+    def __init__(self, frames_dir: Path):
+        super().__init__(
+            'SQLite is required for ordinary response writes. Preserve and verify a backup, '
+            'stop all response writers, then use scripts/migrate_response_frame_index.py '
+            f'migrate --frames-dir {str(frames_dir)!r} --check-only followed by --writers-stopped. '
+            'Use explicit rebuild for an uncertain source Index; never reset canonical history.'
+        )
+
+
+def check_response_frame_index_write(
+    *, frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
+    ledger_name: str = DEFAULT_RESPONSE_FRAME_LEDGER,
+) -> None:
+    """Read-only write preflight; initialization/recovery belongs to the writer.
+
+    A legacy/rollback root is an explicit migration input, never a runtime
+    backend. An existing canonical history without selection also needs an
+    explicit migration. Missing/damaged selected SQLite retains native recovery.
+    """
+    root = Path(frames_dir)
+    selected = _sqlite_index.selection(root)
+    ledger = _ledger_path(frames_dir=root, ledger_name=ledger_name)
+    if ((selected is not None and selected['backend'] != 'sqlite')
+            or (selected is None and ((root / _sqlite_index.LEGACY_NAME).exists()
+                                      or (root / _sqlite_index.LEGACY_NAME).is_symlink()
+                                      or ledger.is_symlink()
+                                      or (not ledger.exists() and any(
+                                          p.is_file() for p in (root / 'snapshots').rglob('*')))
+                                      or (ledger.exists() and ledger.stat().st_size > 0)))):
+        raise ResponseFrameIndexMigrationRequired(root)
+
+
+def _initialize_response_frame_index_locked(root: Path, ledger: Path) -> None:
+    """Caller owns both append locks and has passed the unmigrated-root guard."""
+    check_response_frame_index_write(frames_dir=root, ledger_name=ledger.name)
+    if _sqlite_index.selection(root) is None:
+        from fruth_services.response_index_maintenance import rebuild_sqlite_locked
+        rebuild_sqlite_locked(root, ledger)
+
+
 def _assert_response_frame_append_boundary(target: Path) -> None:
     """Never append a new JSON record onto an interrupted physical record.
 
@@ -6897,12 +7188,14 @@ def _persist_response_frame_locked(
         'index_status': 'not_attempted', 'automatic_retry': False,
     })
     try:
-        return _append_response_frame_locked(
-            response_frame, frames_dir=frames_dir, ledger_name=ledger_name,
-            expected_parent_frame_id=expected_parent_frame_id,
-            expected_parent_frame_sequence=expected_parent_frame_sequence,
-            receipt=outcome,
-        )
+        check_response_frame_index_write(frames_dir=frames_dir, ledger_name=ledger_name)
+        with _sqlite_index.writer_lock(Path(frames_dir)):
+            return _append_response_frame_locked(
+                response_frame, frames_dir=frames_dir, ledger_name=ledger_name,
+                expected_parent_frame_id=expected_parent_frame_id,
+                expected_parent_frame_sequence=expected_parent_frame_sequence,
+                receipt=outcome,
+            )
     except ResponseFrameParentCASMismatch:
         raise
     except Exception as exc:
@@ -6938,6 +7231,18 @@ def _append_response_frame_locked(
     receipt['ledger_path'] = str(target)
     _assert_response_frame_append_boundary(target)
     response_id = _frame_response_id(response_frame)
+    _initialize_response_frame_index_locked(target_dir, target)
+    selected = _sqlite_index.selection(target_dir)
+    if selected and selected['backend'] == 'sqlite':
+        # This is part of an authorized writer, never an observer side effect.
+        # Reconstruct committed but unpublished rows before selecting a parent;
+        # do not append them again or reset their sequence/recovery budget.
+        current = load_response_frame_index(
+            frames_dir=target_dir, ledger_name=ledger_name, response_id=response_id,
+        )
+        if not _response_frame_index_proves_response(current, target, response_id):
+            from fruth_services.response_index_maintenance import rebuild_sqlite_locked
+            rebuild_sqlite_locked(target_dir, target)
     index_path = _index_path(frames_dir=target_dir)
     parent_source_state = (
         _response_frame_file_state(target),
@@ -6983,13 +7288,18 @@ def _append_response_frame_locked(
             parent_frame = candidate_parent
             parent_snapshot_manifest = _snapshot_items_from_frame(candidate_parent)
     parent_scan_needed = target.exists() and (parent_frame is None or not parent_snapshot_manifest)
+    if (index_state.get('storage_backend') == 'sqlite'
+            and _response_frame_index_proves_response(index_state, target, response_id)
+            and isinstance(index_entry, Mapping)
+            and 'effective_snapshot_manifest' in index_entry and parent_frame is not None):
+        parent_scan_needed = False
     if parent_scan_needed and response_id and response_id not in index_responses:
         # Absence needs the complete current map proof, not just a missing key.
         # This proof is local to this append; any source movement retains the
         # ordinary Ledger fallback, including same-byte Index replacement.
         proved_absent = (
             all(state is not None for state in parent_source_state)
-            and _response_frame_index_has_verified_response_map(index_state, target)
+            and _response_frame_index_proves_response(index_state, target, response_id)
             and parent_source_state == (
                 _response_frame_file_state(target),
                 _response_frame_file_state(index_path),
@@ -7067,6 +7377,10 @@ def _append_response_frame_locked(
         else:
             line_offset = 0
     byte_offset = target.stat().st_size if target.exists() else 0
+    prior_ledger_state = _response_frame_file_state(target)
+    if (index_state.get('storage_backend') == 'sqlite'
+            and not _response_frame_index_proves_response(index_state, target, response_id)):
+        raise OSError('SQLite Index/Ledger changed during parent selection.')
     with measure_operation('ledger_serialization', role='canonical_truth'):
         encoded_line = json.dumps(_json_safe(ledger_frame), ensure_ascii=False, sort_keys=True).encode('utf-8') + b'\n'
     state_flow_note(ledger_serializations=1, ledger_serialized_bytes=len(encoded_line))
@@ -7107,6 +7421,8 @@ def _append_response_frame_locked(
         ledger_size_bytes=byte_offset + len(encoded_line),
         frames_dir=target_dir,
         effective_snapshot_manifest=effective_snapshot_manifest,
+        prior_ledger_state=prior_ledger_state,
+        source_frame_sha256=receipt['source_frame_sha256'],
     )
     receipt.update(stage='complete', index_status='published')
     return target, enriched_frame
@@ -7487,6 +7803,11 @@ def _read_indexed_response_frame(
         return None, {'code': 'response_frame_index_frame_mismatch', 'message': 'Indexed frame id does not match the ledger line.'}
     if latest_frame_sequence not in (None, '') and frame.get('frame_sequence') != latest_frame_sequence:
         return None, {'code': 'response_frame_index_sequence_mismatch', 'message': 'Indexed frame sequence does not match the ledger line.'}
+    source_frame_sha256 = index_entry.get('source_frame_sha256')
+    if source_frame_sha256 and hashlib.sha256(raw_line).hexdigest() != source_frame_sha256:
+        return None, {'code': 'response_frame_index_source_digest_mismatch', 'message': 'Indexed Ledger row bytes changed.'}
+    if (source_frame_sha256 and index_entry.get('line_length') != len(raw_line)):
+        return None, {'code': 'response_frame_index_source_length_mismatch', 'message': 'Indexed Ledger row length changed.'}
     if _raw_line_digests is not None:
         _raw_line_digests.append(hashlib.sha256(raw_line).hexdigest())
     return frame, None
@@ -8086,6 +8407,7 @@ class _ReadinessIndexPass:
         return (
             _response_frame_file_state(self.__index_path),
             _response_frame_file_state(self.__ledger_path),
+            _response_frame_file_state(self.__frames_dir / _sqlite_index.SELECTOR_NAME),
         )
 
     @timed_operation('readiness_index_freshness_guard', role='physical_index_ledger_freshness')
@@ -8102,7 +8424,9 @@ class _ReadinessIndexPass:
         self._require_scope()
         self.__physical = self._physical_state()
         self.__empty = (
-            not self.__ledger_path.exists() and not self.__index_path.exists()
+            not self.__ledger_path.exists() and not self.__ledger_path.is_symlink()
+            and not self.__index_path.exists() and not self.__index_path.is_symlink()
+            and not any(self.__frames_dir.glob('current_index.*.sqlite3'))
         )
         if self.__empty:
             self.__index = {
@@ -8746,7 +9070,7 @@ def _reuse_response_observation_if_current(
     map_verified = _finalizer_map_proof_matches(
         _finalizer_context, index_state, frames_dir, ledger_path, 'receipt',
     )
-    if not map_verified and not _response_frame_index_has_verified_response_map(index_state, ledger_path):
+    if not map_verified and not _response_frame_index_proves_response(index_state, ledger_path, response_id):
         return None
     current_digests: list[str] = []
     frame, error = _read_indexed_response_frame(
@@ -8821,7 +9145,7 @@ def _load_latest_response_observation_state(
     current_index = (
         dict(index_state)
         if isinstance(index_state, Mapping)
-        else load_response_frame_index(frames_dir=frames_dir)
+        else load_response_frame_index(frames_dir=frames_dir, response_id=normalized_id, ledger_name=ledger_name)
     )
     responses = (
         current_index.get('responses')
@@ -8859,7 +9183,7 @@ def _load_latest_response_observation_state(
     map_verified = pass_verified or _finalizer_map_proof_matches(
         _finalizer_context, index_state, frames_dir, ledger_path, 'hydration',
     )
-    if not map_verified and not _response_frame_index_has_verified_response_map(current_index, ledger_path):
+    if not map_verified and not _response_frame_index_proves_response(current_index, ledger_path, normalized_id):
         stale_index = not _response_frame_index_is_fresh(
             current_index,
             ledger_path,
@@ -9423,7 +9747,7 @@ def load_latest_response_wire_state(
     current_index = (
         dict(index_state)
         if isinstance(index_state, Mapping)
-        else load_response_frame_index(frames_dir=frames_dir)
+        else load_response_frame_index(frames_dir=frames_dir, response_id=normalized_id, ledger_name=ledger_name)
     )
     ledger_path = _ledger_path(frames_dir=frames_dir, ledger_name=ledger_name)
     base_projection = {
@@ -9437,7 +9761,7 @@ def load_latest_response_wire_state(
         'sidecar_reads': 0,
         'sidecar_hydration': 'none',
     }
-    if not _response_frame_index_has_verified_response_map(current_index, ledger_path):
+    if not _response_frame_index_proves_response(current_index, ledger_path, normalized_id):
         return {
             'ok': False,
             'status_code': 409,
@@ -9910,7 +10234,7 @@ def load_latest_response_state(
             },
         }
 
-    index_state = load_response_frame_index(frames_dir=frames_dir)
+    index_state = load_response_frame_index(frames_dir=frames_dir, response_id=normalized_id, ledger_name=ledger_name)
     index_entry = (
         index_state.get('responses', {}).get(normalized_id)
         if isinstance(index_state.get('responses'), Mapping)
@@ -9922,9 +10246,10 @@ def load_latest_response_state(
             frames_dir=frames_dir,
             ledger_name=ledger_name,
         )
-        index_size_fresh = _response_frame_index_has_verified_response_map(
+        index_size_fresh = _response_frame_index_proves_response(
             index_state,
             indexed_ledger_path,
+            normalized_id,
         )
         if index_size_fresh:
             indexed_frame, indexed_read_error = _read_indexed_response_frame(
@@ -10042,9 +10367,10 @@ def load_latest_response_state(
 
     if (
         not isinstance(index_entry, Mapping)
-        and _response_frame_index_has_verified_response_map(
+        and _response_frame_index_proves_response(
             index_state,
             expected_ledger_path,
+            normalized_id,
         )
     ):
         return {

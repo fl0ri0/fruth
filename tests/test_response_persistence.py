@@ -43,7 +43,7 @@ def test_torn_utf8_tail_does_not_hide_earlier_valid_frames_during_recovery(tmp_p
     ledger = rf.persist_response_frame(frame('resp-before'), frames_dir=tmp_path)
     with ledger.open('ab') as handle:
         handle.write(b'{"response_id":"interrupted","text":"\xf0\x9f')
-    (tmp_path / 'current_index.json').unlink()
+    rf._index_path(frames_dir=tmp_path).unlink()
     original = ledger.read_bytes()
     prior = rf.load_latest_response_state('resp-before', frames_dir=tmp_path)
     missing = rf.load_latest_response_state('interrupted', frames_dir=tmp_path)
@@ -66,7 +66,7 @@ def test_index_failure_retains_committed_identity_and_recovers_without_duplicate
     receipt = {}
     ledger = rf.persist_response_frame(frame(), frames_dir=tmp_path, receipt=receipt)
     parent_id = receipt['frame_id']
-    index_path = tmp_path / 'current_index.json'
+    index_path = rf._index_path(frames_dir=tmp_path)
     original_index = index_path.read_bytes()
     with patch.object(rf, '_write_response_frame_index', side_effect=OSError(errno.ENOSPC, 'index full')):
         with pytest.raises(ResponseFramePersistenceError) as raised:
@@ -99,7 +99,7 @@ def test_ledger_fsync_failure_is_uncertain_even_if_bytes_can_be_read(tmp_path):
     native_fsync = os.fsync
     ledger = tmp_path / 'responses.jsonl'
     def fsync(fd):
-        if ledger.exists() and os.fstat(fd).st_ino == ledger.stat().st_ino:
+        if ledger.exists() and os.fstat(fd).st_size > 0 and os.fstat(fd).st_ino == ledger.stat().st_ino:
             raise OSError(errno.EIO, 'synthetic ledger fsync failure')
         return native_fsync(fd)
     with patch.object(rf.os, 'fsync', side_effect=fsync), patch.object(rf, '_write_response_frame_index') as index:
@@ -117,9 +117,12 @@ def test_snapshot_preparation_failure_never_claims_an_append(tmp_path):
         with pytest.raises(ResponseFramePersistenceError) as raised:
             rf.persist_response_frame(frame(), frames_dir=tmp_path)
     assert raised.value.receipt['status'] == 'not_committed'
-    assert not (tmp_path / 'responses.jsonl').exists()
+    # Genesis is durably initialized before preparing the first frame, but no
+    # frame or canonical evidence of the failed append has been committed.
+    assert (tmp_path / 'responses.jsonl').read_bytes() == b''
 
 
+@pytest.mark.legacy_response_index
 def test_new_ledger_directory_fsync_failure_is_uncertain(tmp_path):
     native_fsync = os.fsync
     def fsync(fd):

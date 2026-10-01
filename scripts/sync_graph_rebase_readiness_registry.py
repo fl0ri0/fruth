@@ -53,7 +53,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         '--frames-dir',
         dest='frames_dir',
         default=str(DEFAULT_RESPONSE_FRAMES_DIR),
-        help='Directory containing responses.jsonl, current_index.json, and snapshots.',
+        help='Directory containing responses.jsonl, the selected JSON/SQLite Index, and snapshots.',
     )
     parser.add_argument(
         '--registry',
@@ -86,7 +86,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         '--expected-index-sha256',
         type=_sha256,
-        help='Fail unless current_index.json has this exact SHA-256.',
+        help='Fail unless the selected physical Index file has this exact SHA-256.',
     )
     parser.add_argument(
         '--expected-ledger-sha256',

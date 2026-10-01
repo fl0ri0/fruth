@@ -36,7 +36,7 @@ It summarizes:
 - backend-native package/contract metadata such as `backend_package`, `backend_contract`, runtime controls, and source facts
 - catalog counts that distinguish runnable models from cached-only or otherwise non-runnable sources
 
-It does not own durable response truth. Response frames, successor ledgers, `current_index.json`, work trees, outputs, and artifact dossiers remain part of the Responses/runtime substrate, not the backend-fabric contract.
+It does not own durable response truth. Response frames, successor ledgers, the selected response Index, work trees, outputs, and artifact dossiers remain part of the Responses/runtime substrate, not the backend-fabric contract.
 
 ## Current Variants
 

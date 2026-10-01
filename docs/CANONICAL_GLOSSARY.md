@@ -271,10 +271,12 @@ uses explicitly when discussing mutation.
 
 ### Index
 
-The derived response-frame `current_index.json`: latest-frame coordinates,
+The selected derived response-frame SQLite Index: latest-frame coordinates,
 effective snapshot manifests and verified complete-map coverage. It accelerates
 lookup and can prove absence only with fresh complete coverage. The Ledger and
-verified sidecar bytes remain durable truth.
+verified sidecar bytes remain durable truth. Legacy `current_index.json` is an
+inactive migration input or explicit current-history rollback/export for older
+code; normal runtime never maintains it or silently switches back to it.
 
 ### Epoch
 

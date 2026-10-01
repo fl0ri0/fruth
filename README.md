@@ -18,7 +18,7 @@ Mutable work, frozen frames and append-only successors remain distinct. Durable
 means supported persistence and continuation of recorded state; it does not mean
 infallible conclusions or guaranteed survival of every in-flight operation.
 
-**Status:** Fruth `0.1.3` —
+**Status:** Fruth `0.1.4` —
 experimental, usable, and still evolving within the `0.x` series.
 
 **Conceived, designed, created, built, and developed by
@@ -60,7 +60,7 @@ PCC cases with remaining coverage limited by provider quota, a sequence timeout
 and one correct mismatch rejection. Neither campaign recorded invariant findings;
 both retain the native INCOMPLETE verdict.
 Those dated campaigns precede the later PDF, provider-failover and Research
-changes; they are not a full-conformance verdict for the complete 0.1.3 source.
+changes; they are not a full-conformance verdict for the complete 0.1.4 source.
 
 ## Project, Citation, and Collaboration
 
@@ -102,11 +102,11 @@ Useful public context:
 The primary tested environment is a recent macOS release on Apple Silicon with
 Python 3.11 or newer. Local capabilities require their corresponding Ollama,
 MLX, llama.cpp, or Apple Foundation Models backend and model. Windows, Linux, Intel Mac, remote hosting,
-and multi-user operation are outside the 0.1.3 support promise.
+and multi-user operation are outside the 0.1.4 support promise.
 
 ## Install and Start
 
-Extract the source archive, enter its directory (`fruth-0.1.3` for the release,
+Extract the source archive, enter its directory (`fruth-0.1.4` for the release,
 or `fruth-main` for the current repository ZIP), and run:
 
 ```bash
@@ -121,10 +121,8 @@ respective capabilities. Backend runtimes and model weights are not bundled.
 For Apple PCC, choose **Set up** on its Models card or select PCC in the startup
 list. Fruth opens the bundled shortcuts on the Mac; review and click **Add
 Shortcut**, then start PCC. Manual import is also available in the
-[PCC setup guide](fruth_integrations/shortcuts/README.md#import); the original
-0.1.3 source archive uses the companion shortcut download on its release page.
-Assisted setup is included in [current repository downloads](https://github.com/fl0ri0/fruth/archive/refs/heads/main.zip).
-The original 0.1.3 release archive requires manual shortcut import.
+[PCC setup guide](fruth_integrations/shortcuts/README.md#import). Both signed
+shortcut exports and assisted setup are included in the source tarball.
 
 Fruth startup initializes missing Research stores automatically and preserves
 existing candidates, reviews and Gold data. No separate Research startup command
@@ -141,10 +139,28 @@ Startup installs Python requirements only when it creates a new `.venv`. An
 existing environment is reused without running pip, even if `requirements.txt`
 has changed. Apply dependency changes explicitly with
 `.venv/bin/python -m pip install -r requirements.txt` when needed.
-When upgrading an existing checkout to 0.1.3, run that dependency update before
-the next start/restart to install the native macOS PDF binding. Preserve your
+When upgrading an older checkout, run that dependency update before
+the next start/restart if the native macOS PDF binding is missing. Preserve your
 existing `state/`, `artifacts/`, Research data and settings; the release contains
 empty defaults for new installations, not a replacement for your saved data.
+
+Existing JSON response histories require explicit migration before ordinary
+writes. Finish active work, stop all response writers, and verify a complete
+backup before running these commands from the updated checkout:
+
+```bash
+.venv/bin/python scripts/migrate_response_frame_index.py migrate --frames-dir state/response_frames --check-only
+.venv/bin/python scripts/migrate_response_frame_index.py migrate --frames-dir state/response_frames --writers-stopped
+.venv/bin/python scripts/migrate_response_frame_index.py check --frames-dir state/response_frames
+```
+
+Resume writers only after verification succeeds. Migration preserves the
+canonical Ledger, snapshots and evidence and selects one SQLite Index; retained
+JSON is inactive. Already migrated histories need no repeat migration. New
+installations initialize SQLite through the frame writer. The same tool provides
+explicit `rebuild` and current-history `rollback` operations; see the
+[Response Frame contract](docs/RESPONSES_CONTRACT.md#response-frame).
+
 Fruth's default backend ports are 11434 (Ollama), 11435–11500
 (dedicated Ollama), 11501–11550 (MLX), 11551–11600 (llama.cpp), and
 11601–11650 (Apple Foundation Models). The optional Apple PCC Shortcuts adapter
@@ -281,7 +297,7 @@ Stop, Pull, or Delete actions. Direct tab turns are ephemeral and independent;
 Fruth can promote bounded relevant context for a referential turn, but does not
 create a persistent provider session. Model selection is automatic,
 and the exact GPT variant is not exposed to Fruth; model self-descriptions are
-not runtime proof. Direct API-key management is outside this route's 0.1.3
+not runtime proof. Direct API-key management is outside this route's 0.1.4
 contract. Apple PCC is a separate optional integration described above.
 
 ## Release and Safety Notes
@@ -589,7 +605,7 @@ Default cleanup removes repo-local generated/runtime ballast:
 - `state/generated_image_provenance.jsonl`
   - legacy/generated-image-specific provenance ledger when present
 - `state/response_frames/*`
-  - compact response ledger, `current_index.json`, and sidecar snapshots under `snapshots/`
+  - compact response ledger, SQLite Index generations and selector, retained legacy Index files, and sidecar snapshots under `snapshots/`
 - `state/runtime_status.json`
 - Python/test cache files and directories such as `__pycache__/`, `.pytest_cache/`, `*.pyc`, `*.pyo`, `.coverage`, `htmlcov/`, `.mypy_cache/`, and `.ruff_cache/`
 

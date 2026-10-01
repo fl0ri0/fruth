@@ -100,12 +100,8 @@ Open [Fruth PCC.shortcut](Fruth%20PCC.shortcut) and
 their actions, then add them. Keep the exact names shown below. If either name
 already exists, inspect the existing shortcut first and avoid adding duplicates.
 
-The original 0.1.3 source archive predates these exports and assisted setup.
-For that archive, import manually using
-the companion `fruth-pcc-shortcuts.zip` from the
-[0.1.3 release](https://github.com/fl0ri0/fruth/releases/tag/v0.1.3).
-Current repository downloads and subsequent source builds include both files
-in this directory. Import remains an explicit user step; Fruth does not install
+The source tarball and repository downloads include both signed exports and
+assisted setup. Import remains an explicit user step; Fruth does not install
 or replace shortcuts automatically.
 
 ### Manual recipe
@@ -290,10 +286,6 @@ not included in the source distribution. The public
 records the later integration campaign, evidence identities and quota-limited
 coverage without converting its INCOMPLETE verdict into a pass.
 
-The September 21 export attempt reported an iCloud sign-in error, while ordinary
-Cloud execution succeeded. The original 0.1.3 source archive therefore shipped the
-bridge and manual recipe without exported shortcuts. The companion download
-and later repository addition provide the files separately from that archive.
 Apple's [CLI guide](https://support.apple.com/guide/shortcuts-mac/run-shortcuts-from-the-command-line-apd455c82f02/mac)
 describes invocation, input/output files and signing for redistribution.
 

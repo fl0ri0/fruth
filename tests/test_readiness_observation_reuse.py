@@ -1,6 +1,7 @@
 """Only private observation reuse changes; all existing authority gates still run."""
 import copy
 import json
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
@@ -9,6 +10,7 @@ import pytest
 from fruth_services import response_frames as rf
 from fruth_services import graph_rebase_readiness_registry as registry
 from fruth_services.graph_rebase_rollout import project_graph_rebase_readiness_observation as project
+from fruth_services.response_index_maintenance import maintain_response_index
 
 
 def frame(response_id='reuse-response', reason='additive_repair_insufficient'):
@@ -100,7 +102,7 @@ def test_sidecar_mutation_from_other_thread_forces_normal_loader(stable, tmp_pat
 @pytest.mark.parametrize('mutation', ['index_file', 'ledger_file', 'successor', 'epoch_digest'])
 def test_moved_epoch_keeps_existing_fail_closed_authority(stable, tmp_path, mutation):
     frames, epoch, _, _ = stable
-    if mutation == 'index_file': (frames/'current_index.json').touch()
+    if mutation == 'index_file': rf._index_path(frames_dir=frames).touch()
     elif mutation == 'ledger_file': (frames/'responses.jsonl').touch()
     elif mutation == 'successor': rf.persist_response_frame(frame(reason='new evidence'), frames_dir=frames)
     else: epoch['ok'] = False
@@ -205,6 +207,10 @@ def test_same_frame_identity_with_changed_ledger_bytes_requires_new_load(stable,
     after = before.replace(b'One bounded readiness test', b'One changed readiness test')
     assert before != after and len(before) == len(after)
     ledger.write_bytes(after)
+    # A same-size rewrite of canonical fixture bytes invalidates the selected
+    # SQLite coverage. Explicit reconstruction must precede a new valid epoch.
+    assert not rf.verify_response_frame_epoch(frames_dir=frames)['ok']
+    assert maintain_response_index(frames_dir=frames, action='rebuild', writers_stopped=True)['ok']
     epoch = rf.verify_response_frame_epoch(frames_dir=frames)
     assert epoch['ok']
     observed = rf.load_latest_response_observation_state('reuse-response', frames_dir=frames, index_state=epoch['index_state'])
@@ -212,6 +218,21 @@ def test_same_frame_identity_with_changed_ledger_bytes_requires_new_load(stable,
     with patch.object(registry, 'load_latest_response_observation_state', wraps=rf.load_latest_response_observation_state) as load:
         assert append((frames, epoch, observed, candidate), tmp_path/'new.jsonl')['ok']
         assert load.call_count == 1
+
+
+def test_preverified_registry_rejects_new_selection_with_unchanged_old_files(stable, tmp_path):
+    frames, epoch, _, _ = stable
+    ledger_state = rf._response_frame_file_state(frames / 'responses.jsonl')
+    index_path = frames / Path(epoch['index_path']).name
+    index_state = rf._response_frame_file_state(index_path)
+    assert maintain_response_index(frames_dir=frames, action='rebuild', writers_stopped=True)['ok']
+    assert rf._response_frame_file_state(frames / 'responses.jsonl') == ledger_state
+    assert rf._response_frame_file_state(index_path) == index_state
+    target = tmp_path / 'new.jsonl'
+    with pytest.raises(registry.GraphRebaseReadinessRegistryError) as raised:
+        append(stable, target)
+    assert raised.value.code == 'readiness_epoch_moved'
+    assert not target.exists()
 
 
 def test_concurrent_consumers_can_reuse_receipt_only_once(stable, tmp_path):

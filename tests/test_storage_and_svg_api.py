@@ -85,7 +85,7 @@ def test_storage_failure_blocks_http_lookup_and_retry_without_losing_work(isolat
     else:
         native = os.fsync
         def fsync(fd):
-            if ledger.exists() and os.fstat(fd).st_ino == ledger.stat().st_ino:
+            if ledger.exists() and os.fstat(fd).st_size > 0 and os.fstat(fd).st_ino == ledger.stat().st_ino:
                 raise OSError(errno.EIO, 'fsync uncertain')
             return native(fd)
         injection = patch.object(rf.os, 'fsync', side_effect=fsync)

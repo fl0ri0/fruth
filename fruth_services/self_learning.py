@@ -4625,7 +4625,13 @@ def _validate_default_self_learning_output_targets(targets: Iterable[Path]) -> N
     }
     for target in targets:
         resolved_target = Path(target).resolve(strict=False)
-        if resolved_target in protected_files:
+        index_root = resolved_target.parent in {
+            DEFAULT_RESPONSE_FRAMES_DIR.resolve(strict=False),
+            (_REPOSITORY_ROOT / DEFAULT_RESPONSE_FRAMES_DIR).resolve(strict=False),
+        }
+        index_generation = (resolved_target.name.startswith('current_index.')
+                            or resolved_target.name == '.response_frame_append.lock')
+        if resolved_target in protected_files or (index_root and index_generation):
             raise ValueError(
                 f'self-learning output target resolves to protected state: {resolved_target}'
             )

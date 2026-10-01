@@ -33,6 +33,7 @@ def _frame(response_id='epoch-response'):
     }
 
 
+@pytest.mark.legacy_response_index
 @pytest.mark.parametrize('binding', ['exact', 'entry_alias', 'missing_name', 'relocated'])
 def test_epoch_digest_reuse_requires_every_entry_binding_to_be_unchanged(tmp_path, binding):
     root = tmp_path / 'frames'
@@ -55,7 +56,7 @@ def test_epoch_digest_reuse_requires_every_entry_binding_to_be_unchanged(tmp_pat
         root = relocated
         index_path = root / 'current_index.json'
     before = index_path.read_bytes()
-    with patch.object(frames, '_response_map_digest', wraps=frames._response_map_digest) as digest:
+    with patch.object(frames, '_index_response_map_digest', wraps=frames._index_response_map_digest) as digest:
         verified = frames.verify_response_frame_epoch(frames_dir=root, allow_relocated=True)
     assert verified['ok'], verified
     assert digest.call_count == (1 if binding == 'exact' else 2)
@@ -66,6 +67,7 @@ def test_epoch_digest_reuse_requires_every_entry_binding_to_be_unchanged(tmp_pat
     assert all(entry['ledger_path'] == str(root / 'responses.jsonl') for entry in rebound['responses'].values())
 
 
+@pytest.mark.legacy_response_index
 @pytest.mark.parametrize('movement', ['ledger_append', 'ledger_replace', 'index_replace', 'index_corrupt'])
 def test_epoch_digest_reuse_keeps_final_physical_evidence_checks(tmp_path, movement):
     frames.persist_response_frame(_frame(), frames_dir=tmp_path)
@@ -110,6 +112,7 @@ def test_returned_map_is_reverified_at_selection_and_hydration_boundaries(tmp_pa
     assert observed['error']['code'] == 'response_frame_index_unverified'
 
 
+@pytest.mark.legacy_response_index
 @pytest.mark.parametrize('movement', ['successor', 'ledger_replace', 'index_replace'])
 def test_old_verified_epoch_cannot_publish_readiness_after_external_change(tmp_path, movement):
     root = tmp_path / 'frames'

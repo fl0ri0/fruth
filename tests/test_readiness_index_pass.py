@@ -115,6 +115,7 @@ def replace_same(path):
     other.replace(path)
 
 
+@pytest.mark.legacy_response_index
 @pytest.mark.parametrize('filename', ['current_index.json', 'responses.jsonl'])
 @pytest.mark.parametrize('change', ['replace_same', 'mtime_only', 'ctime_only'])
 def test_physical_changes_invalidate_even_when_bytes_equal(history, filename, change):
@@ -136,6 +137,7 @@ def test_physical_changes_invalidate_even_when_bytes_equal(history, filename, ch
     assert result['observations'] == ordinary(history)[2]
 
 
+@pytest.mark.legacy_response_index
 @pytest.mark.parametrize('change', ['index_size', 'index_corrupt', 'index_missing',
     'map_digest', 'target_coordinate', 'ledger_append', 'ledger_corrupt_same_size'])
 def test_changed_or_broken_global_state_uses_fresh_normal_checks(history, change):
@@ -209,6 +211,7 @@ def test_mutation_during_initial_proof_is_not_bound_to_old_bytes(history):
     assert 'd' in result['response_ids']
 
 
+@pytest.mark.legacy_response_index
 def test_repeated_movement_is_bounded_and_never_returns_partial_success(history):
     original = rf.load_latest_response_observation_state
     def load(*args, **kwargs):
@@ -387,6 +390,7 @@ def test_private_scope_closes_after_repeated_movement(history):
             scope._guard()
 
 
+@pytest.mark.legacy_response_index
 def test_missing_index_does_not_repair_itself_and_new_pass_sees_restored_evidence(history):
     path = history / 'current_index.json'
     saved = path.read_bytes()
@@ -403,6 +407,7 @@ def test_missing_index_does_not_repair_itself_and_new_pass_sees_restored_evidenc
     assert recovered['observations'] == ordinary(history)[2]
 
 
+@pytest.mark.legacy_response_index
 @pytest.mark.parametrize('file', ['current_index.json', 'responses.jsonl'])
 def test_device_identity_change_invalidates_scope(history, file):
     scope = rf._ReadinessIndexPass(history)

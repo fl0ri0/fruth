@@ -3,11 +3,35 @@
 Fruth changes are recorded here. The original Ollmo release history is retained
 below.
 
-## Unreleased
+## [0.1.4] - 2026-10-01
 
+Includes both signed PCC shortcut exports in the source archive and makes SQLite
+the standard response Index. The experimental `0.x` support scope remains unchanged.
+
+- Bundle `Fruth PCC.shortcut` and `Fruth PCC Pro.shortcut` with their bridge and
+  setup helper in the complete source tarball.
 - Offer PCC first-use setup from Models and the interactive startup selector.
   Open missing bundled shortcuts for the user's Add Shortcut confirmation,
   preserve existing installations, and recheck installation before starting PCC.
+- Replace whole-JSON response-index publication with transactional per-response
+  SQLite updates. Preserve canonical Ledger history, frozen frame lineage,
+  snapshots, evidence, validation and recovery. JSON remains inactive backup or
+  migration input, or explicit current-history rollback/export; normal runtime
+  maintains one SQLite Index.
+- Add explicit migration, reconstruction and current-history rollback/export
+  tooling, including complete-map authentication and Ledger coverage checks.
+  New roots initialize through the frame writer; passive reads create no storage
+  and never migrate or silently reactivate JSON.
+- Preserve frame-relative evidence paths when verifying relocated SQLite
+  histories, including archive/restore and migration fixtures.
+- Keep archive, cleanup and reviewed-learning retention aware of the selected
+  SQLite generation and protected Index files. Report protected-output conflicts
+  explicitly in the learning evaluation CLI.
+- Correct persistence documentation: unconfirmed frame writes block delivery
+  with an explicit storage failure; confirmed Ledger commits remain committed
+  when derived Index publication fails.
+- Preserve the verified map identity in state-flow diagnostics for SQLite
+  lookups, using the existing authenticated root without another map scan.
 
 ## [0.1.3] - 2026-09-28
 

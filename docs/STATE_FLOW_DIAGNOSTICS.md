@@ -58,6 +58,11 @@ unmetered normalizers, object copies, some map/index reads, registry I/O and
 other serializers. Missing fields mean UNKNOWN, not zero. Do not describe the
 sum as total processed bytes or derive complete amplification ratios from it.
 
+For SQLite, `mapping_digest` records the authenticated AVL root already verified
+by the read. For legacy JSON it records the existing whole-map digest. Compare
+these identities only within the same backend and algorithm; diagnostics never
+compute an extra map digest or turn an observed identity into authority.
+
 Transition intervals are inclusive wall times in a process-boot monotonic clock.
 Operation times are inclusive and recursive; never add them to parent times.
 Subtract only the union of enclosed, same-thread transition intervals to obtain
@@ -72,3 +77,32 @@ and affected frame/snapshot/lookup/readiness/registry/semantics suites. API/E2E
 validation must use a disposable checkout without production state, as described
 in [TESTING_PROTOCOL](TESTING_PROTOCOL.md). Enabling diagnostics and restarting
 or submitting live work each require applicable task authority.
+
+## Offline finalization comparisons
+
+A saved canonical payload can exercise `_finalize_response_frame_payload`,
+snapshot preparation, Ledger fsync, Index publication and terminal Readiness
+retention without calling models. Use a stable disposable source copy and
+independent copies of the same history, all required snapshots/artifacts and
+registries. Restore the same starting Ledger, Index, registries and snapshot
+catalog before each repetition. Never hard-link mutable files to production.
+Audit the starting Epoch outside the timer, time the actual finalizer, then
+verify the resulting Epoch, canonical hydration, exact parent/successor identity
+and public truth. Record source/history/input hashes and any relocated historical
+file references; relocation must point only to captured byte-identical evidence.
+
+Report diagnostics-on and diagnostics-off samples, repetition/order, warm/cold
+cache conditions, Index/evidence disk use and carrier coverage/drop counters.
+Existing causal operation timers can supply timing-only wrappers for unmetered
+Index read/proof/transaction owners; wrappers must not replace validation or
+alter results. Snapshot compaction includes recursive snapshot storage. Epoch
+includes its tree/map/coverage checks and Ledger scan. Index response proof can
+contain a complete-map proof/digest in the legacy owner. These inclusive times
+overlap and cannot be summed into a response budget. Same-thread transition
+interval unions yield unattributed elapsed rest, including diagnostics and
+uninstrumented work; they do not separate CPU, filesystem or lock waiting.
+Missing measurements remain unknown.
+
+Offline finalization comparisons use captured history, complex saved inputs and
+terminal Epoch verification. An offline finalization improvement does not
+establish a complete live-response or concurrent-load speedup.

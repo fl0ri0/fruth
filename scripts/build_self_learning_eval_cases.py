@@ -132,6 +132,16 @@ def _validate_merge_output_paths(
         ).resolve(strict=False)
 
     for destination_name, destination in destinations.items():
+        frame_roots = {DEFAULT_RESPONSE_FRAMES_DIR.resolve(strict=False),
+                       (REPO_ROOT / DEFAULT_RESPONSE_FRAMES_DIR).resolve(strict=False)}
+        frame_roots.update(path.resolve(strict=False).parent for path in frame_paths)
+        if (destination.parent in frame_roots and
+                (destination.name.startswith('current_index.')
+                 or destination.name == '.response_frame_append.lock')):
+            raise ValueError(
+                f'--merge-existing refuses {destination_name} at protected '
+                f'response index state: {destination}'
+            )
         for protected_name, protected_path in protected_files.items():
             if destination == protected_path:
                 raise ValueError(

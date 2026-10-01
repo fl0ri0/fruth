@@ -421,6 +421,34 @@ An omitted existing id must recover its parent CAS and monotonically increasing
 sequence from the Ledger. Benchmark synthetic temporary maps; never rewrite or
 attest production Index data as a test.
 
+For standard SQLite Index generations also include `tests/test_response_index_default.py`,
+`tests/test_sqlite_epoch_verification.py` and `tests/test_response_index_sqlite.py`
+and, in the disposable offline checkout below,
+`tests/test_response_index_sqlite_api.py`. Cover authenticated hit/absence paths,
+exact ID scoping (a scoped map must not enumerate or prove another key absent),
+AVL rotations, independently sealed coverage, self-consistent subset rejection,
+missing/corrupt/replaced DB/Ledger/selector, incomplete/blocked/failed frames,
+real process interruption during a transaction and after DB commit, concurrent
+process parent CAS, read/write concurrency, restartable activation, reconstruction,
+current-history rollback, relocated Epoch/Readiness retention and compaction.
+Deleting canonical history must never turn reconstruction into empty genesis.
+Readiness passes must recheck selector movement before reusing a verified map;
+missing Ledger/selection with retained generations is not an empty epoch.
+Verify first-write SQLite initialization, no JSON mirror or runtime fallback,
+read-only missing/unmigrated roots, clear migration guidance before writes, and
+current-history rollback that cannot enable JSON writes in current code. Legacy
+format tests use explicitly marked temporary compatibility fixtures; normal tests
+exercise SQLite. Epoch must audit every tree node and canonical entry and retain
+final whole-DB hash/physical/selector guards without repeated JSON round trips.
+Include node corruption outside the requested proof path: the independently
+sealed post-commit DB state must invalidate that ordinary file change too.
+Prove ordinary writes/reads do not invoke a whole-map digest, tree enumeration
+or Ledger scan. `scripts/benchmark_response_frame_index.py` measures only
+synthetic temporary roots at increasing sizes; report connection/fsync overhead,
+index space and linear exceptional operations. See the
+[Response Frame contract](RESPONSES_CONTRACT.md#response-frame). Do not perform production migration,
+live inference or lifecycle work to validate this change.
+
 For recursive snapshot preparation, include
 `tests/test_response_snapshot_preparation.py`. It checks eliminated duplicate
 preparation, byte/provenance equivalence, distinct media-file identities, changed

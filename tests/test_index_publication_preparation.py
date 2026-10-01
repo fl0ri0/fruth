@@ -4,6 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.legacy_response_index
+
 from fruth_services import response_frames as frames
 
 

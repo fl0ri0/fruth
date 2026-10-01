@@ -1,19 +1,23 @@
 # Fruth source packaging scope
 
-This document defines the contents and support boundaries of the Fruth `0.1.3`
+This document defines the contents and support boundaries of the Fruth `0.1.4`
 source package. See the [installation guide](../README.md#install-and-start)
 for setup and [known limitations](KNOWN_LIMITATIONS.md) for current constraints.
 
-## Added in 0.1.3
+## Included capabilities
 
-This package adds the following to the published 0.1.2 baseline:
+The source package includes:
 
+- Transactional SQLite response indexing with authenticated completeness and
+  Ledger coverage, explicit migration/reconstruction and current-history
+  rollback/export. The append-only Ledger remains canonical durable history.
 - [Apple AI](APPLE_FOUNDATION_MODELS.md), the fourth local backend, with `fm serve`
   text generation, image analysis, streaming and instance management.
 - Optional [Apple PCC](../fruth_integrations/shortcuts/README.md) text/image
   execution through user-installed Shortcuts and a locally managed loopback
   adapter. Requests send selected inputs to Apple; local readiness does not
-  establish cloud access or remaining quota.
+  establish cloud access or remaining quota. Both signed shortcut exports and
+  assisted first-use setup are bundled in the source archive.
 - Bounded provider failover, saved-artifact follow-up/reference fixes and scoped
   local AFM context, preserving existing request and evidence gates.
 - Native macOS PDFKit/CoreGraphics rendering through PyObjC, with pypdf text
@@ -27,11 +31,11 @@ See the [changelog](../CHANGELOG.md) and the dated
 [AFM/PCC conformance observations](SELF_ATTACK_STATUS_2026-09-27.md). AFM's correct
 mismatch rejections and PCC's quota-limited coverage retain their native
 INCOMPLETE verdicts. Those runs predate the latest failover, Research and PDF
-changes; they do not establish full conformance of the complete 0.1.3 source.
+changes; they do not establish full conformance of the complete 0.1.4 source.
 Release preparation validates the selected source package separately; building
 it does not publish it or change those historical verdicts.
 
-## What 0.1.3 Provides
+## Supported surfaces
 
 - A local Flask control plane and browser interface.
 - A standalone static repository landing page, packaged with all of its local
@@ -96,9 +100,7 @@ older releases with neither file, but rejects a partial pair or an unlisted
 `.shortcut` file. Packaging checks establish inclusion and byte integrity, not
 Apple signature validity or workflow behavior.
 
-The original 0.1.3 source archive and tag remain unchanged. Its two shortcuts
-are distributed as a companion ZIP on the release page and in the subsequent
-repository update. Users import them explicitly as documented in the setup guide.
+Users import the bundled shortcuts explicitly as documented in the setup guide.
 
 The four exact companion-skill files are `skills/fruth/SKILL.md`,
 `skills/fruth/NOTICE`, `skills/fruth/agents/openai.yaml` and
@@ -127,7 +129,7 @@ separate actions.
 The primary tested environment is a recent macOS release on Apple Silicon
 with Python 3.11 or newer. Individual local capabilities additionally require
 their own backend and model packages. Other operating systems and processor
-architectures are not part of the 0.1.3 support promise.
+architectures are not part of the 0.1.4 support promise.
 
 Fruth is intended for local, single-user use and binds its web control plane
 to `127.0.0.1` by default. Remote and multi-user deployment are outside this
@@ -169,7 +171,7 @@ ChatGPT is a separate optional cloud path:
   silently resumed.
 
 Direct provider API-key management and external providers beyond the documented
-ChatGPT and Apple PCC integrations are not part of 0.1.3.
+ChatGPT and Apple PCC integrations are not part of 0.1.4.
 
 ## Compatibility
 

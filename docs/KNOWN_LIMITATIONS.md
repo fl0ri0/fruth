@@ -1,12 +1,12 @@
-# Known Limitations in Fruth 0.1.3
+# Known Limitations in Fruth 0.1.4
 
-This list records current limits of the 0.1.3 source package.
+This list records current limits of the 0.1.4 source package.
 It is not a roadmap or a general backlog.
 
 ## Platform and Packaging
 
 - The primary tested platform is macOS on Apple Silicon. Windows, Linux, and
-  Intel Mac behavior is not guaranteed for 0.1.3.
+  Intel Mac behavior is not guaranteed for 0.1.4.
 - Distribution is a source archive. It is not a signed or notarized macOS app,
   a container image, or a package-manager release.
 - Backend packages and model weights are not bundled. A capability can be
@@ -22,7 +22,7 @@ It is not a roadmap or a general backlog.
   warnings; password-locked or unreadable PDFs fail explicitly. Python environments
   that sandbox access to macOS application frameworks may prevent PDFKit from
   initializing; native rendering tests need access to those system services.
-- The bundled Fruth skill is Codex-specific in 0.1.3 and must be copied into
+- The bundled Fruth skill is Codex-specific in 0.1.4 and must be copied into
   the user's Codex skills directory manually; marketplace/plugin distribution
   and other agent integrations are outside this release.
 - The dashboard currently requests Google Fonts, Axios, and Font Awesome from
@@ -39,12 +39,18 @@ It is not a roadmap or a general backlog.
   acceptable only when status and recovery evidence remain truthful.
 - Model output quality and latency are provider-dependent and are not
   deterministic.
-- Ordinary finalizer Artifact Registry/frame-persistence errors are currently
-  logged and swallowed. A successful HTTP response, completed lifecycle or
-  in-memory frame alone does not prove durable commit. Inspect matching durable
-  frame/CAS and saved artifact evidence; Readiness retention is secondary and
-  cannot repair this guarantee. See the
+- Unconfirmed frame persistence is an explicit storage failure: `not_committed`
+  or `uncertain` outcomes block delivery/continuation, return HTTP 503 (507 for a
+  reported full disk), and emit `response.failed` on streams. Saved outputs may
+  already exist; inspect the exact frame/Ledger before recovery rather than
+  automatically repeating inference. See the
   [finalization boundary](RESPONSES_CONTRACT.md#finalization-and-durable-completion).
+- Persistence spans separate stores. A confirmed Ledger commit remains committed
+  if Index publication fails, with canonical Ledger recovery and a separate
+  `index_status`. Artifact Registry failures are logged and recorded separately;
+  they do not make a confirmed Ledger commit uncommitted. Verify frame/CAS and
+  saved-artifact evidence. Secondary Readiness retention cannot repair missing
+  durability or roll back a committed frame.
 
 ## Apple AI and Apple PCC
 
@@ -94,7 +100,7 @@ It is not a roadmap or a general backlog.
   interpreted semantically by the selected model and its available tools.
 - The fixed request limits are 5 files, 100 MiB per file, and 250 MiB in total.
   URLs, folders, and symbolic links are not accepted.
-- Direct API-key management remains outside this optional route's 0.1.3 contract.
+- Direct API-key management remains outside this optional route's 0.1.4 contract.
   Apple PCC is a separate integration with its own availability and sharing rules.
 
 ## Compatibility
@@ -103,4 +109,4 @@ It is not a roadmap or a general backlog.
   predate 0.1.0.
 - Public `0.x` interfaces may evolve as the runtime contracts mature.
 
-See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.3 release boundary.
+See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.4 release boundary.

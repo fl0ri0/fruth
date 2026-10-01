@@ -31,6 +31,7 @@ from fruth_services.response_frames import (
     DEFAULT_RESPONSE_FRAME_INDEX,
     DEFAULT_RESPONSE_FRAME_LEDGER,
     DEFAULT_RESPONSE_FRAMES_DIR,
+    _index_path,
     load_latest_response_observation_state,
     _reuse_response_observation_if_current,
     _FinalizerMapProof,
@@ -862,10 +863,20 @@ def _append_graph_rebase_readiness_observation(
             Path(frames_dir)
             / (str(ledger_name or '').strip() or DEFAULT_RESPONSE_FRAME_LEDGER)
         )
-        expected_index_path = (
-            Path(frames_dir)
-            / (str(index_name or '').strip() or DEFAULT_RESPONSE_FRAME_INDEX)
+        # Use a shape-checked captured path only as the cheap stat target.
+        # Reject already-moved files without opening the selector or evidence;
+        # actual generation selection is checked after these guards pass.
+        captured_index = Path(str(verified.get('index_path') or ''))
+        generation = captured_index.name.removeprefix('current_index.').removesuffix('.sqlite3')
+        selected_name_shape = (
+            captured_index.name == DEFAULT_RESPONSE_FRAME_INDEX
+            or (captured_index.name == f'current_index.{generation}.sqlite3'
+                and len(generation) == 32
+                and all(c in '0123456789abcdef' for c in generation))
         )
+        expected_index_path = Path(frames_dir) / (
+            captured_index.name if index_name == DEFAULT_RESPONSE_FRAME_INDEX and selected_name_shape
+            else index_name)
         try:
             paths_match = (
                 Path(str(verified.get('ledger_path') or '')).resolve()
@@ -926,6 +937,11 @@ def _append_graph_rebase_readiness_observation(
                 # Diagnostics must never replace the original rejection.
                 pass
             raise error
+        if _index_path(frames_dir=frames_dir, index_name=index_name).resolve() != expected_index_path.resolve():
+            raise GraphRebaseReadinessRegistryError(
+                'readiness_epoch_moved',
+                'Preverified response-frame epoch is no longer current.',
+            )
     if verified.get('ok') is not True:
         error = (
             verified.get('error')

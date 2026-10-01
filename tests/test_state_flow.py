@@ -157,7 +157,9 @@ def test_two_real_canonical_loads_keep_identity_checks_and_measure_existing_read
     plain = rf.load_latest_response_state('resp_test', frames_dir=root)
     before = {str(p): p.read_bytes() for p in root.rglob('*') if p.is_file()}
     monkeypatch.setenv('FRUTH_STATE_FLOW_DIAGNOSTICS_DIR', str(tmp_path / 'trace'))
-    with sf.state_flow_scope():
+    with sf.state_flow_scope(), patch.object(
+        rf._sqlite_index, '_complete_map', side_effect=AssertionError('point lookup must not enumerate the map')
+    ):
         for _ in range(2):
             assert rf.load_latest_response_state('resp_test', frames_dir=root) == plain
     assert before == {str(p): p.read_bytes() for p in root.rglob('*') if p.is_file()}
@@ -168,6 +170,9 @@ def test_two_real_canonical_loads_keep_identity_checks_and_measure_existing_read
     assert loads[0]['target']['frame_id'] == loads[1]['target']['frame_id']
     assert loads[0]['mapping_digest'] == loads[1]['mapping_digest']
     assert loads[0]['mapping_digest'] is not None
+    assert loads[0]['mapping_digest'] == rf.load_response_frame_index(
+        frames_dir=root, response_id='resp_test'
+    )['sqlite_root_digest']
     assert all(r['work']['sidecar_payload_reads'] > 0 for r in reconstructions)
     assert all(r['bytes_read'] > 0 for r in reconstructions)
     assert all(r['new_authority_boundary'] is True for r in loads)

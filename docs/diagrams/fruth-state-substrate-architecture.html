@@ -752,7 +752,7 @@
               <h3>Persistence</h3>
               <ul>
                 <li>Artifact registration, Ledger/CAS/Index persistence, and client delivery are distinct boundaries.</li>
-                <li>Ordinary persistence errors are currently logged; a returned completed payload is not a commit receipt.</li>
+                <li>Unconfirmed persistence blocks delivery/continuation. Confirmed Ledger commits survive failed Index publication; publication outcomes remain separate.</li>
                 <li>Readiness evidence does not grant rebase operator authority.</li>
               </ul>
             </div>
@@ -1311,14 +1311,14 @@
         kind: 'Persistence owner', status: 'canonical',
         body: 'The finalizer constructs accepted frame/output truth, attempts Artifact Registry registration, then persists content-addressed snapshots (CAS), the Ledger and derived Index. Required successor parent compare-and-swap checks protect lineage. These stores are not one atomic transaction.',
         paths: 'fruth_webserver.py; fruth_services/response_frames.py; docs/RESPONSES_CONTRACT.md',
-        authority: 'Ordinary registry/frame persistence errors are logged; parent compare-and-swap mismatch propagates. HTTP success or a frame-shaped payload alone is not a durable commit receipt.'
+        authority: 'Unconfirmed frame persistence raises a storage failure and blocks delivery/continuation. Confirmed Ledger commits survive failed Index publication; Artifact Registry outcomes are separate. Parent compare-and-swap mismatch propagates. A live frame-shaped payload alone is not a durable commit receipt.'
       },
       {
         id: 'frameIndexCas', layer: 'durable', x: 1696, y: 2578, w: 240, h: 64,
         title: 'Frame Index and Content-Addressed Snapshots', label: 'Frame Index / CAS', sub: 'verified lookup + content bindings',
         kind: 'Durable storage and projection', status: 'canonical storage / derived index',
-        body: 'CAS sidecars retain digest-bound snapshot content. current_index.json is a derived latest-response map with Ledger coordinates, effective snapshot manifests and coverage digest. Readers verify identity and integrity; stale or corrupt Index state cannot replace Ledger truth.',
-        paths: 'fruth_services/response_frames.py; docs/TRUTH_SOURCES.md',
+        body: 'CAS sidecars retain digest-bound snapshot content. The selected SQLite generation is the standard derived latest-response map with Ledger coordinates, effective snapshot manifests and complete-map integrity/coverage commitments. JSON remains inactive migration input or explicit current-history rollback/export. Readers verify identity and integrity; stale or corrupt Index state cannot replace Ledger truth.',
+        paths: 'fruth_services/response_frames.py; fruth_services/response_index_sqlite.py; docs/TRUTH_SOURCES.md; docs/RESPONSES_CONTRACT.md',
         authority: 'Verified lookup acceleration and content bindings. Index publication follows durable Ledger append; recovery preserves Ledger fallback.'
       },
       {

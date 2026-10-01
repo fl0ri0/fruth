@@ -1,3 +1,4 @@
+import fruth_services.response_frames as response_frames
 import hashlib
 import json
 from pathlib import Path
@@ -79,7 +80,7 @@ class GraphRebaseReadinessRegistryTests(unittest.TestCase):
             original = root / 'active' / 'state' / 'response_frames'
             archived = root / 'archive' / 'state' / 'response_frames'
             persist_response_frame(self._frame('resp_relocated'), frames_dir=original)
-            index_before = (original / 'current_index.json').read_bytes()
+            index_before = response_frames._index_path(frames_dir=original).read_bytes()
             ledger_before = (original / 'responses.jsonl').read_bytes()
             archived.parent.mkdir(parents=True)
             shutil.move(str(original), str(archived))
@@ -103,7 +104,7 @@ class GraphRebaseReadinessRegistryTests(unittest.TestCase):
                 verified['index_state']['responses']['resp_relocated']['ledger_path'],
                 str(archived / 'responses.jsonl'),
             )
-            self.assertEqual((archived / 'current_index.json').read_bytes(), index_before)
+            self.assertEqual(response_frames._index_path(frames_dir=archived).read_bytes(), index_before)
             self.assertEqual((archived / 'responses.jsonl').read_bytes(), ledger_before)
 
     def test_sync_default_is_read_only_and_write_is_idempotent_after_growth(self):
@@ -366,7 +367,7 @@ class GraphRebaseReadinessRegistryTests(unittest.TestCase):
             registry_path = root / 'readiness.jsonl'
             persist_response_frame(self._frame('resp_expected'), frames_dir=frames_dir)
             index_sha256 = hashlib.sha256(
-                (frames_dir / 'current_index.json').read_bytes()
+                response_frames._index_path(frames_dir=frames_dir).read_bytes()
             ).hexdigest()
             ledger_sha256 = hashlib.sha256(
                 (frames_dir / 'responses.jsonl').read_bytes()

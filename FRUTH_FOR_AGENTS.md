@@ -68,7 +68,7 @@ Repo-local green-field reset:
 - `./fruth archive --full`
 - `./fruth clean --dry-run`
 
-This reset helper only touches files inside this repo. By default it clears runtime ballast such as generated contents under `artifacts/` buckets, `logs/`, volatile `state/` history/status/provenance/frame files, and Python/test caches while preserving the standard empty artifact bucket directories, including `artifacts/bundles/`. Missing standard artifact directories are created only as a fallback if they were manually deleted or do not exist yet. It preserves `model_ports.json`, interpretive inference preferences, interpretive inference compiled-memory files, bounded self-learning snapshots, and `state/llama_cpp_catalog.json` unless you opt into the deeper flags. Before response-frame cleanup, it collects sidecar refs reachable from active `state/self_learning/` JSON/JSONL, writes `state/self_learning/retention_manifest.json`, and copies retained evidence into `state/self_learning/retained_sidecars/`. Dry-run output shows retained and missing learning sidecar counts. The response-frame cleanup covers the compact ledger, `current_index.json`, and sidecar snapshots under `state/response_frames/`.
+This reset helper only touches files inside this repo. By default it clears runtime ballast such as generated contents under `artifacts/` buckets, `logs/`, volatile `state/` history/status/provenance/frame files, and Python/test caches while preserving the standard empty artifact bucket directories, including `artifacts/bundles/`. Missing standard artifact directories are created only as a fallback if they were manually deleted or do not exist yet. It preserves `model_ports.json`, interpretive inference preferences, interpretive inference compiled-memory files, bounded self-learning snapshots, and `state/llama_cpp_catalog.json` unless you opt into the deeper flags. Before response-frame cleanup, it collects sidecar refs reachable from active `state/self_learning/` JSON/JSONL, writes `state/self_learning/retention_manifest.json`, and copies retained evidence into `state/self_learning/retained_sidecars/`. Dry-run output shows retained and missing learning sidecar counts. The response-frame cleanup covers the compact ledger, selected JSON/SQLite Index generations and selector, and sidecar snapshots under `state/response_frames/`.
 
 `./fruth archiv` and `./fruth archive` do the same live cleanup, but first copy the `artifacts/` tree and archive the other useful runtime/generated ballast into `.fruth_archiv/<timestamp>/` as hidden repo-local data storage. Live artifact cleanup then removes generated contents while preserving the standard bucket directories, including `artifacts/bundles/`; missing standard directories are created only as a fallback.
 
@@ -242,15 +242,26 @@ The fluid middle before freeze now has a first-class mutable owner: `working_fra
 
 Current exact canonical Responses truth includes both a `working_frame` object and a `response_frame` object, while bounded normal wire views expose their handles and CAS refs without hydrating those bodies. Non-test runtime calls append the frozen `response_frame` snapshots to `state/response_frames/responses.jsonl`. The frame includes `planning.artifact_flow` for multi-artifact input routing hints, output slots/placeholders, review state, and memory-delta state. `planning.artifact_flow.work_tree` is now the canonical internal tree, and `output_slots` are one projection of that tree rather than the deepest truth. The public API surface now also exposes top-level canonical `outputs`, which are projected from that finalized substrate truth; legacy `output` and `output_text` remain compatibility fields only. The frozen frame mirrors that same canonical output surface under `response_frame.output.outputs`, so replay and lookup paths can read substrate-shaped outputs directly. The frame also includes the final frozen `working_frame` snapshot plus `controls` when non-default effective settings such as voice, seed, image size, OCR limits, or sampling values matter for replay, diagnosis, or bounded self-observation. The mutable and frozen frame surfaces expose `candidate_graph`, `promotion_review`, branch-local workload state, and `artifact_dossiers` keyed by `artifact_ref`. Context and history enter live turns through candidate/promotion gates, not through a separate live memory authority. Self-learning reads frozen frames as audit evidence and may produce accepted learnings only through a reviewed policy snapshot that defaults disabled for new/reset state and can be explicitly enabled with runtime effect `soft_hint_only`.
 
-`state/response_frames/current_index.json` is derived recovery acceleration, not substrate truth. Fresh v2 coverage can prove an unknown response id without scanning the ledger. To migrate an existing complete v1 map, run `.venv/bin/python scripts/attest_response_frame_index.py --check-only`, inspect the exact-match report, then rerun without `--check-only`. The command streams the ledger, preserves the complete entry map and snapshot manifests, and fails without writing if the ledger/index is incomplete, malformed, mismatched, or changes during inspection.
+SQLite is the sole normal runtime response Index, providing derived recovery
+acceleration rather than substrate truth. `current_index.active.json` selects one
+`current_index.<generation>.sqlite3`; an authenticated map and sealed coverage
+prove exact inclusion or absence. New roots initialize through the frame writer.
+Existing JSON histories require explicit lossless migration before ordinary writes;
+passive reads never initialize or migrate. Retained `current_index.json` is inactive
+backup/migration input, or an explicit current-history rollback/export format.
+See the [Response Frame contract](docs/RESPONSES_CONTRACT.md#response-frame). The
+attestation command checks a selected SQLite Index without rewriting it; legacy
+v1-to-v2 JSON attestation is not migration to SQLite.
 
 Durable completion is separate from live lifecycle and response delivery. The
 normal finalizer attempts accepted Artifact Registry writes, then CAS/Ledger/Index
-persistence, then synchronous evidence-only Readiness retention. Ordinary registry
-and frame-persistence errors are currently logged rather than propagated, so a
-completed live payload or frame-shaped object is not proof of commit. Verify the
-matching durable frame identity, referenced CAS and saved artifacts before making
-that claim; see [Responses Contract](docs/RESPONSES_CONTRACT.md#finalization-and-durable-completion).
+persistence, then synchronous evidence-only Readiness retention. Unconfirmed
+frame persistence raises a typed storage failure, retains inspectable work, and
+blocks delivery/continuation without an automatic inference retry. A confirmed
+Ledger commit remains committed when Index publication fails; Artifact Registry
+and Index publication outcomes are separate. Verify the matching durable frame,
+referenced CAS and saved artifacts; a live frame-shaped object alone is not proof
+of commit. See [Responses Contract](docs/RESPONSES_CONTRACT.md#finalization-and-durable-completion).
 
 Control snapshots are backend metadata, not automatic user-visible artifacts. Reusable settings artifacts are created only when Fruth or a client intentionally promotes a snapshot through `/api/settings_artifacts`; those JSON artifacts live under `artifacts/settings/` and expose replay `request_overrides`.
 

@@ -89,6 +89,7 @@ from fruth_services.responses import (
 from fruth_services.chat_history import read_chat_history, write_chat_history
 from fruth_services.response_artifact_bundles import bundle_response_artifacts
 from fruth_services.response_frames import (
+    _index_path,
     build_response_frame,
     load_latest_response_state,
     persist_response_frame,
@@ -19474,7 +19475,8 @@ class ResponsesApiTests(unittest.TestCase):
                 ),
                 frames_dir=frames_dir,
             )
-            stale_index = (frames_dir / "current_index.json").read_text(encoding="utf-8")
+            index_path = _index_path(frames_dir=frames_dir)
+            stale_index = index_path.read_bytes()
             persist_response_frame(
                 build_response_frame(
                     {
@@ -19493,7 +19495,7 @@ class ResponsesApiTests(unittest.TestCase):
                 ),
                 frames_dir=frames_dir,
             )
-            (frames_dir / "current_index.json").write_text(stale_index, encoding="utf-8")
+            index_path.write_bytes(stale_index)
             _RESPONSE_LOOKUP.clear()
 
             with patch("fruth_webserver.RESPONSE_FRAMES_DIR", frames_dir):

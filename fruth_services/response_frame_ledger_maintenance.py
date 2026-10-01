@@ -1066,8 +1066,15 @@ def _atomic_install(path: Path, temp_path: Path) -> None:
         pass
 
 
-def _backup_file(source: Path, target: Path) -> str:
+def _backup_file(source: Path, target: Path, *, mutable: bool = False) -> str:
     target.parent.mkdir(parents=True, exist_ok=True)
+    if mutable:
+        # SQLite and the append-only Ledger can change in place if compaction
+        # fails before generation activation and writers later resume.
+        shutil.copy2(source, target)
+        with target.open('rb') as handle:
+            os.fsync(handle.fileno())
+        return 'byte_copy'
     try:
         os.link(source, target)
         return 'hard_link'
@@ -1111,7 +1118,8 @@ def compact_response_frame_ledger(
 
     frames_root = Path(frames_dir)
     ledger_path = frames_root / ledger_name
-    index_path = frames_root / index_name
+    index_path = response_frames._index_path(frames_dir=frames_root, index_name=index_name)
+    sqlite_generation = index_path.suffix == '.sqlite3'
     audit = audit_response_frame_ledger(
         frames_dir=frames_root,
         ledger_name=ledger_name,
@@ -1201,6 +1209,8 @@ def compact_response_frame_ledger(
             },
         }
     source_index_sha256 = _file_sha256(index_path)
+    source_selector_path = frames_root / response_frames._sqlite_index.SELECTOR_NAME
+    source_selector_state = _stable_file_state(source_selector_path) if sqlite_generation else None
     if (
         source_ledger_state != audit.get('source_state')
         or _file_sha256(ledger_path) != audit.get('ledger_sha256')
@@ -1256,8 +1266,11 @@ def compact_response_frame_ledger(
         backup_created = True
         ledger_backup = backup_root / ledger_path.name
         index_backup = backup_root / index_path.name
-        ledger_backup_mode = _backup_file(ledger_path, ledger_backup)
-        index_backup_mode = _backup_file(index_path, index_backup)
+        ledger_backup_mode = _backup_file(ledger_path, ledger_backup, mutable=sqlite_generation)
+        index_backup_mode = _backup_file(index_path, index_backup, mutable=sqlite_generation)
+        if sqlite_generation:
+            from fruth_services.response_index_sqlite import SELECTOR_NAME
+            _backup_file(frames_root / SELECTOR_NAME, backup_root / SELECTOR_NAME)
         if _file_sha256(ledger_backup) != audit.get('ledger_sha256'):
             raise RuntimeError('response_frame_ledger_backup_verification_failed')
         if _file_sha256(index_backup) != source_index_sha256:
@@ -1268,6 +1281,7 @@ def compact_response_frame_ledger(
         if (
             _stable_file_state(index_path) != source_index_state
             or _file_sha256(index_path) != source_index_sha256
+            or (sqlite_generation and _stable_file_state(source_selector_path) != source_selector_state)
         ):
             raise RuntimeError('response_frame_index_moved_after_backup')
 
@@ -1311,6 +1325,7 @@ def compact_response_frame_ledger(
         if (
             _stable_file_state(index_path) != source_index_state
             or _file_sha256(index_path) != source_index_sha256
+            or (sqlite_generation and _stable_file_state(source_selector_path) != source_selector_state)
         ):
             raise RuntimeError('response_frame_index_moved')
         if rewrite['source_sha256'] != audit.get('ledger_sha256'):
@@ -1318,7 +1333,14 @@ def compact_response_frame_ledger(
 
         _atomic_install(ledger_path, temp_ledger_path)
         ledger_replaced = True
-        _atomic_install(index_path, temp_index_path)
+        if sqlite_generation:
+            from fruth_services.response_index_maintenance import rebuild_sqlite_locked
+            from fruth_services.response_index_sqlite import writer_lock
+            with response_frames._RESPONSE_FRAME_APPEND_LOCK, writer_lock(frames_root):
+                rebuilt = rebuild_sqlite_locked(frames_root, ledger_path)
+            index_path = Path(rebuilt['index_path'])
+        else:
+            _atomic_install(index_path, temp_index_path)
         index_replaced = True
 
         attestation = response_frames.attest_response_frame_index(

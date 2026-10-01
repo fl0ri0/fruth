@@ -82,8 +82,10 @@ Durable completion and secondary observation have separate boundaries. The
 finalizer constructs accepted frame/output truth, attempts Artifact Registry
 persistence, then writes verified CAS, the Ledger and the derived Index. Relevant
 settled Readiness retention follows synchronously and cannot roll back the frame
-or authorize execution. Ordinary persistence errors are currently logged and may
-leave a live result, so completion/delivery alone is not a durability receipt.
+or authorize execution. Unconfirmed frame persistence raises a typed storage
+failure and blocks delivery/continuation. A confirmed Ledger commit with failed
+Index publication remains committed; Index and Artifact Registry outcomes are
+reported separately. Live completion alone is not a durability receipt.
 See [Responses Contract](RESPONSES_CONTRACT.md#finalization-and-durable-completion)
 and the [current owner map](ARCHITECTURE_MAP.md#durable-state-continuation-and-observer-owners).
 

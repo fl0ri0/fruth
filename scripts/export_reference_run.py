@@ -991,7 +991,7 @@ def export_reference_run(
     source_readme = source_readme.resolve()
     readme_text = source_readme.read_text(encoding='utf-8')
     prompt = _extract_prompt(readme_text)
-    index_state = load_response_frame_index(frames_dir=frames_dir)
+    index_state = load_response_frame_index(frames_dir=frames_dir, response_id=response_id)
     if not index_state.get('ok'):
         raise ReferenceExportError('The response-frame index is unavailable.')
     indexed_record = _read_exact_indexed_record(response_id, index_state=index_state)

@@ -1,12 +1,12 @@
-# Known Limitations in Fruth 0.1.4
+# Known Limitations in Fruth 0.1.5
 
-This list records current limits of the 0.1.4 source package.
+This list records current limits of the 0.1.5 source package.
 It is not a roadmap or a general backlog.
 
 ## Platform and Packaging
 
 - The primary tested platform is macOS on Apple Silicon. Windows, Linux, and
-  Intel Mac behavior is not guaranteed for 0.1.4.
+  Intel Mac behavior is not guaranteed for 0.1.5.
 - Distribution is a source archive. It is not a signed or notarized macOS app,
   a container image, or a package-manager release.
 - Backend packages and model weights are not bundled. A capability can be
@@ -22,7 +22,7 @@ It is not a roadmap or a general backlog.
   warnings; password-locked or unreadable PDFs fail explicitly. Python environments
   that sandbox access to macOS application frameworks may prevent PDFKit from
   initializing; native rendering tests need access to those system services.
-- The bundled Fruth skill is Codex-specific in 0.1.4 and must be copied into
+- The bundled Fruth skill is Codex-specific in 0.1.5 and must be copied into
   the user's Codex skills directory manually; marketplace/plugin distribution
   and other agent integrations are outside this release.
 - The dashboard currently requests Google Fonts, Axios, and Font Awesome from
@@ -100,7 +100,7 @@ It is not a roadmap or a general backlog.
   interpreted semantically by the selected model and its available tools.
 - The fixed request limits are 5 files, 100 MiB per file, and 250 MiB in total.
   URLs, folders, and symbolic links are not accepted.
-- Direct API-key management remains outside this optional route's 0.1.4 contract.
+- Direct API-key management remains outside this optional route's 0.1.5 contract.
   Apple PCC is a separate integration with its own availability and sharing rules.
 
 ## Compatibility
@@ -109,4 +109,4 @@ It is not a roadmap or a general backlog.
   predate 0.1.0.
 - Public `0.x` interfaces may evolve as the runtime contracts mature.
 
-See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.4 release boundary.
+See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.5 release boundary.

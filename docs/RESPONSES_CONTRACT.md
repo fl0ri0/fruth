@@ -474,6 +474,16 @@ Core fields:
 
 UI surfaces should treat `pending_branches`, `active_branches`, `completed_branches`, `failed_branches`, and `fill_results` as branch-state truth before older slot projections. Slots are still useful for layout and artifact identity, but a stale pending slot must not keep showing queued when the matching branch is completed or blocked.
 
+Availability selection happens inside the dependency-ready batch, before resource
+priorities. Work without a recorded availability wait is considered first; if
+only waits remain, the oldest due `next_check_epoch` group is considered first.
+The selected group still passes through the existing image/helper resource guards.
+`scheduling_policy.availability_selection` may report `ready_before_wait_rechecks`
+or `oldest_due_waits`, with `availability_deferred_branch_count` for candidates
+outside that group. These are scheduling diagnostics, not new execution authority.
+Current dispatch and next-wave `active_branches` use the same selection rule;
+waiting obligations remain pending with their exact identities and attempt counts.
+
 Failed branch shape:
 
     {

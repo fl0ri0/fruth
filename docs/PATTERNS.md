@@ -161,6 +161,11 @@ Route preview and route selection are not lifecycle actions. They must not start
 ### 14b. Execution gate before backend work
 
 - queued branches are rechecked before dispatch
+- dependency-ready branches without a recorded availability wait run before
+  availability rechecks; a waiting image does not reserve resource priority over
+  independent ready text work
+- due availability waits are reconsidered in oldest-deadline groups, with the
+  existing resource guards applied inside the selected group
 - user/runtime branch controls can cancel, waive, or supersede exact late fill branches
 - stale results that return after cancellation are not merged as fulfilled work
 - UI shows terminal branch state instead of leaving an old spinner active
@@ -186,6 +191,8 @@ Route preview and route selection are not lifecycle actions. They must not start
 - advisory-only pending state from `controlled_attention_review`, `aspiration_review`, `commitment_review`, or reconsideration remains visible but must not create graph repair by itself
 - validation rejects broad provider disablement requests, reserved/deferred intent conflicts, missing runtime evidence, and capability/output mismatches
 - accepted patches are additive and idempotent; they add missing branches, phases, obligations, or dependencies without replacing the whole graph
+- additive repair validates the combined phase/branch dependency graph, including new phases, all proposed edges, branch aliases, and execution-contract dependencies; each source and target must resolve unambiguously and the resulting graph must be acyclic
+- application repeats the dependency check against the current graph, including for previously accepted reviews; rejection records missing identities or a cycle witness, creates no executable work, and keeps the unmet obligation visible
 - generic current-turn promises are first normalized into `request_phase_graph.intent_obligations`; graph adequacy checks this ledger against branches, phases, and executable dependency edges before Closure can call the graph structurally complete
 - local generated/embedded image asset promises belong to graph adequacy before file execution: promote image branches first, then bind HTML/CSS text-artifact branches to those image phase dependencies instead of letting page files materialize against guessed paths
 - composed multi-page sites treat HTML, shared CSS, and dynamic JavaScript as one read-only repair cohort while retaining one exact writable target per repair branch; a detached image dump is diagnostic evidence, never successful composition

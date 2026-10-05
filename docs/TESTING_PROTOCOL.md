@@ -356,6 +356,19 @@ The same slice must prove that reserved, negated, or merely inferred modality
 cues remain non-executable and do not create Closure-repair work unless a
 current-turn obligation was explicitly promoted.
 
+For additive dependency validation, also run:
+
+    .venv/bin/python -m pytest tests/test_graph_repair_dependencies.py tests/test_graph_repair_self_healing.py tests/test_apply_enforced_policy.py -q
+
+Use a disposable offline source copy with temporary state. Reject missing or
+ambiguous dependency identities, self-dependencies, and cycles formed by existing
+edges, multiple additions, new phases, branch aliases, or execution contracts.
+Prove that valid same-patch producers and consumers remain applicable and
+idempotent. Exercise the runtime scope/evidence/lifecycle path in both
+`apply_safe` and `apply_enforced`, and recheck previously accepted reviews at the
+application boundary. Rejections must leave executable work unchanged and expose
+the dependency issue rather than claim an applied or idempotent repair.
+
 For cleanup/archive retention policy, run:
 
     .venv/bin/python -m pytest tests/test_maintenance_archive.py tests/test_clean_repo_state_policy.py tests/test_self_learning.py -q
@@ -372,6 +385,16 @@ For response runtime lifecycle wiring, also run:
     .venv/bin/python -m pytest tests/test_response_semantics_runtime.py -q
 
 For availability waiting, include `availability_wait` and `unavailable_preparation` tests in `tests/test_responses_api.py`, `tests/test_response_semantics_runtime.py`, and `tests/test_runtime_contract_knobs.py`. Fake-clock tests must show pending status, visible wait metadata, unchanged repair counters/targets, ready-sibling progress, one automatic execution after availability returns, and responsive cancellation. Hard-unavailable and excluded-only candidates must not create wait evidence. Run `tests/test_runtime_liveness.py` to preserve cooldown selectability semantics and `tests/test_response_wire.py` for compact wait projection.
+
+For progress across competing branches, also run
+`tests/test_late_fill_progress.py` and `tests/test_late_fill_telemetry_extraction.py`.
+Use the real worker with isolated state and deterministic providers/clock. A
+persistently unavailable image must not starve ready chat or an independent
+dependency chain. Due waiters must get rechecked despite capability priority or
+different historical poll counts. Cover future/stale deadlines, unchanged active
+image resource guards, cancellation and actual dependency exclusion. A bounded
+test trace plus the scheduler argument establishes this particular starvation
+property; do not claim universal progress, provider completion or process survival.
 
 `shadow` and `stage` must not mutate executable graph work and must carry non-executable `runtime_effect` values from lifecycle construction. `apply_safe` may apply only validated safe additive patches. On terminal/frozen parents, allowed safe additive repair must keep the parent blocked and byte-stable, persist an exact same-response successor relation, revalidate current autonomy/policy and patch/graph bindings, schedule only the applied owed branches through Late Fill, and keep repeated preparation idempotent. Request preparation and materialization-spec construction must both reject inherited root/assistant prompt recovery when the exact successor branch has no local payload. Same-key execution truth must progress from queued to running to one immutable terminal result across the complete Late Fill envelope, graph, request, and diagnostic projections; delayed queued/running or conflicting terminal callbacks must not restore pending/active branches, regress the canonical response lifecycle, or replace terminal truth. A fake-backend E2E must prove one branch-local backend execution and no root-prompt replay. Invalid graph repair autonomy values must stay safe `off` while surfacing diagnostics.
 

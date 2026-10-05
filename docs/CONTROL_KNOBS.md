@@ -201,6 +201,16 @@ Primary bounded knob:
 - `FRUTH_LATE_FILL_AVAILABILITY_POLL_SEC`: route recheck interval for persisted availability waits; default `5` seconds, clamped to `1`–`60`. Waiting stays on the same response/branch without consuming repair attempts or holding a backend lock. Cancellation is checked in at most one-second sleep slices. Confirmed live process plus listening port now override cooldown labels and route immediately; cooldown alone does not put such models into waiting. Explicit execution controls remain authoritative. No model is started by this mechanism.
 - `FRUTH_AUTO_EXECUTABLE_REPAIR_MAX_ATTEMPTS`: caps the default total automatic attempts for Closure-promoted auto-executable repair/materialization retry branches, including the first attempt. Runtime default is `6`, and values are clamped to a safe upper bound. Branch or repair-contract metadata such as `auto_executable_repair_max_attempts` may provide a more specific per-contract budget. This is not a UI knob; it is a non-UI policy boundary for "open until exhausted" repair so Fruth resolves blocks gently without looping forever.
 
+Availability scheduling keeps the existing dependency and resource gates. Within
+the dependency-ready batch, branches without a recorded availability wait are
+selected before wait rechecks. When only waits remain, the oldest due
+`next_check_epoch` group is considered first, then the usual image/helper resource
+priorities apply within that group. An unsuccessful recheck receives its next
+poll deadline, so it cannot repeatedly displace another already-due waiter.
+Current dispatch and next-wave projections use the same selection rule. This
+does not start providers, consume repair attempts while waiting, or guarantee
+completion when external capacity remains unavailable.
+
 Start-source boundary:
 
 - route selection, interpretive inference preview, late fill, and backend automatic paths reuse eligible running instances and must not force-start models

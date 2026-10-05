@@ -15,6 +15,20 @@ Current request/closure diagrams:
 
 - [State/Substrate Architecture](diagrams/fruth-state-substrate-architecture.html)
 
+## Semantic Core
+
+Fruth's semantic contract is to preserve required meaning across interpretation,
+execution and representation. Possibilities become obligations through explicit
+admission. Actions require appropriate authority and current prerequisites;
+accepted claims require evidence for the relevant subject and version. Frozen
+historical content remains stable, and continuations retain explicit lineage.
+Making eligible work advance also requires scheduling and recovery rules under
+stated runtime and provider assumptions.
+
+[Principles](PRINCIPLES.md) and [Core Contracts](CORE_CONTRACTS.md) describe these
+commitments in detail. [Control Knobs](CONTROL_KNOBS.md) and the
+[Knobs Cheatsheet](KNOBS_CHEATSHEET.md) locate the mechanisms used to enforce them.
+
 ## Current Shape
 
 Fruth is currently organized around one main composition root plus a handful of strong subsystem directories:

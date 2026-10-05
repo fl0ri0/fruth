@@ -18,7 +18,7 @@ Mutable work, frozen frames and append-only successors remain distinct. Durable
 means supported persistence and continuation of recorded state; it does not mean
 infallible conclusions or guaranteed survival of every in-flight operation.
 
-**Status:** Fruth `0.1.4` —
+**Status:** Fruth `0.1.5` —
 experimental, usable, and still evolving within the `0.x` series.
 
 **Conceived, designed, created, built, and developed by
@@ -60,7 +60,7 @@ PCC cases with remaining coverage limited by provider quota, a sequence timeout
 and one correct mismatch rejection. Neither campaign recorded invariant findings;
 both retain the native INCOMPLETE verdict.
 Those dated campaigns precede the later PDF, provider-failover and Research
-changes; they are not a full-conformance verdict for the complete 0.1.4 source.
+changes; they are not a full-conformance verdict for the complete 0.1.5 source.
 
 ## Project, Citation, and Collaboration
 
@@ -102,11 +102,11 @@ Useful public context:
 The primary tested environment is a recent macOS release on Apple Silicon with
 Python 3.11 or newer. Local capabilities require their corresponding Ollama,
 MLX, llama.cpp, or Apple Foundation Models backend and model. Windows, Linux, Intel Mac, remote hosting,
-and multi-user operation are outside the 0.1.4 support promise.
+and multi-user operation are outside the 0.1.5 support promise.
 
 ## Install and Start
 
-Extract the source archive, enter its directory (`fruth-0.1.4` for the release,
+Extract the source archive, enter its directory (`fruth-0.1.5` for the release,
 or `fruth-main` for the current repository ZIP), and run:
 
 ```bash
@@ -297,7 +297,7 @@ Stop, Pull, or Delete actions. Direct tab turns are ephemeral and independent;
 Fruth can promote bounded relevant context for a referential turn, but does not
 create a persistent provider session. Model selection is automatic,
 and the exact GPT variant is not exposed to Fruth; model self-descriptions are
-not runtime proof. Direct API-key management is outside this route's 0.1.4
+not runtime proof. Direct API-key management is outside this route's 0.1.5
 contract. Apple PCC is a separate optional integration described above.
 
 ## Release and Safety Notes

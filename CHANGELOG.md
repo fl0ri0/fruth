@@ -3,6 +3,24 @@
 Fruth changes are recorded here. The original Ollmo release history is retained
 below.
 
+## [0.1.5] - 2026-10-05
+
+Maintenance release for branch progress and additive dependency validation.
+The experimental `0.x` support scope remains unchanged.
+
+- Prevent an unavailable image branch from repeatedly suppressing independent
+  executable work. Select ready work before availability rechecks, then recheck
+  the oldest due waits while preserving dependency and resource guards.
+- Use the same availability selection for execution and next-wave state
+  publication. Preserve branch identity, cancellation, evidence gates and named
+  retry budgets.
+- Reject additive dependency repairs with unresolved or ambiguous identities,
+  self-dependencies or cycles, including invalid combinations of otherwise local
+  additions. Revalidate the candidate graph when applying an accepted repair.
+- Add regressions for dependency validation, competing availability waits,
+  independent branch progress and preserved dependency/resource constraints.
+- Clarify the semantic-core overview and the existing scheduling contracts.
+
 ## [0.1.4] - 2026-10-01
 
 Includes both signed PCC shortcut exports in the source archive and makes SQLite

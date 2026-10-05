@@ -27,6 +27,7 @@ import copy
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -2161,6 +2162,57 @@ class LateFillRuntimeOwner:
                 'deferred_branch_count': deferred,
                 }
         return branches, {}
+
+    def select_active_late_fill_branches(
+        self,
+        dependency_ready_branches: list[dict[str, Any]],
+        *,
+        artifact_gap: Optional[Mapping[str, Any]] = None,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Select current work before applying resource priorities.
+
+        A known availability wait must not reserve a resource ahead of ready
+        siblings. When only waits remain, advancing the oldest due group
+        prevents a permanently unavailable high-priority capability from owning
+        every recheck. Existing wait deadlines supply the ordering; no new queue
+        or execution authority is introduced.
+        """
+        ready: list[dict[str, Any]] = []
+        due_waits: list[tuple[float, dict[str, Any]]] = []
+        now = time.time()
+        for branch in dependency_ready_branches:
+            wait = branch.get('availability_wait')
+            if not isinstance(wait, Mapping) or not wait:
+                ready.append(branch)
+            elif self.availability_wait_delay(branch) <= 0:
+                try:
+                    deadline = float(wait.get('next_check_epoch') or 0)
+                except (TypeError, ValueError, OverflowError):
+                    deadline = 0.0
+                # The delay helper also admits stale future timestamps after
+                # clock movement. Revalidate those instead of sorting them last.
+                if not math.isfinite(deadline) or deadline > now:
+                    deadline = 0.0
+                due_waits.append((deadline, branch))
+        policy: dict[str, Any] = {}
+        if ready:
+            selected = ready
+            if len(ready) < len(dependency_ready_branches):
+                policy['availability_selection'] = 'ready_before_wait_rechecks'
+        elif due_waits:
+            oldest_due = min(deadline for deadline, _ in due_waits)
+            selected = [branch for deadline, branch in due_waits if deadline == oldest_due]
+            policy['availability_selection'] = 'oldest_due_waits'
+        else:
+            return [], {}
+        if policy:
+            policy['availability_deferred_branch_count'] = (
+                len(dependency_ready_branches) - len(selected)
+            )
+        active, resource_policy = self.shape_active_late_fill_branches(
+            selected, artifact_gap=artifact_gap,
+        )
+        return active, {**resource_policy, **policy}
 
     @staticmethod
     def _text_artifact_request_from_branch_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
@@ -22051,23 +22103,22 @@ class LateFillRuntimeOwner:
                     )
                     for branch in active_branches
                 ]
-                active_branches, scheduling_policy = self.shape_active_late_fill_branches(
-                    active_branches,
+                dependency_ready_branches = active_branches
+                active_branches, scheduling_policy = self.select_active_late_fill_branches(
+                    dependency_ready_branches,
                     artifact_gap=artifact_gap,
                 )
-                eligible_branches = [
-                    branch for branch in active_branches
-                    if self.availability_wait_delay(branch) <= 0
-                ]
-                if not eligible_branches and active_branches:
+                if not active_branches and dependency_ready_branches:
                     # This response worker holds no backend/device lock here.
                     # Re-enter the execution gate frequently for cancellation;
                     # route preparation is retried only when its poll is due.
-                    time.sleep(min(1.0, min(self.availability_wait_delay(branch) for branch in active_branches)))
+                    time.sleep(min(1.0, min(
+                        self.availability_wait_delay(branch)
+                        for branch in dependency_ready_branches
+                    )))
                     continue
-                for eligible in eligible_branches:
+                for eligible in active_branches:
                     trace.availability_wake(eligible)
-                active_branches = eligible_branches
                 active_capabilities = self.normalize_capability_list(
                     [self.branch_capability(branch) for branch in active_branches if self.branch_capability(branch)]
                 )
@@ -23164,10 +23215,10 @@ class LateFillRuntimeOwner:
                     )
                     for branch in next_active_branches
                 ]
-                next_active_branches = [
-                    branch for branch in next_active_branches
-                    if self.availability_wait_delay(branch) <= 0
-                ]
+                next_active_branches, next_scheduling_policy = self.select_active_late_fill_branches(
+                    next_active_branches,
+                    artifact_gap=artifact_gap,
+                )
                 next_active_capabilities = self.normalize_capability_list(
                     [self.branch_capability(branch) for branch in next_active_branches if self.branch_capability(branch)]
                 )
@@ -23195,6 +23246,7 @@ class LateFillRuntimeOwner:
                     'failed_branches': failed_branch_records,
                     'cancelled_branches': cancelled_branch_records,
                     'active_branches': next_active_branches,
+                    'scheduling_policy': next_scheduling_policy,
                     'fill_results': fill_results,
                     'completed_branch_count': len(completed_branch_records),
                     'failed_branch_count': len(failed_branch_records),

@@ -1,6 +1,6 @@
 # Fruth source packaging scope
 
-This document defines the contents and support boundaries of the Fruth `0.1.4`
+This document defines the contents and support boundaries of the Fruth `0.1.5`
 source package. See the [installation guide](../README.md#install-and-start)
 for setup and [known limitations](KNOWN_LIMITATIONS.md) for current constraints.
 
@@ -31,7 +31,7 @@ See the [changelog](../CHANGELOG.md) and the dated
 [AFM/PCC conformance observations](SELF_ATTACK_STATUS_2026-09-27.md). AFM's correct
 mismatch rejections and PCC's quota-limited coverage retain their native
 INCOMPLETE verdicts. Those runs predate the latest failover, Research and PDF
-changes; they do not establish full conformance of the complete 0.1.4 source.
+changes; they do not establish full conformance of the complete 0.1.5 source.
 Release preparation validates the selected source package separately; building
 it does not publish it or change those historical verdicts.
 
@@ -129,7 +129,7 @@ separate actions.
 The primary tested environment is a recent macOS release on Apple Silicon
 with Python 3.11 or newer. Individual local capabilities additionally require
 their own backend and model packages. Other operating systems and processor
-architectures are not part of the 0.1.4 support promise.
+architectures are not part of the 0.1.5 support promise.
 
 Fruth is intended for local, single-user use and binds its web control plane
 to `127.0.0.1` by default. Remote and multi-user deployment are outside this
@@ -171,7 +171,7 @@ ChatGPT is a separate optional cloud path:
   silently resumed.
 
 Direct provider API-key management and external providers beyond the documented
-ChatGPT and Apple PCC integrations are not part of 0.1.4.
+ChatGPT and Apple PCC integrations are not part of 0.1.5.
 
 ## Compatibility
 

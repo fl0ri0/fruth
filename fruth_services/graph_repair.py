@@ -5,6 +5,7 @@ from __future__ import annotations
 from fruth_services.events import observe_call, exact_target, judgment_summary
 
 from collections.abc import Mapping, Sequence
+from graphlib import CycleError, TopologicalSorter
 import copy
 import hashlib
 import json
@@ -399,6 +400,83 @@ def _dependency_targets(dependency: Mapping[str, Any]) -> tuple[str, list[str]]:
         if token and token not in depends_on:
             depends_on.append(token)
     return target_id, depends_on
+
+
+def _additive_dependency_issues(
+    graph: Mapping[str, Any],
+    patch: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Check the combined executable topology without changing either input."""
+
+    phases = [item for item in (graph.get('phases') or []) if isinstance(item, Mapping)]
+    branches = [item for item in (graph.get('downstream_branches') or []) if isinstance(item, Mapping)]
+    phase_ids = {_phase_id(item) for item in phases}
+    branch_ids = {_branch_id(item) for item in branches}
+    add_phases = patch.get('add_phases') if isinstance(patch.get('add_phases'), list) else []
+    add_dependencies = patch.get('add_dependencies') if isinstance(patch.get('add_dependencies'), list) else []
+    # Match application: same-ID additions do not replace existing records.
+    for raw_phase in add_phases:
+        if not isinstance(raw_phase, Mapping):
+            continue
+        phase = _phase_from_branch(raw_phase)
+        phase_id, branch_id = _phase_id(phase), _branch_id(phase)
+        if not phase_id or not branch_id or not phase.get('capability'):
+            continue
+        if phase_id not in phase_ids:
+            phases.append(phase)
+            phase_ids.add(phase_id)
+        if branch_id not in branch_ids:
+            branches.append(phase)
+            branch_ids.add(branch_id)
+
+    aliases: dict[str, set[str]] = {}
+    dependencies: dict[str, set[str]] = {}
+    edges: list[tuple[str, str]] = []
+    for record in [*phases, *branches]:
+        phase_id = _phase_id(record)
+        if not phase_id:
+            continue
+        dependencies.setdefault(phase_id, set())
+        for alias in dict.fromkeys((phase_id, _branch_id(record))):
+            aliases.setdefault(alias, set()).add(phase_id)
+        execution_contract = record.get('execution_contract')
+        if not isinstance(execution_contract, Mapping):
+            execution_contract = {}
+        for raw_sources in (
+            record.get('depends_on') or record.get('dependsOn'),
+            execution_contract.get('depends_on') or execution_contract.get('dependencies'),
+        ):
+            edges.extend((phase_id, source) for source in _clean_string_list(raw_sources))
+    for dependency in add_dependencies:
+        if isinstance(dependency, Mapping):
+            target, sources = _dependency_targets(dependency)
+            edges.extend((target, source) for source in sources if target)
+
+    issues: list[dict[str, Any]] = []
+    for alias, identities in aliases.items():
+        if len(identities) > 1:
+            issues.append({
+                'reason': 'dependency_identity_ambiguous',
+                'source_id': alias,
+                'phase_ids': sorted(identities),
+            })
+    for target, source in dict.fromkeys(edges):
+        targets, sources = aliases.get(target, set()), aliases.get(source, set())
+        if not targets or not sources:
+            issues.append({
+                'reason': 'dependency_target_not_in_graph_or_patch'
+                if not targets else 'dependency_source_not_in_graph_or_patch',
+                'target_id': target,
+                'source_id': source,
+            })
+        elif len(targets) == len(sources) == 1:
+            dependencies[next(iter(targets))].add(next(iter(sources)))
+    try:
+        # graphlib uses an iterative traversal, including for cycle witnesses.
+        TopologicalSorter({key: sorted(value) for key, value in dependencies.items()}).prepare()
+    except CycleError as error:
+        issues.append({'reason': 'dependency_cycle', 'cycle': error.args[1]})
+    return issues
 
 
 def _slug(value: Any, *, fallback: str = 'repair') -> str:
@@ -1421,21 +1499,6 @@ def validate_graph_repair_proposal(
     add_dependencies = patch.get('add_dependencies') if isinstance(patch.get('add_dependencies'), list) else []
     if not add_phases and not add_dependencies:
         add_check('patch_material', 'blocked', 'patch_contains_no_additive_graph_work')
-    planned_phase_ids = {
-        _phase_id(phase)
-        for phase in add_phases
-        if isinstance(phase, Mapping) and _phase_id(phase)
-    }
-    existing_phase_ids = {
-        _phase_id(phase)
-        for phase in (graph.get('phases') or [])
-        if isinstance(phase, Mapping) and _phase_id(phase)
-    }
-    existing_branch_ids = {
-        _branch_id(branch)
-        for branch in (graph.get('downstream_branches') or [])
-        if isinstance(branch, Mapping) and _branch_id(branch)
-    }
     for phase in add_phases:
         if not isinstance(phase, Mapping):
             add_check('phase_shape', 'rejected', 'add_phase_entry_not_mapping')
@@ -1463,8 +1526,6 @@ def validate_graph_repair_proposal(
         if not target_id:
             add_check('dependency_contract', 'rejected', 'dependency_target_missing')
             continue
-        if target_id not in existing_phase_ids and target_id not in existing_branch_ids and target_id not in planned_phase_ids:
-            add_check('dependency_contract', 'rejected', 'dependency_target_not_in_graph_or_patch')
         if not depends_on:
             add_check('dependency_contract', 'rejected', 'dependency_source_missing')
         if target_id and depends_on:
@@ -1473,6 +1534,13 @@ def validate_graph_repair_proposal(
                 'passed',
                 'dependency_edge_is_additive',
             )
+
+    dependency_issues = _additive_dependency_issues(graph, patch)
+    for issue in dependency_issues:
+        add_check('dependency_topology', 'rejected', issue['reason'])
+        checks[-1].update(issue)
+    if not dependency_issues:
+        add_check('dependency_topology', 'passed', 'dependency_sources_resolve_and_graph_is_acyclic')
 
     accepted_learning_summary: dict[str, Any] = {}
     if isinstance(accepted_learning_hints, Mapping):
@@ -1529,6 +1597,18 @@ def apply_validated_graph_repair_patch(
                 'graph': graph,
             }
         )
+
+    dependency_issues = _additive_dependency_issues(graph, patch)
+    if dependency_issues:
+        return _json_safe({
+            'kind': GRAPH_REPAIR_PATCH_APPLICATION_KIND,
+            'status': 'rejected',
+            'reason': 'dependency_topology_invalid',
+            'dependency_issues': dependency_issues,
+            'proposal_id': proposal_id,
+            'original_graph_digest': original_digest,
+            'graph': graph,
+        })
 
     add_phases = [item for item in (patch.get('add_phases') or []) if isinstance(item, Mapping)]
     downstream_branches = [
@@ -2381,6 +2461,9 @@ def apply_validated_graph_patch(
             'applied_phase_ids': application.get('applied_phase_ids'),
             'applied_obligation_ids': application.get('applied_obligation_ids'),
             'applied_dependency_edges': application.get('applied_dependency_edges'),
+            'dependency_issues': application.get('dependency_issues'),
+            'blocked_reasons': [*blocked_reasons, application['reason']]
+            if application_status == 'rejected' and application.get('reason') else blocked_reasons,
             **(
                 _compact_payload(
                     {
@@ -2422,7 +2505,9 @@ def apply_validated_graph_patch(
             ),
             'outcome': {
                 'status': application_status,
-                'runtime_effect': 'graph_mutated' if application_status == 'applied' else 'idempotency_guard_no_duplicate_work',
+                'runtime_effect': 'graph_mutated' if application_status == 'applied'
+                else 'idempotency_guard_no_duplicate_work' if application_status == 'already_applied'
+                else 'none',
             },
         }
     )

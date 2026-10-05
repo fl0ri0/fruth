@@ -3,6 +3,9 @@
 See also `docs/VISION_ALIGNMENT.md` for the conceptual north star and
 `docs/TRUTH_SOURCES.md` for the operational truth-source hierarchy.
 
+The [Semantic Core overview](ARCHITECTURE_MAP.md#semantic-core) summarizes how
+these principles fit together.
+
 ## 1. Runtime owns truth
 
 Fruth does not treat model output as truth.

@@ -23,6 +23,8 @@ from helpers.session_controls import (
     validate_reasoning_effort_for_instance,
 )
 from fruth_services.artifact_contracts import execution_input_artifact_ref
+from fruth_services.responses import capture_request_intent
+from fruth_core.inference import detect_text_artifact_requests
 from fruth_inference.request_phase_graph import build_request_phase_graph
 from fruth_inference.execution_planner import resolve_internal_reasoning_effort
 from fruth_server.repair_gate_runtime import classify_repair_execution_policy
@@ -3788,6 +3790,17 @@ class ResponsesRequestRuntimeOwner:
                 'root_prompt_replay': False,
             }
         )
+        # Publish the exact execution only after the admission gates above have
+        # passed, before attaching its envelope. The callback merge can then
+        # distinguish fresh authorized repair from an old/foreign execution.
+        admitted_graph = copy.deepcopy(successor_payload['runtime']['request_phase_graph'])
+        admitted_graph['successor_reopen_executions'] = [
+            *[dict(item) for item in (admitted_graph.get('successor_reopen_executions') or [])
+              if isinstance(item, Mapping)
+              and item.get('successor_execution_key') != execution_record['successor_execution_key']],
+            execution_record,
+        ]
+        successor_payload['runtime']['request_phase_graph'] = admitted_graph
         artifact_gap.update(
             {
                 'code': 'graph_patch_late_fill',
@@ -6989,6 +7002,7 @@ class ResponsesRequestRuntimeOwner:
                 )
             upload = None
 
+        data = capture_request_intent(data)
         route_info = None
         if _provider_retry is not None:
             # Internal execution continuation: never reinterpret the accepted work.
@@ -8434,6 +8448,18 @@ class ResponsesRequestRuntimeOwner:
             return jsonify(project_response_payload_for_wire(response_payload))
 
         ensure_response_lookup(capability or 'response')
+        # Capture independently of the returned result, using the same admitted
+        # caller/source owners as the writer. Provider metadata is not scope.
+        source_meta = self._hook('request_payload_text_artifact_source')(normalized_payload)
+        accepted_text_requests = detect_text_artifact_requests(
+            responses_current_turn_prompt or responses_prompt,
+            source_available=bool(source_meta),
+            source_extension=source_meta.get('extension'),
+            source_name=source_meta.get('source_name'),
+            source_path=source_meta.get('path'),
+        ) if capability == self.capability_chat else []
+        accepted_root_phase_id = str(((route_info or {}).get('route_runtime') or {}).get(
+            'request_phase_graph', {}).get('current_phase_id') or '')
         infer_result, status_code = invoke_internal_api_json_route(
             payload=infer_payload,
             upload=upload,
@@ -8553,6 +8579,10 @@ class ResponsesRequestRuntimeOwner:
                     **text_artifact_payload,
                     'content': final_output_text,
                 }
+        infer_result = self._hook('capture_root_text_artifact_saved_evidence')(
+            infer_result, accepted_requests=accepted_text_requests,
+            response_id=requested_response_id, phase_id=accepted_root_phase_id,
+        )
         semantic_source_payload = (
             self._apply_tts_audio_integrity_output_truth(dict(infer_result))
         )

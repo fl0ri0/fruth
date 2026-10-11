@@ -1,4 +1,5 @@
 """Exact retained-source authority at the physical STT handoff, no models."""
+from tests.http_client import api_client
 import copy
 import hashlib
 import json
@@ -127,7 +128,7 @@ def test_responses_preparation_and_infer_api_use_verified_copy(binding,monkeypat
     assert has_file and infer_payload['file_path']==str(b.source)
     assert len(infer_payload['reference_artifacts'])==2+other_audio_count
     if corrupt:b.source.write_bytes(b'changed since canonical source')
-    response=web.app.test_client().post('/api/infer',json=infer_payload)
+    response=api_client(web.app).post('/api/infer',json=infer_payload)
     assert response.status_code==(400 if corrupt else 200),response.get_json()
     assert calls==([] if corrupt else [b.digest])
     if not corrupt:

@@ -1,0 +1,81 @@
+{
+  "files": [
+    {
+      "mime_type": "application/octet-stream",
+      "path": "README.md",
+      "role": "documentation",
+      "sha256": "eb31b595690d94fffda91747fefbfff4261f4507adf15bc728ef23467eca6329",
+      "size_bytes": 6095
+    },
+    {
+      "mime_type": "image/png",
+      "path": "artifacts/images/image-01.png",
+      "role": "canonical_artifact_copy",
+      "sha256": "218fa26b467afe31f01915411b047ae5c03b6d4eeff79fda492a76df3b9b1cf5",
+      "size_bytes": 1467044
+    },
+    {
+      "mime_type": "image/png",
+      "path": "artifacts/images/image-02.png",
+      "role": "canonical_artifact_copy",
+      "sha256": "59ad9c64cf216ccaa8f33aa0e1d250729ee4917c579e05e34d5a3d99ea12df19",
+      "size_bytes": 1942739
+    },
+    {
+      "mime_type": "image/png",
+      "path": "artifacts/images/image-03.png",
+      "role": "canonical_artifact_copy",
+      "sha256": "d77f96912a1ca115f6d6e1fd5cfcb4f24438ac655dbd572dfd9998c28b15e5f6",
+      "size_bytes": 1515797
+    },
+    {
+      "mime_type": "application/json",
+      "path": "monitor-report.json",
+      "role": "observer_evidence",
+      "sha256": "09fdfc84468fe3e3585d0f998c92d723461cee6ff1a094407233ff5fa0318d01",
+      "size_bytes": 1763
+    },
+    {
+      "mime_type": "text/plain",
+      "path": "prompt.txt",
+      "role": "request",
+      "sha256": "9db87c5dacbc6191504af3df38e9916528cda0364efaaf957bbdbbe557c3930a",
+      "size_bytes": 333
+    },
+    {
+      "mime_type": "application/json",
+      "path": "response.json",
+      "role": "response_truth",
+      "sha256": "c6728477bb584fb63bd2a8b4434cbfeb389f84876187e5b274721422f189c139",
+      "size_bytes": 7835
+    }
+  ],
+  "frame_id": "resp_1791661239229_7c1d95e8eecee8:frame-2",
+  "frame_sequence": 2,
+  "provenance": {
+    "original_response_frame_authoritative": true,
+    "original_runtime_artifacts_authoritative": true,
+    "publication_copy_is_runtime_authority": false,
+    "raw_frame_published": false,
+    "raw_monitor_record_published": false
+  },
+  "response_id": "resp_1791661239229_7c1d95e8eecee8",
+  "schema": "fruth.reference_run_manifest.v1",
+  "source_frame_record_sha256": "e4a8b4d47bf70e6b82f18b65abbb8c1bd2c3189dc0a0bef4219c0377e568add0",
+  "source_frame_record_size_bytes": 810203,
+  "summary": {
+    "artifact_count": 3,
+    "bundle_included": false,
+    "file_count": 7,
+    "total_bytes": 4941606
+  },
+  "validation": {
+    "artifact_checksums_verified": true,
+    "indexed_frame_verified": true,
+    "local_absolute_paths_absent": true,
+    "monitor_verdict": "clean",
+    "prompt_identity_verified": true,
+    "terminal_runtime_truth_verified": true
+  },
+  "version": 1
+}

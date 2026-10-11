@@ -1,0 +1,177 @@
+{
+  "artifacts": [
+    {
+      "artifact_ref": "artifact:image_4df1d3a3854064624e876ad2",
+      "branch_id": "branch-image_generation-1",
+      "height": 720,
+      "mime_type": "image/png",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/images/image-01.png",
+      "sha256": "218fa26b467afe31f01915411b047ae5c03b6d4eeff79fda492a76df3b9b1cf5",
+      "size_bytes": 1467044,
+      "type": "image",
+      "width": 1280
+    },
+    {
+      "artifact_ref": "artifact:image_4ee357c75241568c8523ba49",
+      "branch_id": "branch-image_generation-2",
+      "height": 1024,
+      "mime_type": "image/png",
+      "phase_id": "phase-3",
+      "published_path": "artifacts/images/image-02.png",
+      "sha256": "59ad9c64cf216ccaa8f33aa0e1d250729ee4917c579e05e34d5a3d99ea12df19",
+      "size_bytes": 1942739,
+      "type": "image",
+      "width": 1024
+    },
+    {
+      "artifact_ref": "artifact:image_5093abf6afe7a757c027d49e",
+      "branch_id": "branch-image_generation-3",
+      "height": 720,
+      "mime_type": "image/png",
+      "phase_id": "phase-4",
+      "published_path": "artifacts/images/image-03.png",
+      "sha256": "d77f96912a1ca115f6d6e1fd5cfcb4f24438ac655dbd572dfd9998c28b15e5f6",
+      "size_bytes": 1515797,
+      "type": "image",
+      "width": 1280
+    }
+  ],
+  "bundle": null,
+  "integrity": {
+    "frame_identity_verified": true,
+    "index_only_wire_lookup": true,
+    "ledger_fallback_used": false,
+    "observation_snapshot_digests_verified": true,
+    "source_frame_record_sha256": "e4a8b4d47bf70e6b82f18b65abbb8c1bd2c3189dc0a0bef4219c0377e568add0",
+    "source_frame_record_size_bytes": 810203,
+    "verified_response_map": true
+  },
+  "outputs": [
+    {
+      "branch_id": "phase-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-1",
+      "slot_id": "output-phase-1",
+      "status": "fulfilled",
+      "text": "**Image 1 Prompt:**\nA hilarious, wide-angle \"fisheye\" selfie of a clumsy giant panda in a dense bamboo forest. The panda's snout and eyes are extremely close to the camera lens, creating a distorted, comical expression. The panda is clumsily grasping a piece of bamboo as if it were a selfie stick. Photorealistic, high detail, natural lighting.\n\n**Image 2 Prompt:**\nA vibrant, high-contrast travel selfie of a charismatic llama wearing oversized, brightly colored heart-shaped sunglasses and a thick, colorful Andean woven scarf. The llama is posing confidently with a smirk, set against the breathtaking, sun-drenched backdrop of the snow-capped Andes Mountains. Professional National Geographic style photography.\n\n**Image 3 Prompt:**\nAn energetic macro-photography selfie of a tiny squirrel captured mid-jump among falling autumn leaves. The squirrel is frantically holding a miniature, glowing smartphone with its small paws, looking directly into the lens with wide, excited eyes. Intense motion blur in the background elements (orange and brown leaves) to emphasize the sudden movement, with sharp focus on the squirrel's face.",
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:image_4df1d3a3854064624e876ad2",
+      "branch_id": "branch-image_generation-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/images/image-01.png",
+      "slot_id": "output-phase-2",
+      "status": "fulfilled",
+      "type": "image"
+    },
+    {
+      "artifact_ref": "artifact:image_4ee357c75241568c8523ba49",
+      "branch_id": "branch-image_generation-2",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-3",
+      "published_path": "artifacts/images/image-02.png",
+      "slot_id": "output-phase-3",
+      "status": "fulfilled",
+      "type": "image"
+    },
+    {
+      "artifact_ref": "artifact:image_5093abf6afe7a757c027d49e",
+      "branch_id": "branch-image_generation-3",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-4",
+      "published_path": "artifacts/images/image-03.png",
+      "slot_id": "output-phase-4",
+      "status": "fulfilled",
+      "type": "image"
+    },
+    {
+      "branch_id": "branch-chat-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-8",
+      "slot_id": "output-phase-8",
+      "status": "fulfilled",
+      "text": "**Structured Output — Generated Images Inspection**\n\n| # | Branch Artifact | Visible Content Summary | Readable Text | Visual Defects |\n|---|-----------------|-------------------------|---------------|----------------|\n| 1 | branch-vision_analysis-1 | Fisheye photograph of a giant panda eating bamboo in a dense forest. Panda face dominates frame, gazing at camera; black eye patches, ears, nose on white fur; open mouth with visible teeth while chewing; long claws gripping a green bamboo stalk (lower-left); tall vertical bamboo stalks and leaves filling background under bright daylight. | None present. | None reported. Fisheye distortion is intentional lens effect. |\n| 2 | branch-vision_analysis-2 | A llama centered in foreground wearing colorful sunglasses and a multi-colored knitted scarf, against rugged snow-capped mountains under a clear blue sky. | None mentioned. | None mentioned. |\n| 3 | branch-vision_analysis-3 | A single squirrel centered, holding a glowing smartphone with both paws, set among out-of-focus brown/orange autumn fallen leaves. | Explicitly stated: no readable text present. | None mentioned. |\n\n**Notes:** Each image is distinct (panda / llama / squirrel); no shared artifact reference reused across identities. Text/defect status reported per branch evidence; branches 2 and 3 are brief summaries without explicit defect observations, while branch 1 provides the most detailed inspection.",
+      "type": "text"
+    }
+  ],
+  "provenance": {
+    "original_runtime_truth_remains_authoritative": true,
+    "raw_frame_published": false,
+    "runtime_effect": "none",
+    "source": "indexed final response frame and canonical artifact bytes"
+  },
+  "request": {
+    "prompt_path": "prompt.txt",
+    "prompt_sha256": "712b83cc91c0fc50c427f86887ed3306d3b8c86c2967427b3f6bffa915a43ff1",
+    "runtime_request_sha256": "3b12226f8faaeeb0f789ccf66819fee1ac812e4c77cfff6c72261feae77e696b",
+    "verified": true
+  },
+  "response": {
+    "frame_id": "resp_1791661239229_7c1d95e8eecee8:frame-2",
+    "frame_sequence": 2,
+    "frame_version": 9,
+    "id": "resp_1791661239229_7c1d95e8eecee8",
+    "lifecycle_state": "completed",
+    "status": "completed",
+    "status_semantics": {
+      "has_actionable_repair": false,
+      "has_open_continuation": false,
+      "is_terminal": true,
+      "terminal": true
+    }
+  },
+  "runtime_truth": {
+    "closure": {
+      "continuation_required": false,
+      "counts": {
+        "blocked": 0,
+        "deferred": 0,
+        "fulfilled": 8,
+        "pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "obligation_count": 8,
+      "pending_branch_count": 0,
+      "status": "fulfilled"
+    },
+    "late_fill": {
+      "counts": {
+        "cancelled": 0,
+        "completed": 7,
+        "failed": 0,
+        "pending": 0
+      },
+      "final_materialization_contract_status": "fulfilled",
+      "status": "completed"
+    },
+    "surface": {
+      "active_categories": [
+        "completed",
+        "reconsiderable",
+        "controlled_attention_advisory",
+        "aspiration_advisory",
+        "commitment_advisory"
+      ],
+      "category_counts": {
+        "aspiration_advisory": 16,
+        "blocked": 0,
+        "commitment_advisory": 32,
+        "completed": 8,
+        "controlled_attention_advisory": 180,
+        "open": 0,
+        "reconsiderable": 8,
+        "repair_pending": 0,
+        "semantic_review_pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "status": "fulfilled"
+    }
+  },
+  "schema": "fruth.public_reference_run.v1",
+  "version": 1
+}

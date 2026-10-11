@@ -1724,9 +1724,7 @@ def _build_work_tree(
         'role': 'request_root',
         'status': request_root_status,
         'summary': _clean_text(
-            request_payload.get('prompt')
-            or request_payload.get('input')
-            or request_payload.get('instructions')
+            extract_responses_current_turn_prompt(dict(request_payload))
         ) or 'request',
     }
     nodes.append(request_root)

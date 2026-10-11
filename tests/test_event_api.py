@@ -1,3 +1,4 @@
+from tests.http_client import api_client
 import unittest
 import json
 import tempfile
@@ -10,7 +11,7 @@ from fruth_webserver import app
 class EventApiTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
-        self.client = app.test_client()
+        self.client = api_client(app)
 
     @patch('fruth_webserver.read_events')
     def test_event_history_route_uses_event_log_reader(self, mock_read_events):

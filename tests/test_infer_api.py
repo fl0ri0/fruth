@@ -1,3 +1,4 @@
+from tests.http_client import api_client
 import io
 import tempfile
 import unittest
@@ -29,7 +30,9 @@ from fruth_core.transports import persist_input_file_locally
 class InferApiTests(unittest.TestCase):
     def setUp(self):
         app.config["TESTING"] = True
-        self.client = app.test_client()
+        self.client = api_client(app)
+        # Provider fixtures never authorize unloading a real installed backend.
+        self.enterContext(patch('fruth_webserver._schedule_post_response_substrate_hygiene'))
         _GENERATED_IMAGE_STATE_CACHE.clear()
         _GENERATED_IMAGE_STATE_ENRICHMENT_IN_FLIGHT.clear()
         if hasattr(fruth_webserver._GENERATED_IMAGE_POSTPROCESS, "helper_error_cooldowns"):

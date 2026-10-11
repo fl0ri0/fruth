@@ -1,4 +1,5 @@
 """AFM conformance with isolated registry and deterministic HTTP/process evidence."""
+from tests.http_client import api_client
 import json
 import io
 from unittest.mock import Mock
@@ -274,7 +275,7 @@ def test_api_missing_explicit_target_does_not_forward_to_supplied_port(monkeypat
     monkeypatch.setattr(web, 'load_running_instances', lambda: [])
     post = Mock(side_effect=AssertionError('must not forward missing target'))
     monkeypatch.setattr(web.requests, 'post', post)
-    response = web.app.test_client().post('/api/chat', json={
+    response = api_client(web.app).post('/api/chat', json={
         'instance_id':'apple_fm:system:11601', 'backend':'apple_fm',
         'model':'system', 'port':11602, 'messages':[{'role':'user','content':'hi'}]})
     assert response.status_code == 404
@@ -288,7 +289,7 @@ def test_infer_api_rejects_unsupported_capability_even_with_backend_override(mon
         'instance_id': instance_id, 'backend':'apple_fm','model':'system','port':11601})
     post = Mock(side_effect=AssertionError('must not forward unsupported input'))
     monkeypatch.setattr(web.requests, 'post', post)
-    response = web.app.test_client().post('/api/infer', json={
+    response = api_client(web.app).post('/api/infer', json={
         'instance_id':'apple_fm:system:11601', 'backend':'ollama',
         'model':'other', 'capability':capability, 'prompt':'hi'})
     assert response.status_code == 400

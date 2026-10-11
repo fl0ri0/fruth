@@ -276,7 +276,8 @@ class JsonHttpClient:
             raise CorpusError(f'Unsupported HTTP method: {normalized_method or method!r}')
         url = f"{self.base_url}{path if path.startswith('/') else '/' + path}"
         body = None
-        headers = {'Accept': 'application/json'}
+        # Public browser-channel action contract; not an operator credential.
+        headers = {'Accept': 'application/json', 'X-Fruth-Action': '1'}
         if payload is not None:
             body = canonical_json_bytes(payload)
             headers['Content-Type'] = 'application/json'
@@ -840,12 +841,12 @@ def atomic_write_json(path: Path | str, payload: Mapping[str, Any]) -> None:
 
 
 @contextmanager
-def manifest_lock(path: Path | str) -> Iterator[None]:
+def manifest_lock(path: Path | str, *, blocking: bool = False) -> Iterator[None]:
     lock_path = Path(f'{Path(path)}.lock')
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open('a+', encoding='utf-8') as handle:
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
         except BlockingIOError as exc:
             raise ManifestLockedError(f'Manifest is already owned by another runner: {path}') from exc
         try:
@@ -2465,6 +2466,8 @@ class ShadowCorpusRunner:
         sleep_fn: Callable[[float], None] = time.sleep,
         emit: Callable[[str], None] = print,
         request_transform: Optional[Callable[[dict[str, Any], Mapping[str, Any]], dict[str, Any]]] = None,
+        dispatch_guard: Optional[Callable[[Mapping[str, Any]], Optional[str]]] = None,
+        dispatch_stop_reason: Optional[Callable[[], Optional[str]]] = None,
     ):
         if max_in_flight < 1:
             raise CorpusError('--max-in-flight must be at least 1.')
@@ -2481,6 +2484,8 @@ class ShadowCorpusRunner:
         self.sleep_fn = sleep_fn
         self.emit = emit
         self.request_transform = request_transform
+        self.dispatch_guard = dispatch_guard
+        self.dispatch_stop_reason = dispatch_stop_reason
         self._dispatch_results: queue.Queue[tuple[str, HttpResult]] = queue.Queue()
         self._dispatch_threads: dict[str, threading.Thread] = {}
         self._inference_preferences: dict[str, Any] = {}
@@ -2818,13 +2823,24 @@ class ShadowCorpusRunner:
             result = HttpResult(status_code=0, payload={}, error=str(exc))
         self._dispatch_results.put((case_id, result))
 
-    def _start_dispatch(self, case: dict[str, Any]) -> None:
+    def _start_dispatch(self, case: dict[str, Any]) -> bool:
         payload = build_request_payload(self.manifest, case, self._inference_preferences)
         if self.request_transform is not None:
             original = {key: payload.get(key) for key in ('response_id', 'conversation_id', 'inference_route', 'prompt', 'inference_preferences')}
             payload = self.request_transform(payload, case)
             if any(payload.get(key) != value for key, value in original.items()):
                 raise CorpusError('Request transform cannot change shadow dispatch identity, intent or persisted preferences.')
+        reason = self.dispatch_guard(case) if self.dispatch_guard else None
+        if reason:
+            self.manifest['dispatch_stop'] = {'reason': reason, 'at': utc_now(),
+                                              'response_id': case['response_id']}
+            if reason == 'dispatch_identity_already_reserved':
+                # A reservation can survive a crash before the manifest write.
+                # It is ambiguous, even if the subsequent GET returns 404.
+                case['state'] = 'dispatch_unknown'
+                case['dispatch_unknown_reason'] = reason
+            self.persist()
+            return False
         case['state'] = 'submitting'
         case['submitting_at'] = utc_now()
         case['dispatch_request'] = payload
@@ -2840,6 +2856,7 @@ class ShadowCorpusRunner:
         self._dispatch_threads[str(case.get('case_id'))] = thread
         thread.start()
         self.emit(f"{case.get('case_id')}: submitting {case.get('response_id')}")
+        return True
 
     def _drain_dispatch_results(self) -> bool:
         changed = False
@@ -3009,7 +3026,15 @@ class ShadowCorpusRunner:
                 return 2
 
             slots = self.max_in_flight - self._active_count()
-            if slots > 0:
+            stop = self.dispatch_stop_reason() if self.dispatch_stop_reason else None
+            if stop:
+                self.manifest.setdefault('dispatch_stop', {'reason': stop, 'at': utc_now()})
+                self.persist()
+                if not self._dispatch_threads and self._active_count() == 0:
+                    self._append_run_history('dispatch_stopped', reason=stop)
+                    self.persist()
+                    return 2
+            if slots > 0 and not stop:
                 if not self._runtime_ready and not self._preflight():
                     return 2
                 for case in self._eligible_planned_cases()[:slots]:
@@ -3018,8 +3043,7 @@ class ShadowCorpusRunner:
                         self.persist()
                     preflight = self._get_before_post(case)
                     if preflight == 'absent':
-                        self._start_dispatch(case)
-                        progress = True
+                        progress |= self._start_dispatch(case)
 
             if not self._dispatch_threads and self._active_count() == 0:
                 waiting = [

@@ -1,3 +1,4 @@
+from tests.http_client import api_client
 import hashlib
 import json
 import tempfile
@@ -51,7 +52,7 @@ def _access(status=CodexAccessState.AVAILABLE):
 class CodexRuntimeBridgeTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
-        self.client = app.test_client()
+        self.client = api_client(app)
         self.tmpdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tmpdir.name)
         self.runtime_registry_path = self.root / 'model_ports.json'

@@ -1,4 +1,5 @@
 """Exercise canonical producer -> dependency -> infer, before Registry publication."""
+from tests.http_client import api_client
 import copy
 import hashlib
 import math
@@ -157,7 +158,7 @@ def test_http_cannot_supply_runtime_dependency_authority(handoff):
     plan = h.plan()
     wire = copy.deepcopy(plan['infer_payload'])
     wire['direct_audio_dependency'] = asdict(plan['direct_audio_dependency'])
-    response = h.web.app.test_client().post('/api/infer', json=wire)
+    response = api_client(h.web.app).post('/api/infer', json=wire)
     assert response.status_code == 400
     assert 'artifact identity unavailable' in response.get_json()['error']
     assert not h.calls
@@ -224,7 +225,7 @@ def test_later_frame_registry_publication_preserves_direct_identity(handoff, mon
     persist_output_artifact_registry_records(payload, ledger_path=h.ledger)
     monkeypatch.setattr(h.web, '_get_response_lookup_record', lambda rid: {'response_payload': payload})
     _, infer = h.prepare()
-    response = h.web.app.test_client().post('/api/infer', json=infer)
+    response = api_client(h.web.app).post('/api/infer', json=infer)
     assert response.status_code == 200, response.get_json()
     retained = response.get_json()['audio_reference_input_evidence']
     for key in ('artifact_ref', 'artifact_id', 'source_response_id', 'branch_id', 'phase_id', 'path', 'file_sha256'):

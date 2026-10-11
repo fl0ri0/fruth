@@ -1,5 +1,6 @@
 """Image upload bytes and media types at the selected backend boundary."""
 
+from tests.http_client import api_client
 import base64
 import hashlib
 import io
@@ -98,7 +99,7 @@ def test_uploaded_image_preserves_prompt_target_format_and_artifact(
 ):
     web, completion = image_route
     prompt = "What's the text in this image?"
-    response = web.app.test_client().post('/api/infer', data={
+    response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'image-test', 'capability': capability,
         'prompt': prompt, 'ocr_mode': 'auto', 'file': (io.BytesIO(raw), name),
     })

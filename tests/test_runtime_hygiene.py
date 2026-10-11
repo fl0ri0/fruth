@@ -99,7 +99,10 @@ class RuntimeHygieneTests(unittest.TestCase):
                 }
             ]
 
-            with patch('fruth_runtime.runtime_hygiene.list_runtime_entries', return_value=live_entries):
+            with patch('fruth_runtime.runtime_hygiene.list_runtime_entries', return_value=live_entries), \
+                 patch('fruth_core.status._process_alive', return_value=True), \
+                 patch('fruth_core.status._port_listening', return_value=True), \
+                 patch('fruth_core.status._fetch_backend_runtime_metadata', return_value={}):
                 summary = cleanup_runtime_hygiene(
                     registry_path=Path(tmpdir) / 'model_ports.json',
                     status_path=Path(tmpdir) / 'runtime_status.json',

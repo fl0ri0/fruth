@@ -1,8 +1,10 @@
 # Fruth source packaging scope
 
-This document defines the contents and support boundaries of the Fruth `0.1.5`
+This document defines the contents and support boundaries of the Fruth `0.1.6`
 source package. See the [installation guide](../README.md#install-and-start)
 for setup and [known limitations](KNOWN_LIMITATIONS.md) for current constraints.
+This package includes the post-0.1.5 hardening and refreshed October 10 reference
+selection; these additions do not alter the previously published 0.1.5 archive.
 
 ## Included capabilities
 
@@ -27,11 +29,14 @@ The source package includes:
 - Reusable offline Research evidence review and explicit Gold curation, including
   retained validation and recoverable publication of reviewed cases.
 
-See the [changelog](../CHANGELOG.md) and the dated
-[AFM/PCC conformance observations](SELF_ATTACK_STATUS_2026-09-27.md). AFM's correct
-mismatch rejections and PCC's quota-limited coverage retain their native
-INCOMPLETE verdicts. Those runs predate the latest failover, Research and PDF
-changes; they do not establish full conformance of the complete 0.1.5 source.
+See the [changelog](../CHANGELOG.md) and
+[October 10 validation status](SELF_ATTACK_STATUS_2026-10-10.md). The full local
+and AFM matrices passed on their recorded pre-correction source; later response
+fixes passed fresh offline validation and five local reference workflows. The
+subsequent monitor/classifier closeout has separate offline evidence; those five
+packages preserve their original executions. PCC remains separate. The
+[historical Apple results](SELF_ATTACK_STATUS_2026-09-27.md)
+retain their original INCOMPLETE verdicts for those earlier campaigns.
 Release preparation validates the selected source package separately; building
 it does not publish it or change those historical verdicts.
 
@@ -69,8 +74,10 @@ it does not publish it or change those historical verdicts.
   unrelated generated artifacts remain excluded from the source release.
 - Apache License 2.0 coverage for Fruth's own code and project documentation,
   with separate notices for third-party components, machine-readable citation
-  metadata, and research-contact paths maintained by `@fl0ri0`. Public issues,
-  pull requests, support, and review are not currently promised.
+  metadata, and research-contact paths maintained by `@fl0ri0`. Collaboration is
+  welcome within the maintainer's learning process and available capacity;
+  responses, reviews, merges, and ongoing support cannot be guaranteed. See
+  [participation guidance](../CONTRIBUTING.md).
 
 Existing capabilities remain available unless they would make installation,
 security, or response truth materially unsafe. Optional backends and
@@ -79,9 +86,18 @@ modalities remain experimental.
 ## Source selection and checksums
 
 `scripts/build_release_archive.py` owns the current source allowlist and verifier.
+`RELEASE_BROWSER_DEPENDENCY_FILES` requires the fixed local Axios browser build,
+source map, MIT license and provenance under `static/vendor/axios-1.20.0/` for new
+builds. Verification retains compatibility with complete historical CDN-based
+dashboards, but rejects partial bundles or a local dashboard missing the bundle.
+This is current source selection, not a claim that this addition shipped in
+previously published 0.1.5 archives. Google Fonts and Font Awesome remain remote
+dashboard dependencies; see [third-party notices](../THIRD_PARTY_NOTICES.md).
+
 `PUBLIC_DOCS` includes the normative contracts, `SELF_ATTACK.md`, the dated
 [September 19 conformance summary](SELF_ATTACK_STATUS_2026-09-19.md) and
-[September 25–27 Apple results](SELF_ATTACK_STATUS_2026-09-27.md), causal
+[September 25–27 Apple results](SELF_ATTACK_STATUS_2026-09-27.md), the current
+[October 10 validation status](SELF_ATTACK_STATUS_2026-10-10.md), causal
 telemetry and state-flow diagnostics. The dated summary records the tested
 source and scope; packaging it does not establish a new conformance result.
 `PUBLIC_CONFIG_PATHS` includes exactly `config/self_attack_corpus.json` and
@@ -129,7 +145,7 @@ separate actions.
 The primary tested environment is a recent macOS release on Apple Silicon
 with Python 3.11 or newer. Individual local capabilities additionally require
 their own backend and model packages. Other operating systems and processor
-architectures are not part of the 0.1.5 support promise.
+architectures are not part of the 0.1.6 support promise.
 
 Fruth is intended for local, single-user use and binds its web control plane
 to `127.0.0.1` by default. Remote and multi-user deployment are outside this
@@ -171,7 +187,7 @@ ChatGPT is a separate optional cloud path:
   silently resumed.
 
 Direct provider API-key management and external providers beyond the documented
-ChatGPT and Apple PCC integrations are not part of 0.1.5.
+ChatGPT and Apple PCC integrations are not part of 0.1.6.
 
 ## Compatibility
 

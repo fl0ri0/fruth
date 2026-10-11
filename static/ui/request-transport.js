@@ -1,3 +1,26 @@
+function fruthApiActionHeaders(headers = {}) {
+    return { ...headers, 'X-Fruth-Action': '1' };
+}
+
+// Cover JSON, multipart, lifecycle, history and refresh calls in the existing
+// Axios channel. Never add the marker to another origin or provider transport.
+axios.interceptors.request.use((config) => {
+    const url = new URL(config.url, window.location.href);
+    const method = String(config.method || 'get').toUpperCase();
+    const refresh = String(config.params?.refresh ?? url.searchParams.get('refresh') ?? '').trim().toLowerCase();
+    const effectful = !['GET', 'HEAD', 'OPTIONS'].includes(method)
+        || ['1', 'true', 'yes', 'y', 'on'].includes(refresh);
+    if (url.origin === window.location.origin && /^\/(api|v1)\//.test(url.pathname) && effectful) {
+        config.headers = config.headers || {};
+        if (typeof config.headers.set === 'function') {
+            config.headers.set('X-Fruth-Action', '1');
+        } else {
+            config.headers['X-Fruth-Action'] = '1';
+        }
+    }
+    return config;
+});
+
 function requestTransportTargetIsExternal(instance) {
     return Boolean(
         instance

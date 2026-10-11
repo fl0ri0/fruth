@@ -1,3 +1,4 @@
+from tests.http_client import api_client
 import tempfile
 import time
 import unittest
@@ -10,7 +11,7 @@ from fruth_webserver import _RESPONSE_LOOKUP, app
 class ChatHistoryApiTests(unittest.TestCase):
     def setUp(self):
         app.config['TESTING'] = True
-        self.client = app.test_client()
+        self.client = api_client(app)
         _RESPONSE_LOOKUP.clear()
 
     @patch('fruth_webserver.CHAT_HISTORY_DIR', new_callable=lambda: Path(tempfile.mkdtemp()))

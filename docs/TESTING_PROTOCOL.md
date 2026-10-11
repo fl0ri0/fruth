@@ -6,6 +6,35 @@ risk, and run release validation when preparing a release. Once relevant checks
 pass, repeat or broaden only for new changes, failures or unresolved concerns.
 Prose-only edits ordinarily need static contract/link checks, not live inference.
 
+For HTTP admission/preference parsing run `tests/test_browser_api_authority.py`
+and `tests/test_http_callers.py`, then affected API, `fruthctl`, shadow-corpus and
+frontend transport suites. Positive owner fixtures explicitly declare native
+HTTP actions; security negatives deliberately omit the marker. Browser checks
+use isolated storage, harmless effects and server-side bytes/counters, preserving
+the signed-preview sandbox. See the [HTTP contract](HTTP_API_BOUNDARY.md). Changed
+runtime source needs a fresh complete matching offline fake gate before live
+conformance.
+
+For dashboard browser-dependency delivery, run `tests/test_browser_dependencies.py`,
+the frontend transport/reference/message and backend-target UI suites, the HTTP
+caller suites above, and `tests/test_release_archive.py`. Most frontend suites
+mock Axios; they cannot verify an upstream browser build. Run the small actual
+library fixture separately with an available Chrome/Chromium executable and the
+Node.js runtime already used by frontend tests:
+
+```sh
+.venv/bin/python tests/browser_axios_fixture.py --output /absolute/isolated/browser-evidence --chrome /absolute/path/to/chrome
+```
+
+Use staged source and a new temporary evidence/profile directory. The fixture
+serves the dashboard's Axios tag and unchanged interceptor on ephemeral loopback
+ports, uses the actual admission/CORS owner with harmless in-memory endpoints,
+and checks JSON, multipart bytes/boundary, query parameters, refresh/action
+headers, cancellation/timeouts and error bodies. It retains browser resource
+and network-log evidence for local Axios loading and absence of remote Axios.
+It exercises no history, preference, provider, lifecycle or artifact operation.
+Report browser unavailability separately from mocked transport passes.
+
 For deterministic/fake conformance across the five intent/truth boundaries, run
 `./fruth self-attack`. This does not run live models. An explicitly authorized
 live sweep uses `--mode live --fake-evidence <matching-results.json>` or
@@ -14,6 +43,23 @@ running control plane. See [SELF_ATTACK.md](SELF_ATTACK.md) for oracles, discove
 profiles, full truth capture, budgets, reduction and regression replay.
 
 Do not overthink. Just map the issue.
+
+For guarded public text or control-JSON classification, start with
+`tests/test_truth_guard_projection.py`, then the affected response-semantics,
+canonical Responses, frame/recovery and Responses API suites. Check rewritten
+and annotated claims through persistence, preserve independent and artifact-backed
+outputs, and keep actual/truncated control envelopes blocked. Ordinary JSON
+string mentions must not trigger control-envelope rejection.
+Include fenced ordinary JSON followed by prose, bracketed prose, escaped keys
+in truncated objects, transparent `response` wrappers and nested documentation
+positives. Pin non-text and conflicting phase/branch identities even when a
+projection shares the same slot id.
+
+For monitor timing, run `tests/test_fruth_run_monitor_projection.py` through the
+actual report builder with overlapping responses, delayed backfill, reversed
+ledger/timestamp order and missing timing evidence. Unknown phases must remain
+unknown; per-wave offsets must not be combined across independent wave clocks.
+Keep timing attribution independent of Closure, artifact and frame verdicts.
 
 ---
 
@@ -330,6 +376,18 @@ Keep JSON answer-format/source/negation boundaries, exact counts and identities,
 extra-derived-file behavior, explicit release states and saved-file dependencies.
 Plain-text semantic correctness remains separate from file-contract preservation.
 
+For root saved-result and canonical reuse evidence, include
+`tests/test_result_evidence_preservation.py` and the deterministic regressions in
+`tests/test_text_file_binding_hypothesis.py`. Cover individual returned identities,
+extensions, targets and output digests, duplicate declarations in both orders,
+retained diagnostic bytes/error provenance, repeated recovery, legitimate aliases,
+distinct historical/reference versions and fresh validated evidence. Then rerun
+the bounded generated properties with the retained Hypothesis version/replay
+inputs. Count owner examples, real adapter sequences and operations separately;
+use isolated controlled providers and preserve runtime budgets. Include the
+canonical Registry, Responses, saved-consumer, output, frame and fake-backend
+slices above, followed by a fresh matching complete offline fake gate.
+
 For saved-file fulfilment shortcuts, run `tests/test_saved_file_consumer_path.py`
 and the affected canonical-file/coalesced-result API tests in the disposable,
 offline checkout described below. Cover files emitted before their branches run,
@@ -371,12 +429,21 @@ the dependency issue rather than claim an applied or idempotent repair.
 
 For cleanup/archive retention policy, run:
 
-    .venv/bin/python -m pytest tests/test_maintenance_archive.py tests/test_clean_repo_state_policy.py tests/test_self_learning.py -q
+    .venv/bin/python -m pytest tests/test_maintenance_archive.py tests/test_clean_repo_state_policy.py tests/test_cleanup_target_inventory.py tests/test_inference_reset_learning_state.py tests/test_self_learning.py -q
 
 Maintenance tests use temporary repositories, including CLI dry-runs. Cover whole
 campaign copies and source/script preservation, internal report links, archive/cache
 exclusions, insufficient space, changing sources, copy verification and move failure
 before cleanup. A real checkout preview is a separate explicit read-only operation.
+
+Target/mode review also covers absent/current/legacy targets, archive coverage for
+root-level `outputs`, every protected-copy failure before runtime movement,
+protected learning/reset-archive cache exclusions, planned dry-run summaries,
+artifact bucket preservation/fallback and explicit learning-reset separation.
+Reuse disposable checkout fixtures and stub listener/Chrome integrations. Include
+`tests/test_readiness_archive_pass.py`, `tests/test_graph_rebase_readiness_registry.py`
+and `tests/test_response_frame_ledger_maintenance.py` for the invoked retention
+and recovery contracts; a cleanup-only correction needs no native fake campaign.
 
 Dry-run output should include learning-retained and missing response-frame sidecar counts. `state/self_learning/retention_manifest.json` and `state/self_learning/retained_sidecars/` are the evidence continuity surfaces; missing refs should be visible diagnostics, not silent hydration gaps.
 
@@ -397,6 +464,79 @@ test trace plus the scheduler argument establishes this particular starvation
 property; do not claim universal progress, provider completion or process survival.
 
 `shadow` and `stage` must not mutate executable graph work and must carry non-executable `runtime_effect` values from lifecycle construction. `apply_safe` may apply only validated safe additive patches. On terminal/frozen parents, allowed safe additive repair must keep the parent blocked and byte-stable, persist an exact same-response successor relation, revalidate current autonomy/policy and patch/graph bindings, schedule only the applied owed branches through Late Fill, and keep repeated preparation idempotent. Request preparation and materialization-spec construction must both reject inherited root/assistant prompt recovery when the exact successor branch has no local payload. Same-key execution truth must progress from queued to running to one immutable terminal result across the complete Late Fill envelope, graph, request, and diagnostic projections; delayed queued/running or conflicting terminal callbacks must not restore pending/active branches, regress the canonical response lifecycle, or replace terminal truth. A fake-backend E2E must prove one branch-local backend execution and no root-prompt replay. Invalid graph repair autonomy values must stay safe `off` while surfacing diagnostics.
+
+For graph-patch disposition and repeated terminal evidence, include
+`tests/test_graph_lineage_c3_c4_corrections.py`, the unchanged deterministic
+producer/result regressions, and all three generated lanes in
+`tests/test_graph_lineage_stateful_hypothesis.py` and
+`tests/test_graph_lineage_successor_producer_regression.py`. Preserve the original
+Hypothesis blobs, independent model, positives and oracle-sensitivity controls.
+Cover matching/nonmatching dispositions and promotion aliases, missing/empty/
+conflicting completed/failed evidence, exact/stale execution identities,
+operational enrichment, fresh gated repair, physical bytes, canonical output and
+durable reload. Count generated examples separately from shrink/replay sequences,
+model transitions, worker/provider calls and recovery operations.
+
+Run the unchanged deterministic `test_second_image_successor_requires_its_own_result`
+and the complete focused module after an image fulfillment change. The C5
+correction requires exact canonical evidence before pruning a later image duty
+and preserves earlier results through no-work outcomes. Retain the original
+failing inputs separately from the corrected-source validation.
+
+Also run `tests/test_graph_lineage_two_successors_hypothesis.py`. Its independent
+family has exactly two accepted image duties and sequential successors. Cover
+both orderings, equal bytes with distinct authority, unbound/unrelated and
+conflicting evidence, exact reuse, duplicate admission/CAS, stale callbacks and
+canonical recovery. Preserve the original one-successor lanes and sensitivity
+controls. Keep counterexamples red without weakening the oracle or expanding a
+correction silently. Count requested/generated examples, shrink/replay sequences,
+invalid draws, transitions, provider calls and recoveries separately.
+For its correction, include `tests/test_artifact_reference_continuity.py`: exact
+retained blob, repeated freezes/reloads, both duty orders, Registry/dossier and
+physical bindings, equal-byte conflicting refs, unverified shortcut claims, new
+generations and direct unowned images. Keep the original continuity oracle
+unchanged. Record bounded coverage and the matching full fake gate separately;
+a selected passing route does not establish coverage of this entire family.
+
+The same family retains a separate canonical selection regression:
+`tests/test_graph_lineage_foreign_projection.py` retains both orderings with
+foreign-response or conflicting-obligation evidence plus the exact 24/32-step
+inputs. Assert that the second provider's canonical output excludes an earlier
+disqualified record before repeated-worker reconciliation, while preserving the
+first artifact's identity. Keep selection regressions separate from construction
+regressions. For candidate qualification changes, include
+`tests/test_canonical_image_qualification.py`: all candidate-order permutations,
+bad explicit refs, missing/ambiguous accepted evidence, distinct equal-byte
+artifacts, conflicting identities, physical aliases and both real duty orders.
+Include bounded lookup from the same frozen accepted frame, conflicting compact
+producer identities, no-slot fallback and stale existing-output hoisting. Full
+execution results must take precedence over weaker completed-branch summaries.
+Use the existing image type aliases and output-type-only records in both orders
+to check qualification before the binding index; retain valid alias controls.
+Check immediate second-result projection before repeated-worker reconciliation,
+then repeated finalization, dossiers/Registry and durable reload. Keep the original
+independent path/ref assertions intact. Run retained controls and both 24/32-step
+inputs in separate interpreter processes with `PYTHONHASHSEED=0` and `1` set before
+startup and record the effective environment. Complete the selected bounded
+family and affected routes before one fresh source-matching full offline fake gate
+and native checker.
+
+For the bounded initial Late Fill eligibility extraction, start with
+`tests/test_late_fill_initial_eligibility.py`, progress/telemetry, dependency,
+terminal-state and saved-file-consumer checks. The characterization uses the
+real worker with existing injected boundaries: counts precede terminal pruning,
+gap/evidence calls precede the duplicate guard, text qualification precedes
+modality qualification, and an earlier caller completion excludes a later
+matching identity. It also preserves legacy capability exclusions, ordered
+branch records and earlier results on no-work paths. The injected repeated-id
+case tests this incremental boundary; normal branch normalization still owns
+deduplication. The original canonical evidence, independent lineage models and
+path/ref assertions remain unchanged. Then run the C6/C7 startup hash-seed suites,
+complete the declared 32-example / 32-step two-successor campaign, original
+lineage/binding and affected frame/recovery/Responses/E2E routes, followed by one
+fresh matching full offline fake gate and native source checker. Retain stable
+source, actual counts, isolation, deadlines, storage and completion receipts in
+the task's private implementation plan.
 
 ## Response-Ledger Lookup And Test Isolation
 
@@ -511,6 +651,14 @@ any response-specific authority. Evaluate scaling and the unchanged client timeo
 on isolated valid histories; never use production Ledger/Index as writable test
 fixtures or rerun the live Self-Attack corpus merely to validate this owner.
 
+For archive/retention Epoch-pass reuse, also run
+`tests/test_readiness_archive_pass.py`, `tests/test_graph_rebase_readiness_registry.py`
+and the cleanup/archive suites. Prove constant complete-map audit/hash counts as
+selected responses grow, exact registry-byte equivalence, relocated epochs,
+per-response CAS failures, bounded restart after physical movement and rejection
+of source movement before publication. CLI progress must stay on stderr and
+leave the machine-readable shell-summary contract unchanged.
+
 For the parsed-JSON normalization fast path, include
 `tests/test_response_frame_normalization.py` with the frame, snapshot, Epoch,
 Readiness observation/Registry and pass suites. Preserve canonical digests,
@@ -538,6 +686,22 @@ behavior. No live providers or Full Conformance are needed for this boundary.
 For the explicit legacy-index boundary, include the `attest_response_frame_index` regressions in `tests/test_response_frames.py`. Attestation must stream rather than call `Path.read_text()` or `_iter_ledger_frames`, preserve the existing `responses` mapping exactly, reject missing ids/latest-coordinate drift/malformed rows/moving evidence without writing, and use an atomic replace only after exact verification. `scripts/attest_response_frame_index.py --check-only` is the operator preflight; tests use temporary roots or a copied temp index with a symlinked source ledger and must never attest the checkout's production index implicitly.
 
 ## Fake-Backend E2E Truth Harness
+
+For bounded conformance scheduling, quota diagnostics, recovery selection and
+derived coverage, first run:
+
+```sh
+.venv/bin/python -m pytest tests/test_self_attack_windows.py tests/test_self_attack.py tests/test_graph_rebase_shadow_corpus_runner.py -q
+```
+
+These fixtures use injected HTTP results, isolated fake providers and temporary
+manifests/captures. They cover quota versus ordinary fallback, shared case caps,
+whole-sequence boundaries, ambiguous/resumed dispatch, unchanged expired budgets,
+the exact PCC 43-cell/44-case recovery shape and tier-separated aggregation with
+source/configuration compatibility and cross-profile comparisons. No Shortcuts
+or live conformance is part of this slice. After harness/oracle changes, generate
+a fresh complete fake gate in a stable disposable source tree before later live
+execution; historical fake evidence cannot bypass the current-source gate.
 
 For saved-state follow-ups, run `tests/test_artifact_state_followups.py` with the
 intent, inference-router, request-phase-graph, response-semantics and selected
@@ -708,7 +872,8 @@ files. Compare public references with `scripts/build_release_archive.py`:
 a file existing in a development checkout does not prove it is packaged.
 
 The existing packaging/static checks mostly use temporary fixture source trees;
-one read-only check also compares the checkout’s public `examples/` files with
+read-only checks also resolve public Markdown links against the release selection
+and compare the checkout's public `examples/` files with
 the exact reference allowlist:
 
     .venv/bin/python -m pytest tests/test_release_archive.py -q

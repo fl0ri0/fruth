@@ -6,6 +6,14 @@ here use that resolved checkout, even when Codex starts elsewhere. Endpoint path
 use its supported control-plane base (default `http://127.0.0.1:5011`, or the
 applicable `FRUTH_WEB_BASE` client override).
 
+Declare `X-Fruth-Action: 1` on effectful HTTP requests, including POST route
+preview/Responses, multipart/streaming requests, explicit-refresh GETs and saved
+HTML preview preparation. Missing Origin does not waive this header. API Host
+and browser Origin must satisfy the trusted server allowlist; the marker is a
+browser-channel safeguard, not native-process authentication or an operator
+credential. The CLI supplies it. Read `<fruth>/docs/HTTP_API_BOUNDARY.md` for
+admission errors, strict preference bodies and signed preview navigation.
+
 ## Observation and route preview
 
 For a status/capability question, inspect permitted existing runtime records or

@@ -417,6 +417,7 @@ class GraphRebaseReadinessRegistryTests(unittest.TestCase):
                     '--check-only',
                     '--require-all-settled',
                     '--shell-summary',
+                    '--progress',
                 ],
                 cwd=REPO_ROOT,
                 check=False,
@@ -425,6 +426,9 @@ class GraphRebaseReadinessRegistryTests(unittest.TestCase):
             )
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn('Readiness: verifying the complete Ledger/Index epoch', completed.stderr)
+            self.assertIn('Readiness: checked 1/1 selected responses', completed.stderr)
+            self.assertNotIn('Readiness:', completed.stdout)
             summary = dict(
                 line.split('=', 1)
                 for line in completed.stdout.splitlines()

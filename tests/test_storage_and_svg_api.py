@@ -1,5 +1,6 @@
 """Storage and active-content boundaries; fake work, real temporary persistence."""
 
+from tests.http_client import api_client
 import errno
 import gzip
 import json
@@ -28,7 +29,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(web, '_RESPONSE_LOOKUP', {})
     monkeypatch.setattr(web._RESPONSES_RUNTIME, 'response_lookup', web._RESPONSE_LOOKUP)
     with web.app.app_context():
-        yield web.app.test_client()
+        yield api_client(web.app)
 
 
 def payload(response_id='resp-api-storage'):

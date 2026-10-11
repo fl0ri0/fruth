@@ -6,16 +6,24 @@ inspection, use, study, reproduction and independent forks. Fruth is not
 currently operated as a managed community project.
 
 The project is maintained by one independent person with limited capacity.
-Public issues and pull requests are therefore not solicited, and
-submission does not imply that a report or change will be reviewed, discussed,
-merged, or supported. There is no response-time or support commitment.
+A note from fl0ri0:
+
+> I am open to collaboration, and I am still learning how to handle issues,
+> pull requests, and the review process. Please be patient with me and explain
+> your ideas or proposed changes in plain language. I will do my best, but I
+> cannot guarantee a response, a review, a merge, or ongoing support.
+
+For a substantial contribution, please start with a short description before
+investing a lot of work. Small, focused proposals with a clear explanation of
+the problem, the change, and how it was checked are easier to understand and
+review. There is no promised response time.
 
 ## Authorship and Maintenance
 
 Fruth was conceived, designed, created, built, and developed by
 [@fl0ri0](https://github.com/fl0ri0). fl0ri0 currently maintains Fruth and
 decides release scope, project direction, and whether any external change is
-considered. This boundary may change only when real maintainer capacity exists.
+considered. Collaboration can grow as experience and maintainer capacity allow.
 
 Fruth is human-led and AI-enhanced. AI tools have helped explore, implement,
 test, and document the project; product direction and release decisions remain
@@ -53,9 +61,9 @@ runtime or public-contract boundaries.
 Do not put suspected vulnerabilities or sensitive reproduction data in a
 public issue. Follow [`SECURITY.md`](SECURITY.md).
 
-## Unsolicited Contributions and License
+## Contributions and License
 
-The project is licensed under the Apache License 2.0. If someone nevertheless
+The project is licensed under the Apache License 2.0. If someone
 submits an intentional contribution for possible inclusion, they retain
 copyright in that contribution. Unless explicitly stated otherwise, the
 submission is provided under the Apache License 2.0, consistent with Section 5

@@ -354,21 +354,62 @@ def _contains_reserved_conflict(
     if direct_statuses & _RESERVED_STATUSES:
         return True
 
-    target_tokens = {
-        _branch_id(phase),
-        _phase_id(phase),
-        _clean_text(phase.get('obligation_id')),
-    }
-    target_tokens = {item for item in target_tokens if item}
-    if not target_tokens:
-        return False
-    for surface in (request_phase_graph, candidate_graph, promotion_review):
-        text = json.dumps(_json_safe(surface), sort_keys=True).lower()
-        if not any(token.lower() in text for token in target_tokens):
-            continue
-        if any(status in text for status in _RESERVED_STATUSES):
-            return True
-    return False
+    # Only contract records can establish disposition. Scope diagnostics and
+    # prose often mention reserved possibilities beside already accepted work.
+    records: list[Mapping[str, Any]] = []
+    surfaces = [request_phase_graph, candidate_graph, promotion_review]
+    request_ir = request_phase_graph.get('request_ir')
+    if isinstance(request_ir, Mapping):
+        surfaces.append(request_ir)
+    for surface in list(surfaces):
+        for key in ('candidate_graph', 'promotion_review'):
+            nested = surface.get(key)
+            if isinstance(nested, Mapping):
+                surfaces.append(nested)
+    for surface in surfaces:
+        for key in ('phases', 'downstream_branches', 'output_obligations',
+                    'output_candidates', 'candidates', 'promotions', 'decisions'):
+            values = surface.get(key)
+            if isinstance(values, list):
+                records.extend(item for item in values if isinstance(item, Mapping))
+
+    def identities(record: Mapping[str, Any]) -> tuple[set[str], set[str], set[str]]:
+        promotion = record.get('promotion')
+        promotion = promotion if isinstance(promotion, Mapping) else {}
+        return (
+            {token for token in (_branch_id(record), _phase_id(record)) if token},
+            {_clean_text(value) for value in (
+                record.get('obligation_id'), record.get('contract_ref'),
+                record.get('promoted_obligation_id'), record.get('promoted_contract_ref'),
+                promotion.get('to_obligation_id')) if _clean_text(value)},
+            {_clean_text(value) for value in (
+                record.get('candidate_id'), record.get('promoted_from_candidate_id'),
+                promotion.get('candidate_id')) if _clean_text(value)},
+        )
+
+    target = identities(phase)
+    relevant: list[Mapping[str, Any]] = []
+    remaining = records
+    # Resolve exact branch/phase aliases and explicit candidate -> contract links.
+    # Do not match substrings, capability names, evidence refs or diagnostic text.
+    while remaining:
+        unmatched = []
+        for record in remaining:
+            identity = identities(record)
+            if not any(expected & observed for expected, observed in zip(target, identity)):
+                unmatched.append(record)
+                continue
+            relevant.append(record)
+            for expected, observed in zip(target, identity):
+                expected.update(observed)
+        if len(unmatched) == len(remaining):
+            break
+        remaining = unmatched
+    return any(
+        _status(record.get(key)) in _RESERVED_STATUSES
+        for record in relevant
+        for key in ('status', 'contract_state', 'promotion_status', 'decision')
+    )
 
 
 def _phase_validation_errors(phase: Mapping[str, Any]) -> list[str]:

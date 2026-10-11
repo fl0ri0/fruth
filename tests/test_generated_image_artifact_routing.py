@@ -329,6 +329,11 @@ class _GeneratedWebHarness(FakeBackendHarness):
     background scheduler/log hooks. It does not exercise live interpretive inference routing.
     """
 
+    def __init__(self, *, root: Path | None = None, html_name="index.html", css_name="styles.css"):
+        super().__init__(root=root)
+        self.html_name = html_name
+        self.css_name = css_name
+
     def _build_instances(self):
         instances = super()._build_instances()
         for instance in instances.values():
@@ -376,17 +381,20 @@ class _GeneratedWebHarness(FakeBackendHarness):
         image = self.images_dir / "generated.png"
         assert image.is_file(), "HTML/CSS must execute after its accepted image producer"
         self.calls["chat_materialization"] += 1
-        html = self.web_dir / "index.html"
-        css = self.web_dir / "styles.css"
+        html = self.web_dir / self.html_name
+        css = self.web_dir / self.css_name
         import os
 
         relative_image = os.path.relpath(image, self.web_dir)
         targets = data.get("text_artifact_requests") or [data.get("artifact_request") or {}]
         extensions = {item.get("extension") for item in targets}
         assert extensions <= {"html", "css"} and extensions
+        expected_names = {"html": self.html_name, "css": self.css_name}
+        assert all(f"{item['source_name']}.{item['extension']}" == expected_names[item['extension']]
+                   for item in targets), targets
         files = []
         if "html" in extensions:
-            write_text(html, '<!doctype html><html><head><link rel="stylesheet" href="styles.css">'
+            write_text(html, f'<!doctype html><html><head><link rel="stylesheet" href="{self.css_name}">'
                        '</head><body><h1>Ein Tag am See</h1><p>Ein kleines Segelboot auf einem '
                        f'ruhigen blauen See.</p><img src="{relative_image}" alt="Sailboat"></body></html>')
             files.append((html, "text/html"))
@@ -430,8 +438,11 @@ def _record_executed_branch(runtime, response, execution):
     return runtime.merge_late_fill_result_into_response_payload(response, result, state)
 
 
-@pytest.mark.parametrize("prompt", [WEB_PROMPT, SAVED_SMOKE_PROMPT], ids=["compact", "saved-live-prompt"])
-def test_generated_png_provider_executes_before_web_materialization(semantics, prompt):
+@pytest.mark.parametrize("prompt,html_name,css_name", [
+    (WEB_PROMPT, "index.html", "styles.css"),
+    (SAVED_SMOKE_PROMPT, "html-image-01.html", "html-image-01.css"),
+], ids=["compact", "saved-live-prompt"])
+def test_generated_png_provider_executes_before_web_materialization(semantics, prompt, html_name, css_name):
     """Bounded integration through real branch and final-contract owners.
 
     The asynchronous scheduler/frame persistence is outside this regression;
@@ -442,7 +453,7 @@ def test_generated_png_provider_executes_before_web_materialization(semantics, p
     import struct
     import zlib
 
-    with _GeneratedWebHarness() as harness:
+    with _GeneratedWebHarness(html_name=html_name, css_name=css_name) as harness:
         graph = _graph(prompt)
         response = {"id": "offline_generated_web", "output_text": "Image prompt: An orange sailboat on a blue lake.",
                     "runtime": {"request_phase_graph": graph}}
@@ -510,6 +521,7 @@ def test_generated_png_provider_executes_before_web_materialization(semantics, p
         artifacts = finalized["artifacts"]
         assert len(artifacts) == len({item["artifact_ref"] for item in artifacts}) == 3
         assert {Path(item["path"]).suffix for item in artifacts} == {".html", ".css", ".png"}
+        assert {Path(item["path"]).name for item in artifacts if Path(item["path"]).suffix != ".png"} == {html_name, css_name}
         assert all(item["source_response_id"] == response["id"] for item in artifacts)
         image_path = harness.images_dir / "generated.png"
         png = image_path.read_bytes()
@@ -561,10 +573,10 @@ def test_generated_png_provider_executes_before_web_materialization(semantics, p
                     self.stylesheets.append(attrs["href"])
 
         links = Links()
-        links.feed((harness.web_dir / "index.html").read_text())
+        links.feed((harness.web_dir / html_name).read_text())
         assert len(links.images) == len(links.stylesheets) == 1
         assert (harness.web_dir / links.images[0]).resolve() == image_path.resolve()
-        assert (harness.web_dir / links.stylesheets[0]).resolve() == (harness.web_dir / "styles.css").resolve()
+        assert (harness.web_dir / links.stylesheets[0]).resolve() == (harness.web_dir / css_name).resolve()
 
 
 def test_ready_image_capability_does_not_turn_a_reference_into_generation():

@@ -18,7 +18,7 @@ Mutable work, frozen frames and append-only successors remain distinct. Durable
 means supported persistence and continuation of recorded state; it does not mean
 infallible conclusions or guaranteed survival of every in-flight operation.
 
-**Status:** Fruth `0.1.5` —
+**Status:** Fruth `0.1.6` —
 experimental, usable, and still evolving within the `0.x` series.
 
 **Conceived, designed, created, built, and developed by
@@ -51,16 +51,20 @@ and runtime control profiles. It writes a human-readable report and JSON results
 see [self-attack conformance](docs/SELF_ATTACK.md) for coverage, live execution,
 budgets and regression replay.
 
-The [September 19 Fruth conformance report](docs/SELF_ATTACK_STATUS_2026-09-19.md)
-records a full pass across 380 deterministic/fake and 170 live cases, with source
-identity, coverage limits, and retained-evidence hashes.
-The [September 25–27 Apple backend results](docs/SELF_ATTACK_STATUS_2026-09-27.md)
-record 168 passing AFM cases and two correct mismatch rejections, and 126 passing
-PCC cases with remaining coverage limited by provider quota, a sequence timeout
-and one correct mismatch rejection. Neither campaign recorded invariant findings;
-both retain the native INCOMPLETE verdict.
-Those dated campaigns precede the later PDF, provider-failover and Research
-changes; they are not a full-conformance verdict for the complete 0.1.5 source.
+The [October 10 validation status](docs/SELF_ATTACK_STATUS_2026-10-10.md) records
+full local and AFM live passes of 170/170 cases each on their recorded source.
+Subsequent response corrections passed 1,248 tests and 473 subtests, followed by
+a fresh 380/380 fake gate and matching-source checker. Five new local
+[reference workflows](examples/README.md) completed on the corrected runtime.
+The full live matrices precede those corrections. The subsequent closeout of
+monitor timing and control-JSON boundaries has its own offline evidence in the
+dated status report; the five reference packages retain their original source.
+PCC coverage remains separate.
+
+The [September 19 conformance report](docs/SELF_ATTACK_STATUS_2026-09-19.md) and
+[September 25–27 Apple results](docs/SELF_ATTACK_STATUS_2026-09-27.md) retain their
+historical verdicts. Each report identifies the tested source and scope, so the
+full live campaigns and the subsequent checks can be read together.
 
 ## Project, Citation, and Collaboration
 
@@ -86,9 +90,10 @@ For research collaboration, replications, talks, panels, or work around Fruth,
 use the public contact methods on
 [@fl0ri0's GitHub profile](https://github.com/fl0ri0), with no guaranteed
 response time. The source is provided for inspection, use, research, and
-independent forks. Public issues and pull requests are not currently solicited
-or promised review; [`CONTRIBUTING.md`](CONTRIBUTING.md) records that capacity
-boundary.
+independent forks. The maintainer is open to collaboration and is still learning
+the issue, pull-request, and review process. Please bring clear explanations and
+patience; responses, reviews, merges, and ongoing support cannot be guaranteed.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for participation guidance.
 
 Useful public context:
 
@@ -102,11 +107,11 @@ Useful public context:
 The primary tested environment is a recent macOS release on Apple Silicon with
 Python 3.11 or newer. Local capabilities require their corresponding Ollama,
 MLX, llama.cpp, or Apple Foundation Models backend and model. Windows, Linux, Intel Mac, remote hosting,
-and multi-user operation are outside the 0.1.5 support promise.
+and multi-user operation are outside the 0.1.6 support promise.
 
 ## Install and Start
 
-Extract the source archive, enter its directory (`fruth-0.1.5` for the release,
+Extract the source archive, enter its directory (`fruth-0.1.6` for the release,
 or `fruth-main` for the current repository ZIP), and run:
 
 ```bash
@@ -297,7 +302,7 @@ Stop, Pull, or Delete actions. Direct tab turns are ephemeral and independent;
 Fruth can promote bounded relevant context for a referential turn, but does not
 create a persistent provider session. Model selection is automatic,
 and the exact GPT variant is not exposed to Fruth; model self-descriptions are
-not runtime proof. Direct API-key management is outside this route's 0.1.5
+not runtime proof. Direct API-key management is outside this route's 0.1.6
 contract. Apple PCC is a separate optional integration described above.
 
 ## Release and Safety Notes
@@ -517,6 +522,12 @@ but the canonical path is now `responses`, and first-party UI flows should stay 
 
 This is the official external contract for wrappers, agents, CLIs, editors, and new integrations.
 
+Effectful HTTP calls require `X-Fruth-Action: 1`, including multipart, streaming
+and explicit-refresh GETs. The UI and shipped native clients emit it; older
+clients and existing Fruth-routed provider configurations must add it. Host and
+exact-Origin admission, passive reads, strict preference JSON errors and the
+browser/native trust distinction are in the [HTTP caller contract](docs/HTTP_API_BOUNDARY.md).
+
 Prefer `responses` even for file-backed, OCR, image, STT, and TTS work. `/api/responses` now executes shared internal helpers directly; external callers should not need to pick `/api/chat` or `/api/infer` unless they intentionally want the older compatibility surface.
 
 Reviewed redraw remains part of the same intent-aligned scope ladder. The lower bounded additive repair rungs stay autonomously active under the default-deny graph-repair policy; partial-subtree and full-successor rebase are the higher-risk rungs, with non-mutating `shadow` as their product default rather than a separate shadow layer. Read their canonical evidence gates at `GET /api/graph_rebase/readiness`. The report is observer-only and does not promote work.
@@ -597,6 +608,7 @@ Default cleanup removes repo-local generated/runtime ballast:
 
 - contents under `artifacts/*` buckets while preserving the standard empty artifact bucket directories, including `artifacts/bundles/`; missing standard directories are created only as a fallback
 - `logs/*`
+- root-level `outputs`, when present (legacy cleanup compatibility; archive mode moves it into the verified archive run before live cleanup)
 - `state/chat_history/*`
 - `state/events.jsonl`
 - `state/infer_history.jsonl`
@@ -617,6 +629,8 @@ Default cleanup preserves:
 - `state/inference_compiled_memory.json`
 - `state/inference_compiled_memory.md`
 - `state/self_learning/`
+- `state/inference_learning_archives/`
+  - protected learning state and learning-reset archives remain outside recursive cache/Finder sweeps, including retained files named `*.pyc`, `*.pyo` or `.DS_Store`
 - `state/self_attack/`, `state/benchmarks/`, `state/diagnostics/`, and `.fruth_archiv/`, including retained cache files
 
 If you want a true empty repo-local state, combine:
@@ -654,7 +668,7 @@ Optional deeper reset flags:
 - `./fruth clean --reset-registry`
   - rewrite `model_ports.json` to `[]`
 - `./fruth clean --forget-inference`
-  - remove interpretive inference preferences and any retired interpretive inference archive residue
+  - remove interpretive inference preferences and retired compiled-memory files when present; learning-reset archives and active self-learning state remain preserved
 
 If you want to reset the interpretive inference layer's local event/log state without wiping the durable frame ledger, use:
 

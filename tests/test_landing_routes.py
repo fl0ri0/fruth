@@ -23,7 +23,7 @@ DASHBOARD_CSS_PATH = REPO_ROOT / 'static' / 'ui' / 'fruth.css'
 
 def test_removed_launcher_identity_endpoint_is_unavailable():
     with app.test_client() as client:
-        assert client.get('/api/instance_identity').status_code == 404
+        assert client.get('/api/instance_identity', base_url='http://127.0.0.1:5011').status_code == 404
 
 
 def _run_node(script: str) -> dict:
@@ -272,7 +272,7 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
     assert 'class="proof-cadence"' not in html
     assert (
         'https://github.com/fl0ri0/fruth/blob/HEAD/examples/reference-runs/'
-        '2026-09-18-echoes-of-the-pass/README.md'
+        '2026-10-10-echoes-of-the-pass/README.md'
     ) in html
     assert 'Arena sends one text prompt to two running local chat models' not in html
     assert 'compatible link-checked bundles' in html

@@ -103,6 +103,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action='store_true',
         help='Print stable key=value lines for cleanup/archive preflight scripts.',
     )
+    parser.add_argument('--progress', action='store_true', help='Print bounded progress to stderr.')
     return parser.parse_args(argv)
 
 
@@ -135,6 +136,13 @@ def _print_shell_summary(result: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+
+    def progress(stage: str, completed: int, total: int) -> None:
+        if stage == 'verifying_epoch':
+            print('Readiness: verifying the complete Ledger/Index epoch...', file=sys.stderr, flush=True)
+        elif completed == 0 or completed == total or completed % 100 == 0:
+            print(f'Readiness: checked {completed}/{total} selected responses', file=sys.stderr, flush=True)
+
     result = sync_graph_rebase_readiness_epoch(
         frames_dir=Path(args.frames_dir),
         registry_path=Path(args.registry),
@@ -150,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
         expected_selected_count=args.expected_selected_count,
         expected_settled_count=args.expected_settled_count,
         expected_active_count=args.expected_active_count,
+        progress=progress if args.progress else None,
     )
     if args.shell_summary:
         _print_shell_summary(result)

@@ -36,6 +36,7 @@ const context = {
   setTimeout: () => 1, clearTimeout() {},
 };
 vm.createContext(context);
+vm.runInContext(fs.readFileSync('static/vendor/axios-1.20.0/axios.min.js', 'utf8'), context);
 for (const name of ['message-state', 'messages', 'request-lifecycle', 'request-transport']) {
   vm.runInContext(fs.readFileSync(`static/ui/${name}.js`, 'utf8'), context);
 }

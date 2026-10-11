@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="{{ url_for('static', filename='vendor/axios-1.20.0/axios.min.js') }}"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='ui/fruth.css') }}">
 </head>
@@ -1810,9 +1810,9 @@ function summarizeStopDetails(details) {
             try {
                 const response = await fetch(`${state.flaskServerUrl}/api/inference_preferences`, {
                     method: 'POST',
-                    headers: {
+                    headers: fruthApiActionHeaders({
                         'Content-Type': 'application/json',
-                    },
+                    }),
                     body: JSON.stringify(payload),
                 });
                 if (!response.ok) {
@@ -2073,7 +2073,9 @@ function summarizeStopDetails(details) {
             );
             try {
                 const suffix = refresh ? '?refresh=true' : '';
-                const response = await fetch(`${state.flaskServerUrl}/api/integrations/codex/status${suffix}`);
+                const response = await fetch(`${state.flaskServerUrl}/api/integrations/codex/status${suffix}`, {
+                    headers: fruthApiActionHeaders(),
+                });
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }

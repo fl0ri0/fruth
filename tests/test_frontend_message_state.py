@@ -2675,6 +2675,13 @@ class FrontendMessageStateTests(unittest.TestCase):
               finalizeLoadingAssistantResponse: () => {},
             };
             vm.createContext(context);
+            const fixtureGlobals = { ...context };
+            vm.runInContext(fs.readFileSync('static/vendor/axios-1.20.0/axios.min.js', 'utf8'), context);
+            Object.assign(context.axios, fixtureGlobals.axios);
+            vm.runInContext(fs.readFileSync('static/ui/request-transport.js', 'utf8'), context);
+            for (const [key, value] of Object.entries(fixtureGlobals)) {
+              if (key !== 'axios') context[key] = value;
+            }
             vm.runInContext(fs.readFileSync('static/ui/request-lifecycle.js', 'utf8'), context);
 
             (async () => {

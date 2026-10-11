@@ -1,0 +1,74 @@
+{
+  "files": [
+    {
+      "mime_type": "application/octet-stream",
+      "path": "README.md",
+      "role": "documentation",
+      "sha256": "0aa98d39cfb9bfcdea18b044a484dc98ebabdc7651d71255359eadd208f06c28",
+      "size_bytes": 9427
+    },
+    {
+      "mime_type": "audio/x-wav",
+      "path": "artifacts/audio/narration.wav",
+      "role": "canonical_artifact_copy",
+      "sha256": "482ca8cc807d7896ce5901051a0842666616a2e895be57a38474c2247fb98f37",
+      "size_bytes": 579884
+    },
+    {
+      "mime_type": "application/octet-stream",
+      "path": "artifacts/transcripts/transcript.md",
+      "role": "canonical_artifact_copy",
+      "sha256": "2eaad2d22c7fe9173b0522c53d5b047748491e42d8c258493ec15c5afb3fd6e9",
+      "size_bytes": 187
+    },
+    {
+      "mime_type": "application/json",
+      "path": "monitor-report.json",
+      "role": "observer_evidence",
+      "sha256": "50997d8386a2b55e7628385f102f57aeca6631b737a8d6234b0a9b8a3971b938",
+      "size_bytes": 1650
+    },
+    {
+      "mime_type": "text/plain",
+      "path": "prompt.txt",
+      "role": "request",
+      "sha256": "bd3967e7d554503baeb964fd468bf262f5fae91c05cc052003e000e387fef297",
+      "size_bytes": 303
+    },
+    {
+      "mime_type": "application/json",
+      "path": "response.json",
+      "role": "response_truth",
+      "sha256": "67009483fd711dc0d9c34c90dd079adb0e11e4defb707cd936c2b54cd2a4a447",
+      "size_bytes": 4481
+    }
+  ],
+  "frame_id": "resp_1791661038279_0aaf0718e7e63:frame-2",
+  "frame_sequence": 2,
+  "provenance": {
+    "original_response_frame_authoritative": true,
+    "original_runtime_artifacts_authoritative": true,
+    "publication_copy_is_runtime_authority": false,
+    "raw_frame_published": false,
+    "raw_monitor_record_published": false
+  },
+  "response_id": "resp_1791661038279_0aaf0718e7e63",
+  "schema": "fruth.reference_run_manifest.v1",
+  "source_frame_record_sha256": "822a9058712139dc913bc9ecc15af003e0b4696ec020bb7c8cfed80bb6e8129d",
+  "source_frame_record_size_bytes": 770893,
+  "summary": {
+    "artifact_count": 2,
+    "bundle_included": false,
+    "file_count": 6,
+    "total_bytes": 595932
+  },
+  "validation": {
+    "artifact_checksums_verified": true,
+    "indexed_frame_verified": true,
+    "local_absolute_paths_absent": true,
+    "monitor_verdict": "clean",
+    "prompt_identity_verified": true,
+    "terminal_runtime_truth_verified": true
+  },
+  "version": 1
+}

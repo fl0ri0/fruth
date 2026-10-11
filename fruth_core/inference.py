@@ -1912,6 +1912,16 @@ def _text_artifact_tag_source_name(attrs: dict[str, str], extension: str) -> str
     return f'generated-{extension or "text"}'
 
 
+def text_artifact_request_is_generic(artifact_request: Mapping[str, Any]) -> bool:
+    """Only an admitted unspecified save permits provider binding derivation."""
+    return bool(
+        artifact_request.get('source') == 'explicit_file_cue'
+        and artifact_request.get('extension') == 'txt'
+        and artifact_request.get('source_name') in (None, '', 'generated-text')
+        and not artifact_request.get('target_path')
+    )
+
+
 def _artifact_request_with_tag_metadata(
     artifact_request: dict[str, str],
     *,
@@ -1921,14 +1931,15 @@ def _artifact_request_with_tag_metadata(
     request = dict(artifact_request or {})
     normalized_tag_extension = _normalize_text_artifact_extension(tag_extension or '')
     request_extension = _normalize_text_artifact_extension(request.get('extension') or '') or 'txt'
-    if normalized_tag_extension and request_extension == 'txt':
+    generic = text_artifact_request_is_generic(request)
+    if normalized_tag_extension and generic:
         request['extension'] = normalized_tag_extension
         request['source'] = 'artifact_tag'
     elif normalized_tag_extension:
         request['extension'] = request_extension
     else:
         request['extension'] = request_extension
-    if normalized_tag_extension and (
+    if normalized_tag_extension and generic and (
         not str(request.get('source_name') or '').strip()
         or str(request.get('source_name') or '').strip() == 'generated-text'
     ):
@@ -1944,7 +1955,7 @@ def _artifact_request_with_code_block_metadata(
     request = dict(artifact_request or {})
     normalized_block_extension = _normalize_text_artifact_extension(block_extension or '')
     request_extension = _normalize_text_artifact_extension(request.get('extension') or '') or 'txt'
-    if normalized_block_extension and request_extension == 'txt':
+    if normalized_block_extension and text_artifact_request_is_generic(request):
         request['extension'] = normalized_block_extension
         request['source'] = 'code_block'
         if (
@@ -2159,11 +2170,12 @@ def _artifact_request_with_json_obligation_metadata(
     request = dict(artifact_request or {})
     request_extension = _normalize_text_artifact_extension(request.get('extension') or '') or 'txt'
     obligation_extension = _json_text_artifact_obligation_extension(obligation)
-    if obligation_extension and request_extension == 'txt':
+    generic = text_artifact_request_is_generic(request)
+    if obligation_extension and generic:
         request['extension'] = obligation_extension
     else:
         request['extension'] = request_extension
-    if (
+    if generic and (
         not str(request.get('source_name') or '').strip()
         or str(request.get('source_name') or '').strip() == 'generated-text'
     ):
@@ -5031,7 +5043,17 @@ def _run_chat_fallback(
             ),
         )
     persist_text_artifact = ops.get('persist_text_artifact_locally')
-    artifact_payloads = extract_text_artifact_payloads(content, artifact_requests)
+    materialization_content = content
+    accept_artifact_output = ops.get('classify_text_artifact_output')
+    if artifact_requests and callable(accept_artifact_output):
+        # The server acceptance owner runs before the inner writer, rather than
+        # rejecting control data only after Infer has already persisted it.
+        acceptance = accept_artifact_output(content)
+        materialization_content = str(acceptance.get('accepted_text') or '')
+        payload['text_artifact_output_acceptance'] = {
+            key: value for key, value in acceptance.items() if key != 'accepted_text'
+        }
+    artifact_payloads = extract_text_artifact_payloads(materialization_content, artifact_requests)
     if len(artifact_requests) > 1 and len(artifact_payloads) != len(artifact_requests):
         # A multi-file materialization is one output-set contract.  Do not
         # publish parser-accepted members before every requested identity is

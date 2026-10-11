@@ -611,9 +611,13 @@ def live_budget_command(tmp_path, monkeypatch, *, corpus=None):
     corpus_path.write_text(json.dumps(raw))
     proof = tmp_path / 'proof'
     proof.mkdir()
-    (proof / 'run.json').write_text(json.dumps(dict(source_digest=inventory['source_digest'], corpus=raw)))
+    (proof / 'run.json').write_text(json.dumps(dict(mode='fake', source_digest=inventory['source_digest'],
+        runtime_source_digest=inventory['runtime_source_digest'], corpus=raw, seed=0, profiles=profiles)))
     (proof / 'results.json').write_text(json.dumps(dict(mode='fake', verdict='passed',
-        owner_tests={key: dict(status='passed') for key, _ in PRIORITIES})))
+        owner_tests={key: dict(status='passed') for key, _ in PRIORITIES},
+        coverage=dict(profiles_selected=len(profiles), profiles_available=len(profiles), profiles_completed=len(profiles)),
+        runs=[dict(profile=p, cases=[dict(case_id=c['case_id'], state='settled_terminal', missing=[], findings=[],
+                                       capture_path='synthetic-gate') for c in raw['cases']]) for p in profiles])))
     class Client:
         def __init__(self, *a):
             pass

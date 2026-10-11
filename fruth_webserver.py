@@ -135,7 +135,6 @@ from flask import (
     send_from_directory,
     stream_with_context,
 )
-from flask_cors import CORS
 from helpers.model_capabilities import (
     CAPABILITY_CHAT,
     CAPABILITY_EMBEDDING,
@@ -222,6 +221,12 @@ from fruth_inference.router import (
     validate_route_decision,
 )
 from fruth_server.inference_route_runtime import InferenceRouteRuntimeOwner
+from fruth_server.http_admission_runtime import (
+    HTTP_ALLOWED_ORIGINS_CONFIG,
+    admit_api_request,
+    apply_api_cors,
+    parse_preference_object,
+)
 from fruth_server.backend_transport_runtime import BackendTransportRuntimeOwner
 from fruth_server.chat_runtime import ChatRuntimeOwner
 from fruth_server.infer_support_runtime import InferSupportRuntimeOwner
@@ -315,6 +320,8 @@ from fruth_services.responses import (
     extract_responses_batch_prompts as _extract_responses_batch_prompts,
     extract_responses_content_text as _extract_responses_content_text,
     extract_responses_current_turn_prompt as _extract_responses_current_turn_prompt,
+    has_captured_request_intent as _has_captured_request_intent,
+    restore_request_intent as _restore_request_intent,
     extract_responses_messages as _extract_responses_messages,
     extract_responses_prompt as _extract_responses_prompt,
     flatten_canonical_batch_artifacts as _flatten_canonical_batch_artifacts,
@@ -560,8 +567,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 app = Flask(__name__, template_folder=TEMPLATE_FOLDER)
 app.config['GRAPH_REBASE_OPERATOR_TOKEN'] = _GRAPH_REBASE_OPERATOR_TOKEN
 app.config['GRAPH_REBASE_OPERATOR_IDENTITY'] = _GRAPH_REBASE_OPERATOR_IDENTITY
-# CORS spezifischer auf neuen Port
-CORS(app, resources={r"/api/*": {"origins": f"http://127.0.0.1:{APP_PORT}"}})
+app.config[HTTP_ALLOWED_ORIGINS_CONFIG] = (
+    f'http://127.0.0.1:{APP_PORT}',
+    f'http://localhost:{APP_PORT}',
+    f'http://[::1]:{APP_PORT}',
+)
+app.before_request(admit_api_request)
+app.after_request(apply_api_cors)
 
 
 def _effective_graph_rebase_readiness_registry_path() -> Path:
@@ -3979,6 +3991,8 @@ _RESPONSES_REQUEST_RUNTIME = ResponsesRequestRuntimeOwner(
         'validate_external_text_request': lambda payload, **kwargs: _validate_codex_external_request(payload, **kwargs),
         'build_external_target_inputs': lambda payload: build_codex_execution_inputs(payload),
         'apply_selected_reference_prompt_prefix': lambda prompt, selected, capability: _apply_selected_reference_prompt_prefix(prompt, selected, capability),
+        'request_payload_text_artifact_source': lambda payload: _request_payload_text_artifact_source(payload),
+        'capture_root_text_artifact_saved_evidence': lambda *args, **kwargs: _LATE_FILL_RUNTIME.capture_root_text_artifact_saved_evidence(*args, **kwargs),
         'external_execution_failure': lambda result: codex_execution_failure(result),
         'persist_generated_text_artifact_if_requested': lambda *args, **kwargs: _persist_generated_text_artifact_if_requested(*args, **kwargs),
         'request_exception_details': lambda exc: _request_exception_details(exc),
@@ -4318,17 +4332,9 @@ def _schedule_response_late_fill(
 def _request_payload_for_late_fill_retry(response_payload: dict[str, Any]) -> dict[str, Any]:
     frame = response_payload.get('response_frame') if isinstance(response_payload.get('response_frame'), Mapping) else {}
     frame_request = frame.get('request') if isinstance(frame.get('request'), Mapping) else {}
-    request_payload = dict(frame_request)
-    runtime_payload = response_payload.get('runtime') if isinstance(response_payload.get('runtime'), Mapping) else {}
-    request_phase_graph = (
-        runtime_payload.get('request_phase_graph')
-        if isinstance(runtime_payload.get('request_phase_graph'), Mapping)
-        else {}
-    )
-    if not str(request_payload.get('prompt') or request_payload.get('input') or '').strip():
-        graph_prompt = str(request_phase_graph.get('prompt') or '').strip()
-        if graph_prompt:
-            request_payload['prompt'] = graph_prompt
+    request_payload = _restore_request_intent(frame_request)
+    # A historical graph/effective prompt cannot supply missing caller evidence.
+    # Retry retains the already accepted branch contract; it cannot replan root.
     if response_payload.get('request_meta') and isinstance(response_payload.get('request_meta'), Mapping):
         request_payload.setdefault('request_meta', dict(response_payload.get('request_meta') or {}))
     return request_payload
@@ -7163,6 +7169,32 @@ _GRAPH_PATCH_SUCCESSOR_EXECUTION_TERMINAL_STATUSES = {
     'blocked',
 }
 
+# These projections describe the observation/operation, not accepted work.
+# Repeated callbacks may enrich them without replacing result or error evidence.
+_GRAPH_PATCH_SUCCESSOR_OPERATIONAL_FIELDS = {'updated_at', 'timing', 'scheduling_policy'}
+
+
+def _graph_patch_successor_execution_identity_conflicts(
+    current: Mapping[str, Any], proposed: Mapping[str, Any],
+) -> bool:
+    return any(
+        key in proposed and key in current and proposed[key] != current[key]
+        for key in ('successor_execution_key', 'successor_reopen_key', 'patch_id',
+                    'idempotency_key', 'parent_response_id', 'parent_frame_id',
+                    'parent_frame_sequence', 'successor_graph_digest',
+                    'successor_reopen_depth', 'scheduled_branch_ids', 'root_prompt_replay')
+    )
+
+
+def _enrich_graph_patch_successor_terminal_truth(
+    current: Mapping[str, Any], proposed: Mapping[str, Any],
+) -> dict[str, Any]:
+    merged = copy.deepcopy(dict(current))
+    for key in _GRAPH_PATCH_SUCCESSOR_OPERATIONAL_FIELDS:
+        if proposed.get(key) not in (None, '', [], {}):
+            merged[key] = copy.deepcopy(proposed[key])
+    return merged
+
 
 def _graph_patch_successor_execution_status_rank(value: Any) -> int:
     status = str(value or '').strip().lower()
@@ -7187,6 +7219,14 @@ def _merge_graph_patch_successor_execution_truth(
         return proposed
     if not proposed:
         return current
+    current_key = str(current.get('successor_execution_key') or '').strip()
+    proposed_key = str(proposed.get('successor_execution_key') or '').strip()
+    if current_key and proposed_key and current_key != proposed_key:
+        # Separate executions are admitted by the successor owner, never by
+        # combining their evidence in this per-key merge.
+        return proposed
+    if _graph_patch_successor_execution_identity_conflicts(current, proposed):
+        return current
     current_status = str(current.get('status') or '').strip().lower()
     proposed_status = str(proposed.get('status') or '').strip().lower()
     current_rank = _graph_patch_successor_execution_status_rank(current_status)
@@ -7197,9 +7237,7 @@ def _merge_graph_patch_successor_execution_truth(
     if current_status in _GRAPH_PATCH_SUCCESSOR_EXECUTION_TERMINAL_STATUSES:
         if proposed_status != current_status:
             return current
-        merged = {**current, **proposed}
-        merged['status'] = current_status
-        return merged
+        return _enrich_graph_patch_successor_terminal_truth(current, proposed)
     if proposed_status in _GRAPH_PATCH_SUCCESSOR_EXECUTION_TERMINAL_STATUSES:
         return {**current, **proposed}
     if proposed_rank < current_rank:
@@ -7292,7 +7330,6 @@ def _merge_graph_patch_successor_late_fill_truth(
             (
                 current_execution_status
                 in _GRAPH_PATCH_SUCCESSOR_EXECUTION_TERMINAL_STATUSES
-                and proposed_execution_status != current_execution_status
             )
             or (
                 _graph_patch_successor_execution_status_rank(current_execution_status)
@@ -7300,8 +7337,11 @@ def _merge_graph_patch_successor_late_fill_truth(
             )
         )
     )
-    merged = current if preserve_current_envelope else proposed
-    merged = dict(merged)
+    merged = (
+        _enrich_graph_patch_successor_terminal_truth(current, proposed)
+        if preserve_current_envelope
+        else dict(proposed)
+    )
     merged['successor_reopen_execution'] = dict(effective_execution)
 
     effective_status = str(effective_execution.get('status') or '').strip().lower()
@@ -7334,12 +7374,33 @@ def _attach_late_fill_state(
     updated = dict(response_payload or {})
     normalized_state = dict(late_fill_state or {})
     runtime = dict(updated.get('runtime') or {}) if isinstance(updated.get('runtime'), dict) else {}
+    existing_late_fill = (
+        updated.get('late_fill')
+        if isinstance(updated.get('late_fill'), Mapping)
+        else runtime.get('late_fill')
+        if isinstance(runtime.get('late_fill'), Mapping)
+        else {}
+    )
+    current_execution = existing_late_fill.get('successor_reopen_execution')
+    current_execution = current_execution if isinstance(current_execution, Mapping) else {}
+    current_key = str(current_execution.get('successor_execution_key') or '').strip()
     incoming_execution = (
         normalized_state.get('successor_reopen_execution')
         if isinstance(normalized_state.get('successor_reopen_execution'), Mapping)
         else {}
     )
     execution_key = str(incoming_execution.get('successor_execution_key') or '').strip()
+    if current_key and execution_key and current_key != execution_key:
+        graph = runtime.get('request_phase_graph')
+        graph = graph if isinstance(graph, Mapping) else {}
+        executions = [item for item in graph.get('successor_reopen_executions', [])
+                      if isinstance(item, Mapping)]
+        # Only a freshly admitted current execution may replace this envelope.
+        # An old/foreign callback cannot select a different successor by itself.
+        if not executions or executions[-1].get('successor_execution_key') != execution_key:
+            return updated
+    if current_key and not execution_key:
+        execution_key = current_key
     if execution_key:
         existing_execution = _graph_patch_successor_execution_truth_for_key(
             runtime,
@@ -7349,13 +7410,6 @@ def _attach_late_fill_state(
         effective_execution = _merge_graph_patch_successor_execution_truth(
             existing_execution,
             incoming_execution,
-        )
-        existing_late_fill = (
-            updated.get('late_fill')
-            if isinstance(updated.get('late_fill'), Mapping)
-            else runtime.get('late_fill')
-            if isinstance(runtime.get('late_fill'), Mapping)
-            else {}
         )
         normalized_state = _merge_graph_patch_successor_late_fill_truth(
             existing_late_fill,
@@ -7901,7 +7955,9 @@ def api_codex_integration_status():
 
 @app.route('/api/inference_preferences', methods=['POST'])
 def api_save_inference_preferences():
-    payload = request.get_json(silent=True) or {}
+    payload, error_response = parse_preference_object()
+    if error_response is not None:
+        return error_response
     return jsonify(persist_inference_preferences(payload))
 
 
@@ -10550,6 +10606,8 @@ def _persist_generated_text_artifact_if_requested(
     request_payload: Optional[dict[str, Any]] = None,
     source_available: Optional[bool] = None,
 ) -> dict[str, Any]:
+    if isinstance(request_payload, Mapping) and _has_captured_request_intent(request_payload):
+        prompt = _extract_responses_current_turn_prompt(dict(request_payload))
     source_meta = _request_payload_text_artifact_source(request_payload)
     has_source = (
         bool(source_available)
@@ -11603,6 +11661,11 @@ def _html_saved_artifact_interactive_preview_wrapper_response(resolved: Path):
     response.headers['Referrer-Policy'] = 'no-referrer'
     response.headers['Cache-Control'] = 'no-store'
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    relative_file = resolved.resolve(strict=False).relative_to(base_root).as_posix()
+    response.headers['X-Fruth-Preview-Url'] = (
+        f'/api/preview_saved_artifact_wrapper/{quote(base_token, safe="")}/'
+        f'{quote(relative_file, safe="/")}'
+    )
     return response
 
 
@@ -12122,6 +12185,23 @@ def api_preview_saved_artifact():
             return _html_saved_artifact_interactive_preview_wrapper_response(preview_path)
         except ValueError:
             return jsonify({"error": _SAVED_INTERACTIVE_PREVIEW_PATH_ERROR}), 400
+
+
+@app.route('/api/preview_saved_artifact_wrapper/<base_token>/<path:asset_path>', methods=['GET'])
+def api_preview_saved_artifact_wrapper(base_token: str, asset_path: str):
+    # Preparation is admitted separately. Navigation consumes the exact signed
+    # read capability and never creates a package or expands its dependency set.
+    resolved = _resolve_saved_artifact_interactive_preview_asset_path(base_token, asset_path)
+    mimetype = mimetypes.guess_type(str(resolved))[0] if resolved else None
+    if not resolved or (
+        mimetype not in {'text/html', 'application/xhtml+xml'}
+        and resolved.suffix.lower() not in {'.html', '.htm'}
+    ):
+        return jsonify({'error': _SAVED_INTERACTIVE_PREVIEW_PATH_ERROR}), 404
+    try:
+        return _html_saved_artifact_interactive_preview_wrapper_response(resolved)
+    except ValueError:
+        return jsonify({'error': _SAVED_INTERACTIVE_PREVIEW_PATH_ERROR}), 404
 
 
 @app.route('/api/view_saved_artifact_assets/<base_token>/', defaults={'asset_path': ''}, methods=['GET'])
@@ -13139,6 +13219,7 @@ def _persist_graph_rebase_stage_successor(
         if isinstance(response_payload.get('request'), Mapping)
         else {}
     )
+    stage_request = _restore_request_intent(stage_request)
     try:
         finalized = _finalize_response_frame_payload(
             staged_payload,

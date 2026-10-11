@@ -1,3 +1,4 @@
+from tests.http_client import api_client
 import json
 import tempfile
 import unittest
@@ -99,7 +100,7 @@ class SettingsArtifactTests(unittest.TestCase):
 
     def test_settings_artifact_api_promotes_lists_and_loads(self):
         app.config["TESTING"] = True
-        client = app.test_client()
+        client = api_client(app)
         frame = _sample_response_frame()
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("fruth_webserver.SETTINGS_ARTIFACTS_DIR", Path(tmpdir)):
@@ -125,7 +126,7 @@ class SettingsArtifactTests(unittest.TestCase):
 
     def test_settings_artifact_api_rejects_payload_without_controls(self):
         app.config["TESTING"] = True
-        client = app.test_client()
+        client = api_client(app)
         response = client.post(
             "/api/settings_artifacts",
             json={"response_frame": {"kind": "fruth.response_frame", "response_id": "resp_empty"}},

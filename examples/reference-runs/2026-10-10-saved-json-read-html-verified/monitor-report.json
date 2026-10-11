@@ -1,0 +1,64 @@
+{
+  "artifact_summary": {
+    "artifact_bytes": 1824,
+    "artifact_count": 2,
+    "css_issue_count": 0,
+    "file_count_by_suffix": {
+      "html": 1,
+      "json": 1
+    },
+    "html_issue_count": 0,
+    "kind_counts": {
+      "text": 2
+    },
+    "missing_file_count": 0,
+    "sha_mismatch_count": 0
+  },
+  "authority": "independent_observer_evidence",
+  "branch_summary": {
+    "capability_counts": {
+      "chat": 2
+    },
+    "counts": {
+      "active": 0,
+      "completed": 2,
+      "failed": 0,
+      "pending": 0
+    },
+    "image_branch_count": 0,
+    "output_obligation_counts": {
+      "text": 3
+    },
+    "role_counts": {
+      "text": 2
+    },
+    "text_artifact_branch_count": 2
+  },
+  "frame_id": "resp_1791661769853_751c21357a7928:frame-2",
+  "frame_sequence": 2,
+  "provenance": {
+    "raw_record_published": false,
+    "record_sha256": "3056f417408093824af391fbe1add5b94134cff212e7cf81931713e2051b6ba2",
+    "record_size_bytes": 49442,
+    "source": "exact reports.jsonl record"
+  },
+  "reported_at": "2026-10-10T20:21:12.076759Z",
+  "response_id": "resp_1791661769853_751c21357a7928",
+  "runtime_summary": {
+    "failed_branch_count": 0,
+    "final_materialization_contract_status": "fulfilled",
+    "late_fill_status": "completed",
+    "lifecycle_state": "completed",
+    "materialization_contract_unmet": false
+  },
+  "schema": "fruth.public_monitor_snapshot.v1",
+  "timing_seconds": {
+    "coalesced_text_seconds": 49.228241,
+    "hygiene_seconds": 241.364185,
+    "initial_chat_seconds": 64.103412,
+    "post_image_chat_seconds": 25.458726,
+    "terminal_seconds": 206.994805
+  },
+  "verdict": "clean",
+  "version": 1
+}

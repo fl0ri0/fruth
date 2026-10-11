@@ -1,0 +1,31 @@
+{
+  "entrypoint": "index.html",
+  "files": [
+    {
+      "artifact_ref": "artifact:text_cbcc1e77dd448dfadfdf9d84",
+      "relative_path": "assets/files/file-01.json",
+      "sha256": "0c2d338502a3b8b106815e34004c2234f3b5eb1defa649f737e3dbc4a69ebf4f",
+      "size_bytes": 9,
+      "source_sha256": "0c2d338502a3b8b106815e34004c2234f3b5eb1defa649f737e3dbc4a69ebf4f",
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:text_6d22b7e957dfc87f0e1414f5",
+      "relative_path": "index.html",
+      "sha256": "029e2fee54dcbc9b87f332c3ea956cb3f8c731211cc1fa3f720c7843ab7918d7",
+      "size_bytes": 1815,
+      "source_sha256": "029e2fee54dcbc9b87f332c3ea956cb3f8c731211cc1fa3f720c7843ab7918d7",
+      "type": "text"
+    }
+  ],
+  "link_check": {
+    "status": "passed"
+  },
+  "raw_runtime_manifest_published": false,
+  "resolved_links": [],
+  "schema": "fruth.public_bundle_manifest.v1",
+  "source_bundle_id": "bundle:d71459237d79269bdaf6d8dc",
+  "source_response_id": "resp_1791661769853_751c21357a7928",
+  "status": "bundled",
+  "version": 1
+}

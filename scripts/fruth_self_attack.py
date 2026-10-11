@@ -36,7 +36,12 @@ from scripts.self_attack_checks import (
     audit_history, audit_truth, audit_provider_bindings, compare_profiles, finding, records,
     rejected_audio_mismatch_evidence,
 )
-from scripts.self_attack_knobs import build_profiles, discover_knobs, validate_saved_profile, diverse_live_profiles
+from scripts.self_attack_knobs import build_profiles, discover_knobs, validate_saved_profile, diverse_live_profiles, select_profiles
+from scripts.self_attack_windows import (
+    DispatchWindow, sequence_corpora, select_cases, plan_windows, local_full_plan, preview_recovery,
+    quota_evidence, runtime_files, file_receipt, campaign_configuration, compatible_runtime_inputs,
+    validate_fake_evidence,
+)
 
 PRIORITIES = [
     ('commitment_closure', 'commitment ↔ closure'),
@@ -152,12 +157,20 @@ class LiveBudget:
 
 class CaptureClient:
     """Observe the same response; never dispatch another request to poll it."""
-    def __init__(self, inner, root, *, deadline=None):
+    def __init__(self, inner, root, *, deadline=None, dispatch_window=None):
         self.inner, self.root = inner, Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
         self.versions = {}
         self.deadline = deadline
+        self.dispatch_window = dispatch_window
+
+    def diagnose(self, result, *, response_id=None, checkpoint=None):
+        if self.dispatch_window:
+            if response_id is None and checkpoint and '/api/responses/' in checkpoint:
+                response_id = checkpoint.split('/api/responses/', 1)[1].split('?', 1)[0]
+            self.dispatch_window.detect_quota(result.payload, response_id=response_id,
+                transport_error=result.error, checkpoint=checkpoint)
 
     def timeout(self, requested):
         if self.deadline is None:
@@ -225,6 +238,7 @@ class CaptureClient:
             try:
                 effective_timeout = self.timeout(timeout)
                 result = self.inner.get(path, timeout=effective_timeout)
+                self.diagnose(result, checkpoint=path)
             except LiveBudgetExpired as exc:
                 self.record_truth_fetch_failure(path, trigger, attempt, attempted_at, started,
                     effective_timeout, 0, f'{type(exc).__name__}: {exc}')
@@ -256,6 +270,7 @@ class CaptureClient:
 
     def get(self, path, *, timeout):
         result = self.inner.get(path, timeout=self.timeout(timeout))
+        self.diagnose(result, checkpoint=path)
         if result.ok and path in {'/api/running_instances', '/api/inference_preferences', '/api/graph_rebase/readiness'}:
             atomic_write_json(self.root / f'observer-{stable_digest(path)}.json',
                               {'endpoint': path, 'payload': result.payload, 'observed_at': utc_now()})
@@ -283,6 +298,7 @@ class CaptureClient:
 
     def post(self, path, payload, *, timeout):
         result = self.inner.post(path, payload, timeout=self.timeout(timeout))
+        self.diagnose(result, response_id=payload.get('response_id'), checkpoint=path)
         if result.ok:
             self.capture(result.payload, 'submission')
         return result
@@ -434,7 +450,8 @@ def attach_predecessor_context(payload, case, manifest):
     return payload
 
 
-def run_profile(raw, profile, output, *, mode, base_url, cycles, namespace, deadline_at=None):
+def run_profile(raw, profile, output, *, mode, base_url, cycles, namespace, deadline_at=None,
+                dispatch_output=None, sequence_key=None):
     output.mkdir(parents=True, exist_ok=True)
     corpus = materialize_corpus(raw, namespace, output / 'corpus.json')
     manifest_path = output / 'manifest.json'
@@ -467,10 +484,13 @@ def run_profile(raw, profile, output, *, mode, base_url, cycles, namespace, dead
                 probes = probe_boundaries(profile['request'])
                 atomic_write_json(output / 'owner_probes.json', probes)
             deadline = time.monotonic() + max(0, deadline_at - time.time()) if deadline_at is not None else None
-            client = CaptureClient(inner, output / 'captures', deadline=deadline)
+            window = DispatchWindow(dispatch_output) if dispatch_output else None
+            client = CaptureClient(inner, output / 'captures', deadline=deadline, dispatch_window=window)
             runner = ShadowCorpusRunner(corpus=corpus, manifest=manifest, manifest_path=manifest_path,
                                         client=client, poll_interval=.01 if mode == 'fake' else 2,
-                                        request_transform=transform, emit=lambda _: None)
+                                        request_transform=transform, emit=lambda _: None,
+                                        dispatch_guard=(lambda case: window.reserve_dispatch(sequence_key, case)) if window else None,
+                                        dispatch_stop_reason=window.stop_reason if window else None)
             status = runner.run(max_cycles=cycles)
             # Do not let in-flight fake calls outlive patched roots or controls.
             if mode == 'fake':
@@ -510,12 +530,15 @@ def unfinished_group(raw, profile, output, error):
                 output=str(output), error=error)
 
 
-def isolated_group(raw, profile, output, *, mode, base_url, cycles, namespace, timeout=120):
+def isolated_group(raw, profile, output, *, mode, base_url, cycles, namespace, timeout=120,
+                   dispatch_output=None, sequence_key=None):
     """A process owns all provider threads, controls and diagnostic storage."""
     output.mkdir(parents=True, exist_ok=True)
     deadline_at = None
     if mode == 'live':
         budget_path = output / 'observation-budget.json'
+        if dispatch_output and (output / 'manifest.json').exists() and not budget_path.exists():
+            raise CorpusError('Persisted sequence observation budget is missing; it cannot be renewed.')
         if budget_path.exists():
             deadline_at = json.loads(budget_path.read_text())['deadline_at']
         else:
@@ -526,6 +549,8 @@ def isolated_group(raw, profile, output, *, mode, base_url, cycles, namespace, t
             return unfinished_group(raw, profile, output, 'live_sequence_budget_exhausted')
     config = dict(raw=raw, profile=profile, output=str(output), mode=mode,
                   base_url=base_url, cycles=cycles, namespace=namespace, deadline_at=deadline_at)
+    if dispatch_output:
+        config.update(dispatch_output=str(dispatch_output), sequence_key=sequence_key)
     job = output / 'worker.json'
     atomic_write_json(job, config)
     environment = {key: value for key, value in os.environ.items()
@@ -553,29 +578,6 @@ def isolated_group(raw, profile, output, *, mode, base_url, cycles, namespace, t
     return unfinished_group(raw, profile, output, error)
 
 
-def sequence_corpora(raw):
-    # Merge shared conversations and dependency-connected cases before partitioning.
-    groups = [{c['case_id']} for c in raw['cases']]
-    by_id = {c['case_id']: c for c in raw['cases']}
-    changed = True
-    while changed:
-        changed = False
-        for i, a in enumerate(groups):
-            for j in range(i + 1, len(groups)):
-                b = groups[j]
-                connected = any(set(by_id[k].get('depends_on', [])) & b for k in a)
-                connected |= any(set(by_id[k].get('depends_on', [])) & a for k in b)
-                connected |= bool({by_id[k].get('conversation_key', k) for k in a}
-                                  & {by_id[k].get('conversation_key', k) for k in b})
-                if connected:
-                    groups[i] |= groups.pop(j)
-                    changed = True
-                    break
-            if changed:
-                break
-    return [dict(raw, cases=[c for c in raw['cases'] if c['case_id'] in group]) for group in groups]
-
-
 def combine_groups(profile, output, runs):
     return dict(profile=profile, runner_status=max(r['runner_status'] for r in runs),
                 cases=[c for r in runs for c in r['cases']],
@@ -594,13 +596,20 @@ def isolated_profile(raw, profile, output, *, mode, base_url, cycles, namespace,
     groups = sequence_corpora(raw)
     runs = []
     for index, corpus in enumerate(groups):
+        window = getattr(live_budget, 'dispatch_window', None)
+        key = str((output / f'sequence-{index + 1}').relative_to(window.path.parent)) if window else None
+        reason = window.admit_sequence(key, [c['case_id'] for c in corpus['cases']],
+            kind=live_budget.state['stage']) if window else None
+        if reason:
+            runs.append(unfinished_group(corpus, profile, output / f'sequence-{index + 1}', reason))
+            continue
         # Live uses the explicit sequence ceiling; the shared stage budget owns
         # total duration. Smaller reducer corpora never acquire longer windows.
         seconds = timeout / len(groups) if live_budget is None else min(
             live_budget.state['limits']['sequence_seconds'], live_budget.remaining())
         run = isolated_group(corpus, profile, output / f'sequence-{index + 1}', mode=mode,
                              base_url=base_url, cycles=cycles, namespace=f'{namespace}-{index + 1}',
-                             timeout=seconds)
+                             timeout=seconds, **(dict(dispatch_output=window.path.parent, sequence_key=key) if window else {}))
         runs.append(run)
     result = combine_groups(profile, output, runs)
     if mode == 'live':
@@ -832,7 +841,7 @@ def render_report(result):
         selection = result['coverage']['case_selection']
         insert = lines.index('## Findings')
         lines[insert:insert] = [
-            f"High-risk subset: {sum(map(len, selection.values()))} planned case executions across six profiles; all five boundaries are represented across the gate, not on every profile.",
+            f"Explicit subset/window: {sum(map(len, selection.values()))} planned case executions across {len(selection)} profiles.",
             'Omitted profile/case combinations remain unobserved. Cross-profile comparisons apply only where the same case has captured baseline truth.',
             *[f"- `{profile}`: {', '.join(cases)}" for profile, cases in selection.items()], '',
         ]
@@ -876,6 +885,18 @@ def render_report(result):
                   f"Additional profile attempts consumed: {len(budget['attempts'])}/{limits['attempt_cap']} (saved regressions and paired baseline replays included).",
                   f"Exhausted limits: {', '.join(budget['exhausted']) or 'none'}.",
                   'Deadlines and attempts persist across resume. An exhausted limit cannot schedule more live work. Final report writing occurs with dispatch disabled; already submitted Fruth responses may continue.', '']
+    if result.get('dispatch_window'):
+        window = result['dispatch_window']
+        counts = result['coverage']['window']
+        lines += ['', '## Bounded dispatch window', '',
+                  f"Execution status: **{result['execution_status']}**.",
+                  f"Selected {counts['selected']}; dispatched identities {counts['dispatched']}; completed {counts['completed']}; selected remaining {counts['selected_remaining']}; full-matrix remaining {counts['remaining']}.",
+                  f"Case cap {counts['case_cap']}; reserved slots {counts['reserved']}. All diagnostic retries, confirmations and reference cases share this allocation; observation GETs do not consume dispatch slots.",
+                  'Reservations survive interruption. An ambiguous reservation is GET-only even if no POST result was retained. Unused reserved sequence slots are not refunded.',
+                  'Case counts are not provider-call counts or guaranteed quota headroom. No reset time is assumed and no next window starts automatically.', '']
+        if window.get('stop'):
+            stop = window['stop']
+            lines += [f"Stop reason: {stop['reason']}; provider {stop.get('provider', 'n/a')}; tier {stop.get('tier', 'n/a')}; response {stop.get('response_id', 'n/a')}; checkpoint {stop.get('checkpoint', 'n/a')}.", '']
     if result.get('manual_review'):
         lines += ['', '## Manual review required', '',
                   'These records preserve unresolved observations or unconfirmed findings. They are not automatically replayed.']
@@ -990,6 +1011,17 @@ def execute_sweep(args, raw, profiles, output, run_id, result, live_budget):
                 result['live_preflight_error'] = live_error
                 break
         result['live_preflight_passed'] = not live_error and len(observations) == 6
+        if result['live_preflight_passed']:
+            try:
+                serving_config = campaign_configuration(observations)
+            except CorpusError:
+                serving_config = None  # Incomplete configuration cannot later aggregate.
+            if serving_config or getattr(args, 'local_full_sweep', False):
+                live_budget.dispatch_window.bind_configuration(serving_config)
+        if result['live_preflight_passed'] and args.recover_missing_from:
+            old = json.loads((args.recover_missing_from / 'live-preflight.json').read_text())
+            if campaign_configuration(old) != campaign_configuration(observations):
+                raise CorpusError('Recovery serving configuration differs from the retained campaign.')
     def execute(profile):
         corpus = sweep_corpus(raw, profile, result)
         if live_error:
@@ -1052,10 +1084,15 @@ def compare_reference(run, reference):
 def confirm_failures(args, raw, profiles, output, run_id, result, inventory, live_budget):
     remaining = args.minimize_budget
     result.setdefault('confirmation_runs', [])
+    window = getattr(live_budget, 'dispatch_window', None)
+    if window and window.stop_reason():
+        result['confirmation_stop_reason'] = window.stop_reason()
+        return
     def extra(corpus, profile, path, namespace):
         pending = {c['case_id'] for r in result['runs'] + result['confirmation_runs'] for c in r['cases']
                    if c.get('response_id') and c['state'] not in {'planned', 'unobserved', 'settled_terminal', 'settled_repair_needed'}}
-        reason = ('live_pending_response_not_replayed' if live_budget and pending & {c['case_id'] for c in corpus['cases']}
+        reason = (window.stop_reason() if window and window.stop_reason() else
+                  'live_pending_response_not_replayed' if live_budget and pending & {c['case_id'] for c in corpus['cases']}
                   else live_budget.reserve_attempt(str(path.relative_to(output))) if live_budget else None)
         if reason == 'live_attempt_already_started' and (path / 'profile-result.json').exists():
             run = json.loads((path / 'profile-result.json').read_text())
@@ -1074,6 +1111,9 @@ def confirm_failures(args, raw, profiles, output, run_id, result, inventory, liv
                 run['replay_stop_reason'] = str(exc)
                 result['confirmation_stop_reason'] = str(exc)
         run['corpus'] = corpus
+        if window and window.stop_reason():
+            run['replay_stop_reason'] = window.stop_reason()
+            result['confirmation_stop_reason'] = window.stop_reason()
         result['confirmation_runs'].append(run)
         atomic_write_json(output / 'progress.json', result)
         return run
@@ -1198,7 +1238,7 @@ def import_live_evidence(source, output, raw, profiles, seed):
                     atomic_write_json(manifest_path, manifest)
         # New budgets may replace only the old, unbounded implementation.
         # A hardened run's counters/deadlines never reset merely by detaching.
-        for name in ('live-budget.json', 'progress.json', 'results.json', 'report.md'):
+        for name in ('live-budget.json', 'dispatch-window.json', 'progress.json', 'results.json', 'report.md'):
             old = source / name
             if old.exists():
                 shutil.copy2(old, output / name)
@@ -1250,6 +1290,25 @@ def main(argv=None):
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--pairwise', action='store_true')
     parser.add_argument('--profile-limit', type=int)
+    parser.add_argument('--profile-id', action='append', default=[], help='Select a stable profile ID; repeatable, catalog ordered.')
+    parser.add_argument('--case-id', '--sequence-id', dest='case_ids', action='append', default=[],
+                        help='CASE or PROFILE:CASE. Includes the entire dependency/conversation sequence.')
+    parser.add_argument('--case-cap', type=int, default=100,
+                        help='Maximum new live case dispatches per window, including diagnostics (1..100; default 100).')
+    parser.add_argument('--local-full-sweep', action='store_true',
+                        help='Run the entire local Ollama/MLX/AFM suite in one allocation; PCC retains bounded windows.')
+    parser.add_argument('--window-number', type=int, default=1,
+                        help='Explicit one-based window in the selected scope; never starts the next window.')
+    parser.add_argument('--campaign-id', default='current-configuration',
+                        help='Nonsecret configuration/account campaign label. A configuration change needs a new label/campaign.')
+    parser.add_argument('--source-attestation', type=Path, action='append', default=[],
+                        help='Original source preparation receipt for legacy evidence lacking runtime-input hashes.')
+    parser.add_argument('--preview-window', action='store_true', help='Print the dependency-aware live window plan offline.')
+    parser.add_argument('--preview-recovery', type=Path, help='Preview native missing coverage offline; no runtime calls.')
+    parser.add_argument('--recover-missing-from', type=Path,
+                        help='New identities for missing dependency sequences, linked to terminal/undispatched prior evidence.')
+    parser.add_argument('--combine-evidence', type=Path, action='append', default=[],
+                        help='Derive compatible, tier-separated coverage offline from these native live windows.')
     parser.add_argument('--max-cycles', type=int, default=300)
     parser.add_argument('--minimize-budget', type=int, default=24)
     parser.add_argument('--profile-timeout', type=float, default=600,
@@ -1285,6 +1344,50 @@ def main(argv=None):
     parser.add_argument('--refresh-report', type=Path,
                         help='Update completed JSON/Markdown reporting only; do not execute or recheck the suite.')
     args = parser.parse_args(argv)
+    if args.local_full_sweep and (
+            (args.mode != 'live' and not args.preview_window) or args.case_cap != 100
+            or args.window_number != 1 or args.profile_id or args.profile_limit or args.case_ids
+            or args.live_high_risk or args.recover_missing_from or args.replay or args.live_after_fake
+            or args.preview_recovery or args.combine_evidence or args.recheck or args.refresh_report
+            or args.audit_convergence or args.audit_production):
+        parser.error('--local-full-sweep requires full live scope (or its offline preview), without bounded-window selectors.')
+    offline_window_mode = args.preview_recovery or args.combine_evidence or args.preview_window
+    if offline_window_mode:
+        if (args.detach or args.live_after_fake or args.replay or args.recheck or args.refresh_report
+                or args.audit_convergence or args.audit_production
+                or sum(bool(x) for x in (args.preview_recovery, args.combine_evidence, args.preview_window)) != 1):
+            parser.error('Window previews/aggregation are exclusive offline modes; they cannot execute or detach work.')
+        from scripts.self_attack_windows import combine_evidence, write_derived
+        if args.preview_recovery:
+            derived = preview_recovery(args.preview_recovery)
+            sources = [args.preview_recovery]
+        elif args.combine_evidence:
+            if not args.fake_evidence:
+                parser.error('Combined coverage requires current matching complete --fake-evidence.')
+            derived = combine_evidence(args.combine_evidence, args.fake_evidence, discover_knobs(ROOT),
+                                       attestations=args.source_attestation)
+            sources = args.combine_evidence
+        else:
+            inventory = discover_knobs(ROOT)
+            raw = json.loads(args.corpus.read_text())
+            profiles = select_profiles(build_profiles(inventory, live=True, seed=args.seed, pairwise=args.pairwise), args.profile_id)
+            if args.profile_limit:
+                profiles = profiles[:args.profile_limit]
+            selection = select_cases(raw, profiles, args.case_ids)
+            local_plan = (local_full_plan(raw, profiles, attempt_cap=args.live_attempt_cap,
+                          campaign_id=args.campaign_id) if args.local_full_sweep else None)
+            windows = local_plan['windows'] if local_plan else plan_windows(raw, profiles, selection, args.case_cap)
+            derived = dict(execution_performed=False, seed=args.seed, case_cap=local_plan['case_cap'] if local_plan else args.case_cap,
+                           selected=selection, windows=windows, case_count=sum(map(len, selection.values())),
+                           note='Each window is an explicit separate allocation. Case counts are not provider-call counts.')
+            if local_plan:
+                derived['window_plan'] = local_plan
+            sources = []
+        if args.output:
+            write_derived(derived, args.output, sources)
+        else:
+            print(json.dumps(derived, indent=2), flush=True)
+        return 0
     if args.audit_production:
         if args.audit_convergence or args.live_after_fake or args.mode != 'fake' or args.replay or args.recheck or args.refresh_report:
             parser.error('--audit-production cannot be combined with other audit/execution modes.')
@@ -1315,6 +1418,14 @@ def main(argv=None):
         parser.error('--live-after-fake starts in fake mode.')
     if args.mode == 'live' and not args.fake_evidence:
         parser.error('Live execution requires --fake-evidence from a complete passing fake sweep.')
+    if args.profile_id and args.profile_limit:
+        parser.error('--profile-id and --profile-limit are alternative selectors.')
+    if args.recover_missing_from and (args.mode != 'live' or args.profile_id or args.case_ids or args.replay or args.live_high_risk):
+        parser.error('--recover-missing-from requires live mode and supplies its own exact selectors.')
+    if args.live_high_risk and (args.profile_id or args.case_ids):
+        parser.error('Explicit selection cannot be combined with --live-high-risk.')
+    if not 1 <= args.case_cap <= 100 or args.window_number < 1:
+        parser.error('Case cap must be 1..100; window number must be positive.')
     if args.recheck:
         return recheck_captures(args.recheck.resolve(),
                                (args.output or args.recheck / 'rechecks' / str(time.time_ns())).resolve(),
@@ -1341,10 +1452,14 @@ def main(argv=None):
                 raise CorpusError('Live execution requires passing fake evidence for the current source.')
         atomic_write_json(output / 'controls.json', inventory)
         raw = json.loads(args.corpus.read_text())
+        if args.mode == 'live':
+            validate_fake_evidence(args.fake_evidence, inventory, raw, args.seed)
         if args.mode == 'live' and raw != proof_config.get('corpus'):
             raise CorpusError('Live corpus differs from the passing fake corpus.')
         profiles = build_profiles(inventory, live=args.mode == 'live', seed=args.seed, pairwise=args.pairwise)
         total_profiles = len(profiles)
+        all_profiles = deepcopy(profiles)
+        profiles = select_profiles(profiles, args.profile_id)
         if args.profile_limit:
             profiles = (diverse_live_profiles(profiles, args.profile_limit)
                         if args.mode == 'live' and args.live_high_risk else profiles[:args.profile_limit])
@@ -1358,16 +1473,66 @@ def main(argv=None):
             total_profiles = len(profiles)
         if args.mode == 'live' and raw != proof_config.get('corpus'):
             raise CorpusError('Live replay corpus differs from the passing fake corpus.')
+        recovery = None
+        window_plan = None
+        selection = None
+        if args.mode == 'live':
+            if args.recover_missing_from:
+                recovery = preview_recovery(args.recover_missing_from)
+                old_config = json.loads((args.recover_missing_from / 'run.json').read_text())
+                old_inventory = json.loads((args.recover_missing_from / 'controls.json').read_text())
+                compatible_runtime_inputs(old_inventory, inventory, args.source_attestation)
+                if (not recovery['fresh_attempt_allowed'] or old_config['corpus'] != raw
+                        or old_config['seed'] != args.seed or runtime_files(old_inventory) != runtime_files(inventory)
+                        or any(p not in all_profiles for p in old_config['profiles'])):
+                    raise CorpusError('Recovery requires compatible evidence and no pending/ambiguous sequence member.')
+                selection = recovery['selection']
+                profiles = [p for p in all_profiles if p['id'] in selection]
+                if args.campaign_id == 'current-configuration':
+                    args.campaign_id = old_config.get('window_plan', {}).get('campaign_id', 'legacy:' + old_config['run_id'])
+            else:
+                selection = (high_risk_live_cases(raw, profiles) if args.live_high_risk
+                             else select_cases(raw, profiles, args.case_ids))
+                # The existing high-risk gate is predecessor-closed; expand to
+                # full connected sequences for bounded dispatch planning.
+                if args.live_high_risk:
+                    # Existing gate intentionally includes singleton root cases;
+                    # its own selected corpus defines those diagnostic sequences.
+                    windows = [selection]
+                elif not args.local_full_sweep:
+                    windows = plan_windows(raw, profiles, selection, args.case_cap)
+            if args.local_full_sweep:
+                window_plan = local_full_plan(raw, profiles, attempt_cap=args.live_attempt_cap,
+                                              campaign_id=args.campaign_id)
+                windows = window_plan['windows']
+            elif not args.live_high_risk:
+                windows = plan_windows(raw, profiles, selection, args.case_cap)
+            if args.window_number > len(windows):
+                raise CorpusError('Window number exceeds the explicit selected scope.')
+            if window_plan is None:
+                window_plan = dict(number=args.window_number, case_cap=args.case_cap, windows=windows,
+                                   requested=selection, campaign_id=args.campaign_id)
+            selection = windows[args.window_number - 1]
+            profiles = [p for p in profiles if p['id'] in selection]
         config = dict(corpus=raw, profiles=profiles, mode=args.mode, seed=args.seed,
                       budgets=dict(profile_timeout=args.profile_timeout, cycles=args.max_cycles, jobs=args.jobs,
                                    minimize_budget=args.minimize_budget, live_sequence_timeout=args.live_sequence_timeout,
                                    live_main_budget=args.live_main_budget, live_confirmation_budget=args.live_confirmation_budget,
                                    live_attempt_cap=args.live_attempt_cap, live_replay_timeout=args.live_replay_timeout),
                       source_digest=inventory['source_digest'])
-        if args.mode == 'live' and args.live_high_risk:
-            config['case_selection'] = high_risk_live_cases(raw, profiles)
+        config.update(runtime_source_digest=inventory.get('runtime_source_digest'),
+                      diagnostic_source_digest=inventory.get('diagnostic_source_digest'))
+        if args.mode == 'live':
+            config.update(case_selection=selection, window_plan=window_plan,
+                          profile_catalog=all_profiles, fake_gate=file_receipt(args.fake_evidence))
+            if recovery:
+                config['recovery'] = recovery
+                config['source_attestations'] = [file_receipt(p) for p in args.source_attestation]
+        elif args.case_ids:
+            config['case_selection'] = select_cases(raw, profiles, args.case_ids)
         config_path = output / 'run.json'
-        if config_path.exists():
+        resuming = config_path.exists()
+        if resuming:
             saved_config = json.loads(config_path.read_text())
             run_id = saved_config.pop('run_id', None)
             if saved_config != config or not run_id:
@@ -1382,10 +1547,13 @@ def main(argv=None):
                           mode=args.mode, manifest_path=str(config_path), report_path=str(output / 'report.md')))
         live_budget = None
         if args.mode == 'live':
+            if resuming and any(not (output / name).is_file() for name in ('live-budget.json', 'dispatch-window.json')):
+                raise CorpusError('Persisted live budget/dispatch ledger is missing; resume cannot allocate replacement limits.')
             live_budget = LiveBudget(output, main_seconds=args.live_main_budget,
                                      confirmation_seconds=args.live_confirmation_budget,
                                      attempt_cap=args.live_attempt_cap, sequence_seconds=args.live_sequence_timeout,
                                      replay_seconds=args.live_replay_timeout)
+            live_budget.dispatch_window = DispatchWindow(output, cap=window_plan['case_cap'], allocation=window_plan)
             if (output / 'results.json').exists():
                 previous = json.loads((output / 'results.json').read_text())
                 print(f"Retained {previous['verdict'].upper()}: {output / 'report.md'}; no live work restarted.", flush=True)
@@ -1397,9 +1565,11 @@ def main(argv=None):
                                     profiles_available=total_profiles, profiles_selected=len(profiles)))
         if config.get('case_selection'):
             result['coverage'].update(case_selection=config['case_selection'],
-                design='six representative profiles; maximum control-value coverage, then interactions; dependency-closed high-risk case subsets',
+                design='six representative profiles; dependency-closed high-risk subsets' if args.live_high_risk else 'explicit dependency-connected bounded window',
                 case_executions_selected=sum(map(len, config['case_selection'].values())),
-                case_executions_available=len(raw['cases']) * len(profiles))
+                case_executions_available=len(raw['cases']) * total_profiles)
+        if window_plan:
+            result['window_plan'] = window_plan
         if args.mode == 'live':
             result['fake_evidence'] = str(args.fake_evidence.resolve())
             result['owner_tests'] = proof['owner_tests']
@@ -1441,7 +1611,8 @@ def main(argv=None):
                        for r in result['runs'] + result.get('confirmation_runs', [])) or any(
             r['status'] == 'failed' for r in result['owner_tests'].values())
         incomplete = ((args.skip_owner_tests and args.mode == 'fake') or len(profiles) < total_profiles or
-                      bool(result['coverage'].get('case_selection')) or
+                      (bool(result['coverage'].get('case_selection')) and
+                       sum(map(len, config['case_selection'].values())) < len(raw['cases']) * total_profiles) or
                       any(r['status'] == 'incomplete' for r in result['owner_tests'].values()) or
                       bool(result.get('confirmation_stop_reason')) or
                       any(r['runner_status'] or any(c['missing'] for c in r['cases'])
@@ -1456,6 +1627,22 @@ def main(argv=None):
                       failures=sum(len(c['findings']) for r in sweep for c in r['cases'] if c['category'] == key))
             for key, _ in PRIORITIES}
         result['finished_at'] = utc_now()
+        if live_budget:
+            window = live_budget.dispatch_window.read()
+            selected_count = sum(map(len, config['case_selection'].values()))
+            completed = sum(not c['missing'] and not c['findings'] and c['state'] in {'settled_terminal', 'settled_repair_needed'}
+                            for r in sweep for c in r['cases'])
+            total = len(raw['cases']) * total_profiles
+            result['dispatch_window'] = window
+            result['coverage']['window'] = dict(selected=selected_count,
+                dispatched=len(window['dispatches']), completed=completed, remaining=total-completed,
+                selected_remaining=selected_count-completed,
+                reserved=sum(len(s['case_ids']) for s in window['sequences'].values()),
+                case_cap=window_plan['case_cap'], accounting='POST identity reservations, including diagnostics; GETs excluded')
+            result['execution_status'] = (window['stop']['reason'] if window['stop'] else
+                'case_cap_stop' if args.window_number < len(window_plan['windows']) else
+                'full_complete' if not incomplete and not failures else
+                'window_complete' if completed == selected_count else 'missing_coverage')
         result['scoped_verdicts'] = verdict_scopes(result)
         # Full payloads already live in captures; keep the machine report manageable.
         for run in result['runs'] + result.get('confirmation_runs', []):
@@ -1483,6 +1670,8 @@ def main(argv=None):
                     command += ['--resume-live-from', str(args.resume_live_from.resolve())]
                 if args.live_high_risk:
                     command += ['--live-high-risk']
+                command += ['--case-cap', str(args.case_cap), '--window-number', str(args.window_number),
+                            '--campaign-id', args.campaign_id]
                 completed = subprocess.run(command, cwd=ROOT)
                 live_path = output / 'live/results.json'
                 live_result = json.loads(live_path.read_text()) if live_path.exists() else {}

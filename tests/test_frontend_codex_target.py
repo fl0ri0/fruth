@@ -131,6 +131,7 @@ def test_reasoning_effort_defaults_and_serialization_are_target_schema_bound():
         };
         context.globalThis = context;
         vm.createContext(context);
+        vm.runInContext(fs.readFileSync('static/vendor/axios-1.20.0/axios.min.js', 'utf8'), context);
         vm.runInContext(fs.readFileSync('static/ui/settings-history.js', 'utf8'), context);
         vm.runInContext(fs.readFileSync('static/ui/request-transport.js', 'utf8'), context);
 
@@ -482,6 +483,8 @@ def test_external_codex_stream_payload_preserves_explicit_artifact_references():
         };
         context.globalThis = context;
         vm.createContext(context);
+        vm.runInContext(fs.readFileSync('static/vendor/axios-1.20.0/axios.min.js', 'utf8'), context);
+        vm.runInContext(fs.readFileSync('static/ui/request-transport.js', 'utf8'), context);
         vm.runInContext(fs.readFileSync('static/ui/request-lifecycle.js', 'utf8'), context);
         vm.runInContext(`
           getRequestExecutionInstance = (instance) => instance;
@@ -568,6 +571,8 @@ def test_external_codex_stream_error_preserves_canonical_response_truth():
         };
         context.globalThis = context;
         vm.createContext(context);
+        vm.runInContext(fs.readFileSync('static/vendor/axios-1.20.0/axios.min.js', 'utf8'), context);
+        vm.runInContext(fs.readFileSync('static/ui/request-transport.js', 'utf8'), context);
         vm.runInContext(fs.readFileSync('static/ui/request-lifecycle.js', 'utf8'), context);
         vm.runInContext(`
           getRequestExecutionInstance = (instance) => instance;

@@ -1,4 +1,5 @@
 """Fresh Research startup and observation, with all state in temporary roots."""
+from tests.http_client import api_client
 import json
 
 import pytest
@@ -81,7 +82,7 @@ def test_http_observation_is_passive(tmp_path, monkeypatch):
     import fruth_webserver
     monkeypatch.setattr(fruth_webserver, '__file__', str(tmp_path / 'fruth_webserver.py'))
     before = contents(tmp_path)
-    with fruth_webserver.app.test_client() as client:
+    with api_client(fruth_webserver.app) as client:
         response = client.get('/api/research')
     assert response.status_code == 200
     assert response.get_json()['initialized'] is False

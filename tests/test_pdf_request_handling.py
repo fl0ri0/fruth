@@ -1,5 +1,6 @@
 """PDF preparation/dispatch with native rendering and deterministic providers."""
 
+from tests.http_client import api_client
 import base64
 import hashlib
 import io
@@ -51,7 +52,7 @@ def test_native_pages_reach_existing_ocr_with_original_source_identity(local_rou
     web, ocr, _history = local_route
     path = write_pdf(tmp_path / 'document.pdf', rotations=(0, 90, 180)[:page_count], scanned=kind == 'scanned', mixed=kind == 'mixed')
     original = path.read_bytes()
-    response = web.app.test_client().post('/api/infer', data={
+    response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'pdf-test', 'prompt': 'Read this document faithfully.',
         'file': (io.BytesIO(original), 'document.pdf'), 'pdf_max_pages': '2', 'pdf_dpi': '144',
     })
@@ -78,7 +79,7 @@ def test_native_pages_reach_existing_ocr_with_original_source_identity(local_rou
 def test_explicit_text_preference_keeps_mixed_coverage_visible(local_route, tmp_path):
     web, ocr, _history = local_route
     path = write_pdf(tmp_path / 'mixed.pdf', rotations=(0, 0), mixed=True)
-    response = web.app.test_client().post('/api/infer', data={
+    response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'pdf-test', 'prompt': 'Read the searchable text.',
         'file': (io.BytesIO(path.read_bytes()), 'mixed.pdf'), 'pdf_prefer_text': 'true',
     })
@@ -94,7 +95,7 @@ def test_explicit_text_preference_keeps_mixed_coverage_visible(local_route, tmp_
 def test_explicit_pdf_controls_apply_to_new_execution(local_route, tmp_path, controls):
     web, ocr, history = local_route
     path = write_pdf(tmp_path / 'scan.pdf', rotations=(0, 0), scanned=True)
-    response = web.app.test_client().post('/api/infer', data={
+    response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'pdf-test', 'prompt': 'Read this.',
         'file': (io.BytesIO(path.read_bytes()), 'scan.pdf'), **controls,
     })
@@ -109,7 +110,7 @@ def test_single_image_bypasses_pdf_preparation(local_route, monkeypatch):
     monkeypatch.setattr(web, '_render_pdf_pages_to_base64', render)
     monkeypatch.setattr(web, '_extract_pdf_text_content', render)
     image = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aE1sAAAAASUVORK5CYII=')
-    response = web.app.test_client().post('/api/infer', data={
+    response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'pdf-test', 'prompt': 'Describe this image.',
         'file': (io.BytesIO(image), 'image.png'),
     })
@@ -124,7 +125,7 @@ def test_repeated_incoming_pdf_uses_current_page_selection(local_route, tmp_path
     path = write_pdf(tmp_path / 'scan.pdf', rotations=(0, 0), scanned=True)
     for limit, expected in [('1', 1), ('', 2)]:
         ocr.reset_mock()
-        response = web.app.test_client().post('/api/infer', data={
+        response = api_client(web.app).post('/api/infer', data={
             'instance_id': 'pdf-test', 'prompt': 'Read this document.',
             'file': (io.BytesIO(path.read_bytes()), 'scan.pdf'),
             'pdf_max_pages': limit, **({'reuse_cached': reuse} if reuse else {}),
@@ -140,7 +141,7 @@ def test_missing_renderer_fails_scanned_pdf_without_recognition(local_route, tmp
     web, ocr, _history = local_route
     path = write_pdf(tmp_path / 'scan.pdf', scanned=True)
     monkeypatch.setitem(sys.modules, 'Quartz', None)
-    response = web.app.test_client().post('/api/infer', data={
+    response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'pdf-test', 'prompt': 'Read this.',
         'file': (io.BytesIO(path.read_bytes()), 'scan.pdf'),
     })
@@ -176,7 +177,7 @@ def test_chat_pdf_uses_selected_vision_instance_for_every_selected_page(
                      scanned=kind == 'scanned', mixed=kind == 'mixed')
     original = path.read_bytes()
     prompt = 'Transcribe every page, preserving the original language.'
-    response = web.app.test_client().post(endpoint, data={
+    response = api_client(web.app).post(endpoint, data={
         'instance_id': 'pdf-test', 'capability': 'chat', 'prompt': prompt,
         'file': (io.BytesIO(original), 'document.pdf'), 'ocr_mode': 'auto',
         'pdf_max_pages': '2', 'pdf_dpi': '144', 'pdf_page_timeout_sec': '75',
@@ -229,7 +230,7 @@ def test_native_pdf_tools_receive_each_rendered_page_with_source_receipts(
         }
     tool = Mock(side_effect=recognize)
     monkeypatch.setattr('fruth_core.inference.run_apple_fm_image_tool', tool)
-    response = web.app.test_client().post('/api/responses', data={
+    response = api_client(web.app).post('/api/responses', data={
         'instance_id': 'pdf-test', 'capability': 'chat', 'ocr_mode': mode,
         'prompt': 'Read each page.', 'file': (io.BytesIO(original), 'scan.pdf'),
         'pdf_max_pages': '2', 'pdf_page_timeout_sec': '75',
@@ -239,7 +240,7 @@ def test_native_pdf_tools_receive_each_rendered_page_with_source_receipts(
     assert tool.call_count == 2
     completion.assert_not_called()
     assert payload['output_text'] == '[Page 1]\nExact detected text.\n\n---\n\n[Page 2]\nExact detected text.'
-    saved = web.app.test_client().get(f"/api/responses/{payload['id']}?view=truth").get_json()
+    saved = api_client(web.app).get(f"/api/responses/{payload['id']}?view=truth").get_json()
     receipt = saved['runtime']['apple_fm_image_tool_evidence']
     assert receipt['kind'] == 'fruth.apple_fm_pdf_tool_evidence'
     assert receipt['source_pdf_sha256'] == hashlib.sha256(original).hexdigest()
@@ -253,7 +254,7 @@ def test_chat_pdf_uses_existing_image_capability_contract(apple_pdf_route, tmp_p
     web, completion = apple_pdf_route
     web._lookup_instance.return_value.update(backend=backend, model='multimodal-test')
     path = write_pdf(tmp_path / 'scan.pdf', rotations=(0, 90), scanned=True)
-    response = web.app.test_client().post('/api/infer', data={
+    response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'pdf-test', 'prompt': 'Describe each page.',
         'phase_system_prompt': 'Keep the answer in the source language.',
         'file': (io.BytesIO(path.read_bytes()), 'scan.pdf'), 'pdf_page_timeout_sec': '75',
@@ -286,7 +287,7 @@ def test_chat_pdf_keeps_text_preference_and_text_only_targets(apple_pdf_route, t
     renderer = Mock(side_effect=AssertionError('Text-first PDF must not render when text exists'))
     monkeypatch.setattr(web, '_render_pdf_pages_to_base64', renderer)
     path = write_pdf(tmp_path / 'mixed.pdf', rotations=(0, 0), mixed=True)
-    response = web.app.test_client().post('/api/infer', data={
+    response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'pdf-test', 'prompt': 'Summarize the searchable text.',
         'file': (io.BytesIO(path.read_bytes()), 'mixed.pdf'),
         **({} if text_only else {'pdf_prefer_text': 'true'}),
@@ -306,7 +307,7 @@ def test_empty_pdf_recognition_keeps_page_gaps_visible(apple_pdf_route, tmp_path
         ['', '', ''] if all_empty else ['First page.', '', 'Third page.']
     )]
     path = write_pdf(tmp_path / 'scan.pdf', rotations=(0, 90, 180), scanned=True)
-    response = web.app.test_client().post('/api/infer', data={
+    response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'pdf-test', 'prompt': 'Read each page.',
         'file': (io.BytesIO(path.read_bytes()), 'scan.pdf'),
     })
@@ -330,7 +331,7 @@ def test_native_pdf_tools_render_text_layers_and_preserve_verified_empty_results
     tool = Mock(return_value=('', {'result': {'empty': True}}))
     monkeypatch.setattr('fruth_core.inference.run_apple_fm_image_tool', tool)
     path = write_pdf(tmp_path / 'text.pdf', rotations=(0, 90))
-    response = web.app.test_client().post('/api/infer', data={
+    response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'pdf-test', 'ocr_mode': mode, 'pdf_prefer_text': 'true',
         'file': (io.BytesIO(path.read_bytes()), 'text.pdf'),
     })
@@ -353,14 +354,14 @@ def test_native_pdf_tool_failure_retains_receipts_without_model_fallback(
     tool = Mock(side_effect=[('First page.', {'result': {'empty': False}}), error_type('tool failed')])
     monkeypatch.setattr('fruth_core.inference.run_apple_fm_image_tool', tool)
     path = write_pdf(tmp_path / 'scan.pdf', rotations=(0, 0, 0), scanned=True)
-    response = web.app.test_client().post(endpoint, data={
+    response = api_client(web.app).post(endpoint, data={
         'instance_id': 'pdf-test', 'ocr_mode': 'apple_ocr',
         'file': (io.BytesIO(path.read_bytes()), 'scan.pdf'),
     })
     payload = response.get_json()
     assert response.status_code == (400 if invalid_input else 502), payload
     if endpoint == '/api/responses':
-        payload = web.app.test_client().get(f"/api/responses/{payload['id']}?view=truth").get_json()
+        payload = api_client(web.app).get(f"/api/responses/{payload['id']}?view=truth").get_json()
         evidence = payload['runtime']['apple_fm_image_tool_evidence']
         assert 'PDF page 2: tool failed' in str(payload['error'])
     else:
@@ -382,7 +383,7 @@ def test_native_pdf_tool_cannot_replace_failed_rendering_with_text_extraction(
     tool = Mock(side_effect=AssertionError('No pages available'))
     monkeypatch.setattr('fruth_core.inference.run_apple_fm_image_tool', tool)
     path = write_pdf(tmp_path / 'text.pdf')
-    response = web.app.test_client().post('/api/infer', data={
+    response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'pdf-test', 'ocr_mode': 'apple_ocr',
         'file': (io.BytesIO(path.read_bytes()), 'text.pdf'),
     })
@@ -425,7 +426,7 @@ def test_single_tab_pdf_sends_independent_page_images_without_frame_instructions
     post = Mock(side_effect=receive)
     monkeypatch.setattr(web.requests, 'post', post)
     path = write_pdf(tmp_path / 'mixed.pdf', rotations=(0, 90), mixed=True)
-    response = web.app.test_client().post('/api/responses', data={
+    response = api_client(web.app).post('/api/responses', data={
         'instance_id': 'pdf-test', 'capability': 'chat', 'prompt': 'Read every page.',
         'ocr_mode': 'auto', 'file': (io.BytesIO(path.read_bytes()), 'mixed.pdf'),
         'pdf_page_timeout_sec': '75',
@@ -475,7 +476,7 @@ def test_pdf_model_failure_keeps_page_coverage_and_stops_without_retry(
     native = Mock(side_effect=AssertionError('Image analysis must not fall back to native OCR'))
     monkeypatch.setattr('fruth_core.inference.run_apple_fm_image_tool', native)
     path = write_pdf(tmp_path / 'mixed.pdf', rotations=(0, 90, 180), mixed=True)
-    response = web.app.test_client().post(endpoint, data={
+    response = api_client(web.app).post(endpoint, data={
         'instance_id': 'pdf-test', 'capability': 'chat', 'prompt': 'Read every page.',
         'ocr_mode': 'auto', 'file': (io.BytesIO(path.read_bytes()), 'mixed.pdf'),
         'pdf_page_timeout_sec': '75',
@@ -483,7 +484,7 @@ def test_pdf_model_failure_keeps_page_coverage_and_stops_without_retry(
     payload = response.get_json()
     assert response.status_code == status, payload
     if endpoint == '/api/responses':
-        payload = web.app.test_client().get(f"/api/responses/{payload['id']}?view=truth").get_json()
+        payload = api_client(web.app).get(f"/api/responses/{payload['id']}?view=truth").get_json()
         assert payload['status'] == 'failed'
         assert not payload.get('output_text')
     assert f'PDF page {failed_page} of 3:' in str(payload['error'])

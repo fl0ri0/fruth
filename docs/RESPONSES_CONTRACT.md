@@ -9,6 +9,12 @@ handler. This is a supported local contract with an OpenAI-shaped text
 compatibility surface, not complete OpenAI Responses protocol support or a direct
 call to OpenAI's hosted API. `fruth_services/responses.py` owns the text adapter.
 
+HTTP callers must follow the [local caller admission contract](HTTP_API_BOUNDARY.md):
+mutations and explicit-refresh GETs require `X-Fruth-Action: 1`; configured Host
+and exact browser Origin are checked. This covers JSON, multipart, streaming,
+`/v1` and local-provider aliases. The marker is a browser safeguard, not native
+process authentication or an operator credential.
+
 - Text normalization accepts `prompt`, string `input`, and text message content.
   Role-bearing message items currently preserve their role when explicitly typed
   as `{"type": "message", "role": "developer", "content": "..."}`. The standard
@@ -169,6 +175,12 @@ provider prose or a missing/mismatched receipt alone cannot establish image inpu
 Important surfaces:
 
 - `response_frame.request`: the request snapshot used for replay/audit.
+- New runtime-captured requests retain original caller intent and native output
+  scope here, with `intent_source = runtime_caller_capture_v1`. A different
+  `execution_prompt` is preparation for the authorized backend, not another
+  instruction or output grant. Caller/model fields with these names cannot
+  supply the runtime's private in-process capture. Canonical recovery restores
+  that distinction; ordinary public `prompt`/`input` precedence is unchanged.
 - `response_frame.planning.artifact_flow.work_tree`: internal work truth.
 - `response_frame.planning.artifact_flow.output_slots`: slot projection from the work tree.
 - `response_frame.output.outputs`: canonical public output projection.
@@ -234,6 +246,24 @@ Response artifact bundle operations fail closed on incomplete wire projections. 
 
 Artifact fulfillment rules:
 
+- Canonical Late Fill image selection qualifies candidates against the exact
+  accepted result and its response/source, branch, phase, obligation, producer,
+  artifact identity and saved path before binding, ref lookup or fallback.
+  Matching labels, an explicit slot ref, physical existence and equal bytes do
+  not replace accepted-result evidence. Missing or competing accepted identities
+  keep the image output unresolved. Rejected candidates remain dossier diagnostics,
+  including conflicting claims under an accepted ref, and cannot become public
+  fulfillment during repeated finalization or recovery. Existing verified reuse,
+  physical path aliases, direct outputs and other modality owners retain their
+  existing gates; this is not a global cross-response artifact prohibition.
+  A compact lookup uses accepted result evidence in its same frozen frame when
+  the bounded status overlay omits it; compact ledger results retain artifact and
+  source identities. A completed-branch summary cannot override an execution
+  result's rejection. Older unbound/batch completed projections retain their
+  established compatibility contract. Physical availability stays with its
+  existing validation owner; this pure projection check does not stat files.
+  Qualification uses the frame owner's image type aliases and output-type-only
+  records too; an alternate image spelling cannot bypass accepted evidence.
 - Model prose, Markdown code blocks, prompt lists, or chat text are evidence, not fulfilled file artifacts. They fulfill a requested file only when runtime materializes the file and records it in output slots, `outputs`, `artifacts`, response-frame truth, or artifact registry truth.
 - A prompt for an image is not the image artifact. A script for audio is not the audio artifact. HTML/CSS prose is not a saved page unless materialized as files.
 - Linked artifact sets close only when concrete saved files point to their concrete saved dependencies. Placeholder names, guessed paths, stale paths, wrong relative links, or missing CSS/image references are open artifact-binding problems.
@@ -383,6 +413,14 @@ public authority, and registry validation/deduplication still runs.
 
 Graph refinement is allowed only when it continues the same request intent. It must not invent a new task because an older turn or generic history mentioned an artifact.
 
+Runtime captures the actual request after permitted canonical predecessor/input
+promotion and before planner rewriting. Graph rebuilding, artifact requests and
+text writing use this captured current intent and accepted explicit scope;
+backend execution still receives the prepared payload. A scalar planner prompt
+cannot create an extra file, change an output count, waive owed work or broaden
+source delegation. Later branches retain their own accepted payload and output
+contract rather than replaying the root request.
+
 Additive refinement diagnostics:
 
     {
@@ -414,6 +452,13 @@ This is a closure-safety mechanism for an already-promoted current-turn obligati
 `candidate_graph` is the visible possibility layer. It may contain outputs, workload tasks, context/reference/memory candidates, evidence candidates, repair candidates, continuations, learning hints, and rejected proposals.
 
 `promotion_review` is the boundary that turns a candidate into a promoted contract or leaves it reserved, omitted, waived, rejected, or stale. Only promoted contracts are owed work. Reserved or candidate-only items are state, not pending failures.
+
+Additive repair rejects reservation/deferral only from structured disposition
+records bound to the proposed work's exact branch/phase, obligation/contract or
+candidate/promotion identity. Explicit phase/branch aliases and candidate-to-contract
+links preserve that binding. Diagnostic prose, scope labels, field names and
+unrelated disposition records cannot reserve an already accepted duty. This
+inspection grants no promotion or application authority.
 
 The canonical lifecycle is:
 
@@ -457,6 +502,16 @@ The `stages` array remains compatibility state. The `cycle` field is the general
 
 `late_fill` records continuation of obligations already present in the request phase graph. It must not create a new user intent.
 
+Historical frames without `request.intent_source` remain readable audit truth.
+Their saved effective prompt is not evidence of original caller authority. Retry
+may continue an existing accepted branch under its exact local contract and
+dependency gates, but cannot reconstruct new root obligations or fall back to
+that prompt when local work is missing. A persisted legacy root payload may still
+be hashed solely to reject root replay in the existing operator-authorized partial
+rebase guard; it is never promoted to intent. Successors retain missing evidence,
+and passive recovery does not rewrite old frames. This compatibility rule does
+not retroactively certify the admission of historical obligations.
+
 Late fill executes branch-local contracts. The focused prompt or payload for a branch can come from `content_payload`, `artifact_prompt`, `stage_direction`, dependency artifacts, artifact dossiers, prior branch outputs, vision evidence, transcript evidence, or other promoted input refs. It should not fall back to the full original multi-step prompt when a branch-local task is available.
 
 Core fields:
@@ -471,6 +526,39 @@ Core fields:
 - `recovery_candidates[]`: branch-local recovery options discovered by failure analysis. Candidates are inert unless explicitly promoted.
 - `auto_recovery_enabled`: currently `false` for generic recovery candidates. This does not disable separately Closure-promoted auto-executable repairs or the named bounded image, TTS and vision recovery policies; their exact contracts and gates still decide scheduling.
 - `repair_action` / `repair_actions`: optional Closure Repair classification for the active gap or pending repair branches.
+
+The initial pruning pass delegates each decision to the private
+`LateFillRuntimeOwner._initial_late_fill_branch_eligibility` helper. It receives
+the ordered branch's current payload/gap, existing Late Fill evidence, current
+terminal ids and legacy terminal capabilities, the original pending sequence's
+capability counts, and the existing capability-gap builder. Its internal result
+is `excluded` for missing capability or already-accounted terminal state,
+`fulfilled` for qualifying evidence with at most one pending branch of that
+capability, or `pending` otherwise. Required text, images and other capabilities
+retain their existing evidence owners. Gap/evidence evaluation still occurs
+before the duplicate guard. The caller records fulfillment immediately so later
+decisions see that update, then retains the surviving records in order. These
+internal decisions add no public fields or authority; dependency batches and
+active selection continue to own scheduling and resource/availability policy.
+
+Image pruning uses canonical saved evidence for the exact accepted branch, with
+matching phase/obligation identities when declared and current artifact authority.
+An earlier image or a shared capability alone cannot fulfill another image duty.
+Equal bytes do not make two duties the same; independently owed operations retain
+their local instructions and result bindings. Existing qualifying evidence may
+still skip execution. Earlier `fill_results` remain available through subsequent
+execution and already-fulfilled/no-work states, finalization and durable recovery.
+
+For an exact graph-patch successor execution, an accepted terminal callback retains
+its complete result envelope, branch/output bindings, canonical saved evidence and
+error provenance. Repeated status-only, partial, empty or conflicting callbacks
+cannot erase or replace those facts, including through result-field projection,
+frame construction and recovery. `updated_at`, `timing` and `scheduling_policy`
+may receive operational enrichment. Changed parent, graph or scheduled-scope
+identities cannot replace that execution. A different execution can become current
+only after the existing successor admission/version/acceptance gates publish its
+exact execution record; old/foreign callbacks cannot select it. Fresh authorized
+repair remains possible, with the earlier frozen frame and execution retained.
 
 UI surfaces should treat `pending_branches`, `active_branches`, `completed_branches`, `failed_branches`, and `fill_results` as branch-state truth before older slot projections. Slots are still useful for layout and artifact identity, but a stale pending slot must not keep showing queued when the matching branch is completed or blocked.
 
@@ -580,6 +668,14 @@ Canonical output rules:
 - Fallback outputs assembled from `output_text`, `content_payload`, or stray artifacts are compatibility projections only. They should carry `source = compatibility_derived` plus `compatibility_derived = true`.
 - Runtime consumers must not treat compatibility-derived outputs as proof that a promoted obligation was fulfilled. Use output slots, work-tree nodes, branch state, artifact refs, and closure/recovery state for that decision.
 
+When a truth guard rewrites or annotates an unsupported artifact claim, the
+correction must survive canonical output selection, frame persistence and
+retrieval. Optional `runtime.truth_guard.text_projection` binds that correction
+to its output identity and the source/corrected text hashes. Only stale mirrors
+of that output are corrected; independent branches, artifact-backed content and
+later results keep their own values. This projection grants no execution or
+fulfillment authority and does not rewrite historical frozen frames.
+
 Work-tree ownership rules:
 
 - Runtime-owned work trees are authoritative when present and response frames snapshot them. They are marked with `work_tree_source = "runtime_owned"`, `authoritative = true`, and `compatibility_derived = false`.
@@ -627,7 +723,9 @@ Top-level `outputs[]`, `output_slots[]`, and `output_branches[]` should preserve
 
 ## Text Artifact Payloads
 
-Text/file artifacts are materialized outputs. If a model returns a structured envelope such as:
+Text/file artifacts are materialized outputs. Before either direct Responses or
+selected-file/internal Infer persists provider-derived text, the shared phase
+acceptance owner must accept its substantive payload. For example:
 
     {
       "output_obligations": [
@@ -635,12 +733,59 @@ Text/file artifacts are materialized outputs. If a model returns a structured en
           "type": "artifact",
           "name": "README.md",
           "mime_type": "text/markdown",
-          "content": "# Local Canvas\n\n..."
+          "content_payload": "# Local Canvas\n\n..."
         }
       ]
     }
 
-then the persisted artifact payload is `output_obligations[].content`, not the surrounding route/control JSON. A wrapper without payload content is not proof that a file exists.
+One safe substantive `content_payload` may be unwrapped and materialized under
+the accepted output contract. A control envelope containing only `content`, or
+multiple competing payloads, remains repairable and causes no output writes.
+The lower-level extractor's ability to parse a wrapper is not phase acceptance.
+
+Valid JSON is classified by its envelope keys: mentioning an internal field name
+inside ordinary JSON content does not make it control data. An object whose sole
+key is `response` and whose value is another object transparently wraps that
+envelope; arbitrary named children such as `example` remain ordinary data.
+Actual control envelopes, including escaped keys, retain the substantive-payload
+checks above. For incomplete JSON-like text, a control name must occur in object
+key position to trigger the guard; quoted values and ordinary bracketed prose
+are not control keys. This permits ordinary fenced JSON followed by prose while
+keeping malformed/truncated control-key objects repairable. Acceptance as phase
+text grants no execution or fulfillment authority, and is not JSON syntax validation.
+
+Provider filename, MIME type, fence language and target claims cannot override
+an explicitly accepted logical filename, extension, target or output count.
+Explicit `.txt` remains `.txt`. Only an admitted generic save with unspecified
+name/format and no target permits bounded format derivation. Generated storage
+prefixes and collision suffixes preserve the existing logical naming convention.
+
+Required-file fulfillment checks the physical saved path and logical identity
+against the accepted branch/output contract, including when no target path was
+supplied. Conflicting returned metadata or output digest evidence cannot make a
+different readable file fulfill that contract or qualify for canonical reuse.
+The root Responses saved-result handoff validates every relevant returned
+declaration against the caller/source contract captured before execution, before
+canonical artifacts can discard name, extension, target or output-digest claims.
+`text_artifact_saved_evidence` retains the accepted contract, raw declarations
+and rejection error through artifact registration, physical metadata refresh,
+frame persistence and canonical recovery. Input-attachment digests remain
+separate from output-record digest evidence. Rejected files remain inspectable
+diagnostics while the original obligation stays unresolved.
+
+Canonical reuse reconciles same-output declarations before ranking or deduplication.
+A clean duplicate cannot hide a contradiction in either record order. Existing
+response, frame, provenance and branch identities distinguish unrelated historical
+or reference evidence; differing aliases or declared digests alone do not create
+a new output version. A canonical reuse projection is an alias, not a fresh write.
+Fresh validated work may resolve the duty through the existing write, revision,
+dependency and repair gates while retaining the earlier rejection as diagnostic
+evidence. Physical bytes matching the request do not silently clear a rejected
+declaration.
+
+Exact target revisions still require their current-branch write proof; saved-file
+consumers still require the bound producer/read identities and digests. Neither
+text claiming a save nor an existing wrong file is completion evidence.
 
 Ambiguous deictic requests such as "make this HTML" need a selected source, current payload, or explicit reference before persistence.
 
@@ -661,6 +806,15 @@ and successfully saved CSS cannot fulfill a missing media obligation.
 ## Artifact Dossiers And Evidence
 
 Artifact continuity is centered on durable identity, not copied paths. `artifact_dossiers` are keyed by `artifact_ref` and gather identity, provenance, metadata, enrichments, linked response/message ids, and availability.
+
+An accepted branch image carries its identity and producer bindings into later
+frames and durable reloads. When its saved path also appears in the response's
+last-saved-image shortcut, canonical construction uses the accepted branch record;
+it does not mint a competing unbound identity from that shortcut. This preserves
+the same artifact even when a compact top-level projection omits it. The rule
+does not confer authority on a supplied reference or equate different artifacts
+with equal bytes. Existing binding, provenance, alias and conflict checks still
+govern acceptance, and a new accepted generation keeps its own identity.
 
 Public linked-dependency selection uses the exact registered file identity before
 falling back to a derived basename, consistently with bundle selection. A current

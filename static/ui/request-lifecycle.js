@@ -1599,9 +1599,9 @@ async function sendViaResponsesStream(
     }
     const response = await fetch(`${state.flaskServerUrl}/api/responses`, {
         method: 'POST',
-        headers: {
+        headers: fruthApiActionHeaders({
             'Content-Type': 'application/json'
-        },
+        }),
         body: JSON.stringify(payload)
     });
 

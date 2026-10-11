@@ -1,3 +1,4 @@
+from tests.http_client import api_client
 import unittest
 from unittest.mock import patch
 
@@ -9,7 +10,7 @@ from fruth_webserver import app
 class RuntimeApiTests(unittest.TestCase):
     def setUp(self):
         app.config["TESTING"] = True
-        self.client = app.test_client()
+        self.client = api_client(app)
         self.enterContext(patch("fruth_webserver._active_global_log_paths", return_value=[]))
 
     @patch("fruth_webserver.build_backend_fabric_snapshot")

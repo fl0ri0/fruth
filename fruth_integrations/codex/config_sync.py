@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Iterable, List, Tuple
 from urllib.parse import quote
 
+from fruth_core.http_contract import HTTP_ACTION_HEADER, HTTP_ACTION_VALUE
 DEFAULT_CONFIG_PATH = Path(os.path.expanduser("~/.codex/config.toml"))
 MODEL_PROVIDER_HEADER = re.compile(
     r'^\s*\[model_providers\.(?P<label>"[^"]+"|\'[^\']+\'|[^\]]+)\]\s*$'
@@ -104,6 +105,8 @@ def build_provider_blocks(instances: Iterable[dict]) -> Tuple[str, int]:
             'wire_api = "responses"',
             ""
         ]
+        if str(inst.get('instance_id') or '').strip():
+            block_lines.insert(-1, f'http_headers = {{ "{HTTP_ACTION_HEADER}" = "{HTTP_ACTION_VALUE}" }}')
         blocks.append("\n".join(block_lines))
         count += 1
     return ("\n\n".join(blocks).rstrip(), count)

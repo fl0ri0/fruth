@@ -16,6 +16,8 @@ from flask import jsonify
 from helpers.model_capabilities import CAPABILITY_SPEECH_TO_TEXT, supports_capability
 from fruth_core.apple_fm_tools import APPLE_FM_IMAGE_TOOL_MODES
 from fruth_services.artifact_contracts import DirectAudioDependency, execution_input_artifact_ref, selected_audio_source_binding
+from fruth_services.responses import capture_request_intent, request_intent_payload
+from fruth_server.response_semantics_runtime import classify_phase_output_text
 from helpers.session_controls import (
     normalize_reasoning_effort,
     validate_reasoning_effort_for_instance,
@@ -35,6 +37,7 @@ def _normalize_structured_text_artifact_extension(value: Any) -> str:
 def _structured_text_artifact_requests_from_payload(payload: Any) -> list[dict[str, str]]:
     if not isinstance(payload, Mapping):
         return []
+    payload = request_intent_payload(payload)
     raw_requests: list[Any] = []
     if isinstance(payload.get('text_artifact_requests'), list):
         raw_requests.extend(payload.get('text_artifact_requests') or [])
@@ -246,7 +249,6 @@ class InferRuntimeOwner:
         compute_semantics: bool = True,
     ) -> tuple[dict[str, Any], Optional[dict[str, Any]], dict[str, Any], dict[str, Any]]:
         normalize_request_payload = self._hook('normalize_request_payload')
-        extract_responses_prompt = self._hook('extract_responses_prompt')
         extract_responses_current_turn_prompt = self._hook('extract_responses_current_turn_prompt')
         normalize_capability = self._hook('normalize_capability')
         plan_compound_execution_payload = self._hook('plan_compound_execution_payload')
@@ -256,12 +258,10 @@ class InferRuntimeOwner:
         merge_request_meta_runtime_truth = self._hook('merge_request_meta_runtime_truth')
         build_working_frame = self._hook('build_working_frame')
 
-        effective_data = normalize_request_payload(data)
+        effective_data = capture_request_intent(normalize_request_payload(data))
+        caller_intent = effective_data['_request_intent']
         effective_data_for_hints = dict(effective_data)
-        current_turn_prompt = (
-            extract_responses_current_turn_prompt(effective_data_for_hints)
-            or extract_responses_prompt(effective_data_for_hints)
-        )
+        current_turn_prompt = extract_responses_current_turn_prompt(effective_data_for_hints)
         effective_data_for_hints['_current_turn_prompt'] = current_turn_prompt
         effective_data_for_hints['_prompt_hint'] = current_turn_prompt
         effective_capability = normalize_capability(
@@ -301,6 +301,9 @@ class InferRuntimeOwner:
             for key, value in effective_data_for_hints.items()
             if key not in {'_prompt_hint', '_current_turn_prompt'}
         }
+        # Planner/control adapters may prepare execution fields, never replace
+        # the runtime's independent capture of this request.
+        effective_data['_request_intent'] = caller_intent
 
         enriched_route_info = route_info
         if route_info and (planner_meta.get('attempted') or control_hints):
@@ -369,6 +372,7 @@ class InferRuntimeOwner:
         extract_selected_reference_artifacts = self._hook('extract_selected_reference_artifacts')
         select_matching_selected_reference_artifact = self._hook('select_matching_selected_reference_artifact')
         extract_responses_prompt = self._hook('extract_responses_prompt')
+        extract_responses_current_turn_prompt = self._hook('extract_responses_current_turn_prompt')
         should_attach_selected_reference_file_context = self._hook('should_attach_selected_reference_file_context')
         translate_responses_payload_to_infer_payload = self._hook('translate_responses_payload_to_infer_payload')
         apply_selected_reference_prompt_prefix = self._hook('apply_selected_reference_prompt_prefix')
@@ -435,7 +439,7 @@ class InferRuntimeOwner:
             and not upload_present
             and not suppress_reference_file_context
             and should_attach_selected_reference_file_context(
-                prompt=responses_prompt,
+                prompt=extract_responses_current_turn_prompt(normalized_payload),
                 capability=capability,
                 selected_reference_artifact=matched_selected_reference,
             )
@@ -603,7 +607,7 @@ class InferRuntimeOwner:
             route_runtime['context_strategy'] = choose_context_strategy(
                 instance=instance,
                 messages=[],
-                prompt=extract_responses_prompt(normalized_payload),
+                prompt=extract_responses_current_turn_prompt(normalized_payload),
                 has_file_context=True,
             )
             updated_route_info['route_runtime'] = route_runtime
@@ -894,7 +898,7 @@ class InferRuntimeOwner:
             and not (upload and getattr(upload, "filename", None))
             and not suppress_reference_file_context
             and should_attach_selected_reference_file_context(
-                prompt=prompt,
+                prompt=self._hook('extract_responses_current_turn_prompt')(dict(data)),
                 capability=capability,
                 selected_reference_artifact=matched_selected_reference,
             )
@@ -1275,6 +1279,7 @@ class InferRuntimeOwner:
                 "persist_image_data_url_locally": persist_image_data_url_locally,
                 "extract_generate_content": extract_generate_content,
                 "persist_text_artifact_locally": persist_text_artifact_locally,
+                "classify_text_artifact_output": classify_phase_output_text,
                 "persist_text_markdown_locally": persist_text_markdown_locally,
                 "persist_transcript_text_locally": persist_transcript_text_locally,
                 "log_pdf_infer_event": log_pdf_infer_event,

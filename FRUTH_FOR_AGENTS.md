@@ -72,11 +72,19 @@ This reset helper only touches files inside this repo. By default it clears runt
 
 `./fruth archiv` and `./fruth archive` do the same live cleanup, but first copy the `artifacts/` tree and archive the other useful runtime/generated ballast into `.fruth_archiv/<timestamp>/` as hidden repo-local data storage. Live artifact cleanup then removes generated contents while preserving the standard bucket directories, including `artifacts/bundles/`; missing standard directories are created only as a fallback.
 
+The legacy root-level `outputs` path, when present, moves into the archive before
+cleanup. Protected copies (including inference preferences, compiled-memory
+residue, learning and readiness state) all verify before any live runtime/history
+path moves. A failed copy leaves those live paths in place and retains the partial
+archive. Missing targets are skipped; dry-run summaries describe planned outcomes
+and apply no reset, archive, lifecycle or permission change.
+
 Archive also copies all of `state/self_attack/`, `state/benchmarks/` and
 `state/diagnostics/` with their original relative topology. This preserves completed
 campaigns plus unknown/in-progress evidence without inferring completion or moving
 live evidence. All evidence sources and reusable repository scripts stay active;
-clean's recursive cache sweeps exclude those three trees and `.fruth_archiv/`.
+clean's recursive cache sweeps exclude those three trees, protected
+`state/self_learning/`, `state/inference_learning_archives/` and `.fruth_archiv/`.
 Archive preflights copy bytes/free space with a 256 MiB-or-5% safety margin and
 verifies copies before cleanup. Failure keeps sources and any partial archive;
 existing timestamp destinations are rejected. Repeated copies consume additional
@@ -88,6 +96,12 @@ copy size and destination without lifecycle changes.
 If you want archive-first rotation with protected interpretive inference state preserved, use:
 
 - `./fruth archive --full`
+
+Readiness retention performs one complete Ledger/Index audit per stable pass,
+then checks each selected response and its evidence without rehashing the whole
+Index for every response. Archive shows the audit stage and selected-response
+progress. Source movement invalidates the pass; missing or invalid retention
+evidence still prevents response-frame cleanup.
 
 `archive --full` snapshots protected interpretive inference state when present, but leaves active copies in the checkout. Protected interpretive inference state includes `state/inference_preferences.json`, `state/inference_compiled_memory.json`, `state/inference_compiled_memory.md`, `state/self_learning/`, `state/self_learning/accepted_policy_snapshot.json`, `state/self_learning/retention_manifest.json`, and retained learning sidecars under `state/self_learning/retained_sidecars/`.
 
@@ -139,6 +153,14 @@ For external OpenAI-style clients, Fruth also exposes:
 Public contract note:
 
 - `POST /api/responses` and `POST /v1/responses` are the official external execution contract.
+
+All effectful HTTP calls, including Responses uploads/streams and explicit-refresh
+GETs, require `X-Fruth-Action: 1` under the [HTTP caller contract](docs/HTTP_API_BOUNDARY.md).
+Shipped `fruthctl` and conformance clients emit it. Native callers may omit Origin
+but must mark effects; this is not native-process authentication or an operator
+credential. Preserve configured Host/exact browser Origin admission and the
+existing signed-preview read boundary.
+
 - `/api/infer` and `/api/chat` remain compatibility-only for older or specialized callers; first-party flows and new clients should stay on `responses`.
 - non-streaming POSTs and the default, `ui`, `status`, and `debug` reads are bounded public wire projections. The normal indexed path follows canonical frame persistence; a live fallback is not proof of durability. The complete serialized outer envelope is at most 8 MiB, including retry/control/status wrappers, and each serialized Responses-style SSE event obeys the same ceiling. Normal indexed POST/default/UI/status projection avoids sidecar hydration; debug may hydrate selected Closure/rebase observations, and exceptional ledger recovery may reconstruct canonical state before projection.
 - public compaction is byte-budgeted, not a fixed character or record-count rule. Ordinary 5,000-character text and 65 tiny records remain intact when they fit. Strings from 256 KiB and collections from 1 MiB may be represented by a bounded preview plus exact length/count, byte size, SHA-256, and an adjacent content-addressed `*_snapshot_ref`.

@@ -2,7 +2,12 @@
 
 **Knobs may change strategy, never truth.**
 
-Recorded campaign: [Fruth Self-Attack status — September 19, 2026](SELF_ATTACK_STATUS_2026-09-19.md)
+Latest review: [October 10 validation status](SELF_ATTACK_STATUS_2026-10-10.md)
+records full local and AFM live passes on their original source, the later
+corrected-source offline pass, and five fresh local reference workflows. It
+keeps source identities, unresolved-response behavior and PCC limits separate.
+
+Historical campaign: [Fruth Self-Attack status — September 19, 2026](SELF_ATTACK_STATUS_2026-09-19.md)
 reports a full fake and live pass for its recorded source and scope.
 
 The [September 25–27 Apple backend report](SELF_ATTACK_STATUS_2026-09-27.md)
@@ -298,6 +303,120 @@ Validate the offline auditor with:
 The tests include deliberately corrupted truth records and deterministic
 reducer faults, so a passing test verifies that the oracle can detect failures
 as well as accept valid strategy differences.
+
+## Quota stop, explicit selection and bounded windows
+
+Live execution defaults to a maximum of **100 new case POST identities** per
+window. `--case-cap` accepts 1 through 100. Main cases, saved-regression replays,
+confirmations, minimization and paired baseline references share that cap and the
+existing time/attempt limits. A case may cause several provider executions;
+these counts are not provider-call counts or guaranteed quota headroom. GET
+observations consume time but no dispatch slots.
+
+For a complete local Ollama/MLX or Apple AFM suite, use `--mode live
+--local-full-sweep` with current matching `--fake-evidence`. This selects all
+170 main cases in one allocation. It retains the existing four extra profile
+attempts and time limits; the derived dispatch ceiling is 170 + 4 × 10 = 210,
+including diagnostics. `--preview-window --local-full-sweep` previews this
+offline. The live preflight requires only ready Ollama/MLX/AFM models and local
+inference preference targets before admitting work. Keep that serving
+configuration stable throughout the campaign. Missing or nonlocal configuration
+is rejected, including PCC targets. The flag cannot be combined with case/profile
+selectors, recovery, or a custom case cap. PCC continues to use the bounded
+windows above (100/70 for the default 170-case selection).
+
+`--profile-id ID` selects stable profile IDs in catalog order. Repeatable
+`--case-id CASE` selects a case across the selected profiles;
+`--case-id PROFILE:CASE` selects it on one profile. `--sequence-id` is an alias.
+Each selects its whole dependency/conversation-connected sequence. The existing
+high-risk gate retains its narrower predecessor-closed scope. Prefix selection
+with `--profile-limit` remains available but cannot be combined with profile IDs.
+
+Preview selection without control-plane calls:
+
+```sh
+./fruth self-attack --preview-window --seed 0 --case-cap 100
+./fruth self-attack --preview-window --profile-id baseline --case-id evidence-follow
+./fruth self-attack --preview-recovery /absolute/path/to/native/live-run --output /absolute/path/to/new-preview
+```
+
+Planning places connected sequences in order and stops a window before a
+sequence that cannot fit. `--window-number N` executes only that one-based window
+of the declared selection. A separate output and explicit invocation allocate
+another window. There is no automatic next window, assumed midnight reset or
+24-hour quota reset. Run the next window only when independently authorized and
+provider access is available.
+
+`dispatch-window.json` reserves entire sequences before workers start, and each
+POST identity before submission. All reserved slots remain consumed, including
+unused slots in interrupted or blocked sequences. This conservative accounting
+can stop below the cap. A crash between reservation and manifest persistence
+makes that identity ambiguous and GET-only; a 404 does not authorize another POST.
+Caps, allocations, quota stops, time deadlines and additional-attempt counters
+persist across resume. Completed output returns its retained verdict without
+restarting. Changing a cap or expired budget in place is rejected.
+
+The first explicit native provider usage-limit diagnostic stops new submissions
+and all diagnostic dispatches. Structured `provider_usage_limit` evidence and
+explicit native error messages qualify; HTTP errors alone, timeouts, generated
+prose, Pro-access rejection and ordinary Pro-to-Cloud fallback do not. The ledger
+records the diagnostic, provider, tier when known, response ID, checkpoint and
+counters. `auto` is a requested model, not actual tier evidence. Already submitted
+or ambiguous work continues observation by its existing identity within unchanged
+deadlines. The harness neither changes production retries/failover nor cancels
+runtime work.
+
+`--recover-missing-from RUN` creates fresh identities for missing connected
+sequences and records hashes/identities of prior evidence in the new `run.json`.
+Any pending or ambiguous member forbids a fresh sequence attempt; observe it using
+its original manifests and remaining budgets. Expired budgets stay expired. A
+successful predecessor may need repetition to bind a new follow-up. Historical
+terminal failures and original native verdicts remain intact.
+
+Live work still needs complete passing fake evidence matching the current
+diagnostic/runtime source and corpus. Changing the harness requires fresh offline
+validation. Runtime prompt, config and static-input hashes are now included in
+the fresh source gate, separately from diagnostic identity. Legacy evidence that
+lacks those hashes requires `--source-attestation ORIGINAL_PREPARATION.json`,
+whose native digest, file hashes and original isolated validation snapshot must
+match. Missing provenance fails closed; a changed snapshot is not a valid bridge.
+
+Combine compatible windows offline in a new derived directory:
+
+```sh
+./fruth self-attack --combine-evidence /absolute/path/to/window-1 --combine-evidence /absolute/path/to/window-2 --fake-evidence /absolute/path/to/current/fake/results.json --output /absolute/path/to/derived-coverage
+```
+
+Aggregation verifies native fake gates, runtime inputs, corpus, seed, profile
+settings, observation settings, model configuration and campaign labels. It
+retains every main observation, native verdict, failure, stop and budget, and
+executes the existing anchored-intent comparisons across compatible baselines,
+profiles and repeated attempts. Missing comparisons stay incomplete; invariant
+findings and conflicting frozen frames remain failures. Unresolved diagnostic or
+non-quota terminal failures cannot be hidden by a successful retry. Quota failures
+remain visible even after fresh compatible main observations cover their cells.
+Unknown/mixed serving tiers do not complete a cell. Cloud and Cloud Pro each need
+their own full coverage; mixed-tier pass counts cannot establish full conformance.
+Use a distinct `--campaign-id` for a changed account/configuration and a fresh
+campaign. Such evidence cannot be combined with the old configuration.
+
+The existing detached controller still records process/session identity, logs,
+checkpoint and final exit status. Its read-only terminal monitor is now shipped:
+
+```sh
+python3 scripts/self_attack_monitor.py /absolute/path/to/window --once
+```
+
+Omit `--once` for a refreshing display. Quota stop, case-cap stop, missing coverage,
+completed selected window and full completion are labelled separately. Reports
+show selected, dispatched, reserved, completed and remaining coverage. Controller
+completion alone is not conformance PASS. Ctrl-C stops only the monitor.
+
+Validate these scheduling/reporting paths without live providers:
+
+```sh
+.venv/bin/python -m pytest tests/test_self_attack_windows.py tests/test_self_attack.py tests/test_graph_rebase_shadow_corpus_runner.py -q
+```
 
 ## Hardening and live observations
 

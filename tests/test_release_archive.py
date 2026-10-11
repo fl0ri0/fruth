@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import io
+import posixpath
+import re
 import tarfile
+from urllib.parse import unquote, urlsplit
 from datetime import date
 from pathlib import Path
 
@@ -10,6 +13,24 @@ import pytest
 import yaml
 
 from scripts import build_release_archive as release
+
+
+def test_public_markdown_links_resolve_within_release_selection():
+    source_root = Path(__file__).resolve().parents[1]
+    selected = release.discover_release_files(source_root)
+    names = {path.as_posix() for path in selected}
+    missing = []
+    for relative, source in selected.items():
+        if relative.suffix != '.md':
+            continue
+        for target in re.findall(r'\]\(([^)\s]+)\)', source.read_text(encoding='utf-8')):
+            url = urlsplit(target)
+            if url.scheme or url.netloc or not url.path:
+                continue
+            resolved = posixpath.normpath((relative.parent / unquote(url.path)).as_posix())
+            if resolved not in names and not any(name.startswith(resolved.rstrip('/') + '/') for name in names):
+                missing.append((relative.as_posix(), target))
+    assert not missing, f'Public links to unshipped files: {missing}'
 
 
 def _write(path: Path, text: str, *, executable: bool = False) -> None:
@@ -198,6 +219,8 @@ def _make_release_source(tmp_path: Path) -> Path:
         'interface:\n  display_name: "Fruth Run Monitor"\n',
     )
     _write(source / 'static' / 'ui' / 'app.js', 'window.fruth = true;\n')
+    for browser_path in release.RELEASE_BROWSER_DEPENDENCY_FILES:
+        _write(source / browser_path, 'Synthetic browser dependency packaging bytes.\n')
     _write(
         source / 'site' / 'index.html',
         (
@@ -286,6 +309,59 @@ def _make_release_source(tmp_path: Path) -> Path:
 
 def _file_digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize('dependency', sorted(release.RELEASE_BROWSER_DEPENDENCY_FILES))
+def test_each_bundled_browser_dependency_is_required_for_new_builds(tmp_path, dependency):
+    source = _make_release_source(tmp_path)
+    (source / dependency).unlink()
+    with pytest.raises(release.ReleaseArchiveError, match='missing'):
+        release.build_release_archive(source_root=source, output_dir=tmp_path / 'dist')
+
+
+def test_bundled_browser_dependency_bytes_and_notices_are_manifested(tmp_path):
+    source = _make_release_source(tmp_path)
+    result = release.build_release_archive(source_root=source, output_dir=tmp_path / 'dist')
+    staged = Path(result['staging_root'])
+    manifest = (staged / release.MANIFEST_NAME).read_text()
+    for path in release.RELEASE_BROWSER_DEPENDENCY_FILES:
+        assert (staged / path).read_bytes() == (source / path).read_bytes()
+        assert f'{_file_digest(source / path)}  {path.as_posix()}\n' in manifest
+
+
+@pytest.mark.parametrize('dependency', sorted(release.RELEASE_BROWSER_DEPENDENCY_FILES))
+def test_verify_rejects_partial_browser_bundle_even_with_valid_manifest(tmp_path, dependency):
+    source = _make_release_source(tmp_path)
+    result = release.build_release_archive(source_root=source, output_dir=tmp_path / 'dist')
+    staged = Path(result['staging_root'])
+    (staged / dependency).unlink()
+    (staged / release.MANIFEST_NAME).unlink()
+    release.write_manifest(staged)
+    archive = tmp_path / 'partial-browser.tar.gz'
+    release.write_deterministic_archive(staged, archive)
+    with pytest.raises(release.ReleaseArchiveError, match='complete Axios'):
+        release.verify_archive(archive)
+
+
+@pytest.mark.parametrize('local_dashboard', [False, True])
+def test_verify_distinguishes_legacy_cdn_dashboard_from_missing_local_bundle(tmp_path, local_dashboard):
+    source = _make_release_source(tmp_path)
+    result = release.build_release_archive(source_root=source, output_dir=tmp_path / 'dist')
+    staged = Path(result['staging_root'])
+    for path in release.RELEASE_BROWSER_DEPENDENCY_FILES:
+        (staged / path).unlink()
+    script = ('/static/vendor/axios-1.20.0/axios.min.js' if local_dashboard
+              else 'https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js')
+    (staged / 'fruth_webUI.html').write_text(f'<script src="{script}"></script>\n')
+    (staged / release.MANIFEST_NAME).unlink()
+    release.write_manifest(staged)
+    archive = tmp_path / 'browser-compatibility.tar.gz'
+    release.write_deterministic_archive(staged, archive)
+    if local_dashboard:
+        with pytest.raises(release.ReleaseArchiveError, match='missing required files'):
+            release.verify_archive(archive)
+    else:
+        release.verify_archive(archive)
 
 
 def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> None:
@@ -455,7 +531,7 @@ def test_each_release_fruth_skill_file_is_required(
 def test_missing_required_reference_example_is_rejected(tmp_path: Path) -> None:
     source = _make_release_source(tmp_path)
     missing = Path(
-        'examples/reference-runs/2026-09-18-evening-rain/response.json'
+        'examples/reference-runs/2026-10-10-evening-rain/response.json'
     )
     (source / missing).unlink()
 

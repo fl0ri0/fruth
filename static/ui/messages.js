@@ -1307,7 +1307,11 @@ function appendRenderableArtifactToBubble(
                             htmlPreviewPath ? '' : responseId
                         )
                         : buildSavedArtifactViewUrl(savedArtifactPath);
-                    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                    if (canUseInteractivePreview) {
+                        openSavedArtifactPreview(targetUrl);
+                    } else {
+                        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                    }
                 }
             );
             appendArtifactAction(viewArtifactButton);
@@ -2552,6 +2556,35 @@ function buildSavedArtifactPreviewUrl(savedPath = '', responseId = '') {
     return `${previewUrl}${separator}response_id=${encodeURIComponent(normalizedResponseId)}`;
 }
 
+async function openSavedArtifactPreview(previewUrl) {
+    const source = new URL(previewUrl, window.location.href);
+    if (source.origin !== window.location.origin || source.pathname !== '/api/preview_saved_artifact') {
+        window.open(previewUrl, '_blank', 'noopener,noreferrer');
+        return;
+    }
+    // Open during the user gesture, then sever the opener before awaiting the
+    // admitted preparation request. The new document retains server CSP.
+    const previewWindow = window.open('about:blank', '_blank');
+    if (!previewWindow) {
+        updateGlobalModelStatus('Could not open preview window.');
+        return;
+    }
+    previewWindow.opener = null;
+    try {
+        const response = await fetch(source.href, { headers: fruthApiActionHeaders() });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const prepared = response.headers.get('X-Fruth-Preview-Url');
+        const target = prepared ? new URL(prepared, source.origin) : null;
+        if (!target || target.origin !== source.origin || !target.pathname.startsWith('/api/preview_saved_artifact_wrapper/')) {
+            throw new Error('Prepared preview URL unavailable.');
+        }
+        previewWindow.location.replace(target.href);
+    } catch (error) {
+        previewWindow.close();
+        updateGlobalModelStatus(`Could not open artifact preview: ${error.message}`);
+    }
+}
+
 function buildSavedArtifactUrl(savedPath = '', endpoint = 'view_saved_artifact') {
     const targetPath = String(savedPath || '').trim();
     if (!targetPath) return '';
@@ -2637,16 +2670,14 @@ async function openSavedArtifactLocation(savedPath, triggerButton = null) {
     }
 }
 
-function openSavedArtifactEntry(savedPath, triggerButton = null) {
+async function openSavedArtifactEntry(savedPath, triggerButton = null) {
     const targetPath = String(savedPath || '').trim();
     if (!targetPath) {
         updateGlobalModelStatus('Bundle entry path unavailable for local open.');
         return;
     }
     const previewUrl = buildSavedArtifactPreviewUrl(targetPath);
-    window.open(previewUrl, '_blank', 'noopener,noreferrer');
-    updateGlobalModelStatus('Opened bundle preview.');
-    setTimeout(() => updateGlobalModelStatus(''), 1800);
+    await openSavedArtifactPreview(previewUrl);
 }
 
 function removeDeletedArtifactFromConversation(conversationId, savedPath, artifactType = 'artifact') {

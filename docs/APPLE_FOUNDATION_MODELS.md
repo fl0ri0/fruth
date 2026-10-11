@@ -229,6 +229,7 @@ The same explicit modes are available through `/api/infer` and `/api/responses`:
 
 ```bash
 curl http://127.0.0.1:5011/api/responses \
+  -H 'X-Fruth-Action: 1' \
   -F instance_id=apple_fm:system:11601 \
   -F ocr_mode=apple_barcode \
   -F 'input=Read the barcode in this image.' \

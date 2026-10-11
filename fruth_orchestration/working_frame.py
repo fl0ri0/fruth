@@ -21,6 +21,7 @@ from fruth_inference.request_phase_graph import build_request_phase_graph
 from fruth_services.artifact_dossiers import build_artifact_dossier_index
 from fruth_services.control_snapshots import build_control_snapshot
 from fruth_services.frame_planning import build_artifact_flow_plan
+from fruth_services.responses import request_intent_frame_source
 
 WORKING_FRAME_VERSION = 4
 _WAIVED_CONTRACT_STATUSES = {
@@ -50,6 +51,7 @@ _WORKING_FRAME_REQUEST_HEAVY_KEYS = {
     'prompt',
     'input',
     'instructions',
+    'execution_prompt',
     'context_candidates',
     'memory_candidates',
     'history_candidates',
@@ -377,6 +379,7 @@ def _route_summary(route: Mapping[str, Any], response: Mapping[str, Any], runtim
 
 
 def _request_summary(request: Mapping[str, Any], target: Mapping[str, Any]) -> dict[str, Any]:
+    request = request_intent_frame_source(request)
     summary = {
         'request_id': _first_text(request.get('request_id')),
         'conversation_id': _first_text(request.get('conversation_id')),
@@ -385,6 +388,9 @@ def _request_summary(request: Mapping[str, Any], target: Mapping[str, Any]) -> d
         'semantic_role_ids': normalize_request_meta(dict(request))['semantic_role_ids'],
         'capability_hint': _first_text(request.get('capability'), target.get('capability')),
     }
+    for key in ('intent_source', 'execution_prompt'):
+        if request.get(key) is not None:
+            summary[key] = request[key]
     return summary
 
 
@@ -754,6 +760,7 @@ def _goal_stack(
     freeze: bool,
 ) -> list[dict[str, Any]]:
     goals: list[dict[str, Any]] = []
+    request = request_intent_frame_source(request)
     prompt = _first_text(request.get('prompt'), request.get('input'), request.get('instructions'))
     target_capability = _first_text(target.get('capability'), target.get('mode')) or 'response'
     root_status = 'blocked' if working_status == 'blocked' else 'completed' if working_status in {'completed', 'frozen'} else 'active'

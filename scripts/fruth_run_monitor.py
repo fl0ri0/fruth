@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -250,10 +251,13 @@ def _scan_responses(root: Path) -> tuple[list[str], dict[str, dict[str, Any]]]:
     return order, latest
 
 
-def _events_for_window(root: Path, start: datetime, end: datetime | None) -> list[tuple[int, dict[str, Any], int]]:
+def _events_for_window(root: Path, start: datetime, end: datetime | None, *,
+                       response_id: str | None = None) -> list[tuple[int, dict[str, Any], int]]:
     events: list[tuple[int, dict[str, Any], int]] = []
     for line_no, line, record in _iter_jsonl(root / 'state/events.jsonl'):
         if not isinstance(record, dict):
+            continue
+        if response_id is not None and record.get('response_id') != response_id:
             continue
         dt = _parse_iso(record.get('timestamp'))
         if not dt or dt < start:
@@ -262,6 +266,20 @@ def _events_for_window(root: Path, start: datetime, end: datetime | None) -> lis
             continue
         events.append((line_no, record, len(line)))
     return events
+
+
+def _branch_timing_span_seconds(timings: list[dict[str, Any]]) -> float | None:
+    """A wave-local span, including overlap; elapsed values are not wall clocks."""
+    spans = []
+    for timing in timings:
+        queued, elapsed = timing.get('queued_elapsed_ms'), timing.get('elapsed_ms')
+        if any(isinstance(v, bool) or not isinstance(v, (int, float))
+               or not math.isfinite(v) or v < 0 for v in (queued, elapsed)):
+            return None
+        spans.append((queued, queued + elapsed))
+    if not spans:
+        return None
+    return (max(end for _, end in spans) - min(start for start, _ in spans)) / 1000.0
 
 
 def _registry_records(root: Path, response_id: str) -> tuple[bool, list[tuple[int, dict[str, Any], int]]]:
@@ -2080,17 +2098,14 @@ def _build_report(root: Path, response_id: str, next_response_id: str | None, la
 
     start = _response_start(response_id)
     next_start = _response_start(next_response_id) if next_response_id else None
-    window_events = _events_for_window(root, start, next_start) if start else []
-    response_events = [
-        (line_no, event, size)
-        for line_no, event, size in window_events
-        if event.get('response_id') == response_id
-    ]
+    # Ledger order is not a concurrency boundary. Read this response's own
+    # events past later responses and ignore all uncorrelated provider events.
+    response_events = _events_for_window(root, start, None, response_id=response_id) if start else []
 
     chat_ok = next(
         (
             _parse_iso(event.get('timestamp'))
-            for _, event, _ in window_events
+            for _, event, _ in response_events
             if event.get('category') == 'chat'
             and event.get('action') == 'request'
             and event.get('status') == 'ok'
@@ -2100,7 +2115,7 @@ def _build_report(root: Path, response_id: str, next_response_id: str | None, la
     )
     image_starts = [
         _parse_iso(event.get('timestamp'))
-        for _, event, _ in window_events
+        for _, event, _ in response_events
         if event.get('category') == 'infer'
         and event.get('action') == 'request'
         and event.get('status') == 'started'
@@ -2108,7 +2123,7 @@ def _build_report(root: Path, response_id: str, next_response_id: str | None, la
     ]
     image_oks = [
         _parse_iso(event.get('timestamp'))
-        for _, event, _ in window_events
+        for _, event, _ in response_events
         if event.get('category') == 'infer'
         and event.get('action') == 'request'
         and event.get('status') == 'ok'
@@ -2116,22 +2131,6 @@ def _build_report(root: Path, response_id: str, next_response_id: str | None, la
     ]
     image_start = min((dt for dt in image_starts if dt), default=None)
     image_end = max((dt for dt in image_oks if dt), default=None)
-
-    chat_infer_events = [
-        event for _, event, _ in window_events
-        if event.get('category') == 'infer'
-        and event.get('action') == 'request'
-        and event.get('capability') == 'chat'
-    ]
-    chat_pairs = []
-    pending_start = None
-    for event in chat_infer_events:
-        dt = _parse_iso(event.get('timestamp'))
-        if event.get('status') == 'started':
-            pending_start = dt
-        elif event.get('status') == 'ok' and pending_start:
-            chat_pairs.append((pending_start, dt))
-            pending_start = None
 
     hygiene_times = [
         _parse_iso(event.get('timestamp'))
@@ -2145,15 +2144,28 @@ def _build_report(root: Path, response_id: str, next_response_id: str | None, la
         if event.get('action') == 'late_fill'
     ]
     terminal_output = max((dt for dt in late_fill_times if dt), default=None)
+    timing_warnings = []
+    if next_start and start and next_start <= start:
+        timing_warnings.append('ledger_order_is_not_timestamp_order')
+    if terminal_output and image_end and image_end > terminal_output:
+        timing_warnings.append('image_events_after_terminal')
+        image_start = image_end = None
+    if not image_start or not image_end or image_end < image_start:
+        image_start = image_end = None
+    if terminal_output and chat_ok and chat_ok > terminal_output:
+        timing_warnings.append('initial_chat_event_after_terminal')
+        chat_ok = None
 
     histories = late_fill.get('materialization_concurrency_history') or []
     all_branch_timings = []
     wave_diagnostics = []
     image_branch_timings = []
+    image_wave_spans = []
     coalesced_timing = None
     post_image_chat_timing = None
     for history in histories:
         wave_diagnostics.append(_wave_diagnostic_from_history(history))
+        wave_images = []
         for timing in history.get('branch_timings') or []:
             branch_id = timing.get('branch_id') or ''
             branch_summary = {
@@ -2170,10 +2182,14 @@ def _build_report(root: Path, response_id: str, next_response_id: str | None, la
             all_branch_timings.append(branch_summary)
             if 'image_generation' in branch_id:
                 image_branch_timings.append(timing)
+                wave_images.append(timing)
             elif branch_id.startswith('coalesced-text-artifacts'):
                 coalesced_timing = timing
             elif branch_id == 'branch-chat-1':
                 post_image_chat_timing = timing
+        if wave_images:
+            image_wave_spans.append({'wave': len(wave_diagnostics),
+                                     'seconds': _branch_timing_span_seconds(wave_images)})
 
     payload_runtime = payload.get('runtime') if isinstance(payload.get('runtime'), dict) else {}
     frame_runtime = frame.get('runtime') if isinstance(frame.get('runtime'), dict) else {}
@@ -2351,29 +2367,41 @@ def _build_report(root: Path, response_id: str, next_response_id: str | None, la
         'hygiene_finished': hygiene_done.isoformat().replace('+00:00', 'Z') if hygiene_done else None,
         'hygiene_seconds': _duration(start, hygiene_done),
     }
+    timing_attribution = {
+        'initial_chat': 'response_event' if chat_ok else 'unknown',
+        'image_wave': 'response_events' if image_start and image_end else 'unknown',
+        'terminal': 'response_event' if terminal_output else 'unknown',
+        'hygiene': 'response_event' if hygiene_done else 'unknown',
+        'warnings': timing_warnings,
+    }
+    if timing['image_wave_seconds'] is None and len(image_wave_spans) == 1:
+        span = image_wave_spans[0]['seconds']
+        if span is not None:
+            timing['image_wave_seconds'] = span
+            timing_attribution['image_wave'] = 'response_branch_span'
     if post_image_chat_timing:
-        timing['post_image_chat_seconds'] = (post_image_chat_timing.get('elapsed_ms') or 0) / 1000.0
-    elif chat_pairs:
-        timing['post_image_chat_seconds'] = _duration(*chat_pairs[0])
+        seconds = _branch_timing_span_seconds([{**post_image_chat_timing, 'queued_elapsed_ms': 0}])
+        timing['post_image_chat_seconds'] = seconds
+        timing_attribution['post_image_chat'] = 'response_branch' if seconds is not None else 'unknown'
     if coalesced_timing:
-        timing['coalesced_text_seconds'] = (coalesced_timing.get('elapsed_ms') or 0) / 1000.0
-    elif chat_pairs:
-        timing['coalesced_text_seconds'] = _duration(*chat_pairs[-1])
+        seconds = _branch_timing_span_seconds([{**coalesced_timing, 'queued_elapsed_ms': 0}])
+        timing['coalesced_text_seconds'] = seconds
+        timing_attribution['coalesced_text'] = 'response_branch' if seconds is not None else 'unknown'
 
-    first_chat_pair_start = chat_pairs[0][0] if chat_pairs else None
     scheduling_policy = late_fill.get('scheduling_policy')
     if not isinstance(scheduling_policy, dict):
         scheduling_policy = {}
     timing_diagnostics = {
         'phase_gaps': {
             'initial_chat_to_image_start_seconds': _duration(chat_ok, image_start),
-            'image_end_to_text_start_seconds': _duration(image_end, first_chat_pair_start),
+            'image_end_to_text_start_seconds': None,
             'terminal_to_hygiene_seconds': _duration(terminal_output, hygiene_done),
         },
         'scheduling_policy': scheduling_policy,
         'waves': wave_diagnostics,
         'branches': all_branch_timings,
         'backend_finalize': backend_finalize,
+        'image_wave_spans': image_wave_spans,
         'legend': {
             'planning': 'runtime branch preparation and route/instance selection',
             'queued': 'scheduler or selected-instance queue before work entered backend execution',
@@ -2453,6 +2481,7 @@ def _build_report(root: Path, response_id: str, next_response_id: str | None, la
         'materialization_contract_unmet': late_fill.get('materialization_contract_unmet'),
         'verdict': 'running' if running else ('clean' if clean else 'needs_attention'),
         'timing': timing,
+        'timing_attribution': timing_attribution,
         'timing_diagnostics': timing_diagnostics,
         'sizes': size_totals,
         'artifacts': artifacts,
@@ -2700,7 +2729,7 @@ def _render_human(report: dict[str, Any]) -> str:
         '',
         f"Start/response id: {_fmt_time(_parse_iso(timing.get('start')))}",
         (
-            'Initial Gemma chat/graph finished: '
+            'Initial chat/graph finished: '
             f"{_fmt_time(_parse_iso(timing.get('initial_chat_finished')))}, "
             f"about {_fmt_seconds(timing.get('initial_chat_seconds'))}"
         ),
@@ -2711,6 +2740,10 @@ def _render_human(report: dict[str, Any]) -> str:
             f"about {_fmt_seconds(timing.get('image_wave_seconds'))}"
         ),
     ]
+    if report.get('timing_attribution'):
+        lines.append('Timing attribution: response-bound evidence; unattributed phase timings are unknown.')
+        for warning in report['timing_attribution'].get('warnings', []):
+            lines.append(f'Timing note: {warning}.')
     if 'post_image_chat_seconds' in timing:
         lines.append(f"Post-image chat pass: about {_fmt_seconds(timing.get('post_image_chat_seconds'))}")
     if 'coalesced_text_seconds' in timing:

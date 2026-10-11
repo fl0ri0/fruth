@@ -1,4 +1,7 @@
+from tests.http_client import api_client
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from flask import Response
@@ -9,7 +12,10 @@ from fruth_webserver import _chat_timeout_seconds, app
 class ChatApiTests(unittest.TestCase):
     def setUp(self):
         app.config["TESTING"] = True
-        self.client = app.test_client()
+        self.client = api_client(app)
+        storage = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(patch('fruth_core.status._port_listening', return_value=True))
+        self.enterContext(patch('fruth_webserver.RUNTIME_STATUS_PATH', Path(storage) / 'status.json'))
 
     def test_heavy_ollama_chat_timeout_is_extended(self):
         self.assertEqual(_chat_timeout_seconds("qwen3.5:27b", "ollama", "chat"), 600)

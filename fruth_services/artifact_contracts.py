@@ -6,6 +6,7 @@ import hashlib
 import base64
 import json
 import re
+from copy import deepcopy
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -203,6 +204,60 @@ def artifact_is_current_authoritative(
     response_id: str = '',
 ) -> bool:
     return artifact_authority_rank(value, response_id=response_id)[0] >= 3
+
+
+def text_artifact_output_declaration(
+    value: Mapping[str, Any], *, input_attachment_digest: bool = False,
+) -> dict[str, Any]:
+    """Retain output claims separately from refreshed physical metadata."""
+    keys = (
+        'type', 'kind', 'path', 'saved_text_path', 'name', 'source_name',
+        'extension', 'mime_type', 'text_artifact_extension', 'text_artifact_source_name',
+        'target_path', 'text_artifact_target_path', 'file_sha256',
+        'artifact_request', 'text_artifact_request', 'origin', 'source',
+        'text_artifact_source', 'source_response_id', 'response_id', 'source_frame_id',
+        'source_frame_sequence', 'provenance_id', 'branch_id', 'phase_id',
+        'slot_id', 'obligation_id',
+    )
+    return {key: deepcopy(value[key]) for key in keys
+            if key in value and value[key] not in (None, '', [], {})
+            and not (key == 'file_sha256' and input_attachment_digest)}
+
+
+def text_artifact_same_output(
+    left: Mapping[str, Any], right: Mapping[str, Any], *, response_id: str = '',
+) -> bool:
+    """Scope declarations to one output generation, not filesystem proximity.
+
+    Missing identity fields are aliases of the enclosing output. Explicit
+    different source/version/branch identities remain separate evidence.
+    Artifact refs/ids and declared digests are not version selectors: aliases
+    may have different refs, and a bad digest must not create its own generation.
+    """
+    left_path, right_path = artifact_record_path(left), artifact_record_path(right)
+    if not left_path or not right_path:
+        return False
+    if Path(left_path).expanduser().resolve() != Path(right_path).expanduser().resolve():
+        return False
+    for key in ('source_response_id', 'source_frame_id', 'source_frame_sequence',
+                'provenance_id', 'branch_id', 'phase_id', 'slot_id', 'obligation_id'):
+        if key in {'branch_id', 'phase_id', 'slot_id', 'obligation_id'} and any(
+            clean_text(item.get('text_artifact_source') or item.get('source'))
+            == 'canonical_text_artifact_evidence' for item in (left, right)
+        ):
+            # A reuse projection is an alias, not fresh branch write evidence.
+            continue
+        a, b = left.get(key), right.get(key)
+        if a not in (None, '') and b not in (None, '') and a != b:
+            return False
+    if artifact_is_current_authoritative(left, response_id=response_id) != artifact_is_current_authoritative(
+        right, response_id=response_id,
+    ) and all(any(clean_text(item.get(key)) for key in (
+        'origin', 'source', 'text_artifact_source', 'source_response_id',
+        'response_id', 'branch_id', 'phase_id', 'slot_id', 'obligation_id',
+    )) for item in (left, right)):
+        return False
+    return True
 
 
 def select_authoritative_artifact_records(
@@ -433,6 +488,14 @@ def sanitize_artifact_record(
     )
     if artifact_request:
         payload['artifact_request'] = dict(artifact_request)
+
+    # These describe the returned result, never the recomputed file. Keep them
+    # through Registry/frame sanitization even when physical bytes are correct.
+    for key in ('text_artifact_output_declarations', 'text_artifact_saved_evidence',
+                'diagnostic_only', 'materialization_eligible',
+                'source_frame_id', 'source_frame_sequence'):
+        if key in value:
+            payload[key] = deepcopy(value[key])
 
     seed = value.get('seed')
     if isinstance(seed, (int, float)) and not isinstance(seed, bool):
@@ -887,4 +950,3 @@ def execution_input_artifact_ref(payload: Mapping[str, Any]) -> Optional[str]:
         and str(item.get('artifact_ref') or item.get('ref') or '').strip()
     }
     return next(iter(refs)) if len(refs) == 1 else None
-

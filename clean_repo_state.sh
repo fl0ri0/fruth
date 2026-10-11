@@ -64,6 +64,7 @@ Default cleanup removes repo-local generated/runtime ballast:
     directories, including artifacts/bundles/. Missing standard directories are created
     only as a fallback.
   - logs/*
+  - outputs (legacy root-level output path, when present)
   - state/chat_history/*
   - state/events.jsonl
   - state/infer_history.jsonl
@@ -85,6 +86,7 @@ Default cleanup preserves:
   - state/inference_compiled_memory.md
   - state/self_learning/
   - state/self_learning/retained_sidecars/ generated from active learning refs
+  - state/inference_learning_archives/ (including retained cache files)
   - state/graph_rebase/readiness_observations.jsonl
   - state/self_attack/, state/benchmarks/, state/diagnostics/ (including cache files)
   - fruth_research/ in every mode, including nested caches and retained Gold evidence
@@ -257,20 +259,20 @@ stop_listener_on_port() {
 remove_cache_dirs() {
     local pattern="$1"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "[dry-run] remove directories named $pattern recursively (excluding evidence trees, fruth_research, .fruth_archiv, 00_backup and fruth-upload)"
+        log "[dry-run] remove directories named $pattern recursively (excluding protected learning/archive state, evidence trees, fruth_research, .fruth_archiv, 00_backup and fruth-upload)"
         return 0
     fi
-    find "$ROOT_DIR" \( -path "$ROOT_DIR/.fruth_archiv" -o -path "$ROOT_DIR/00_backup" -o -path "$ROOT_DIR/fruth-upload" -o -path "$ROOT_DIR/fruth_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" \) -prune -o -type d -name "$pattern" -prune -exec rm -rf {} +
+    find "$ROOT_DIR" \( -path "$ROOT_DIR/.fruth_archiv" -o -path "$ROOT_DIR/00_backup" -o -path "$ROOT_DIR/fruth-upload" -o -path "$ROOT_DIR/fruth_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" -o -path "$ROOT_DIR/state/self_learning" -o -path "$ROOT_DIR/state/inference_learning_archives" \) -prune -o -type d -name "$pattern" -prune -exec rm -rf {} +
 }
 
 remove_cache_files() {
     local pattern="$1"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "[dry-run] remove files named $pattern recursively (excluding evidence trees, fruth_research, .fruth_archiv, 00_backup and fruth-upload)"
+        log "[dry-run] remove files named $pattern recursively (excluding protected learning/archive state, evidence trees, fruth_research, .fruth_archiv, 00_backup and fruth-upload)"
         return 0
     fi
     # Do not use -delete: it implies depth-first traversal and defeats -prune.
-    find "$ROOT_DIR" \( -path "$ROOT_DIR/.fruth_archiv" -o -path "$ROOT_DIR/00_backup" -o -path "$ROOT_DIR/fruth-upload" -o -path "$ROOT_DIR/fruth_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" \) -prune -o -type f -name "$pattern" -exec rm -f {} +
+    find "$ROOT_DIR" \( -path "$ROOT_DIR/.fruth_archiv" -o -path "$ROOT_DIR/00_backup" -o -path "$ROOT_DIR/fruth-upload" -o -path "$ROOT_DIR/fruth_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" -o -path "$ROOT_DIR/state/self_learning" -o -path "$ROOT_DIR/state/inference_learning_archives" \) -prune -o -type f -name "$pattern" -exec rm -f {} +
 }
 
 archive_dir_contents() {
@@ -395,7 +397,7 @@ write_archive_manifest() {
         printf 'created_utc=%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
         printf 'repo_root=%s\n' "$ROOT_DIR"
         printf 'archive_root=%s\n' "$ARCHIVE_RUN_REL"
-        printf 'live_cleanup_targets=artifact bucket contents(preserving standard artifact dirs including bundles),logs,state/chat_history,state/events.jsonl,state/infer_history.jsonl,state/artifact_registry.jsonl,state/generated_image_provenance.jsonl,state/response_frames(compact_ledger,current_index,sidecar_snapshots),state/runtime_status.json,caches\n'
+        printf 'live_cleanup_targets=artifact bucket contents(preserving standard artifact dirs including bundles),logs,outputs(legacy),state/chat_history,state/events.jsonl,state/infer_history.jsonl,state/artifact_registry.jsonl,state/generated_image_provenance.jsonl,state/response_frames(compact_ledger,current_index,sidecar_snapshots),state/runtime_status.json,caches\n'
         printf 'protected_inference_snapshot_paths=state/inference_preferences.json,state/inference_compiled_memory.json,state/inference_compiled_memory.md,state/self_learning\n'
         printf 'protected_graph_rebase_registry_snapshot_path=state/graph_rebase/readiness_observations.jsonl\n'
         printf 'evidence_snapshot_paths=state/self_attack,state/benchmarks,state/diagnostics\n'
@@ -519,7 +521,8 @@ prepare_graph_rebase_readiness_retention() {
             --registry "$registry" \
             "$mode_flag" \
             --require-all-settled \
-            --shell-summary 2>&1
+            --progress \
+            --shell-summary
     )" || {
         READINESS_RETENTION_FAILED=1
         READINESS_RETENTION_STATUS="rejected"
@@ -731,7 +734,15 @@ if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     snapshot_path "state/benchmarks"
     snapshot_path "state/diagnostics"
     archive_artifacts_preserving_base_dirs
+    # Verify every protected copy before moving any live runtime/history path.
+    snapshot_path "state/inference_preferences.json"
+    snapshot_path "state/inference_compiled_memory.json"
+    snapshot_path "state/inference_compiled_memory.md"
+    snapshot_path "state/self_learning"
+    snapshot_path "state/graph_rebase/readiness_observations.jsonl"
+
     archive_dir_contents "logs"
+    archive_path "outputs"
     archive_dir_contents "state/chat_history"
     archive_path "state/events.jsonl"
     archive_path "state/infer_history.jsonl"
@@ -743,12 +754,6 @@ if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
         archive_dir_contents "state/response_frames"
     fi
     archive_path "state/runtime_status.json"
-
-    snapshot_path "state/inference_preferences.json"
-    snapshot_path "state/inference_compiled_memory.json"
-    snapshot_path "state/inference_compiled_memory.md"
-    snapshot_path "state/self_learning"
-    snapshot_path "state/graph_rebase/readiness_observations.jsonl"
 
     if [[ "$RESET_LLAMA_CATALOG" -eq 1 ]]; then
         archive_path "state/llama_cpp_catalog.json"
@@ -829,32 +834,41 @@ remove_cache_files "*.pyo"
 remove_cache_files ".DS_Store"
 
 log
-log "Preserved/reset summary:"
-if [[ "$RESET_REGISTRY" -eq 1 ]]; then
-    log "- model_ports.json reset to []"
+SUMMARY_PREFIX=""
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    SUMMARY_PREFIX="[dry-run] "
+    log "[dry-run] Preserved/reset summary (planned; no changes applied):"
 else
-    log "- model_ports.json preserved"
+    log "Preserved/reset summary:"
+fi
+if [[ "$RESET_REGISTRY" -eq 1 ]]; then
+    log "${SUMMARY_PREFIX}- model_ports.json reset to []"
+else
+    log "${SUMMARY_PREFIX}- model_ports.json preserved"
 fi
 if [[ "$RESET_LLAMA_CATALOG" -eq 1 ]]; then
-    log "- state/llama_cpp_catalog.json removed"
+    log "${SUMMARY_PREFIX}- state/llama_cpp_catalog.json removed when present (missing targets skipped)"
 else
-    log "- state/llama_cpp_catalog.json preserved"
+    log "${SUMMARY_PREFIX}- state/llama_cpp_catalog.json preserved"
 fi
 if [[ "$FORGET_INFERENCE" -eq 1 ]]; then
-    log "- state/inference_preferences.json removed"
+    log "${SUMMARY_PREFIX}- state/inference_preferences.json removed when present (missing targets skipped)"
 else
-    log "- state/inference_preferences.json preserved"
+    log "${SUMMARY_PREFIX}- state/inference_preferences.json preserved"
 fi
 if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
-    log "- protected interpretive inference state snapshotted when present; preferences/compiled memory preserved unless --forget-inference was explicit"
+    log "${SUMMARY_PREFIX}- protected interpretive inference state snapshotted when present; preferences/compiled memory preserved unless --forget-inference was explicit"
 fi
 if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
-    log "- archived runtime/generated ballast under $ARCHIVE_RUN_REL"
+    log "${SUMMARY_PREFIX}- archived runtime/generated ballast under $ARCHIVE_RUN_REL"
 fi
-log "- learning-retained response-frame sidecars: $LEARNING_RETAINED_SIDECAR_COUNT retained, $LEARNING_MISSING_SIDECAR_COUNT missing"
-log "- graph-rebase readiness registry preserved: $READINESS_REGISTERED_OBSERVATION_COUNT / $READINESS_SETTLED_OBSERVATION_COUNT settled observations registered"
+log "${SUMMARY_PREFIX}- learning-retained response-frame sidecars: $LEARNING_RETAINED_SIDECAR_COUNT retained, $LEARNING_MISSING_SIDECAR_COUNT missing"
+log "${SUMMARY_PREFIX}- graph-rebase readiness registry preserved: $READINESS_REGISTERED_OBSERVATION_COUNT / $READINESS_SETTLED_OBSERVATION_COUNT settled observations registered"
+if [[ "$LEARNING_RETENTION_FAILED" -eq 1 ]]; then
+    log "${SUMMARY_PREFIX}- state/response_frames preserved because self-learning retention did not pass"
+fi
 if [[ "$READINESS_RETENTION_FAILED" -eq 1 ]]; then
-    log "- state/response_frames preserved because graph-rebase readiness retention did not pass"
+    log "${SUMMARY_PREFIX}- state/response_frames preserved because graph-rebase readiness retention did not pass"
 fi
 print_chrome_artifact_access_note
 reset_chrome_file_access_prompt

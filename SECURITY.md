@@ -1,18 +1,27 @@
 # Security Policy
 
-Fruth 0.1.3 is experimental, local-first software intended for one trusted
-user on one machine.
+Fruth is experimental, local-first software intended for one trusted user on
+one machine. See the [source packaging scope](docs/RELEASE_SCOPE.md) for the
+supported environment and release boundaries. This policy describes current
+source; a working-source correction is not evidence that it shipped in an
+earlier published archive.
 
 ## Local Boundary
 
 The web control plane binds to `127.0.0.1` by default. Do not expose it through
 a public interface, reverse proxy, tunnel, or shared host without a separate
 security review and an authentication/authorization layer. Remote and
-multi-user deployment are not supported in 0.1.3.
+multi-user deployment are outside the supported source-package scope.
 
 Runtime state, prompts, history, logs, and generated artifacts can contain
 sensitive information. Keep the Fruth directory private and review files
 before sharing them.
+
+The [HTTP caller boundary](docs/HTTP_API_BOUNDARY.md) checks configured Host,
+exact browser Origin and `X-Fruth-Action: 1` before API effects, including refresh
+GETs. Missing Origin does not waive the marker. It does not authenticate native
+processes or protect against trusted-origin script compromise. Signed preview
+asset reads retain their confined read capability and sandbox restrictions.
 
 ## Generated HTML Preview
 

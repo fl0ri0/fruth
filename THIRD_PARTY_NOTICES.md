@@ -18,6 +18,22 @@ Montserrat Black at weight 900.
 
 Montserrat is not relicensed under Apache-2.0.
 
+### Axios
+
+The current dashboard source bundles the official Axios **1.20.0** browser build
+and source map at `static/vendor/axios-1.20.0/`. These files are served locally,
+without a runtime download or remote fallback.
+
+- Copyright (c) 2014-present Matt Zabriskie & Collaborators
+- Upstream: [Axios v1.20.0](https://github.com/axios/axios/releases/tag/v1.20.0)
+- Distribution: [official npm package](https://registry.npmjs.org/axios/-/axios-1.20.0.tgz)
+- License: MIT; full text: [LICENSE.txt](static/vendor/axios-1.20.0/LICENSE.txt)
+- Exact source, file hashes and dated advisory review: [README.txt](static/vendor/axios-1.20.0/README.txt)
+
+The release builder includes and requires the build, map, license and provenance.
+Axios retains its MIT license. This describes the current source checkout;
+previously published 0.1.5 archives are not changed by this addition.
+
 ## Installed Separately
 
 Python packages installed through `requirements.txt`, local AI runtimes,
@@ -55,11 +71,12 @@ their code and binary wheels are not included in Fruth's source distribution.
 
 ## Loaded at Runtime from External CDNs
 
-The current dashboard requests Google Fonts, Axios, and Font Awesome from
+The current dashboard requests Google Fonts and Font Awesome from
 their upstream CDNs when the dashboard is opened with network access. The
 architecture diagram requests JetBrains Mono from Google Fonts. These
 resources are not bundled in the Fruth source archive and remain under their
-respective upstream licenses and terms.
+respective upstream licenses and terms. Bundling Axios alone does not make the
+entire dashboard offline-capable.
 
 The standalone repository landing page under `site/` does not make those
 requests; its display font is bundled locally with the license and provenance

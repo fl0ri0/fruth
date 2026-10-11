@@ -19,7 +19,7 @@ import tempfile
 import threading
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from fruth_inference.request_phase_graph import build_request_phase_graph
 from fruth_orchestration.working_frame import build_working_frame, compact_working_frame_for_serialization
@@ -37,8 +37,11 @@ from fruth_services.responses import (
     build_canonical_outputs,
     build_public_output_branches_from_slots,
     extract_responses_current_turn_prompt,
+    request_intent_frame_source,
     filter_public_response_artifacts,
     merge_canonical_response_artifacts,
+    output_artifact_is_qualified,
+    project_truth_guard_text,
     response_item_is_internal_control_work,
     response_text_is_internal_control_protocol,
     select_public_output_text as select_canonical_public_output_text,
@@ -443,6 +446,7 @@ _CURRENT_STATE_FRAME_KEYS = (
     'saved_text_path',
     'saved_text_artifacts',
     'text_artifact_requests',
+    'text_artifact_binding_errors',
     'saved_audio_path',
     'saved_image_path',
     'image_state',
@@ -494,6 +498,20 @@ _REQUEST_FRAME_KEYS = (
     'reference_candidates',
     'input_artifacts',
     'stream',
+    'intent_source',
+    'execution_prompt',
+    'text_artifact_requests',
+    'artifact_request',
+    'text_artifact_extension',
+    'text_artifact_source_name',
+    'text_artifact_source',
+    'text_artifact_target_path',
+    'execution_contract',
+    'branch_id',
+    'phase_id',
+    'output_type',
+    'depends_on',
+    'input_refs',
 )
 _REQUEST_FRAME_DIRECT_KEYS = tuple(
     key for key in _REQUEST_FRAME_KEYS if key != 'inference_preview'
@@ -934,7 +952,7 @@ def _compact_request_inference_preview(value: Any) -> Optional[dict[str, Any]]:
 
 
 def _build_request_frame(request_payload: Optional[Mapping[str, Any]], response_payload: Mapping[str, Any]) -> dict[str, Any]:
-    source = request_payload if isinstance(request_payload, Mapping) else {}
+    source = request_intent_frame_source(request_payload) if isinstance(request_payload, Mapping) else {}
     payload = _select_frame_keys(source, _REQUEST_FRAME_DIRECT_KEYS)
     inference_preview = _compact_request_inference_preview(source.get('inference_preview'))
     if inference_preview:
@@ -1312,9 +1330,11 @@ def _late_fill_artifacts_by_binding(
     if not isinstance(output_artifacts, list):
         return {}
     artifacts_by_path: dict[str, Mapping[str, Any]] = {}
-    artifacts_by_binding: dict[tuple[str, str], Mapping[str, Any]] = {}
+    candidates_by_binding: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
     for raw_artifact in output_artifacts:
         if not isinstance(raw_artifact, Mapping):
+            continue
+        if not output_artifact_is_qualified(response_payload, raw_artifact):
             continue
         artifact_path = _artifact_projection_path(raw_artifact)
         if artifact_path:
@@ -1322,7 +1342,7 @@ def _late_fill_artifacts_by_binding(
         artifact_type = _artifact_projection_type(raw_artifact)
         for token in _artifact_binding_tokens(raw_artifact):
             for alias in _artifact_type_aliases(artifact_type):
-                artifacts_by_binding.setdefault((token, alias), raw_artifact)
+                candidates_by_binding.setdefault((token, alias), []).append(raw_artifact)
 
     for result in _iter_late_fill_result_records(response_payload):
         result_type, result_path = _late_fill_result_type_and_path(result)
@@ -1337,8 +1357,11 @@ def _late_fill_artifacts_by_binding(
         aliases = _artifact_type_aliases(result_type or artifact_type) or {artifact_type}
         for token in _artifact_binding_tokens(result):
             for alias in aliases:
-                artifacts_by_binding.setdefault((token, alias), artifact)
-    return artifacts_by_binding
+                candidates_by_binding.setdefault((token, alias), []).append(artifact)
+    # Collection and set iteration order cannot resolve competing identities.
+    return {key: records[0] for key, records in candidates_by_binding.items()
+            if len({(_artifact_ref_from_projection(record), _artifact_projection_path(record))
+                    for record in records}) == 1}
 
 
 def _reconcile_output_slots_with_late_fill_artifacts(
@@ -1349,8 +1372,6 @@ def _reconcile_output_slots_with_late_fill_artifacts(
     if not output_slots:
         return output_slots
     artifacts_by_binding = _late_fill_artifacts_by_binding(response_payload, output_artifacts)
-    if not artifacts_by_binding:
-        return output_slots
 
     # An explicitly bound canonical/late-fill artifact has one owner (or a
     # bounded set of equivalent owner tokens). Persisted payload slots can
@@ -1416,6 +1437,10 @@ def _reconcile_output_slots_with_late_fill_artifacts(
         for token in slot_tokens:
             for alias in slot_types:
                 matched_artifact = artifacts_by_binding.get((token, alias))
+                if matched_artifact and not output_artifact_is_qualified(
+                    response_payload, matched_artifact, slot=slot,
+                ):
+                    matched_artifact = None
                 if matched_artifact:
                     break
             if matched_artifact:
@@ -1434,6 +1459,14 @@ def _reconcile_output_slots_with_late_fill_artifacts(
                 slot.pop('blocked_reason', None)
             if _projection_token(slot.get('status')).lower() in _TERMINAL_OUTPUT_STATUSES:
                 slot.pop('placeholder_ref', None)
+        elif slot_type == 'image' and not output_artifact_is_qualified(
+            response_payload, {**slot, 'type': 'image'}, slot=slot,
+        ):
+            for key in (*_ARTIFACT_IDENTITY_KEYS, *_ARTIFACT_PATH_KEYS):
+                slot.pop(key, None)
+            if _projection_token(slot.get('status')).lower() in {'fulfilled', 'completed'}:
+                slot.update(status='pending', lifecycle='unresolved_output',
+                            blocked_reason='accepted_image_evidence_unresolved')
         normalized = {
             key: value
             for key, value in slot.items()
@@ -3260,6 +3293,8 @@ def _compact_saved_text_artifacts_for_ledger(value: Any) -> list[dict[str, Any]]
                 'path',
                 'source_name',
                 'type',
+                'text_artifact_output_declarations',
+                'text_artifact_saved_evidence',
             ),
         )
         request = item.get('text_artifact_request')
@@ -3313,6 +3348,7 @@ def _compact_late_fill_result_for_ledger(result: Any) -> dict[str, Any]:
     compact = _copy_compact_keys(
         result,
         (
+            'artifact_id',
             'artifact_ref',
             'branch_id',
             'capability',
@@ -3328,6 +3364,7 @@ def _compact_late_fill_result_for_ledger(result: Any) -> dict[str, Any]:
             'saved_image_path',
             'saved_text_path',
             'seed',
+            'source_response_id',
             'status',
             'text_artifact_source',
             'text_artifact_source_name',
@@ -6839,7 +6876,15 @@ def prepare_response_output_state(
         raise TypeError('response_payload must be a mapping')
     request_frame = _build_request_frame(request_payload, response_payload)
     output_artifacts = response_payload.get('artifacts') if isinstance(response_payload.get('artifacts'), list) else []
+    diagnostic_output_artifacts = [dict(artifact) for artifact in output_artifacts
+                                  if isinstance(artifact, Mapping)
+                                  and not output_artifact_is_qualified(response_payload, artifact)]
+    output_artifacts = [artifact for artifact in output_artifacts
+                        if isinstance(artifact, Mapping)
+                        and output_artifact_is_qualified(response_payload, artifact)]
     canonical_artifacts = build_canonical_response_artifacts(dict(response_payload))
+    canonical_artifacts = [artifact for artifact in canonical_artifacts
+                           if output_artifact_is_qualified(response_payload, artifact)]
     if canonical_artifacts:
         output_artifacts = merge_canonical_response_artifacts(output_artifacts, canonical_artifacts)
     output_artifacts = _reconcile_output_artifacts_with_late_fill_branch_paths(
@@ -6877,6 +6922,7 @@ def prepare_response_output_state(
         output_slots = plan_output_slots
     else:
         output_slots = payload_output_slots or plan_output_slots
+    output_slots = project_truth_guard_text(response_payload, output_slots)
     output_slots = _apply_truth_guard_to_output_slots(response_payload, output_slots)
     output_slots = [
         dict(slot)
@@ -6953,6 +6999,7 @@ def prepare_response_output_state(
         'input_artifacts': input_artifacts,
         'reference_artifacts': reference_artifacts,
         'output_artifacts': output_artifacts,
+        'diagnostic_output_artifacts': diagnostic_output_artifacts,
         'public_output_artifacts': public_output_artifacts,
         'artifact_identity': artifact_identity,
         'artifact_flow_plan': artifact_flow_plan,
@@ -6994,6 +7041,20 @@ def build_response_frame(
         output_artifacts=output_artifacts,
         response_payload=response_payload,
     )
+    # Rejected candidates remain inspectable without sharing a fulfillment ref
+    # with the accepted dossier. The canonical dossier always owns that ref.
+    diagnostic_dossiers = build_artifact_dossier_index(
+        output_artifacts=prepared['diagnostic_output_artifacts'], response_payload=response_payload,
+    )
+    for ref, dossier in diagnostic_dossiers.items():
+        if ref not in artifact_dossiers:
+            artifact_dossiers[ref] = dossier
+        artifact_dossiers[ref]['output_qualification'] = (
+            'accepted_with_rejected_candidates' if ref in {_artifact_ref_from_projection(a) for a in output_artifacts}
+            else 'rejected')
+        artifact_dossiers[ref]['rejected_output_candidates'] = [
+            artifact for artifact in prepared['diagnostic_output_artifacts']
+            if _artifact_ref_from_projection(artifact) == ref]
     control_snapshot = build_control_snapshot(request_source, response_payload)
     runtime_payload = response_payload.get('runtime') if isinstance(response_payload.get('runtime'), Mapping) else {}
     runtime_request_phase_graph = (
@@ -7651,10 +7712,17 @@ def response_payload_from_frame(
     if payload.get('runtime') in (None, '', [], {}) and isinstance(response_frame.get('runtime'), Mapping):
         payload['runtime'] = _json_safe(response_frame.get('runtime'))
     canonical_artifacts = build_canonical_response_artifacts(payload)
+    canonical_artifacts = [artifact for artifact in canonical_artifacts
+                           if output_artifact_is_qualified(payload, artifact)]
     if canonical_artifacts:
         existing_artifacts = payload.get('artifacts') if isinstance(payload.get('artifacts'), list) else []
+        existing_artifacts = [artifact for artifact in existing_artifacts
+                             if isinstance(artifact, Mapping) and output_artifact_is_qualified(payload, artifact)]
         payload['artifacts'] = merge_canonical_response_artifacts(existing_artifacts, canonical_artifacts)
     if isinstance(payload.get('artifacts'), list):
+        payload['artifacts'] = [artifact for artifact in payload.get('artifacts') or []
+                                if isinstance(artifact, Mapping)
+                                and output_artifact_is_qualified(payload, artifact)]
         payload['artifacts'] = _reconcile_output_artifacts_with_late_fill_branch_paths(
             payload,
             payload.get('artifacts'),
@@ -8380,24 +8448,30 @@ class _ReadinessIndexPass:
     Load our own map; never accept a caller's mutable map as a receipt. Only the
     existing read-only selection/observation owners consume it. No map or entry
     alias is returned, and close releases it even when the pass fails. This is
-    not an Epoch, a persisted proof, or authority for another request/thread.
+    not a persisted proof or authority for another request/thread. Maintenance
+    may request a full Epoch audit owned by this same closed pass.
     """
 
     __slots__ = (
         '__frames_dir', '__ledger_path', '__index_path', '__owner', '__active',
-        '__index', '__physical', '__verified', '__empty',
+        '__index', '__physical', '__verified', '__empty', '__epoch',
+        '__ledger_name', '__index_name',
     )
 
-    def __init__(self, frames_dir: Path | str):
+    def __init__(self, frames_dir: Path | str, *,
+                 ledger_name: str = DEFAULT_RESPONSE_FRAME_LEDGER,
+                 index_name: str = DEFAULT_RESPONSE_FRAME_INDEX):
         self.__frames_dir = Path(frames_dir)
-        self.__ledger_path = _ledger_path(frames_dir=frames_dir)
-        self.__index_path = _index_path(frames_dir=frames_dir)
+        self.__ledger_name, self.__index_name = ledger_name, index_name
+        self.__ledger_path = _ledger_path(frames_dir=frames_dir, ledger_name=ledger_name)
+        self.__index_path = _index_path(frames_dir=frames_dir, index_name=index_name)
         self.__owner = (os.getpid(), threading.get_ident())
         self.__active = True
         self.__index: dict[str, Any] = {}
         self.__physical: tuple = ()
         self.__verified = False
         self.__empty = False
+        self.__epoch: Optional[dict[str, Any]] = None
 
     def _require_scope(self) -> None:
         if not self.__active or self.__owner != (os.getpid(), threading.get_ident()):
@@ -8420,9 +8494,27 @@ class _ReadinessIndexPass:
                 'ledger' if current[1] != self.__physical[1] else 'index'
             )
 
-    def prepare(self) -> None:
+    def prepare(self, *, verify_epoch: bool = False, allow_relocated: bool = False) -> None:
         self._require_scope()
         self.__physical = self._physical_state()
+        if verify_epoch:
+            # Acquire the map here, never adopt a caller-owned mutable Epoch.
+            self.__epoch = verify_response_frame_epoch(
+                frames_dir=self.__frames_dir, ledger_name=self.__ledger_name,
+                index_name=self.__index_name, allow_relocated=allow_relocated,
+            )
+            state_flow_note(readiness_pass_full_verifications=1)
+            if self.__epoch.get('ok') is not True:
+                return
+            if (Path(self.__epoch['index_path']) != self.__index_path
+                    or self.__epoch['index_file_state'] != self.__physical[0]):
+                raise _ReadinessIndexPassChanged('index')
+            if self.__epoch['ledger_file_state'] != self.__physical[1]:
+                raise _ReadinessIndexPassChanged('ledger')
+            self.__index = self.__epoch['index_state']
+            self.__verified = True
+            self._guard()
+            return
         self.__empty = (
             not self.__ledger_path.exists() and not self.__ledger_path.is_symlink()
             and not self.__index_path.exists() and not self.__index_path.is_symlink()
@@ -8438,7 +8530,10 @@ class _ReadinessIndexPass:
                 'responses': {},
             }
         else:
-            self.__index = load_response_frame_index(frames_dir=self.__frames_dir)
+            self.__index = load_response_frame_index(
+                frames_dir=self.__frames_dir, ledger_name=self.__ledger_name,
+                index_name=self.__index_name,
+            )
             state_flow_note(readiness_pass_full_verifications=1)
             self.__verified = _response_frame_index_has_verified_response_map(
                 self.__index, self.__ledger_path,
@@ -8446,6 +8541,12 @@ class _ReadinessIndexPass:
         # Bind the complete verification to the physical state that preceded
         # its read, never to a newer state observed only after verification.
         self._guard()
+
+    def epoch_error(self) -> Optional[dict[str, Any]]:
+        self._require_scope()
+        if self.__epoch is not None and self.__epoch.get('ok') is not True:
+            return dict(self.__epoch.get('error') or {})
+        return None
 
     def _verified_for(self, index_state: Any, frames_dir: Path | str, ledger_path: Path) -> bool:
         if (
@@ -8480,6 +8581,7 @@ class _ReadinessIndexPass:
         self._require_scope()
         result = load_latest_response_observation_state(
             response_id, frames_dir=self.__frames_dir, index_state=self.__index,
+            ledger_name=self.__ledger_name,
             _readiness_index_pass=self,
         )
         self._guard()
@@ -8489,23 +8591,35 @@ class _ReadinessIndexPass:
         self._guard()
         # Only small metadata and ids escape; the global map has no caller alias.
         metadata = {k: v for k, v in self.__index.items() if k != 'responses'}
-        return {
+        result = {
             'ok': True, 'empty_current_epoch': self.__empty,
             'index_state': json.loads(json.dumps(metadata)),
             'response_ids': list(self.__index.get('responses') or {}),
             'selection': selection, 'observations': observations,
         }
+        if self.__epoch is not None:
+            # Only detached provenance escapes; the full mutable map never does.
+            epoch = {k: v for k, v in self.__epoch.items() if k != 'index_state'}
+            epoch['selector_file_state'] = self.__physical[2]
+            result['verified_epoch'] = json.loads(json.dumps(epoch))
+        return result
 
     def close(self) -> None:
         self.__active = False
         self.__verified = False
         self.__index = {}
         self.__physical = ()
+        self.__epoch = None
 
 
 @observe_state('readiness.index_pass', 'physical_index_and_ledger', 'bounded_observations', labels=('REVALIDATION',))
 def load_graph_rebase_readiness_observation_pass(
     *, frames_dir: Path | str = DEFAULT_RESPONSE_FRAMES_DIR,
+    verify_epoch: bool = False,
+    ledger_name: str = DEFAULT_RESPONSE_FRAME_LEDGER,
+    index_name: str = DEFAULT_RESPONSE_FRAME_INDEX,
+    allow_relocated: bool = False,
+    progress: Optional[Callable[[str, int, int], None]] = None,
 ) -> dict[str, Any]:
     """Collect one stable selection/observation pass with no cross-pass reuse.
 
@@ -8514,14 +8628,23 @@ def load_graph_rebase_readiness_observation_pass(
     Static missing/corrupt/unverified sources retain the normal reader errors.
     """
     for _attempt in range(_READINESS_INDEX_PASS_STABILITY_ATTEMPTS):
-        scope = _ReadinessIndexPass(frames_dir)
+        scope = _ReadinessIndexPass(frames_dir, ledger_name=ledger_name, index_name=index_name)
         try:
-            scope.prepare()
+            if progress is not None:
+                progress('verifying_epoch' if verify_epoch else 'verifying_index', 0, 0)
+            scope.prepare(verify_epoch=verify_epoch, allow_relocated=allow_relocated)
+            epoch_error = scope.epoch_error()
+            if epoch_error is not None:
+                return {'ok': False, 'error': epoch_error}
             selection = scope.selection()
-            observations = [
-                {'response_id': response_id, 'state': scope.observation(response_id)}
-                for response_id in selection.get('selected_response_ids') or []
-            ]
+            selected_ids = selection.get('selected_response_ids') or []
+            observations = []
+            if progress is not None:
+                progress('observations', 0, len(selected_ids))
+            for response_id in selected_ids:
+                observations.append({'response_id': response_id, 'state': scope.observation(response_id)})
+                if progress is not None:
+                    progress('observations', len(observations), len(selected_ids))
             return scope.result(selection, observations)
         except _ReadinessIndexPassChanged as exc:
             state_flow_note(readiness_pass_invalidations=1)
@@ -8558,7 +8681,10 @@ def _select_graph_rebase_observation_response_ids(
         if isinstance(index_state, Mapping)
         else load_response_frame_index(frames_dir=frames_dir)
     )
-    indexed_ledger_path = _ledger_path(frames_dir=frames_dir)
+    indexed_ledger_path = _ledger_path(
+        frames_dir=frames_dir,
+        ledger_name=str(current_index.get('ledger_name') or DEFAULT_RESPONSE_FRAME_LEDGER),
+    )
     pass_verified = (
         _finalizer_context is None
         and type(_readiness_index_pass) is _ReadinessIndexPass
@@ -10002,6 +10128,7 @@ def load_latest_response_wire_state(
         'status_semantics',
         'text_artifact_requests',
         'tts_audio_integrity_evidence',
+        'text_artifact_binding_errors',
         'usage',
     ):
         value = compact_current.get(key)

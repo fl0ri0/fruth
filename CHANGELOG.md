@@ -3,6 +3,67 @@
 Fruth changes are recorded here. The original Ollmo release history is retained
 below.
 
+## [0.1.6] - 2026-10-11
+
+Hardening and validation since 0.1.5: strengthen caller authority, accepted file
+bindings, saved evidence and successor lineage. The experimental `0.x` support
+scope remains unchanged.
+
+### Corrected and hardened
+
+- Enforce trusted Host/Origin and explicit action declarations before local API
+  effects. Reject invalid preference request encodings instead of silently
+  resetting preferences; update the browser and supported clients accordingly.
+- Preserve the actual caller's intent separately from planner-prepared execution
+  text through graph rebuilding, dispatch, writing, frames and recovery.
+- Preserve explicit output filenames, extensions, targets and counts through
+  structured extraction. Validate accepted bindings before writes and require
+  matching physical file identity and digest for fulfillment and canonical reuse.
+- Preserve conflicting saved-result evidence through canonicalization/recovery;
+  prevent duplicate evidence order from hiding a conflict. Keep successor work
+  independent of incidental diagnostic text, preserve saved bindings on repeated
+  completion, and require each image successor's own qualified result while
+  retaining earlier artifact identities.
+- Keep truth-guard text corrections consistent across public outputs, frozen
+  frames and retrieval without replacing independent or artifact-backed content.
+  Classify control JSON by keys and explicit envelope structure; preserve ordinary
+  field-name mentions, documentation examples and fenced data followed by prose.
+- Attribute monitor phase timings to the actual response or its branch records.
+  Withhold uncorrelated times, retain separate wave spans and flag contradictory
+  timing evidence without changing artifact/Closure verdicts or historical reports.
+- Archive legacy root-level outputs before cleanup, verify protected copies before
+  moving runtime/history, preserve learning/reset archives during cache sweeps,
+  and distinguish planned, missing-target and failed-retention outcomes.
+- Serve the fixed Axios 1.20.0 browser dependency locally with its license and
+  provenance. Fonts and icons remain separate external dashboard dependencies.
+
+### Testing and maintainability
+
+- Exercise accepted file bindings, returned evidence, graph successors and artifact
+  lineage with bounded Hypothesis property and stateful campaigns. Retain reduced
+  counterexamples, independent reference models, positive controls and deterministic
+  regressions. Findings drove the evidence and successor corrections above;
+  these families do not constitute an exhaustive state-space or liveness proof.
+- Extract the initial Late Fill eligibility decision into a private helper while
+  preserving ordered state updates and the existing scheduling/execution owners.
+- Add bounded PCC conformance windows, structured quota stopping, resume and
+  compatible evidence composition. Provider quota-stop behavior still needs live
+  validation; Cloud and Cloud Pro evidence remain distinct.
+- Replace public test-guide links to private plans with self-contained operational
+  guidance, and check Markdown links against files actually selected for release.
+
+### Recorded validation and examples
+
+- Record the October 10 complete local and AFM live matrices: 170/170 cases each
+  on their recorded source. Subsequent response corrections have separate offline
+  validation; later source changes do not relabel those historical results.
+- Refresh all five public reference packages with October 10 executions, saved
+  artifacts, exact-frame monitor evidence and checksums. Their retained historical
+  phase timings carry the documented attribution limitation. See the
+  [validation report](docs/SELF_ATTACK_STATUS_2026-10-10.md) for scope and chronology.
+- Clarify collaboration guidance: the maintainer is open to contributions and
+  learning the review process, with limited capacity and no guaranteed turnaround.
+
 ## [0.1.5] - 2026-10-05
 
 Maintenance release for branch progress and additive dependency validation.

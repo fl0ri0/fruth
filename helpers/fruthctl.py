@@ -16,6 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener, urlopen
 
+from fruth_core.http_contract import action_headers
 from fruth_inference.reset_learning_state import reset_inference_learning_state
 from fruth_runtime.child_process_env import sanitized_child_process_env
 from fruth_services.graph_rebase import (
@@ -279,7 +280,7 @@ def _request(
     _recovery_attempted: bool = False,
 ) -> tuple[bytes, dict[str, str]]:
     url = _build_url(base_url, path, query=query)
-    request_headers = {'Accept': 'application/json'}
+    request_headers = {'Accept': 'application/json', **action_headers()}
     for key, value in (headers or {}).items():
         clean_key = str(key or '').strip()
         clean_value = str(value or '').strip()

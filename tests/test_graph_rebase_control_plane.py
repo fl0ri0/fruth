@@ -1,3 +1,4 @@
+from tests.http_client import api_client
 import copy
 import json
 from pathlib import Path
@@ -18,6 +19,7 @@ from fruth_services.response_frames import (
     load_latest_response_state,
     persist_response_frame,
 )
+from fruth_services.responses import request_intent_evidence_missing, request_intent_payload
 
 
 class GraphRebaseControlPlaneTests(unittest.TestCase):
@@ -34,7 +36,7 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
             'control-plane-test-operator'
         )
         fruth_webserver.app.config['TESTING'] = True
-        self.client = fruth_webserver.app.test_client()
+        self.client = api_client(fruth_webserver.app)
         self.expected = {
             'expected_response_id': 'resp-rebase-control',
             'expected_frame_id': 'frame-rebase-parent',
@@ -901,8 +903,16 @@ class GraphRebaseControlPlaneTests(unittest.TestCase):
         )
         self.assertEqual(
             mock_finalize.call_args.kwargs['request_payload'],
-            self.response_payload['request'],
+            {
+                **self.response_payload['request'],
+                '_request_intent': {
+                    'request': self.response_payload['request'],
+                    'available': False,
+                },
+            },
         )
+        self.assertTrue(request_intent_evidence_missing(mock_finalize.call_args.kwargs['request_payload']))
+        self.assertEqual(request_intent_payload(mock_finalize.call_args.kwargs['request_payload']), {})
 
     def test_stage_projects_durable_audit_only_successor(self):
         report = self._readiness_report(shadow_ready=True)
@@ -1361,10 +1371,18 @@ class PartialGraphRebaseDurableHandoffTests(unittest.TestCase):
         parent_observation['response_payload']['request']['request_meta'] = (
             copy.deepcopy(request_meta)
         )
+        # Canonical frame truth wins over a stale flat observation projection.
+        parent_observation['response_payload']['request']['prompt'] = (
+            'A stale projected root must not replace the canonical request.'
+        )
         expected_successor_request = {
             'prompt': self.root_prompt,
             'request_meta': request_meta,
             'reasoning_effort': 'off',
+            '_request_intent': {
+                'request': {'prompt': self.root_prompt, 'request_meta': request_meta},
+                'available': False,
+            },
         }
 
         def finalize(
@@ -1378,6 +1396,8 @@ class PartialGraphRebaseDurableHandoffTests(unittest.TestCase):
             events.append('finalize')
             self.assertTrue(persist)
             self.assertEqual(request_payload, expected_successor_request)
+            self.assertTrue(request_intent_evidence_missing(request_payload))
+            self.assertEqual(request_intent_payload(request_payload), {})
             self.assertEqual(expected_parent_frame_id, self.parent_frame_id)
             self.assertEqual(expected_parent_frame_sequence, 4)
             self.assertEqual(payload['frame_relation'], self.relation)
@@ -1558,6 +1578,10 @@ class PartialGraphRebaseDurableHandoffTests(unittest.TestCase):
         mock_schedule.assert_not_called()
 
     def test_durable_root_guard_drift_never_persists_or_schedules(self):
+        # Change the authoritative retained frame, not only its flat projection.
+        self.parent_payload['response_frame']['request']['prompt'] = (
+            'A different durable current root.'
+        )
         observation_state = self._parent_observation_state()
         observation_state['response_payload']['request']['prompt'] = (
             'A different durable current root.'

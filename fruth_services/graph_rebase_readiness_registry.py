@@ -19,7 +19,7 @@ from pathlib import Path
 import re
 import threading
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from fruth_services.events import causal_event, measure_operation
 from fruth_services.graph_rebase_rollout import (
@@ -33,6 +33,7 @@ from fruth_services.response_frames import (
     DEFAULT_RESPONSE_FRAMES_DIR,
     _index_path,
     load_latest_response_observation_state,
+    load_graph_rebase_readiness_observation_pass,
     _reuse_response_observation_if_current,
     _FinalizerMapProof,
     _select_graph_rebase_observation_response_ids,
@@ -1325,15 +1326,19 @@ def sync_graph_rebase_readiness_registry(
     expected_selected_count: int | None = None,
     expected_settled_count: int | None = None,
     expected_active_count: int | None = None,
+    progress: Optional[Callable[[str, int, int], None]] = None,
 ) -> dict[str, Any]:
     """Verify one epoch and optionally retain all of its settled observations."""
 
-    verified_epoch = verify_response_frame_epoch(
+    observation_pass = load_graph_rebase_readiness_observation_pass(
         frames_dir=frames_dir,
         ledger_name=ledger_name,
         index_name=index_name,
         allow_relocated=allow_relocated,
+        verify_epoch=True,
+        progress=progress,
     )
+    verified_epoch = observation_pass.get('verified_epoch') or {}
     base_result: dict[str, Any] = {
         'kind': 'fruth.graph_rebase_readiness_registry_sync',
         'runtime_effect': 'none',
@@ -1356,8 +1361,8 @@ def sync_graph_rebase_readiness_registry(
         'error_count': 0,
         'errors': [],
     }
-    if verified_epoch.get('ok') is not True:
-        base_result['errors'] = [verified_epoch.get('error') or _record_error(
+    if observation_pass.get('ok') is not True or verified_epoch.get('ok') is not True:
+        base_result['errors'] = [observation_pass.get('error') or _record_error(
             'readiness_epoch_verification_failed',
             'Response-frame epoch verification failed.',
         )]
@@ -1394,11 +1399,7 @@ def sync_graph_rebase_readiness_registry(
         if error:
             base_result['errors'].append(error)
 
-    index_state = verified_epoch.get('index_state')
-    selection = select_graph_rebase_observation_response_ids(
-        frames_dir=frames_dir,
-        index_state=index_state if isinstance(index_state, Mapping) else None,
-    )
+    selection = observation_pass['selection']
     base_result['selection'] = selection
     if int(selection.get('scan_error_count') or 0):
         base_result['scan_error_count'] = int(selection.get('scan_error_count') or 0)
@@ -1418,13 +1419,8 @@ def sync_graph_rebase_readiness_registry(
         if isinstance(verified_epoch.get('source_frame_sha256_by_response'), Mapping)
         else {}
     )
-    for response_id in selected_ids:
-        observed = load_latest_response_observation_state(
-            str(response_id),
-            frames_dir=frames_dir,
-            ledger_name=ledger_name,
-            index_state=index_state if isinstance(index_state, Mapping) else None,
-        )
+    for item in observation_pass['observations']:
+        response_id, observed = item['response_id'], item['state']
         if observed.get('ok') is not True:
             error = observed.get('error') if isinstance(observed.get('error'), Mapping) else {}
             base_result['errors'].append({
@@ -1546,6 +1542,19 @@ def sync_graph_rebase_readiness_registry(
     base_result['would_append_record_count'] = would_append
     base_result['registered_observation_count'] = already_present
     base_result['missing_settled_observation_count'] = would_append
+    # The private map is closed. Recheck its physical sources before publishing
+    # detached observations; same-byte replacement must invalidate this Epoch.
+    for source, path in (
+        ('ledger', Path(verified_epoch['ledger_path'])),
+        ('index', Path(verified_epoch['index_path'])),
+        ('selector', Path(frames_dir) / 'current_index.active.json'),
+    ):
+        if _file_state(path) != verified_epoch.get(f'{source}_file_state'):
+            base_result['errors'].append(_record_error(
+                'readiness_epoch_moved',
+                'Response-frame source changed before readiness retention.',
+                source=source,
+            ))
     base_result['error_count'] = len(base_result['errors'])
     if base_result['errors']:
         return base_result

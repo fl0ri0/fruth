@@ -1,4 +1,7 @@
+from tests.http_client import api_client
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from fruth_core.lifecycle import StartModelRequestError
@@ -8,7 +11,10 @@ from fruth_webserver import app
 class StartModelApiTests(unittest.TestCase):
     def setUp(self):
         app.config["TESTING"] = True
-        self.client = app.test_client()
+        self.client = api_client(app)
+        storage = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(patch('fruth_core.status._port_listening', return_value=True))
+        self.enterContext(patch('fruth_webserver.RUNTIME_STATUS_PATH', Path(storage) / 'status.json'))
 
     @patch("fruth_webserver.start_instance")
     def test_start_chat_model(self, mock_start_instance):

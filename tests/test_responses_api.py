@@ -1,3 +1,4 @@
+from tests.http_client import api_client
 import copy
 import io
 import hashlib
@@ -500,6 +501,8 @@ class ResponsesApiTests(unittest.TestCase):
             return read_chat_history(instance_id, *args, **kwargs)
 
         self._runtime_patchers = [
+            patch('fruth_core.status._port_listening', return_value=True),
+            patch('fruth_webserver._schedule_post_response_substrate_hygiene'),
             # Scenario fixtures supply available instances; advisory host probes
             # must not contact installed backends during this offline API suite.
             patch("fruth_core.backend_fabric._build_probe_map", return_value={}),
@@ -525,7 +528,7 @@ class ResponsesApiTests(unittest.TestCase):
         ]
         for patcher in self._runtime_patchers:
             patcher.start()
-        self.client = app.test_client()
+        self.client = api_client(app)
         _RESPONSE_LOOKUP.clear()
         _RESPONSE_LATE_FILL_IN_FLIGHT.clear()
 
@@ -1398,7 +1401,7 @@ class ResponsesApiTests(unittest.TestCase):
                 self.assertIn('event.source!==frame.contentWindow', wrapper_html)
                 wrapper_csp = preview_response.headers.get("Content-Security-Policy", "")
                 self.assertIn(
-                    "frame-src http://localhost/api/preview_saved_artifact_assets/",
+                    "frame-src http://127.0.0.1:5011/api/preview_saved_artifact_assets/",
                     wrapper_csp,
                 )
                 self.assertNotIn("frame-src 'self'", wrapper_csp)

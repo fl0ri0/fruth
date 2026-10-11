@@ -118,6 +118,16 @@ pass, thread, process, Epoch or Registry operation. Per-response row/frame/seque
 bounded CAS evidence and eligibility checks remain independent. This does not
 change the Readiness timeout or create a global cache.
 
+Explicit archive/retention sync uses that same private pass with a full Epoch
+audit acquired inside the response-frame owner. The complete Ledger/Index map is
+verified once per stable pass, including relocated source validation; individual
+observations retain their exact row and CAS checks. Index, Ledger and selector
+physical identities are checked around reuse, and movement causes the same bounded
+fresh restart. Only detached Epoch provenance and bounded observations leave the
+closed pass. Before registry publication, sync checks those physical identities
+again. This does not accept a caller-supplied map as proof or persist a reusable
+verification token.
+
 Finalizer registration has a separate closed private owner in the Readiness
 Registry module. It acquires its own fully verified Epoch, performs the first
 selection complete-map proof, and borrows that exact private map only into the

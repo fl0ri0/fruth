@@ -1,3 +1,4 @@
+from tests.http_client import api_client
 import json
 import tempfile
 import unittest
@@ -10,7 +11,7 @@ from fruth_webserver import app
 class RuntimeStatusApiTests(unittest.TestCase):
     def setUp(self):
         app.config["TESTING"] = True
-        self.client = app.test_client()
+        self.client = api_client(app)
         self.enterContext(patch("fruth_webserver._external_targets_payload", return_value=[]))
 
     @patch("fruth_webserver.merge_instances_with_runtime_status")

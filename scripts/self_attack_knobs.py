@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 from itertools import combinations, product
 from pathlib import Path
 import random
@@ -72,13 +73,41 @@ def discover_knobs(root: Path) -> dict:
                                  disposition='inventory_only',
                                  reason='No reviewed finite diagnostic setter; not changed.'))
     diagnostic_sources = [root / 'scripts' / name for name in
-                          ('fruth_self_attack.py', 'self_attack_checks.py', 'self_attack_knobs.py', 'run_graph_rebase_shadow_corpus.py')]
+                          ('fruth_self_attack.py', 'self_attack_checks.py', 'self_attack_knobs.py',
+                           'self_attack_windows.py', 'self_attack_monitor.py', 'run_graph_rebase_shadow_corpus.py')
+                          if (root / 'scripts' / name).is_file()]
     diagnostic_sources += list((root / 'tests/fake_backends').glob('*.py'))
     files = {str(p.relative_to(root)): stable_digest(p.read_text(encoding='utf-8')) for p in paths + diagnostic_sources}
+    # Include runtime prompt/config/static inputs in the fresh fake gate. Older
+    # campaigns lack this inventory and need an explicit verified source receipt.
+    from scripts.build_release_archive import discover_release_files
+    selected = discover_release_files(root)
+    diagnostic_inputs = {'config/self_attack_corpus.json', 'config/graph_rebase_shadow_corpus.json'}
+    runtime_inputs = {p.as_posix(): hashlib.sha256(src.read_bytes()).hexdigest()
+                      for p, src in selected.items()
+                      if p.as_posix() not in diagnostic_inputs and (p.parts[0] in {'fruth_core', 'fruth_inference', 'fruth_integrations', 'fruth_runtime',
+                                        'fruth_server', 'fruth_services', 'helpers', 'static', 'config'}
+                      or p.as_posix() in {'fruth', 'fruth_webserver.py', 'fruth_webUI.html', 'FRUTH_INFERENCE.md'})}
+    for name, digest in runtime_inputs.items():
+        if not name.endswith('.py'):
+            files[name] = digest
+    files.update({name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in diagnostic_inputs})
     return dict(controls=controls, semantic_roles=build_semantic_role_catalog(),
                 advisory_surfaces=['controlled_attention_review', 'aspiration_review',
                                    'commitment_review', 'semantic_decision_review'],
-                source_digest=stable_digest(files), source_files=files)
+                source_digest=stable_digest(files), source_files=files,
+                runtime_source_digest=stable_digest(runtime_inputs), runtime_inputs=runtime_inputs,
+                diagnostic_source_digest=stable_digest({k: v for k, v in files.items()
+                                                       if k.startswith(('scripts/', 'tests/')) or k in diagnostic_inputs}))
+
+
+def select_profiles(profiles, identifiers):
+    """Stable catalog order, independent of command-line selector order."""
+    requested = set(identifiers)
+    unknown = requested - {p['id'] for p in profiles}
+    if unknown:
+        raise CorpusError(f'Unknown profile IDs: {sorted(unknown)}')
+    return [p for p in profiles if p['id'] in requested] if requested else profiles
 
 
 def build_profiles(inventory: dict, *, live=False, seed=0, pairwise=False) -> list[dict]:

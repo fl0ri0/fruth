@@ -1283,6 +1283,43 @@ class InferenceServiceTests(unittest.TestCase):
             '<!doctype html><h1 style="color: red">Signal Garden</h1>',
         )
 
+    def test_provider_format_metadata_preserves_explicit_txt_bindings(self):
+        content_forms = (
+            '```markdown\n# The permitted sentence.\n```',
+            '<artifact identifier="takeover.md" type="text/markdown">'
+            '# The permitted sentence.</artifact>',
+            '{"output_obligations":[{"filename":"takeover.md",'
+            '"target_path":"/tmp/unapproved.md","required_output_counts":{"text":9},'
+            '"content_payload":"# The permitted sentence."}]}',
+        )
+        requests = (
+            {'extension': 'txt', 'source_name': 'allowed', 'source': 'explicit_extension'},
+            {'extension': 'txt', 'source_name': 'generated-text', 'source': 'structured_text_artifact_contract'},
+            {'extension': 'txt', 'source_name': 'allowed', 'source': 'selected_source_edit',
+             'target_path': '/tmp/allowed.txt'},
+        )
+        for request in requests:
+            for content in content_forms:
+                with self.subTest(request=request, content=content):
+                    before = dict(request)
+                    payloads = extract_text_artifact_payloads(content, [request])
+                    self.assertEqual(len(payloads), 1)
+                    saved_request = payloads[0]['artifact_request']
+                    for key in ('extension', 'source_name', 'target_path'):
+                        self.assertEqual(saved_request.get(key), before.get(key))
+                    self.assertEqual(payloads[0]['content'], '# The permitted sentence.')
+                    self.assertEqual(request, before)
+
+    def test_bounded_generic_save_retains_provider_format_derivation(self):
+        request = detect_text_artifact_request('Create a short note and save the result as a file.')
+        self.assertTrue(inference_service.text_artifact_request_is_generic(request))
+        content = '<artifact identifier="note.md" type="text/markdown"># A short note.</artifact>'
+        payloads = extract_text_artifact_payloads(content, [request])
+        self.assertEqual(len(payloads), 1)
+        self.assertEqual(payloads[0]['artifact_request']['extension'], 'md')
+        self.assertEqual(payloads[0]['artifact_request']['source_name'], 'note')
+        self.assertEqual(payloads[0]['content'], '# A short note.')
+
     def test_extract_text_artifact_payloads_maps_multiple_matching_code_blocks(self):
         requests = detect_text_artifact_requests(
             'Create an HTML artifact for a landing page and a CSS artifact for its styles.'

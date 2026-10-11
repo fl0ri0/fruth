@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import mimetypes
 import re
 import uuid
+from copy import deepcopy
+from dataclasses import dataclass
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
 from fruth_services.artifact_contracts import (
     artifact_is_current_authoritative,
+    artifact_record_path,
     artifact_logical_identity,
     artifact_logical_identities_match,
     select_authoritative_artifact_records,
     sanitize_artifact_record,
+    text_artifact_output_declaration,
+    text_artifact_same_output,
 )
 from fruth_services.redraw_scope import (
     apply_artifact_identity_to_outputs,
@@ -35,6 +41,84 @@ _SEMANTIC_PHASE_PAYLOAD_KEYS = (
     'batch_prompt_source_phase_id',
     'batch_prompt_expected_count',
 )
+
+
+@dataclass(frozen=True, repr=False)
+class _CapturedRequestIntent(dict):
+    """In-process request evidence, never accepted from JSON or planner fields."""
+
+    request: dict
+    available: bool = True
+
+    def __post_init__(self) -> None:
+        # Diagnostic JSON may describe the capture, but decoding produces an
+        # ordinary dict and deliberately loses the in-process authority type.
+        dict.__init__(self, request=self.request, available=self.available)
+
+
+def has_captured_request_intent(payload: Mapping) -> bool:
+    return isinstance(payload.get('_request_intent'), _CapturedRequestIntent)
+
+
+def request_intent_evidence_missing(payload: Mapping) -> bool:
+    intent = payload.get('_request_intent')
+    return isinstance(intent, _CapturedRequestIntent) and not intent.available
+
+
+def capture_request_intent(payload: Mapping) -> dict:
+    """Capture once, before preparation; repeated internal retries retain it."""
+    captured = dict(payload)
+    if not has_captured_request_intent(captured):
+        original = deepcopy({key: value for key, value in captured.items()
+                             if key not in {'_request_intent', '_current_turn_prompt',
+                                            '_prompt_hint', 'intent_source', 'execution_prompt'}})
+        captured['_request_intent'] = _CapturedRequestIntent(original)
+    return captured
+
+
+def request_intent_payload(payload: Mapping) -> dict:
+    """Return caller scope for admission, separately from execution payload."""
+    intent = payload.get('_request_intent')
+    if isinstance(intent, _CapturedRequestIntent):
+        return deepcopy(intent.request) if intent.available else {}
+    return dict(payload)
+
+
+def request_intent_frame_source(payload: Mapping) -> dict:
+    """Canonical request evidence; an unavailable legacy capture stays legacy."""
+    intent = payload.get('_request_intent')
+    if not isinstance(intent, _CapturedRequestIntent):
+        return {key: value for key, value in payload.items()
+                if key not in {'_request_intent', 'intent_source', 'execution_prompt'}}
+    source = deepcopy(intent.request)
+    # Preserve the existing final request-control/route audit projections.
+    # They do not replace captured prompt, references or native output scope.
+    for key in ('request_meta', 'inference_preview'):
+        if isinstance(payload.get(key), Mapping):
+            source[key] = deepcopy(payload[key])
+    if intent.available:
+        source['intent_source'] = 'runtime_caller_capture_v1'
+        execution_prompt = extract_responses_prompt(dict(payload))
+        if execution_prompt != extract_responses_prompt(source):
+            source['execution_prompt'] = execution_prompt
+    return source
+
+
+def restore_request_intent(frame_request: Mapping) -> dict:
+    """Only canonical frame owners may call this, never public request intake.
+
+    Historical effective prompts cannot prove original caller intent. Such frames
+    retain their request for audit and existing branch-local continuation, but
+    cannot supply authority for root reconstruction or root-prompt fallback.
+    """
+    restored = dict(frame_request)
+    available = restored.get('intent_source') == 'runtime_caller_capture_v1'
+    original = deepcopy({key: value for key, value in restored.items()
+                         if key not in {'_request_intent', 'intent_source', 'execution_prompt'}})
+    restored['_request_intent'] = _CapturedRequestIntent(original, available=available)
+    if available and isinstance(restored.get('execution_prompt'), str):
+        restored['prompt'] = restored['execution_prompt']
+    return restored
 
 _INTERNAL_TEXT_ARTIFACT_INSTRUCTION_MARKERS = (
     'Target text artifact:',
@@ -241,6 +325,81 @@ def _truth_guard_requires_clarification(payload: Mapping[str, Any]) -> bool:
         'clarification_required',
         'repair_required',
     }
+
+
+def truth_guard_text_projection(
+    payload: Mapping[str, Any], source_text: str, corrected_text: str,
+) -> dict[str, Any]:
+    """Bind a correction to the selected public text owner, never a sibling."""
+    outputs = payload.get('outputs') if isinstance(payload.get('outputs'), list) else []
+    for item in reversed(outputs):
+        if not isinstance(item, Mapping):
+            continue
+        value = str(item.get('value') or '').strip()
+        if (item.get('type') not in {'text', 'document'}
+                or item.get('status') not in {'completed', 'fulfilled'} or not value
+                or _artifact_ref_token(item) or _output_item_is_internal_materialization(item)
+                or _looks_like_internal_public_text(value)):
+            continue
+        identity = {key: str(item[key]) for key in ('slot_id', 'branch_id', 'phase_id') if item.get(key)}
+        if value != source_text.strip() or not identity:
+            return {}
+        return {
+            'output_identity': identity,
+            'source_sha256': hashlib.sha256(source_text.strip().encode('utf-8')).hexdigest(),
+            'corrected_sha256': hashlib.sha256(corrected_text.strip().encode('utf-8')).hexdigest(),
+        }
+    return {}
+
+
+def project_truth_guard_text(
+    payload: Mapping[str, Any], records: Any,
+) -> Any:
+    """Correct only stale mirrors of the guarded output; retain later results."""
+    runtime = payload.get('runtime') if isinstance(payload.get('runtime'), Mapping) else {}
+    guard = runtime.get('truth_guard') if isinstance(runtime.get('truth_guard'), Mapping) else {}
+    projection = guard.get('text_projection') if isinstance(guard.get('text_projection'), Mapping) else {}
+    identity = projection.get('output_identity')
+    if (not isinstance(records, list) or guard.get('kind') != 'local_artifact_claims'
+            or guard.get('status') not in {'rewritten', 'annotated'}
+            or not isinstance(identity, Mapping) or not identity):
+        return records
+
+    def matches(record):
+        primary = next((key for key in ('slot_id', 'branch_id', 'phase_id') if identity.get(key)), None)
+        if primary is None or str(record.get(primary) or '') != str(identity[primary]):
+            return False
+        for key in ('slot_id', 'branch_id', 'phase_id'):
+            if identity.get(key) and record.get(key):
+                if str(identity[key]) != str(record[key]):
+                    return False
+        return True
+
+    def digest(text):
+        return hashlib.sha256(str(text or '').strip().encode('utf-8')).hexdigest()
+
+    candidates = [payload.get('output_text')]
+    outputs = payload.get('outputs') if isinstance(payload.get('outputs'), list) else []
+    candidates.extend(item.get('value') for item in outputs
+                      if isinstance(item, Mapping) and matches(item))
+    corrected = next((str(text).strip() for text in candidates if text
+                      and digest(text) == projection.get('corrected_sha256')), None)
+    if corrected is None:
+        return records
+    result = []
+    for record in records:
+        if (not isinstance(record, Mapping) or not matches(record)
+                or str(record.get('type') or record.get('output_type') or '') not in {'text', 'document'}
+                or any(record.get(key) for key in ('artifact_ref', 'artifact_path', 'path',
+                                                   'saved_text_path', 'file_path'))):
+            result.append(record)
+            continue
+        updated = dict(record)
+        for key in ('value', 'content_payload', 'content', 'text', 'output_text', 'result_text', 'transcript'):
+            if isinstance(record.get(key), str) and digest(record[key]) == projection.get('source_sha256'):
+                updated[key] = corrected
+        result.append(updated)
+    return result
 
 
 def response_item_is_internal_control_work(item: Mapping[str, Any]) -> bool:
@@ -657,6 +816,7 @@ def select_public_output_text(
     or '').strip()
     if _truth_guard_requires_clarification(response_payload):
         return fallback if not _looks_like_internal_public_text(fallback) else ''
+    outputs = project_truth_guard_text(response_payload, outputs)
     if isinstance(outputs, list):
         for item in reversed(outputs):
             if not isinstance(item, Mapping):
@@ -780,6 +940,7 @@ def extract_responses_messages(payload: dict) -> list[dict]:
 
 
 def extract_responses_current_turn_prompt(payload: dict) -> str:
+    payload = request_intent_payload(payload)
     messages = extract_responses_messages(payload)
     for item in reversed(messages):
         role = str(item.get('role') or '').strip().lower()
@@ -1407,6 +1568,8 @@ def filter_public_response_artifacts(
 
     response_payload = payload if isinstance(payload, Mapping) else {}
     normalized_artifacts = [dict(item) for item in artifacts if isinstance(item, Mapping)] if isinstance(artifacts, list) else []
+    normalized_artifacts = [artifact for artifact in normalized_artifacts
+                            if output_artifact_is_qualified(response_payload, artifact)]
     normalized_outputs = [item for item in outputs if isinstance(item, Mapping)] if isinstance(outputs, list) else []
     if not normalized_outputs and isinstance(response_payload.get('outputs'), list):
         normalized_outputs = [
@@ -1492,6 +1655,136 @@ def _group_artifacts_for_outputs(artifacts: Any) -> tuple[dict[str, dict[str, An
         if artifact_type:
             by_type_and_batch.setdefault((artifact_type, normalized_batch_index), []).append(artifact)
     return by_ref, by_type_and_batch
+
+
+def _artifact_bindings_agree(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    return not any(
+        str(left.get(key) or '').strip()
+        and str(right.get(key) or '').strip()
+        and str(left[key]).strip() != str(right[key]).strip()
+        for key in ('branch_id', 'phase_id', 'slot_id', 'obligation_id', 'provenance_id')
+    )
+
+
+def output_artifact_is_qualified(
+    payload: Mapping[str, Any], artifact: Mapping[str, Any], *, slot: Optional[Mapping[str, Any]] = None,
+) -> bool:
+    """Qualify Late Fill images against their accepted result before selection.
+
+    This does not authorize reuse. Accepted results come from the existing
+    execution/reuse gates; direct outputs and other modalities keep their owners.
+    An explicit ref, matching labels or saved bytes cannot replace that result.
+    """
+    from fruth_services.response_frames import _artifact_projection_type, _artifact_type_aliases
+    if 'image' not in _artifact_type_aliases(_artifact_projection_type(artifact)):
+        return True
+    late = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
+    # A bounded lookup may overlay a branch summary on the same frozen frame.
+    # Qualify from that frame's accepted results, never from its output refs.
+    projection = payload.get('wire_projection') if isinstance(payload.get('wire_projection'), Mapping) else {}
+    frame = payload.get('response_frame') if isinstance(payload.get('response_frame'), Mapping) else {}
+    frame_late = frame.get('late_fill') if isinstance(frame.get('late_fill'), Mapping) else {}
+    snapshot = frame_late.get('full_snapshot_ref') if isinstance(frame_late.get('full_snapshot_ref'), Mapping) else {}
+    if (projection.get('live_state_overlay') == 'same_frozen_frame_bounded_status_late_fill_surface_only'
+            and not late.get('fill_results') and frame_late.get('fill_results')):
+        from fruth_services.response_frames import _safe_path_token
+        if (frame.get('response_id') != payload.get('id')
+                or snapshot.get('source_response_id') != payload.get('id')
+                or snapshot.get('source_frame_id') != _safe_path_token(frame.get('frame_id'))):
+            return False
+        late = frame_late
+    records = [record for key in ('fill_results', 'completed_branches', 'pending_branches', 'active_branches')
+               for record in (late.get(key) or []) if isinstance(record, Mapping)]
+    image_records = [record for record in records if record.get('saved_image_path')
+                     or str(record.get('output_type') or record.get('type') or '').lower() == 'image'
+                     or record.get('capability') == 'image_generation']
+    if not image_records:
+        return True
+    result_records = [record for record in (late.get('fill_results') or [])
+                      if isinstance(record, Mapping) and record.get('saved_image_path')]
+    # A completed-branch summary cannot override its actual execution result.
+    result_records += [record for record in (late.get('completed_branches') or [])
+                       if isinstance(record, Mapping) and record.get('saved_image_path')
+                       and not any(str(result.get('branch_id') or result.get('phase_id') or '')
+                                   == str(record.get('branch_id') or record.get('phase_id') or '')
+                                   for result in result_records)]
+    if not result_records and not any(record.get('obligation_id') for record in image_records):
+        # Older completed-result projections did not carry artifact paths or
+        # obligation identities. Keep their established unbound/batch contract;
+        # explicit foreign or conflicting bindings do not acquire that fallback.
+        completed = [record for record in (late.get('completed_branches') or [])
+                     if isinstance(record, Mapping) and record in image_records]
+        source = str(artifact.get('source_response_id') or artifact.get('response_id') or '').strip()
+        if (artifact.get('obligation_id') and artifact_record_path(artifact)) or (
+            source and source != str(payload.get('id') or '')
+        ):
+            return False
+        binding = slot if slot is not None else artifact
+        owner = str(binding.get('branch_id') or binding.get('phase_id') or '').strip()
+        return bool(completed) and (not owner or any(
+            owner == str(record.get('branch_id') or record.get('phase_id') or '').strip()
+            and _artifact_bindings_agree(record, binding) and _artifact_bindings_agree(record, artifact)
+            for record in completed))
+    binding = slot if slot is not None else artifact
+    owner = str(binding.get('branch_id') or binding.get('phase_id') or '').strip()
+    owned = [record for record in image_records
+             if owner and owner == str(record.get('branch_id') or record.get('phase_id') or '').strip()]
+    path = artifact_record_path(artifact)
+    if slot is not None and not owned:
+        return _artifact_bindings_agree(artifact, slot)
+    if not owned and not any(artifact_record_path(record) == path for record in result_records):
+        # An independent direct root image retains its existing construction.
+        return not owner and bool(path and path == payload.get('saved_image_path'))
+    if owned:
+        accepted_identities = {(str(Path(artifact_record_path(result)).expanduser().resolve()),
+                                _artifact_ref_token(result), str(result.get('artifact_id') or ''),
+                                str(result.get('provenance_id') or ''),
+                                str(result.get('source_response_id') or result.get('response_id') or payload.get('id') or ''))
+                               for result in result_records
+                               if str(result.get('branch_id') or result.get('phase_id') or '').strip() == owner
+                               and _status_token(result.get('status')) not in _NON_PUBLIC_OUTPUT_STATUSES
+                               and _artifact_bindings_agree(result, binding)
+                               and all(_artifact_bindings_agree(result, contract) for contract in owned)
+                               and artifact_is_current_authoritative(
+                                   {**result, 'source_response_id': result.get('source_response_id')
+                                    or result.get('response_id') or payload.get('id')},
+                                   response_id=str(payload.get('id') or ''))}
+        if len(accepted_identities) != 1:
+            return False
+    for result in result_records:
+        if owned and str(result.get('branch_id') or result.get('phase_id') or '').strip() != owner:
+            continue
+        if not _artifact_bindings_agree(result, binding):
+            continue
+        if any(not _artifact_bindings_agree(result, contract) for contract in owned):
+            continue
+        if _status_token(result.get('status')) in _NON_PUBLIC_OUTPUT_STATUSES:
+            continue
+        if not artifact_is_current_authoritative(
+            {**result, 'source_response_id': result.get('source_response_id')
+             or result.get('response_id') or payload.get('id')}, response_id=str(payload.get('id') or ''),
+        ):
+            continue
+        result_path = artifact_record_path(result)
+        if not path or not result_path:
+            continue
+        candidate_path = Path(path).expanduser().resolve()
+        accepted_path = Path(result_path).expanduser().resolve()
+        if candidate_path != accepted_path:
+            continue
+        if not _artifact_bindings_agree(artifact, result):
+            continue
+        expected_source = str(result.get('source_response_id') or payload.get('id') or '').strip()
+        source = str(artifact.get('source_response_id') or artifact.get('response_id') or '').strip()
+        if source and expected_source and source != expected_source:
+            continue
+        accepted_ref, candidate_ref = _artifact_ref_token(result), _artifact_ref_token(artifact)
+        if accepted_ref and candidate_ref and accepted_ref != candidate_ref:
+            continue
+        if result.get('artifact_id') and artifact.get('artifact_id') and result['artifact_id'] != artifact['artifact_id']:
+            continue
+        return True
+    return False
 
 
 def _normalize_slot_batch_index(value: Any) -> Optional[int]:
@@ -1590,9 +1883,13 @@ def _assign_output_artifacts_from_slots(
     artifacts: Any,
     *,
     output_branches: Any = None,
+    response_payload: Optional[Mapping[str, Any]] = None,
 ) -> list[dict[str, Any]]:
     normalized_slots = output_slots if isinstance(output_slots, list) else []
     normalized_output_branches = output_branches if isinstance(output_branches, list) else []
+    if response_payload is not None and isinstance(artifacts, list):
+        artifacts = [artifact for artifact in artifacts if isinstance(artifact, Mapping)
+                     and output_artifact_is_qualified(response_payload, artifact)]
     artifacts_by_ref, artifacts_by_type_and_batch = _group_artifacts_for_outputs(artifacts)
     artifacts_by_branch_and_type: dict[tuple[str, str], list[dict[str, Any]]] = {}
     if isinstance(artifacts, list):
@@ -1621,9 +1918,23 @@ def _assign_output_artifacts_from_slots(
         slot_artifacts: list[dict[str, Any]] = []
         explicit_ref = str(slot.get('artifact_ref') or '').strip()
         slot_type = str(slot.get('type') or '').strip().lower()
+        if slot_type == 'image' and response_payload is not None:
+            candidates = [artifact for artifact in artifacts_by_ref.values()
+                          if artifact.get('type') == 'image' and output_artifact_is_qualified(
+                              response_payload, artifact, slot=slot)]
+            owned = [artifact for artifact in candidates if any(
+                slot.get(key) and artifact.get(key) == slot.get(key)
+                for key in ('branch_id', 'phase_id'))]
+            if owned:
+                identities = {(_artifact_ref_value(artifact), artifact_record_path(artifact)) for artifact in owned}
+                if len(identities) != 1:
+                    return []
+            artifacts_for_slot = {_artifact_ref_value(artifact): artifact for artifact in candidates}
+        else:
+            artifacts_for_slot = artifacts_by_ref
         missing_explicit_text_ref = False
         if explicit_ref:
-            artifact = artifacts_by_ref.get(explicit_ref)
+            artifact = artifacts_for_slot.get(explicit_ref)
             if artifact and explicit_ref not in assigned_refs:
                 assigned_refs.add(explicit_ref)
                 slot_artifacts.append(artifact)
@@ -1641,6 +1952,8 @@ def _assign_output_artifacts_from_slots(
                 while candidates:
                     artifact = candidates.pop(0)
                     artifact_ref = _artifact_ref_value(artifact)
+                    if artifact_ref not in artifacts_for_slot:
+                        continue
                     if artifact_ref and artifact_ref in assigned_refs:
                         continue
                     if artifact_ref:
@@ -1660,6 +1973,8 @@ def _assign_output_artifacts_from_slots(
             while candidates:
                 artifact = candidates.pop(0)
                 artifact_ref = _artifact_ref_value(artifact)
+                if artifact_ref not in artifacts_for_slot:
+                    continue
                 if artifact_ref and artifact_ref in assigned_refs:
                     continue
                 if artifact_ref:
@@ -1793,6 +2108,13 @@ def _assign_output_artifacts_from_slots(
             canonical_artifact_ref = _artifact_ref_value(slot_artifacts[0])
             if canonical_artifact_ref:
                 payload['artifact_ref'] = canonical_artifact_ref
+        elif payload.get('type') == 'image' and response_payload is not None and not output_artifact_is_qualified(
+            response_payload, {**assignment_slot, 'type': 'image'}, slot=assignment_slot,
+        ):
+            payload.pop('artifact_ref', None)
+            if payload.get('status') in {'fulfilled', 'completed'}:
+                payload.update(status='pending', lifecycle='unresolved_output',
+                               blocked_reason='accepted_image_evidence_unresolved')
         outputs.append(
             {
                 key: value
@@ -1956,10 +2278,13 @@ def build_canonical_outputs(
     ]
     normalized_slots = public_slots
     normalized_artifacts = artifacts if isinstance(artifacts, list) else []
+    normalized_artifacts = [artifact for artifact in normalized_artifacts if isinstance(artifact, Mapping)
+                            and output_artifact_is_qualified(response_payload, artifact)]
     outputs = _assign_output_artifacts_from_slots(
         normalized_slots,
         normalized_artifacts,
         output_branches=output_branches,
+        response_payload=response_payload,
     )
     if outputs:
         for raw_slot, output in zip(normalized_slots, outputs):
@@ -1995,7 +2320,7 @@ def build_canonical_outputs(
         outputs = _hydrate_artifact_backed_text_output_values(outputs, normalized_artifacts)
         outputs = _suppress_provisional_artifact_bundle_text_outputs(outputs)
         outputs = _suppress_consumed_evidence_text_outputs(response_payload, outputs)
-        return outputs
+        return project_truth_guard_text(response_payload, outputs)
     fallback_text = str(response_payload.get('content_payload') or response_payload.get('output_text') or '').strip()
     if _looks_like_internal_public_text(fallback_text):
         fallback_text = ''
@@ -2137,12 +2462,14 @@ def hoist_response_output_surfaces(payload: Mapping[str, Any]) -> dict[str, Any]
     ] if isinstance(response_payload.get('output_slots'), list) else []
     output_slots = payload_output_slots or frame_output_slots
     work_tree = planning.get('work_tree') if isinstance(planning.get('work_tree'), Mapping) else {}
-    artifacts = response_payload.get('artifacts') if isinstance(response_payload.get('artifacts'), list) else []
-    canonical_artifacts = build_canonical_response_artifacts(response_payload)
+    artifacts = [artifact for artifact in (response_payload.get('artifacts') or [])
+                 if isinstance(artifact, Mapping) and output_artifact_is_qualified(response_payload, artifact)]
+    canonical_artifacts = [artifact for artifact in build_canonical_response_artifacts(response_payload)
+                           if output_artifact_is_qualified(response_payload, artifact)]
     if canonical_artifacts:
         artifacts = merge_canonical_response_artifacts(artifacts, canonical_artifacts)
-        if artifacts != response_payload.get('artifacts'):
-            response_payload['artifacts'] = artifacts
+    if artifacts != response_payload.get('artifacts'):
+        response_payload['artifacts'] = artifacts
     if output_slots:
         response_payload['output_slots'] = output_slots
         response_payload['output_branches'] = build_public_output_branches_from_slots(output_slots)
@@ -2182,6 +2509,17 @@ def hoist_response_output_surfaces(payload: Mapping[str, Any]) -> dict[str, Any]
             output_branches=output_branches,
         )
     )
+    for output in outputs:
+        if output.get('type') == 'image' and not any(
+            _artifact_ref_token(artifact) == _artifact_ref_token(output)
+            and output_artifact_is_qualified(response_payload, artifact, slot=output)
+            for artifact in artifacts
+        ) and not output_artifact_is_qualified(response_payload, {**output, 'type': 'image'}, slot=output):
+            for key in ('artifact_ref', 'path', 'saved_image_path'):
+                output.pop(key, None)
+            if output.get('status') in {'fulfilled', 'completed'}:
+                output.update(status='pending', lifecycle='unresolved_output',
+                              blocked_reason='accepted_image_evidence_unresolved')
     if outputs and existing_outputs:
         existing_by_token: dict[str, Mapping[str, Any]] = {}
         for item in existing_outputs:
@@ -2201,6 +2539,11 @@ def hoist_response_output_surfaces(payload: Mapping[str, Any]) -> dict[str, Any]
                     existing = existing_by_token[token]
                     break
             if not existing:
+                continue
+            if output.get('type') == 'image' and (
+                output.get('blocked_reason') == 'accepted_image_evidence_unresolved'
+                or not output_artifact_is_qualified(response_payload, {**existing, 'type': 'image'}, slot=output)
+            ):
                 continue
             for key in ('value', 'artifact_ref', 'path', 'saved_image_path', 'saved_audio_path', 'saved_text_path'):
                 if output.get(key) in (None, '', [], {}) and existing.get(key) not in (None, '', [], {}):
@@ -2232,6 +2575,7 @@ def hoist_response_output_surfaces(payload: Mapping[str, Any]) -> dict[str, Any]
         artifact_identity=identity,
         canonical_artifacts=identity['artifacts'],
     )
+    outputs = project_truth_guard_text(response_payload, outputs)
     if outputs:
         response_payload['outputs'] = outputs
     else:
@@ -2412,7 +2756,23 @@ def _iter_saved_text_artifact_sources(payload: Mapping[str, Any]) -> Iterator[di
         path = str(raw_path or '').strip()
         if not path:
             return None
-        source_payload = source if isinstance(source, Mapping) else {}
+        source_payload = dict(source) if isinstance(source, Mapping) else {}
+        declaration = text_artifact_output_declaration(
+            source_payload, input_attachment_digest=response_level,
+        )
+        declaration = {
+            'type': 'text', 'path': path, 'origin': 'assistant_output',
+            'source_response_id': response_payload.get('id'), **declaration,
+        }
+        declarations = [{
+            'type': 'text', 'path': path, 'origin': source_payload.get('origin') or 'assistant_output',
+            'source_response_id': source_payload.get('source_response_id') or response_payload.get('id'),
+            'phase_id': source_payload.get('phase_id'), **deepcopy(item),
+        } for item in source_payload.get('text_artifact_output_declarations') or []
+            if isinstance(item, Mapping)]
+        if declaration not in declarations:
+            declarations.append(declaration)
+        source_payload['text_artifact_output_declarations'] = declarations
         request_payload = {}
         for key in ('text_artifact_request', 'artifact_request'):
             value = source_payload.get(key)
@@ -2433,8 +2793,7 @@ def _iter_saved_text_artifact_sources(payload: Mapping[str, Any]) -> Iterator[di
             'response_level': response_level,
         }
 
-    source_order: list[str] = []
-    sources_by_path: dict[str, dict[str, Any]] = {}
+    sources: list[dict[str, Any]] = []
 
     def has_runtime_binding(source: Mapping[str, Any]) -> bool:
         source_payload = source.get('source') if isinstance(source.get('source'), Mapping) else {}
@@ -2460,16 +2819,28 @@ def _iter_saved_text_artifact_sources(payload: Mapping[str, Any]) -> Iterator[di
         path = str(source.get('path') or '').strip()
         if not path:
             return
-        existing = sources_by_path.get(path)
+        existing = next((item for item in sources if text_artifact_same_output(
+            {'type': 'text', 'path': item['path'], 'origin': 'assistant_output',
+             'source_response_id': response_payload.get('id'), **item['source']},
+            {'type': 'text', 'path': path, 'origin': 'assistant_output',
+             'source_response_id': response_payload.get('id'), **source['source']},
+            response_id=str(response_payload.get('id') or ''),
+        )), None)
         if existing is None:
-            source_order.append(path)
-            sources_by_path[path] = source
+            sources.append(source)
             return
+        declarations = deepcopy(existing['source']['text_artifact_output_declarations'])
+        for declaration in source['source']['text_artifact_output_declarations']:
+            if declaration not in declarations:
+                declarations.append(declaration)
+        rejected_evidence = next((item['source'].get('text_artifact_saved_evidence')
+            for item in (existing, source)
+            if (item['source'].get('text_artifact_saved_evidence') or {}).get('status') == 'rejected'), None)
         if source_priority(source) > source_priority(existing):
-            upgraded = dict(existing)
-            upgraded.update({key: value for key, value in source.items() if value not in (None, '', [], {})})
-            sources_by_path[path] = upgraded
-            return
+            existing.update({key: value for key, value in source.items() if value not in (None, '', [], {})})
+        existing['source']['text_artifact_output_declarations'] = declarations
+        if rejected_evidence:
+            existing['source']['text_artifact_saved_evidence'] = deepcopy(rejected_evidence)
         for key in ('source_name', 'prompt'):
             if existing.get(key) in (None, '', [], {}) and source.get(key) not in (None, '', [], {}):
                 existing[key] = source.get(key)
@@ -2508,10 +2879,15 @@ def _iter_saved_text_artifact_sources(payload: Mapping[str, Any]) -> Iterator[di
                 nested_source = build_source(item)
             add_source(nested_source)
 
-    for path in source_order:
-        source = sources_by_path.get(path)
-        if source:
-            yield source
+    # Preserve the established one-physical-artifact projection and binding
+    # priority. Declarations were reconciled within each generation above;
+    # different historical/repair generations are not merged into its claims.
+    strongest_by_path: dict[str, dict[str, Any]] = {}
+    for source in sources:
+        path = source['path']
+        if path not in strongest_by_path or source_priority(source) > source_priority(strongest_by_path[path]):
+            strongest_by_path[path] = source
+    yield from strongest_by_path.values()
 
 
 def _iter_late_fill_saved_artifact_sources(
@@ -2551,6 +2927,8 @@ def _copy_artifact_runtime_binding(artifact: Optional[dict[str, Any]], source: A
         'slot_id',
         'obligation_id',
         'output_type',
+        'text_artifact_output_declarations',
+        'text_artifact_saved_evidence',
     ):
         value = source.get(key)
         if value not in (None, '', [], {}):
@@ -2600,6 +2978,15 @@ def _merge_artifact_record_fields(existing: dict[str, Any], incoming: Mapping[st
     for key, value in dict(incoming or {}).items():
         if value in (None, '', [], {}):
             continue
+        if key == 'text_artifact_output_declarations':
+            declarations = existing.setdefault(key, [])
+            for declaration in value:
+                if declaration not in declarations:
+                    declarations.append(deepcopy(declaration))
+            continue
+        if key == 'text_artifact_saved_evidence' and value.get('status') == 'rejected':
+            existing[key] = deepcopy(value)
+            continue
         if should_upgrade_binding and key in binding_keys:
             existing[key] = value
             continue
@@ -2623,16 +3010,20 @@ def _merge_artifact_record_fields(existing: dict[str, Any], incoming: Mapping[st
 
 def merge_canonical_response_artifacts(existing_values: Any, canonical_values: Any) -> list[dict[str, Any]]:
     merged: list[dict[str, Any]] = []
-    index_by_key: dict[tuple[str, str, str], int] = {}
+    indices_by_key: dict[tuple[str, str, str], list[int]] = {}
     for raw_item in list(existing_values or []) + list(canonical_values or []):
         if not isinstance(raw_item, Mapping):
             continue
         item = dict(raw_item)
         key = _artifact_record_merge_key(item)
-        if key in index_by_key:
-            _merge_artifact_record_fields(merged[index_by_key[key]], item)
+        matching_index = next((index for index in indices_by_key.get(key, [])
+            if not (item.get('text_artifact_output_declarations')
+                    or merged[index].get('text_artifact_output_declarations'))
+            or text_artifact_same_output(merged[index], item)), None)
+        if matching_index is not None:
+            _merge_artifact_record_fields(merged[matching_index], item)
             continue
-        index_by_key[key] = len(merged)
+        indices_by_key.setdefault(key, []).append(len(merged))
         merged.append(item)
     return merged
 
@@ -2651,13 +3042,15 @@ def build_canonical_response_artifacts(payload: dict) -> list[dict]:
                 'name': saved_text_source.get('source_name'),
                 'prompt': saved_text_source.get('prompt'),
                 'mime_type': _saved_text_mime_type(saved_text_path),
-                'origin': 'assistant_output',
-                'source_response_id': payload.get('id'),
+                'origin': source_payload.get('origin') or 'assistant_output',
+                'source_response_id': source_payload.get('source_response_id') or payload.get('id'),
                 'provenance_id': None if response_level_source else source_payload.get('provenance_id'),
                 'derived_from': None if response_level_source else source_payload.get('derived_from'),
             }
         )
         artifact = _copy_artifact_runtime_binding(artifact, source_payload)
+        if artifact and (source_payload.get('text_artifact_saved_evidence') or {}).get('status') == 'rejected':
+            artifact.update(status='repair_needed', diagnostic_only=True, materialization_eligible=False)
         if artifact:
             artifacts.append(artifact)
 
@@ -2729,7 +3122,10 @@ def build_canonical_response_artifacts(payload: dict) -> list[dict]:
         saved_image_has_branch_owner
         or saved_audio_path
     )
-    if saved_image_path:
+    # A branch-owned saved image is already represented below with its accepted
+    # identity and bindings. The last-saved-path shortcut has neither: minting
+    # it first lets the path merge replace the carried identity on a later freeze.
+    if saved_image_path and not saved_image_has_branch_owner:
         image_artifact = {
             'type': 'image',
             'path': saved_image_path,
@@ -2791,6 +3187,7 @@ def build_canonical_batch_result(*, index: int, prompt: str, payload: dict) -> d
         'saved_text_artifacts',
         'text_artifact_request',
         'text_artifact_requests',
+        'text_artifact_binding_errors',
         'saved_audio_path',
         'saved_image_path',
         'document_output_kind',
@@ -2896,6 +3293,7 @@ def build_canonical_response_payload(
         'saved_text_artifacts',
         'text_artifact_request',
         'text_artifact_requests',
+        'text_artifact_binding_errors',
         'saved_audio_path',
         'saved_image_path',
         'document_output_kind',
@@ -3124,6 +3522,8 @@ def translate_responses_payload_to_infer_payload(payload: dict) -> dict:
     prompt = extract_responses_prompt(payload)
     if prompt:
         translated['prompt'] = prompt
+    if has_captured_request_intent(payload):
+        translated['_request_intent'] = payload['_request_intent']
     return translated
 
 

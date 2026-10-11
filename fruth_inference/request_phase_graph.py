@@ -42,7 +42,11 @@ from fruth_inference.intent_obligations import (
 from fruth_inference.request_ir import build_request_ir
 from fruth_inference.request_meta import extract_request_meta
 from fruth_inference.text_artifact_revision_intent import classify_named_text_revision_intent
-from fruth_services.responses import extract_responses_current_turn_prompt
+from fruth_services.responses import (
+    extract_responses_current_turn_prompt,
+    has_captured_request_intent,
+    request_intent_payload,
+)
 from fruth_services.tts_source import resolve_explicit_tts_source
 
 REQUEST_PHASE_GRAPH_VERSION = 3
@@ -5607,13 +5611,20 @@ def build_request_phase_graph(
     """Build a compact phase graph for the request currently under execution."""
 
     request = _mapping(request_payload)
+    captured_intent = has_captured_request_intent(request)
+    if captured_intent:
+        request = request_intent_payload(request)
+        if not request:
+            # Legacy continuation may use its exact accepted branches, but no
+            # effective/model prompt can fill missing original intent evidence.
+            return {}
     route = _mapping(route_payload)
     response = _mapping(response_payload)
     current_turn_prompt = _current_turn_prompt_from_request_payload(request)
     prompt_candidate = prompt
     if current_turn_prompt and _looks_like_serialized_responses_history(prompt_candidate):
         prompt_candidate = current_turn_prompt
-    normalized_prompt = _clean_text(
+    normalized_prompt = current_turn_prompt if captured_intent else _clean_text(
         intent_prompt
         or prompt_candidate
         or current_turn_prompt

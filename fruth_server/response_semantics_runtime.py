@@ -77,6 +77,8 @@ from fruth_server.repair_gate_runtime import (
 from fruth_services.responses import (
     extract_canonical_predecessor_image_prompts,
     extract_responses_current_turn_prompt,
+    project_truth_guard_text,
+    truth_guard_text_projection,
 )
 from fruth_services.semantic_review_verdict import (
     semantic_review_verdict_freeze_acceptance,
@@ -1309,9 +1311,11 @@ _TEXT_ONLY_AUDIO_CAPABILITY_CLAIM_RE = re.compile(
     r'(?i)\b(?:text[_ -]?to[_ -]?speech|tts|audio|akustisch(?:e|er|es|en)?|'
     r'sprach(?:ausgabe|version)|speech|voice|vorlesen|hörfassung|hoerfassung)\b'
 )
-_VISIBLE_CONTROL_JSON_RE = re.compile(
-    r'(?is)^\s*(?:```[a-z0-9_-]*\s*)?[\[{][\s\S]*\b(?:request_ir|request_phase_graph|decision_contract|'
-    r'output_obligations|candidate_graph|promotion_review|workload_graph|user_facing_response)\b'
+_JSON_BOUNDARY_START_RE = re.compile(r'(?is)^\s*(?:```[a-z0-9_-]*\s*)?[\[{]')
+_JSON_BOUNDARY_TOKEN_RE = re.compile(
+    r'"(?:[^"\\]|\\.)*(?:"|$)|'
+    r"'(?:[^'\\]|\\.)*(?:'|$)|"
+    r'[{}\[\],:]|[A-Za-z_][A-Za-z_0-9]*'
 )
 _INTERNAL_CONTROL_ENVELOPE_KEYS = frozenset(
     {
@@ -1646,6 +1650,13 @@ def _parse_visible_json_boundary(text: str) -> Any:
 
 
 def _control_envelope_mapping(value: Any) -> bool:
+    # A sole response object is a transparent envelope wrapper. Arbitrary
+    # example/data children are not recursively classified as control work.
+    while isinstance(value, Mapping) and len(value) == 1:
+        key, child = next(iter(value.items()))
+        if str(key).strip().lower() != 'response' or not isinstance(child, Mapping):
+            break
+        value = child
     if not isinstance(value, Mapping):
         return False
     normalized_keys = {
@@ -1660,12 +1671,11 @@ def visible_control_json_envelope(text: str) -> bool:
     """Return whether *text* is one complete internal control JSON envelope.
 
     Parsing the outer JSON boundary avoids treating ordinary prose that merely
-    mentions an internal field name as control data. Lists are accepted only
-    when at least one direct member is itself a control envelope.
+    mentions an internal field name as control data. A sole response object is
+    transparent. A list is control-shaped only when a direct member is such an
+    envelope; arbitrary nested documentation/data fields remain opaque.
     """
 
-    if not _VISIBLE_CONTROL_JSON_RE.search(str(text or '')):
-        return False
     parsed = _parse_visible_json_boundary(text)
     if _control_envelope_mapping(parsed):
         return True
@@ -1678,7 +1688,35 @@ def visible_control_json_envelope(text: str) -> bool:
 def control_json_envelope_suspected(text: str) -> bool:
     """Catch complete and truncated JSON-like internal control boundaries."""
 
-    return bool(_VISIBLE_CONTROL_JSON_RE.search(str(text or '')))
+    # Successful parsing owns classification. A token inside an ordinary JSON
+    # value is not evidence of a malformed internal envelope. Keep the lexical
+    # fallback for genuinely incomplete/unparseable control-shaped text.
+    parsed = _parse_visible_json_boundary(text)
+    if isinstance(parsed, (Mapping, list)):
+        return _control_envelope_mapping(parsed) or bool(
+            isinstance(parsed, list) and any(_control_envelope_mapping(item) for item in parsed)
+        )
+    source = str(text or '')
+    if not _JSON_BOUNDARY_START_RE.match(source):
+        return False
+    # Treat quoted strings as whole tokens: a control name in a value, or in
+    # bracketed prose, is not an object key. Keep incomplete and nonstandard
+    # control objects blocked when their actual key position is still visible.
+    tokens = _JSON_BOUNDARY_TOKEN_RE.findall(source)
+    for index in range(1, len(tokens) - 1):
+        if tokens[index - 1] not in {'{', ','} or tokens[index + 1] != ':':
+            continue
+        key = tokens[index]
+        if key.startswith('"'):
+            try:
+                key = json.loads(key)
+            except ValueError:
+                continue
+        elif key.startswith("'") and key.endswith("'"):
+            key = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1), 16)), key[1:-1])
+        if str(key).strip().lower() in _INTERNAL_CONTROL_ENVELOPE_KEYS:
+            return True
+    return False
 
 
 def _collect_control_json_content_payloads(value: Any) -> list[str]:
@@ -9659,6 +9697,14 @@ class ResponseSemanticsRuntimeOwner:
         if not isinstance(payload, dict):
             return {}
         text = str(payload.get('output_text') or payload.get('content') or '').strip()
+        prior_runtime = payload.get('runtime') if isinstance(payload.get('runtime'), Mapping) else {}
+        prior_guard = prior_runtime.get('truth_guard') if isinstance(prior_runtime.get('truth_guard'), Mapping) else {}
+        prior_projection = prior_guard.get('text_projection') if isinstance(prior_guard.get('text_projection'), Mapping) else {}
+        already_corrected_claim = (
+            prior_guard.get('kind') == 'local_artifact_claims'
+            and prior_guard.get('status') in {'rewritten', 'annotated'}
+            and prior_projection.get('corrected_sha256') == hashlib.sha256(text.encode('utf-8')).hexdigest()
+        )
         truth_request_payload = self._truth_guard_request_payload(request_payload)
         request_prompt = ''
         if isinstance(truth_request_payload, Mapping):
@@ -9719,8 +9765,8 @@ class ResponseSemanticsRuntimeOwner:
             route_payload=route_payload,
             capability=response_capability,
         )
-        explicit_false_claim = bool(_FALSE_LOCAL_ARTIFACT_CLAIM_RE.search(text))
-        soft_materialization_claim = bool(_TEXT_ONLY_MATERIALIZATION_CLAIM_RE.search(text))
+        explicit_false_claim = not already_corrected_claim and bool(_FALSE_LOCAL_ARTIFACT_CLAIM_RE.search(text))
+        soft_materialization_claim = not already_corrected_claim and bool(_TEXT_ONLY_MATERIALIZATION_CLAIM_RE.search(text))
         if not text or not (control_json_leak or explicit_false_claim or soft_materialization_claim):
             return dict(payload)
         if not control_json_leak and self.response_payload_has_real_saved_artifact(payload):
@@ -9772,7 +9818,14 @@ class ResponseSemanticsRuntimeOwner:
         }
         if control_json_leak:
             runtime['phase_output_acceptance'] = phase_output_acceptance_metadata([acceptance])
+        if guard_kind == 'local_artifact_claims':
+            projection = truth_guard_text_projection(payload, text, rewritten_text)
+            if projection:
+                runtime['truth_guard']['text_projection'] = projection
         updated['runtime'] = runtime
+        for key in ('outputs', 'output_slots', 'output_branches'):
+            if isinstance(updated.get(key), list):
+                updated[key] = project_truth_guard_text(updated, updated[key])
         return updated
 
     def _current_phase_payload(self, phase_graph: Optional[dict[str, Any]]) -> dict[str, Any]:

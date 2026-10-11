@@ -1,6 +1,7 @@
 import subprocess
 import sys
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,121 @@ from scripts.fruth_run_monitor import (
     _render_human,
     _wave_diagnostic_from_history,
 )
+
+
+def _timing_report(tmp_path, monkeypatch, *, next_offset=None, history=True, owned_images=False,
+                   image_end_seconds=160):
+    start = datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
+    response_id = f'resp_{int(start.timestamp() * 1000)}_own'
+    other_id = f'resp_{int((start + timedelta(seconds=10)).timestamp() * 1000)}_other'
+    def event(seconds, category, capability, status, owner=None, action='request'):
+        value = {'timestamp': (start + timedelta(seconds=seconds)).isoformat(),
+                 'category': category, 'action': action, 'capability': capability, 'status': status}
+        if owner:
+            value['response_id'] = owner
+        return value
+    events = [
+        event(1, 'chat', 'chat', 'ok'),
+        event(2, 'infer', 'image_generation', 'started'),
+        event(3, 'infer', 'chat', 'started', other_id),
+        event(4, 'infer', 'chat', 'started'),
+        event(5, 'infer', 'image_generation', 'started', other_id),
+        event(25, 'infer', 'chat', 'ok', other_id),
+        event(30, 'infer', 'chat', 'ok'),
+        event(100, 'responses', 'chat', 'completed', response_id, action='late_fill'),
+        event(1300, 'infer', 'image_generation', 'ok', other_id),
+        event(1400, 'infer', 'image_generation', 'ok'),
+    ]
+    if owned_images:
+        events.extend([event(40, 'infer', 'image_generation', 'started', response_id),
+                       event(image_end_seconds, 'infer', 'image_generation', 'ok', response_id)])
+    state = tmp_path / 'state'
+    (state / 'response_frames').mkdir(parents=True)
+    (state / 'artifact_registry.jsonl').write_text('')
+    (state / 'response_frames/responses.jsonl').write_text('')
+    (state / 'events.jsonl').write_text('\n'.join(json.dumps(e) for e in events) + '\n')
+    late_fill = {'status': 'completed', 'final_materialization_contract_status': 'fulfilled'}
+    if history:
+        late_fill['materialization_concurrency_history'] = [{'branch_timings': [
+            {'branch_id': 'branch-image_generation-1', 'queued_elapsed_ms': 1000, 'elapsed_ms': 20000},
+            {'branch_id': 'branch-image_generation-2', 'queued_elapsed_ms': 6000, 'elapsed_ms': 30000},
+            {'branch_id': 'branch-chat-1', 'elapsed_ms': 3000},
+            {'branch_id': 'coalesced-text-artifacts-1', 'elapsed_ms': 2000},
+        ]}]
+        if isinstance(history, list):
+            late_fill['materialization_concurrency_history'] = history
+    payload = {'id': response_id, 'status': 'completed', 'lifecycle_state': 'completed',
+               'late_fill': late_fill, 'artifacts': []}
+    monkeypatch.setattr(monitor, '_load_response_helpers', lambda root: (
+        lambda *args, **kwargs: {'response_payload': payload,
+                                'response_frame': {'frame_id': response_id + ':frame-2', 'frame_sequence': 2}},
+        lambda *args, **kwargs: [], lambda *args, **kwargs: {}))
+    next_id = (f'resp_{int((start + timedelta(seconds=next_offset)).timestamp() * 1000)}_next'
+               if next_offset is not None else None)
+    return monitor._build_report(tmp_path, response_id, next_id, {'line': 1, 'bytes': 1})
+
+
+@pytest.mark.parametrize('next_offset', [None, 10, -10])
+def test_monitor_backfill_uses_own_branch_times_across_response_order(tmp_path, monkeypatch, next_offset):
+    report = _timing_report(tmp_path, monkeypatch, next_offset=next_offset)
+    timing = report['timing']
+    assert report['verdict'] == 'clean'
+    assert timing['terminal_seconds'] == 100
+    assert timing['initial_chat_seconds'] is None
+    assert timing['image_wave_seconds'] == 35  # max(queued + elapsed) - min(queued), not sum
+    assert timing['image_wave_start'] is None and timing['image_wave_end'] is None
+    assert timing['post_image_chat_seconds'] == 3
+    assert timing['coalesced_text_seconds'] == 2
+    assert report['timing_diagnostics']['phase_gaps']['image_end_to_text_start_seconds'] is None
+    assert report['timing_attribution']['image_wave'] == 'response_branch_span'
+
+
+def test_monitor_does_not_guess_missing_phase_times_from_nearby_requests(tmp_path, monkeypatch):
+    report = _timing_report(tmp_path, monkeypatch, history=False)
+    timing = report['timing']
+    assert report['verdict'] == 'clean'
+    assert timing['image_wave_seconds'] is None
+    assert timing.get('post_image_chat_seconds') is None
+    assert timing.get('coalesced_text_seconds') is None
+    assert 'unattributed phase timings are unknown' in report['human_report']
+
+
+def test_monitor_withholds_image_clock_after_own_terminal_without_changing_verdict(tmp_path, monkeypatch):
+    report = _timing_report(tmp_path, monkeypatch, owned_images=True)
+    assert report['verdict'] == 'clean'
+    assert report['timing']['image_wave_end'] is None
+    assert report['timing']['image_wave_seconds'] == 35
+    assert 'image_events_after_terminal' in report['timing_attribution']['warnings']
+
+
+def test_monitor_accepts_explicitly_bound_image_events(tmp_path, monkeypatch):
+    report = _timing_report(tmp_path, monkeypatch, history=False, owned_images=True, image_end_seconds=60)
+    assert report['timing']['image_wave_seconds'] == 20
+    assert report['timing']['image_wave_start'] == '2026-10-10T12:00:40Z'
+    assert report['timing']['image_wave_end'] == '2026-10-10T12:01:00Z'
+    assert report['timing_attribution']['image_wave'] == 'response_events'
+
+
+def test_monitor_keeps_separate_image_wave_clocks(tmp_path, monkeypatch):
+    history = [{'branch_timings': [{'branch_id': 'branch-image_generation-1',
+                                   'queued_elapsed_ms': 1000, 'elapsed_ms': 2000}]},
+               {'branch_timings': [{'branch_id': 'branch-image_generation-2',
+                                   'queued_elapsed_ms': 0, 'elapsed_ms': 3000}]}]
+    report = _timing_report(tmp_path, monkeypatch, history=history)
+    assert report['timing']['image_wave_seconds'] is None
+    assert report['timing_diagnostics']['image_wave_spans'] == [
+        {'wave': 1, 'seconds': 2}, {'wave': 2, 'seconds': 3}]
+
+
+def test_monitor_missing_branch_offsets_or_elapsed_are_not_zero_durations(tmp_path, monkeypatch):
+    history = [{'branch_timings': [
+        {'branch_id': 'branch-image_generation-1', 'elapsed_ms': 1000},
+        {'branch_id': 'coalesced-text-artifacts-1'},
+    ]}]
+    report = _timing_report(tmp_path, monkeypatch, history=history)
+    assert report['timing']['image_wave_seconds'] is None
+    assert report['timing']['coalesced_text_seconds'] is None
+    assert report['timing_attribution']['coalesced_text'] == 'unknown'
 
 
 def test_late_fill_skip_is_clean_only_when_already_fulfilled_without_work() -> None:

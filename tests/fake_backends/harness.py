@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from tests.http_client import api_client
 import json
 import os
 import shutil
@@ -140,7 +141,7 @@ class FakeBackendHarness:
         self._stack.enter_context(
             patch.object(fruth_webserver, "build_inference_payload", lambda *args, **kwargs: {"recommendations": [], "issues": []})
         )
-        self.client = fruth_webserver.app.test_client()
+        self.client = api_client(fruth_webserver.app)
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:

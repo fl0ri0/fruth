@@ -71,9 +71,11 @@ PUBLIC_DOCS = frozenset(
         'PRINCIPLES.md',
         'RELEASE_SCOPE.md',
         'RESPONSES_CONTRACT.md',
+        'HTTP_API_BOUNDARY.md',
         'SELF_ATTACK.md',
         'SELF_ATTACK_STATUS_2026-09-19.md',
         'SELF_ATTACK_STATUS_2026-09-27.md',
+        'SELF_ATTACK_STATUS_2026-10-10.md',
         'STATE_FLOW_DIAGNOSTICS.md',
         'TESTING_PROTOCOL.md',
         'TRUTH_SOURCES.md',
@@ -113,6 +115,14 @@ PUBLIC_CONFIG_PATHS = frozenset(
         Path('config/self_attack_corpus.json'),
     }
 )
+RELEASE_BROWSER_DEPENDENCY_FILES = frozenset(
+    {
+        Path('static/vendor/axios-1.20.0/axios.min.js'),
+        Path('static/vendor/axios-1.20.0/axios.min.js.map'),
+        Path('static/vendor/axios-1.20.0/LICENSE.txt'),
+        Path('static/vendor/axios-1.20.0/README.txt'),
+    }
+)
 RELEASE_SKILL_FILES = frozenset(
     {
         Path('skills/fruth/SKILL.md'),
@@ -132,53 +142,53 @@ RELEASE_SKILL_DIRECTORIES = frozenset(
 RELEASE_REFERENCE_EXAMPLE_FILES = frozenset(
     {
         Path('examples/README.md'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/README.md'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/artifacts/audio/narration.wav'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/artifacts/documents/index.html'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/artifacts/documents/styles.css'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/artifacts/images/image-01.png'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/artifacts/images/image-02.png'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/assets/audio/narration.wav'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/assets/css/styles.css'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/assets/images/image-01.png'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/assets/images/image-02.png'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/index.html'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/bundle/manifest.json'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/manifest.json'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/monitor-report.json'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/prompt.txt'),
-        Path('examples/reference-runs/2026-09-18-echoes-of-the-pass/response.json'),
-        Path('examples/reference-runs/2026-09-18-evening-rain/README.md'),
-        Path('examples/reference-runs/2026-09-18-evening-rain/artifacts/audio/narration.wav'),
-        Path('examples/reference-runs/2026-09-18-evening-rain/manifest.json'),
-        Path('examples/reference-runs/2026-09-18-evening-rain/monitor-report.json'),
-        Path('examples/reference-runs/2026-09-18-evening-rain/prompt.txt'),
-        Path('examples/reference-runs/2026-09-18-evening-rain/response.json'),
-        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/README.md'),
-        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/artifacts/images/image-01.png'),
-        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/artifacts/images/image-02.png'),
-        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/artifacts/images/image-03.png'),
-        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/manifest.json'),
-        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/monitor-report.json'),
-        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/prompt.txt'),
-        Path('examples/reference-runs/2026-09-18-funny-animal-selfies/response.json'),
-        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/README.md'),
-        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/artifacts/audio/narration.wav'),
-        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/artifacts/transcripts/transcript.md'),
-        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/manifest.json'),
-        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/monitor-report.json'),
-        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/prompt.txt'),
-        Path('examples/reference-runs/2026-09-18-lighthouse-audio-roundtrip/response.json'),
-        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/README.md'),
-        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/artifacts/documents/document-01.json'),
-        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/artifacts/documents/index.html'),
-        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/bundle/assets/files/file-01.json'),
-        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/bundle/index.html'),
-        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/bundle/manifest.json'),
-        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/manifest.json'),
-        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/monitor-report.json'),
-        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/prompt.txt'),
-        Path('examples/reference-runs/2026-09-18-saved-json-read-html-verified/response.json'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/README.md'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/artifacts/audio/narration.wav'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/artifacts/documents/index.html'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/artifacts/documents/styles.css'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/artifacts/images/image-01.png'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/artifacts/images/image-02.png'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/bundle/assets/audio/narration.wav'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/bundle/assets/css/styles.css'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/bundle/assets/images/image-01.png'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/bundle/assets/images/image-02.png'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/bundle/index.html'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/bundle/manifest.json'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/manifest.json'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/monitor-report.json'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/prompt.txt'),
+        Path('examples/reference-runs/2026-10-10-echoes-of-the-pass/response.json'),
+        Path('examples/reference-runs/2026-10-10-evening-rain/README.md'),
+        Path('examples/reference-runs/2026-10-10-evening-rain/artifacts/audio/narration.wav'),
+        Path('examples/reference-runs/2026-10-10-evening-rain/manifest.json'),
+        Path('examples/reference-runs/2026-10-10-evening-rain/monitor-report.json'),
+        Path('examples/reference-runs/2026-10-10-evening-rain/prompt.txt'),
+        Path('examples/reference-runs/2026-10-10-evening-rain/response.json'),
+        Path('examples/reference-runs/2026-10-10-funny-animal-selfies/README.md'),
+        Path('examples/reference-runs/2026-10-10-funny-animal-selfies/artifacts/images/image-01.png'),
+        Path('examples/reference-runs/2026-10-10-funny-animal-selfies/artifacts/images/image-02.png'),
+        Path('examples/reference-runs/2026-10-10-funny-animal-selfies/artifacts/images/image-03.png'),
+        Path('examples/reference-runs/2026-10-10-funny-animal-selfies/manifest.json'),
+        Path('examples/reference-runs/2026-10-10-funny-animal-selfies/monitor-report.json'),
+        Path('examples/reference-runs/2026-10-10-funny-animal-selfies/prompt.txt'),
+        Path('examples/reference-runs/2026-10-10-funny-animal-selfies/response.json'),
+        Path('examples/reference-runs/2026-10-10-lighthouse-audio-roundtrip/README.md'),
+        Path('examples/reference-runs/2026-10-10-lighthouse-audio-roundtrip/artifacts/audio/narration.wav'),
+        Path('examples/reference-runs/2026-10-10-lighthouse-audio-roundtrip/artifacts/transcripts/transcript.md'),
+        Path('examples/reference-runs/2026-10-10-lighthouse-audio-roundtrip/manifest.json'),
+        Path('examples/reference-runs/2026-10-10-lighthouse-audio-roundtrip/monitor-report.json'),
+        Path('examples/reference-runs/2026-10-10-lighthouse-audio-roundtrip/prompt.txt'),
+        Path('examples/reference-runs/2026-10-10-lighthouse-audio-roundtrip/response.json'),
+        Path('examples/reference-runs/2026-10-10-saved-json-read-html-verified/README.md'),
+        Path('examples/reference-runs/2026-10-10-saved-json-read-html-verified/artifacts/documents/document-01.json'),
+        Path('examples/reference-runs/2026-10-10-saved-json-read-html-verified/artifacts/documents/index.html'),
+        Path('examples/reference-runs/2026-10-10-saved-json-read-html-verified/bundle/assets/files/file-01.json'),
+        Path('examples/reference-runs/2026-10-10-saved-json-read-html-verified/bundle/index.html'),
+        Path('examples/reference-runs/2026-10-10-saved-json-read-html-verified/bundle/manifest.json'),
+        Path('examples/reference-runs/2026-10-10-saved-json-read-html-verified/manifest.json'),
+        Path('examples/reference-runs/2026-10-10-saved-json-read-html-verified/monitor-report.json'),
+        Path('examples/reference-runs/2026-10-10-saved-json-read-html-verified/prompt.txt'),
+        Path('examples/reference-runs/2026-10-10-saved-json-read-html-verified/response.json'),
     }
 )
 RELEASE_REFERENCE_EXAMPLE_DIRECTORIES = frozenset(
@@ -302,7 +312,7 @@ REQUIRED_RELEASE_PATHS = frozenset(
         Path('start_multi_models.sh'),
         Path('stop_multi_models.sh'),
     }
-) | CURRENT_DIAGRAM_PATHS | PUBLIC_DOC_ASSET_PATHS | PUBLIC_INTEGRATION_DOC_PATHS | PUBLIC_CONFIG_PATHS | RELEASE_SKILL_FILES | RELEASE_REFERENCE_EXAMPLE_FILES | RESEARCH_SOURCE_FILES
+) | CURRENT_DIAGRAM_PATHS | PUBLIC_DOC_ASSET_PATHS | PUBLIC_INTEGRATION_DOC_PATHS | PUBLIC_CONFIG_PATHS | RELEASE_SKILL_FILES | RELEASE_REFERENCE_EXAMPLE_FILES | RESEARCH_SOURCE_FILES | RELEASE_BROWSER_DEPENDENCY_FILES
 
 FORBIDDEN_ROOT_COMPONENTS = frozenset(
     {
@@ -511,7 +521,8 @@ def discover_release_files(source_root: Path) -> dict[Path, Path]:
         RELEASE_REFERENCE_EXAMPLE_FILES
         | RESEARCH_SOURCE_FILES
         | PUBLIC_INTEGRATION_DOC_PATHS
-        | PUBLIC_SHORTCUT_PATHS,
+        | PUBLIC_SHORTCUT_PATHS
+        | RELEASE_BROWSER_DEPENDENCY_FILES,
         key=lambda item: item.as_posix(),
     ):
         source_path = source_root / relative_path
@@ -733,6 +744,10 @@ def validate_release_tree(
     if shortcuts and shortcuts != PUBLIC_SHORTCUT_PATHS:
         raise ReleaseArchiveError('Release tree must include both PCC shortcuts or neither.')
 
+    browser_dependencies = set(files) & RELEASE_BROWSER_DEPENDENCY_FILES
+    if browser_dependencies and browser_dependencies != RELEASE_BROWSER_DEPENDENCY_FILES:
+        raise ReleaseArchiveError('Release tree must include the complete Axios browser dependency.')
+
     actual_artifact_directories = {
         path.relative_to(release_root)
         for path in (release_root / 'artifacts').rglob('*')
@@ -745,6 +760,16 @@ def validate_release_tree(
         )
 
     required = set(REQUIRED_RELEASE_PATHS) | {Path('model_ports.json')}
+    # Historical dashboards used a CDN. Accept those complete old archives;
+    # a dashboard naming the local build must carry its bytes and attribution.
+    dashboard_path = release_root / 'fruth_webUI.html'
+    dashboard = dashboard_path.read_text(encoding='utf-8') if dashboard_path.is_file() else ''
+    uses_local_browser_build = any(
+        path.suffix == '.js' and path.as_posix().removeprefix('static/') in dashboard
+        for path in RELEASE_BROWSER_DEPENDENCY_FILES
+    )
+    if not browser_dependencies and not uses_local_browser_build:
+        required -= RELEASE_BROWSER_DEPENDENCY_FILES
     if expect_manifest:
         required.add(Path(MANIFEST_NAME))
     missing = sorted(path.as_posix() for path in required - set(files))

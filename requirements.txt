@@ -8,3 +8,5 @@ pypdf
 # Native macOS PDF rendering; pulls PyObjC core/Cocoa, not the full PyObjC bundle.
 pyobjc-framework-Quartz ; sys_platform == "darwin"
 pytest
+# Test-only property checks; runtime does not import Hypothesis.
+hypothesis==6.168.5

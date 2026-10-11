@@ -22,6 +22,74 @@ def _run_node(script: str) -> dict:
 
 
 @pytest.mark.skipif(shutil.which('node') is None, reason='node is required for frontend VM tests')
+def test_api_action_interceptor_marks_only_same_origin_effects_and_preserves_body():
+    result = _run_node(r"""
+      const fs = require('fs'); const vm = require('vm');
+      const context = { URL, window: { location: {
+        href: 'http://127.0.0.1:5011/', origin: 'http://127.0.0.1:5011' } },
+        axios: { interceptors: { request: { use(fn) { context.admit = fn; } } } } };
+      vm.createContext(context);
+      vm.runInContext(fs.readFileSync('static/ui/request-transport.js', 'utf8'), context);
+      const body = { multipart: true };
+      const cases = [
+        { url: '/api/infer', method: 'post', data: body },
+        { url: '/v1/responses', method: 'post', data: body },
+        { url: '/api/chat_history', method: 'delete' },
+        { url: '/api/runtime_status?refresh=y', method: 'get' },
+        { url: '/api/runtime_status', method: 'get', params: { refresh: true } },
+        { url: '/api/runtime_status', method: 'get' },
+        { url: 'http://foreign.invalid/api/responses', method: 'post' },
+        { url: '/provider/unload', method: 'post' },
+      ].map(config => context.admit(config));
+      const axiosHeaders = { set(key, value) { this[key] = value; } };
+      context.admit({ url: '/api/responses', method: 'post', headers: axiosHeaders });
+      const fetchHeaders = context.fruthApiActionHeaders({ 'Content-Type': 'application/json' });
+      console.log(JSON.stringify({ markers: cases.map(c => c.headers?.['X-Fruth-Action'] || null),
+        bodyPreserved: cases[0].data === body && cases[1].data === body,
+        multipartTypeAbsent: !cases[0].headers['Content-Type'],
+        axiosHeader: axiosHeaders['X-Fruth-Action'], fetchHeaders }));
+    """)
+    assert result['markers'] == ['1'] * 5 + [None] * 3
+    assert result['bodyPreserved'] and result['multipartTypeAbsent']
+    assert result['axiosHeader'] == '1'
+    assert result['fetchHeaders'] == {'Content-Type': 'application/json', 'X-Fruth-Action': '1'}
+
+
+@pytest.mark.skipif(shutil.which('node') is None, reason='node is required for frontend VM tests')
+def test_preview_opens_only_prepared_signed_navigation_after_admitted_fetch():
+    result = _run_node(r"""
+      const fs = require('fs'); const vm = require('vm');
+      const calls = []; const alerts = [];
+      const popup = { opener: {}, location: { replace(url) { calls.push({navigate:url}) } },
+        close() { calls.push({close:true}) } };
+      const context = { URL, console, window: { location: {
+        href:'http://127.0.0.1:5011/', origin:'http://127.0.0.1:5011' },
+        open(...args) { calls.push({open:args});return popup } },
+        axios:{interceptors:{request:{use(){}}}},
+        updateGlobalModelStatus(message) { alerts.push(message) },
+        fetch:async (url,options)=>{calls.push({fetch:url,headers:options.headers});
+          return {ok:true,headers:{get:()=>'/api/preview_saved_artifact_wrapper/signed/index.html'}}} };
+      vm.createContext(context);
+      vm.runInContext(fs.readFileSync('static/ui/request-transport.js','utf8'),context);
+      vm.runInContext(fs.readFileSync('static/ui/messages.js','utf8'),context);
+      (async()=>{
+        await context.openSavedArtifactPreview('/api/preview_saved_artifact?path=fixture.html&response_id=fixture');
+        const openerCleared = popup.opener === null;
+        context.fetch=async()=>({ok:true,headers:{get:()=> 'http://foreign.invalid/page'}});
+        await context.openSavedArtifactPreview('/api/preview_saved_artifact?path=fixture.html');
+        console.log(JSON.stringify({calls,alerts,openerCleared}));
+      })();
+    """)
+    assert result['openerCleared']
+    assert result['calls'][0]['open'] == ['about:blank', '_blank']
+    assert result['calls'][1]['headers'] == {'X-Fruth-Action': '1'}
+    assert result['calls'][1]['fetch'].endswith('path=fixture.html&response_id=fixture')
+    assert result['calls'][2]['navigate'] == 'http://127.0.0.1:5011/api/preview_saved_artifact_wrapper/signed/index.html'
+    assert result['calls'][-1] == {'close': True}
+    assert len(result['alerts']) == 1
+
+
+@pytest.mark.skipif(shutil.which('node') is None, reason='node is required for frontend VM tests')
 def test_explicit_external_target_submits_all_selected_inputs_in_one_turn():
     result = _run_node(
         r"""
@@ -161,14 +229,19 @@ def test_external_transport_uses_plural_multipart_without_changing_local_fields(
             inference: { inferTimeoutMs: 60000 },
           },
           FormData: CaptureFormData,
+          URL,
+          window: { location: { href: 'http://127.0.0.1:5011/', origin: 'http://127.0.0.1:5011' } },
           posts,
           axios: {
+            interceptors: { request: { use: (callback) => { context.admitRequest = callback; } } },
             post: async (url, body, options) => {
+              const admitted = context.admitRequest({ url, method: 'post', ...options });
               posts.push({
                 url,
                 isFormData: body instanceof CaptureFormData,
                 body: body instanceof CaptureFormData ? body.items : body,
                 timeout: options.timeout,
+                headers: admitted.headers,
               });
               return { data: { id: `response-${posts.length}` } };
             },
@@ -295,6 +368,7 @@ def test_external_transport_uses_plural_multipart_without_changing_local_fields(
     )
 
     external_upload = result[0]
+    assert all(post['headers']['X-Fruth-Action'] == '1' for post in result)
     assert external_upload['isFormData'] is True
     external_upload_keys = [item['key'] for item in external_upload['body']]
     assert external_upload_keys.count('files') == 2

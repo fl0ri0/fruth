@@ -2,19 +2,12 @@
 
 **Knobs may change strategy, never truth.**
 
-Latest review: [October 10 validation status](SELF_ATTACK_STATUS_2026-10-10.md)
-records full local and AFM live passes on their original source, the later
-corrected-source offline pass, and five fresh local reference workflows. It
-keeps source identities, unresolved-response behavior and PCC limits separate.
-
-Historical campaign: [Fruth Self-Attack status — September 19, 2026](SELF_ATTACK_STATUS_2026-09-19.md)
-reports a full fake and live pass for its recorded source and scope.
-
-The [September 25–27 Apple backend report](SELF_ATTACK_STATUS_2026-09-27.md)
-records the AFM and PCC conformance campaigns: 168 AFM cases passed with two
-correct audio/transcript mismatch rejections; PCC passed 126 cases before
-quota-limited and other incomplete coverage. Both recorded zero invariant
-findings and retain their original native INCOMPLETE verdicts.
+Latest review: [October 21 validation status](SELF_ATTACK_STATUS_2026-10-21.md)
+records complete 170-case coverage for local models, AFM and PCC Cloud, matching
+offline gates, and five completed local reference workflows. PCC's derived pass
+combines compatible windows and an audio retry while preserving both native
+subset verdicts. Cloud Pro remains untested. The report includes exact source
+identities and [historical verdicts](SELF_ATTACK_STATUS_2026-10-21.md#historical-results).
 
 Run from the checkout:
 
@@ -23,7 +16,10 @@ Run from the checkout:
 ```
 
 The command writes `report.md` and `results.json` under a new
-`state/self_attack/run-*` directory. It exits `0` for passed observations and
+`state/self_attack/run-*` directory by default. The optional
+[`state/storage_locations.json` configuration](../FRUTH_FOR_AGENTS.md#storage-locations)
+can select another write root and register multiple read locations. An explicit
+`--output` overrides the default destination. It exits `0` for passed observations and
 checks, `1` for deterministic conformance failures, or `2` for incomplete
 coverage. A truthful blocked obligation is not automatically a test failure.
 Missing observations, exhausted process budgets, and skipped validation cannot
@@ -222,7 +218,8 @@ budget exhaustion and unconfirmed failures remain visible. The reducer reports
 bounded deletion, not global minimality.
 
 Confirmed cases are persisted as additive, content-addressed envelopes under
-`state/self_attack/regressions/`. They embed the replayable shadow corpus,
+`state/self_attack/regressions/` by default (or `regressions/` below the selected
+Self-Attack write root; `--regressions` overrides it). They embed the replayable shadow corpus,
 profile, baseline for divergence, signature, source identity and evidence paths.
 Subsequent commands automatically replay compatible saved regressions and
 report `reproduced`, `resolved`, `incomplete`, or `different_mode`. Nothing is

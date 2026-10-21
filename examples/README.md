@@ -1,59 +1,51 @@
 # Fruth Reference Runs
 
-These five examples were executed by Fruth on 2026-10-10. Each package preserves
-the actual prompt, result and evidence from its recorded run. They are
-human-facing examples, distinct from test fixtures, evaluation corpora and
-self-learning state.
-
-A reference run is admitted only when its final response frame, Closure state,
-materialization contract, saved artifacts and applicable bundle checks agree.
-Media-specific integrity and consumption evidence supplements that runtime truth.
+These five workflows were executed by Fruth on **October 18, 2026** and exported
+from their existing evidence on October 21. Each package contains the actual
+prompt, completed final frame, matching clean monitor record, saved artifacts and
+checksums. These are human-facing examples, separate from test fixtures,
+evaluation corpora and self-learning state.
 
 ## Curated examples
 
-1. [Echoes of the Pass](reference-runs/2026-10-10-echoes-of-the-pass/README.md) — a
-   local exhibition website with two generated mountain images, one English WAV
-   narration, HTML, CSS, working relative media links and an openable bundle.
-2. [Evening Rain](reference-runs/2026-10-10-evening-rain/README.md) — a newly written
-   three-sentence reflection passed to one VoiceDesign audio branch, with verified
-   source binding and physical audio integrity.
-3. [Lighthouse Audio Roundtrip](reference-runs/2026-10-10-lighthouse-audio-roundtrip/README.md)
-   — an original field note, generated WAV and transcription of that exact audio,
-   with recorded roundtrip fidelity evidence.
-4. [Funny Animal Selfies](reference-runs/2026-10-10-funny-animal-selfies/README.md) —
-   three distinct generated images, each inspected by its own vision branch,
-   followed by one combined report and digest-bound image-consumption evidence.
-5. [Saved JSON → actual read → derived HTML](reference-runs/2026-10-10-saved-json-read-html-verified/README.md)
-   — exactly two requested files: JSON containing `[42, 96]` and a self-contained
-   HTML table showing those values and `138`. The saved JSON read is bound to the
-   consumer and output by recorded identities and digests.
+1. [Echoes of the Pass](reference-runs/2026-10-18-echoes-of-the-pass/README.md) —
+   HTML/CSS, two generated mountain images, one English WAV narration and an
+   openable local bundle with verified relative links and fulfilled Closure.
+2. [Evening Rain](reference-runs/2026-10-18-evening-rain/README.md) — a written
+   three-sentence reflection and one WAV, with exact TTS source binding and
+   physical audio integrity evidence.
+3. [Lighthouse Audio Roundtrip](reference-runs/2026-10-18-lighthouse-audio-roundtrip/README.md)
+   — a two-sentence note, generated WAV and transcription of that audio. The
+   transcript matches after lexical normalization, with a punctuation difference.
+4. [Funny Animal Selfies](reference-runs/2026-10-18-funny-animal-selfies/README.md)
+   — three generated images and three separate vision consumers, each bound to
+   the actual supplied image digest, followed by the recorded combined inspection.
+5. [Saved JSON → actual read → derived HTML](reference-runs/2026-10-18-saved-json-read-html-verified/README.md)
+   — exactly two files: JSON with `[17, 144]` and a self-contained HTML table with
+   both values and `161`. Saved-input consumption and output digests are recorded.
 
-## Package contents
+## Package contents and scope
 
-Each directory contains a README, the exact prompt, copied public artifacts, a
-sanitized final-response projection, an independent monitor snapshot and a
-checksum manifest. Echoes of the Pass and Saved JSON also include portable local
-bundles. For the exhibition website, open its `bundle/index.html`; the canonical
-HTML copy under `artifacts/` retains the original runtime-relative asset paths.
+Each package includes its README, exact prompt, copied artifacts, sanitized
+response projection, independent monitor snapshot and checksum manifest. Echoes
+and Saved JSON also include portable bundles; open `bundle/index.html` for those
+results. Canonical HTML under `artifacts/` retains its original runtime-relative
+asset paths. Media was copied without regeneration.
 
-The packages were gathered with `scripts/export_reference_run.py`. Publication
-checks revalidated the final-frame identity, matching monitor evidence, prompt,
-source files, package checksums and local bundle links. The canonical response
-frames and original saved artifacts remain authoritative. Media was copied from
-the recorded runs without regeneration.
+The existing `scripts/export_reference_run.py` admits the exact final frame,
+Closure, materialization, monitor identity, artifact bytes and applicable bundle
+links. The original runtime evidence remains authoritative. The 13 saved artifact
+files and all five packages were verified during this refresh. Model-authored
+visual descriptions remain interpretations even when image consumption is proven.
 
-These examples establish the recorded outcomes of five prompts. See
-[the October 10 validation status](../docs/SELF_ATTACK_STATUS_2026-10-10.md) for
-their relationship to current offline evidence and the earlier live campaigns.
-The September reference packages remain retained as historical evidence; this
-public selection now presents the five new executions. The operator reports
-success on the first submission of each prompt; this is a five-run observation,
-not a measured general success rate.
+Evening Rain and Lighthouse preceded the October 18 Echoes continuation fixes;
+the other three runs followed them. All five precede the October 19 image
+idle-residency fix. Earlier Echoes attempts and the previous public reference
+packages remain historical evidence; these five selected outcomes do not establish
+a first-attempt success rate or a controlled performance comparison.
 
-Monitor reports were backfilled after execution. Their exact final-frame and
-artifact checks passed. Some event-window phase timings include another response's
-activity; the retained phase timing fields are not used as performance evidence.
-See
-[Self-Attack conformance](../docs/SELF_ATTACK.md) and the
-[testing protocol](../docs/TESTING_PROTOCOL.md) for coverage definitions and
-broader validation requirements.
+See the [October 21 validation status](../docs/SELF_ATTACK_STATUS_2026-10-21.md)
+for the complete local, AFM and PCC Cloud campaigns and their source identities.
+Reference success supplements conformance; it does not replace the full matrix.
+The [Self-Attack guide](../docs/SELF_ATTACK.md) and
+[testing protocol](../docs/TESTING_PROTOCOL.md) define broader validation scope.

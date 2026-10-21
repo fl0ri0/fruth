@@ -28,6 +28,7 @@ _CONTROL_ALIASES: dict[str, tuple[str, ...]] = {
     'aspect_ratio': ('aspect_ratio', 'aspectRatio', 'image_aspect_ratio', 'imageAspectRatio'),
     'image_count': ('image_count', 'imageCount'),
     'seed': ('seed',),
+    'steps': ('steps', 'image_steps', 'imageSteps'),
     'ocr_mode': ('ocr_mode', 'ocrMode'),
     'pdf_max_pages': ('pdf_max_pages', 'pdfMaxPages'),
     'pdf_dpi': ('pdf_dpi', 'pdfDpi'),
@@ -43,7 +44,7 @@ _CONTROL_ALIASES: dict[str, tuple[str, ...]] = {
 _CONTROL_CATEGORIES: dict[str, tuple[str, ...]] = {
     'generation': ('temperature', 'top_p', 'max_tokens', 'reasoning_effort'),
     'audio': ('language', 'task', 'voice', 'lang_code', 'response_format', 'instruct', 'speed', 'pitch'),
-    'image': ('width', 'height', 'aspect_ratio', 'image_count', 'seed'),
+    'image': ('width', 'height', 'aspect_ratio', 'image_count', 'seed', 'steps'),
     'document': (
         'ocr_mode',
         'pdf_max_pages',
@@ -65,6 +66,7 @@ _INT_CONTROLS = {
     'height',
     'image_count',
     'seed',
+    'steps',
     'pdf_max_pages',
     'pdf_dpi',
     'pdf_page_timeout_sec',

@@ -762,6 +762,8 @@ class InferApiTests(unittest.TestCase):
             "a puppy",
             width=1280,
             height=720,
+            seed=None,
+            timeout_sec=1200,
         )
         mock_persist.assert_called_once()
 

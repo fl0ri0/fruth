@@ -42,12 +42,14 @@ class SafeLogFragmentTests(unittest.TestCase):
         self.assertNotIn('FRUTH_GRAPH_REBASE_OPERATOR_TOKEN', env)
         self.assertNotIn('FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY', env)
 
+    @patch("fruth_runtime.ollama_model_manager._observed_server_version", return_value='0.40.6')
     @patch("fruth_runtime.ollama_model_manager._fetch_model_metadata")
     @patch("fruth_runtime.ollama_model_manager.subprocess.run")
     def test_list_local_model_entries_uses_provider_embedding_capability(
         self,
         mock_run,
         mock_fetch_model_metadata,
+        _mock_server_version,
     ):
         mock_run.return_value = Mock(
             stdout="NAME ID SIZE MODIFIED\nembeddinggemma:latest abc 621 MB now\n",
@@ -73,6 +75,8 @@ class SafeLogFragmentTests(unittest.TestCase):
         self.assertTrue(ready)
         self.assertIn("/api/embed", mock_post.call_args.args[0])
 
+    @patch("fruth_runtime.ollama_model_manager._observed_server_version", return_value='0.40.6')
+    @patch("fruth_runtime.ollama_model_manager._fetch_model_metadata", return_value={'capabilities': ['embedding', 'vision', 'audio']})
     @patch("pathlib.Path.mkdir")
     @patch("fruth_runtime.ollama_model_manager.open", create=True)
     @patch("fruth_runtime.ollama_model_manager.wait_for_embedding_model_loaded", return_value=True)
@@ -89,6 +93,8 @@ class SafeLogFragmentTests(unittest.TestCase):
         _mock_wait_for_embedding_model_loaded,
         mock_open,
         _mock_path_mkdir,
+        _mock_metadata,
+        _mock_version,
     ):
         serve_process = Mock(pid=4321)
         mock_popen.return_value = serve_process
@@ -106,6 +112,8 @@ class SafeLogFragmentTests(unittest.TestCase):
 
         self.assertEqual(instance["capability"], "embedding")
         self.assertEqual(instance["outputs"], ["embedding"])
+        self.assertEqual(instance['inputs'], ['text', 'image', 'audio'])
+        self.assertEqual(instance['supported_capabilities'], ['embedding'])
 
 
 if __name__ == "__main__":

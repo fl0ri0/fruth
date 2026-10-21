@@ -24399,7 +24399,7 @@ A high-tech preservation laboratory where damaged cultural records are reconstru
                 },
             }
 
-            def create_repaired_dependency(current):
+            def create_repaired_dependency(current, *, accepted_fill_results=None):
                 json_path.write_text('{"items": []}\n', encoding='utf-8')
                 repaired = dict(current)
                 repaired['artifacts'] = [

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os, sys, re, shutil, subprocess, threading, time
+import json
 from collections import OrderedDict
 from pathlib import Path
 from datetime import datetime
@@ -8,6 +9,8 @@ from typing import Any, Optional
 
 from helpers.model_capabilities import (
     CAPABILITY_CHAT,
+    CAPABILITY_EMBEDDING,
+    CAPABILITY_IMAGE_GENERATION,
     CAPABILITY_SPEECH_TO_TEXT,
     CAPABILITY_TEXT_TO_SPEECH,
     CAPABILITY_VISION_ANALYSIS,
@@ -17,6 +20,8 @@ from helpers.model_capabilities import (
 )
 from helpers.ocr_modes import get_ocr_model_family
 from helpers.tts_model_metadata import read_snapshot_model_metadata
+from helpers.image_model_metadata import image_snapshot_fingerprint
+from fruth_core.image_generation import MLX_IMAGE_MIN_SIDE, MLX_IMAGE_MAX_SIDE, MLX_IMAGE_SIDE_STEP
 from fruth_core.start_policy import attach_start_audit, validate_start_source
 from fruth_core.status import remove_instance_status
 from fruth_runtime.child_process_env import sanitized_child_process_env
@@ -38,6 +43,7 @@ LOG_DIR    = Path("./logs")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPEECH_SERVER_SCRIPT = REPO_ROOT / "scripts" / "mlx_whisper_server.py"
+IMAGE_SERVER_SCRIPT = REPO_ROOT / "helpers" / "mlx_image_server.py"
 MLX_VLM_MODULE = "mlx_vlm.server"
 MLX_AUDIO_MODULE = "mlx_audio.server"
 MLX_POST_START_MONITOR_SEC = float(os.environ.get("MLX_POST_START_MONITOR_SEC", "120"))
@@ -46,12 +52,82 @@ MLX_POST_START_MONITOR_INTERVAL_SEC = float(os.environ.get("MLX_POST_START_MONIT
 SAFE_INSTANCE_RE = re.compile(r"[^A-Za-z0-9_.:-]+")
 HF_REPO_PREFIX = "model/"
 CAPABILITY_BADGES = {
+    CAPABILITY_IMAGE_GENERATION: "🎨 Image",
+    CAPABILITY_EMBEDDING: "📐 Embedding",
     CAPABILITY_CHAT: "💬 Chat",
     CAPABILITY_VISION_ANALYSIS: "👁 OCR/Vision",
     CAPABILITY_TEXT_TO_SPEECH: "🔊 TTS",
     CAPABILITY_SPEECH_TO_TEXT: "🎙 STT",
 }
 MLX_PACKAGE_METADATA_SOURCE = "mlx_package_contract"
+MLX_IMAGE_DISCOVERY_TIMEOUT_SEC = 30
+
+
+@lru_cache(maxsize=128)
+def _cached_mlx_image_loader(python_bin: str, model_path: str, package_version: str,
+                            fingerprint: tuple) -> dict:
+    """Ask the installed native loader about local metadata, never load weights."""
+    env = sanitized_child_process_env()
+    env.update(HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
+               HF_DATASETS_OFFLINE='1', TOKENIZERS_PARALLELISM='false')
+    try:
+        result = subprocess.run(
+            [python_bin, '-I', '-B', str(REPO_ROOT / 'helpers/mlx_image_probe.py'), model_path],
+            env=env, capture_output=True, text=True, check=False,
+            timeout=MLX_IMAGE_DISCOVERY_TIMEOUT_SEC,
+        )
+        payload = json.loads(result.stdout.strip().splitlines()[-1])
+        if payload.get('schema') != 1:
+            raise ValueError('Unknown native image discovery response.')
+        support = payload.get('support')
+        if result.returncode or not isinstance(support, dict):
+            raise ValueError(payload.get('error') or 'Native image discovery failed.')
+        if (not isinstance(support.get('family'), str) or not support['family']
+                or support.get('modes') not in (['generate'], ['generate', 'edit'])
+                or type(support.get('steps_min')) is not int or support['steps_min'] < 1):
+            raise ValueError('Invalid native image discovery response.')
+        return support
+    except Exception as exc:
+        # Exceptions are not cached: a transient timeout/import error must not
+        # keep a completed download unavailable until the next server restart.
+        raise RuntimeError(f'Native image discovery unavailable: {exc}') from exc
+
+
+def _probe_mlx_image_loader(python_bin: str, model_path: str, package_version: str,
+                            fingerprint: tuple) -> dict:
+    try:
+        return _cached_mlx_image_loader(python_bin, model_path, package_version, fingerprint)
+    except Exception as exc:
+        return {'error': str(exc)}
+
+
+def _read_mlx_snapshot_metadata(repo_id: str, model_path: str) -> dict:
+    metadata = read_snapshot_model_metadata(repo_id, model_path)
+    if not metadata.get('snapshot_image_pipeline'):
+        return metadata
+    problems = list(metadata.get('snapshot_image_prerequisite_issues') or [])
+    checks = _mlx_package_runtime_check('mlx_vlm')
+    if not problems and checks.get('image_endpoint_available') and checks.get('python_path'):
+        try:
+            support = _probe_mlx_image_loader(
+                str(checks['python_path']), str(Path(model_path).absolute()),
+                str(checks.get('package_version') or ''), image_snapshot_fingerprint(Path(model_path)),
+            )
+        except OSError as exc:
+            support = {'error': f'Image checkpoint changed during discovery ({type(exc).__name__}).'}
+        if support.get('error'):
+            problems.append(str(support['error']))
+        else:
+            modes = list(support['modes'])
+            metadata.update(snapshot_image_supported=True, snapshot_image_issues=[],
+                            snapshot_model_type=support['family'], image_modes=modes,
+                            inputs=['text', 'image'] if 'edit' in modes else ['text'],
+                            snapshot_image_loader=support)
+            return metadata
+    elif not problems:
+        problems.append('Installed MLX-VLM image loader is unavailable (requires 0.7.8 or newer).')
+    metadata.update(snapshot_image_supported=False, snapshot_image_issues=problems, image_modes=[], inputs=['text'])
+    return metadata
 
 
 def _env_optional_int(name: str, default: Optional[int] = None) -> Optional[int]:
@@ -181,6 +257,70 @@ def _resolved_mlx_capability(repo_id: str, capability: Optional[str], metadata: 
 def _mlx_contract_details(repo_id: str, capability: Optional[str], metadata: Optional[dict] = None) -> dict:
     resolved = _resolved_mlx_capability(repo_id, capability, metadata=metadata)
     server_kind = _server_kind_for_capability(resolved, repo_id=repo_id, metadata=metadata)
+
+    if resolved == CAPABILITY_IMAGE_GENERATION:
+        checks = _mlx_package_runtime_check('mlx_vlm')
+        available = bool(checks.get('image_endpoint_available') and (metadata or {}).get('snapshot_image_supported'))
+        modes = list((metadata or {}).get('image_modes') or []) if available else []
+        return {
+            'backend_package': 'mlx_vlm', 'backend_contract': 'mlx_vlm.server',
+            'provider_capabilities': [CAPABILITY_IMAGE_GENERATION],
+            'backend_metadata': {
+                'source': MLX_PACKAGE_METADATA_SOURCE, 'backend_package': 'mlx_vlm',
+                'backend_contract': 'mlx_vlm.server', 'package_label': 'mlx-vlm',
+                'package_version': checks.get('package_version'), 'server_kind': 'mlx_vlm',
+                'capabilities': [CAPABILITY_IMAGE_GENERATION],
+                'instance_capabilities': [CAPABILITY_IMAGE_GENERATION],
+                'package_capabilities': [CAPABILITY_IMAGE_GENERATION],
+                'native_endpoint_paths': ['/health', '/v1/models'] + (
+                    (['/v1/images/generations'] + (['/v1/images/edits'] if 'edit' in modes else [])) if available else []
+                ),
+                'image_transport': 'mlx_vlm_images_v1' if available else None,
+                'image_modes': modes,
+                'image_variant': (metadata or {}).get('snapshot_image_variant'),
+                'image_request_controls': ['width', 'height', 'seed', 'steps'] if available else [],
+                'image_loader': (metadata or {}).get('snapshot_image_loader') if available else None,
+                'image_steps_min': ((metadata or {}).get('snapshot_image_loader') or {}).get('steps_min', 1),
+                'image_sampling_defaults': ((metadata or {}).get('snapshot_image_loader') or {}).get('defaults', {}),
+                'image_size_limits': {'min_side': MLX_IMAGE_MIN_SIDE, 'max_side': MLX_IMAGE_MAX_SIDE,
+                                      'side_step': MLX_IMAGE_SIDE_STEP},
+                'runtime_knobs': [], 'launch_defaults': {},
+                'runtime_constraints': ['image_model_path_required', 'single_reference_image',
+                                        'separate_generation_edit_caches'],
+            },
+        }
+
+    if resolved == CAPABILITY_EMBEDDING:
+        checks = _mlx_package_runtime_check('mlx_vlm')
+        endpoint_available = bool(checks.get('embedding_endpoint_available'))
+        image_input = endpoint_available and _version_at_least(checks.get('package_version'), (0, 7, 8))
+        modalities = [kind for kind in ((metadata or {}).get('snapshot_embedding_modalities') or ['text'])
+                      if kind == 'text' or (kind == 'image' and image_input)]
+        return {
+            'backend_package': 'mlx_vlm',
+            'backend_contract': 'mlx_vlm.server',
+            'provider_capabilities': [CAPABILITY_EMBEDDING],
+            'backend_metadata': {
+                'source': MLX_PACKAGE_METADATA_SOURCE,
+                'backend_package': 'mlx_vlm',
+                'backend_contract': 'mlx_vlm.server',
+                'package_label': 'mlx-vlm',
+                'package_version': checks.get('package_version'),
+                'server_kind': server_kind,
+                'capabilities': [CAPABILITY_EMBEDDING],
+                'instance_capabilities': [CAPABILITY_EMBEDDING],
+                'package_capabilities': [CAPABILITY_EMBEDDING],
+                'native_endpoint_paths': ['/health', '/v1/models'] + (
+                    ['/v1/embeddings'] if endpoint_available else []
+                ),
+                'embedding_endpoint_available': endpoint_available,
+                'embedding_input_format': 'mlx_vlm_image_v1' if image_input else 'text',
+                'embedding_input_modalities': modalities,
+                'runtime_knobs': [],
+                'launch_defaults': {},
+                'runtime_constraints': ['model_path_required_at_launch'],
+            },
+        }
 
     if server_kind == "mlx_whisper":
         return {
@@ -449,6 +589,25 @@ def _mlx_model_runtime_module(server_kind: str, model_type: str) -> Optional[str
     return f"{package}.models.{normalized_type}"
 
 
+def _mlx_embedding_model_type(metadata: Optional[dict]) -> str:
+    """Match the native dense-embedding loader, not the generation loader."""
+    if (metadata or {}).get('snapshot_embedding_layout') == 'token_vectors':
+        return ''
+    model_type = str((metadata or {}).get('snapshot_model_type') or '').strip().lower()
+    remapped = {
+        'qwen3': 'qwen3_embedding',
+        'gemma3_text': 'gemma3_embedding',
+        'lfm2': 'lfm2_embedding',
+        'ministral3': 'ministral3_embedding',
+        'xlm-roberta': 'xlm_roberta',
+    }.get(model_type)
+    if remapped:
+        return remapped
+    if model_type.startswith('embedding_') or model_type.endswith('_embedding') or model_type == 'xlm_roberta':
+        return model_type
+    return ''
+
+
 def _mlx_model_runtime_support(
     server_kind: str,
     model_type: str,
@@ -530,6 +689,15 @@ def _mlx_package_runtime_check(server_kind: str) -> dict:
         "runtime_dependencies_ready": runtime_dependencies_ready,
         "runtime_dependency_error": runtime_dependency_error,
     }
+    if server_kind == 'mlx_vlm':
+        checks['embedding_endpoint_available'] = bool(python_bin) and all(
+            _python_module_available(str(python_bin), module)
+            for module in ('mlx_vlm.server.embeddings', 'mlx_vlm.embedding_loader')
+        )
+        checks['image_endpoint_available'] = bool(python_bin) and _version_at_least(package_version, (0, 7, 8)) and all(
+            _python_module_available(str(python_bin), module)
+            for module in ('mlx_vlm.server.openai', 'mlx_vlm.generate.image', 'mlx_vlm.generate.edit_image')
+        )
     if script_present is not None:
         checks["server_script_path"] = str(SPEECH_SERVER_SCRIPT)
         checks["server_script_present"] = script_present
@@ -548,9 +716,15 @@ def _mlx_discovery_details(
     resolved = _resolved_mlx_capability(repo_id, capability, metadata=metadata)
     server_kind = _server_kind_for_capability(resolved, repo_id=repo_id, metadata=metadata)
     package_checks = _mlx_package_runtime_check(server_kind)
+    is_embedding = resolved == CAPABILITY_EMBEDDING
+    is_image = resolved == CAPABILITY_IMAGE_GENERATION
+    model_type = (
+        _mlx_embedding_model_type(metadata) if is_embedding
+        else str((metadata or {}).get('snapshot_model_type') or '')
+    )
     model_support = _mlx_model_runtime_support(
         server_kind,
-        str((metadata or {}).get("snapshot_model_type") or ""),
+        model_type,
         package_checks.get("python_path") if isinstance(package_checks, dict) else None,
     )
 
@@ -560,6 +734,8 @@ def _mlx_discovery_details(
         and package_checks.get("runtime_module_available")
         and package_checks.get("runtime_dependencies_ready", True)
         and model_support.get("model_runtime_module_available", True)
+        and (not is_embedding or (model_type and package_checks.get('embedding_endpoint_available')))
+        and (not is_image or ((metadata or {}).get('snapshot_image_supported') and package_checks.get('image_endpoint_available')))
     )
     disabled_reason = None
     if not config_present:
@@ -580,6 +756,14 @@ def _mlx_discovery_details(
             f"{package_checks.get('python_path') or 'the resolved MLX python'}: "
             f"{package_checks.get('runtime_dependency_error') or 'dependency import failed'}"
         )
+    elif is_embedding and not package_checks.get('embedding_endpoint_available'):
+        disabled_reason = 'The installed mlx-vlm runtime has no supported embedding endpoint/loader.'
+    elif is_embedding and not model_type:
+        disabled_reason = 'Embedding snapshot has no recognized dense encoder model_type; compatibility is unknown.'
+    elif is_image and not package_checks.get('image_endpoint_available'):
+        disabled_reason = 'The installed mlx-vlm runtime has no qualified image endpoint/loader (requires 0.7.8 or newer).'
+    elif is_image and not (metadata or {}).get('snapshot_image_supported'):
+        disabled_reason = ' '.join((metadata or {}).get('snapshot_image_issues') or ['Image snapshot is not qualified for this loader.'])
     elif not model_support.get("model_runtime_module_available", True):
         disabled_reason = (
             f"Model type '{model_support.get('model_type') or 'unknown'}' is not supported by "
@@ -763,10 +947,17 @@ def build_instance_record(
     pid: Optional[int] = None,
     launch_defaults: Optional[dict[str, Any]] = None,
 ) -> dict:
-    snapshot_metadata = read_snapshot_model_metadata(repo_id, model_path)
+    snapshot_metadata = _read_mlx_snapshot_metadata(repo_id, model_path)
     registry_metadata = build_registry_metadata(repo_id, "mlx", capability, metadata=snapshot_metadata)
     resolved_capability = str(registry_metadata.get("capability") or capability or "").strip() or None
     contract_details = _mlx_contract_details(repo_id, resolved_capability, metadata=snapshot_metadata)
+    if resolved_capability in {CAPABILITY_EMBEDDING, CAPABILITY_IMAGE_GENERATION}:
+        registry_metadata = build_registry_metadata(
+            repo_id, 'mlx', resolved_capability,
+            metadata={**snapshot_metadata, **contract_details,
+                      'inputs': ['text'] if resolved_capability == CAPABILITY_EMBEDDING else snapshot_metadata.get('inputs', ['text']),
+                      'outputs': ['embedding'] if resolved_capability == CAPABILITY_EMBEDDING else ['image']},
+        )
     normalized_launch_defaults = launch_defaults if isinstance(launch_defaults, dict) else {}
     if normalized_launch_defaults:
         contract_details["backend_metadata"] = {
@@ -952,7 +1143,7 @@ def _server_kind_for_capability(
         return "mlx_whisper"
     if resolved == CAPABILITY_TEXT_TO_SPEECH:
         return "mlx_audio"
-    if resolved == CAPABILITY_VISION_ANALYSIS:
+    if resolved in {CAPABILITY_VISION_ANALYSIS, CAPABILITY_EMBEDDING, CAPABILITY_IMAGE_GENERATION}:
         return "mlx_vlm"
     return "mlx_lm"
 
@@ -1000,7 +1191,7 @@ def start_mlx_model(
     else:
         port = next_free_port()
 
-    snapshot_metadata = read_snapshot_model_metadata(selected["repo"], selected["path"])
+    snapshot_metadata = _read_mlx_snapshot_metadata(selected["repo"], selected["path"])
     registry_metadata = build_registry_metadata(
         selected["repo"],
         "mlx",
@@ -1017,8 +1208,19 @@ def start_mlx_model(
         repo_id=selected["repo"],
         metadata=snapshot_metadata,
     )
+    if resolved_capability in {CAPABILITY_EMBEDDING, CAPABILITY_IMAGE_GENERATION}:
+        server_kind = 'mlx_vlm'
+        discovery = _mlx_discovery_details(
+            selected['repo'], resolved_capability,
+            config_present=(Path(selected['path']) / 'config.json').is_file() or bool(snapshot_metadata.get('snapshot_image_pipeline')),
+            metadata=snapshot_metadata,
+        )
+        if not discovery['runnable']:
+            raise RuntimeError(discovery['disabled_reason'])
     effective_launch_defaults: dict[str, Any]
-    if server_kind == "mlx_vlm":
+    if resolved_capability in {CAPABILITY_EMBEDDING, CAPABILITY_IMAGE_GENERATION}:
+        effective_launch_defaults = {}
+    elif server_kind == "mlx_vlm":
         effective_launch_defaults = _mlx_vlm_launch_defaults(
             repo_id=selected["repo"],
             metadata=snapshot_metadata,
@@ -1028,6 +1230,10 @@ def start_mlx_model(
     else:
         effective_launch_defaults = {}
     if isinstance(launch_defaults, dict):
+        if resolved_capability in {CAPABILITY_EMBEDDING, CAPABILITY_IMAGE_GENERATION} and any(
+            value not in (None, '') for value in launch_defaults.values()
+        ):
+            raise ValueError('MLX embeddings and images do not accept chat generation launch controls.')
         effective_launch_defaults.update(
             {
                 key: value
@@ -1040,7 +1246,12 @@ def start_mlx_model(
     elif server_kind == "mlx_audio":
         log, pid = launch_audio_server(port)
     elif server_kind == "mlx_vlm":
-        log, pid = launch_vlm_server(port, launch_defaults=effective_launch_defaults)
+        if resolved_capability == CAPABILITY_EMBEDDING:
+            log, pid = launch_vlm_server(port, embedding_model=selected['path'])
+        elif resolved_capability == CAPABILITY_IMAGE_GENERATION:
+            log, pid = launch_vlm_server(port, image_model=selected['path'])
+        else:
+            log, pid = launch_vlm_server(port, launch_defaults=effective_launch_defaults)
     elif server_kind == "mlx_lm":
         log, pid = launch(selected["path"], port, launch_defaults=effective_launch_defaults)
     else:
@@ -1152,10 +1363,30 @@ def launch(model_path: str, port: int, launch_defaults: Optional[dict[str, Any]]
     return log, proc.pid
 
 
-def launch_vlm_server(port: int, launch_defaults: Optional[dict[str, Any]] = None):
+def launch_vlm_server(
+    port: int, launch_defaults: Optional[dict[str, Any]] = None,
+    *, embedding_model: Optional[str] = None, image_model: Optional[str] = None,
+):
+    if embedding_model and image_model:
+        raise ValueError('Choose one MLX preload mode per Fruth instance.')
+    if image_model and launch_defaults:
+        raise ValueError('Image instances do not accept chat launch controls.')
     python_bin = resolve_mlx_python("mlx_vlm")
     log = LOG_DIR / f"mlx_vlm_{port}.log"
     cmd = [python_bin, "-m", MLX_VLM_MODULE, "--host", "127.0.0.1", "--port", str(port)]
+    if image_model:
+        if not IMAGE_SERVER_SCRIPT.is_file():
+            raise RuntimeError(f"MLX image launcher is missing: {IMAGE_SERVER_SCRIPT}")
+        cmd = [python_bin, "-I", "-B", str(IMAGE_SERVER_SCRIPT),
+               "--host", "127.0.0.1", "--port", str(port)]
+    if embedding_model:
+        cmd.extend(['--embedding-model', embedding_model])
+    if image_model:
+        cmd.extend(['--image-model', image_model])
+    child_env = sanitized_child_process_env()
+    if image_model:
+        # Model acquisition is an explicit catalog action, never image execution.
+        child_env.update({'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1'})
     normalized_launch_defaults = launch_defaults if isinstance(launch_defaults, dict) else {}
     if normalized_launch_defaults.get("prefill_step_size") is not None:
         cmd.extend(["--prefill-step-size", str(normalized_launch_defaults["prefill_step_size"])])
@@ -1187,7 +1418,7 @@ def launch_vlm_server(port: int, launch_defaults: Optional[dict[str, Any]] = Non
             stderr=subprocess.STDOUT,
             cwd=os.getcwd(),
             start_new_session=True,
-            env=sanitized_child_process_env(),
+            env=child_env,
         )
     return log, proc.pid
 
@@ -1322,14 +1553,14 @@ def find_hf_cached_models():
                 break
             cfg = snap / "config.json"
             size_gb = sum((f.stat().st_size for f in snap.rglob("*") if f.is_file())) / (1024**3)
-            snapshot_metadata = read_snapshot_model_metadata(repo_id, str(snap))
+            snapshot_metadata = _read_mlx_snapshot_metadata(repo_id, str(snap))
             capability = infer_capability(repo_id, "mlx", metadata=snapshot_metadata)
             server_kind = _server_kind_for_capability(
                 capability,
                 repo_id=repo_id,
                 metadata=snapshot_metadata,
             )
-            config_present = cfg.is_file()
+            config_present = cfg.is_file() or bool(snapshot_metadata.get('snapshot_image_pipeline'))
             out.append({
                 "repo": repo_id,
                 "path": str(snap),

@@ -91,7 +91,7 @@ def _make_release_source(tmp_path: Path) -> Path:
         '# Self-Attack status\n',
     )
     _write(
-        source / 'docs' / 'SELF_ATTACK_STATUS_2026-09-19.md',
+        source / 'docs' / 'SELF_ATTACK_STATUS_2026-10-21.md',
         '# Fruth Self-Attack status\n',
     )
     _write(
@@ -266,6 +266,8 @@ def _make_release_source(tmp_path: Path) -> Path:
         '# Unreviewed example: excluded\n',
     )
     _write(source / 'tests' / 'test_smoke.py', 'def test_smoke():\n    assert True\n')
+    for relative_path in release.TEST_RUNNER_FILES | release.STORAGE_LOCATION_FILES:
+        _write(source / relative_path, '# Portable test support fixture\n')
     _write(
         source
         / 'tests'
@@ -284,6 +286,7 @@ def _make_release_source(tmp_path: Path) -> Path:
         '[{"instance_id":"private-live-instance","port":12345}]\n',
     )
     _write(source / 'state' / 'runtime_status.json', '{"private": true}\n')
+    _write(source / 'state' / 'storage_locations.json', '{"private": "machine paths"}\n')
     _write(source / 'logs' / 'runtime.log', 'private log\n')
     _write(source / 'artifacts' / 'images' / 'private.txt', 'private artifact\n')
     _write(source / 'plans' / 'private-plan.md', '# Private plan\n')
@@ -309,6 +312,17 @@ def _make_release_source(tmp_path: Path) -> Path:
 
 def _file_digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize('support', sorted(release.TEST_RUNNER_FILES))
+def test_portable_test_support_is_required_for_new_selection(tmp_path, support):
+    source = _make_release_source(tmp_path)
+    selected = release.discover_release_files(source)
+    assert release.TEST_RUNNER_FILES <= selected.keys()
+    assert not any(path.parts[0] == 'plans' or path.parts[:2] == ('docs', 'internal') for path in selected)
+    (source / support).unlink()
+    with pytest.raises(release.ReleaseArchiveError, match='missing'):
+        release.discover_release_files(source)
 
 
 @pytest.mark.parametrize('dependency', sorted(release.RELEASE_BROWSER_DEPENDENCY_FILES))
@@ -396,7 +410,7 @@ def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> No
     assert not (staged_root / 'plans').exists()
     assert not (staged_root / '.env').exists()
     assert (staged_root / 'docs' / 'SELF_ATTACK.md').is_file()
-    assert (staged_root / 'docs' / 'SELF_ATTACK_STATUS_2026-09-19.md').is_file()
+    assert (staged_root / 'docs' / 'SELF_ATTACK_STATUS_2026-10-21.md').is_file()
     assert not (staged_root / 'docs' / 'SELF_ATTACK_STATUS_2026-09-06.md').exists()
     assert (staged_root / 'docs' / 'CAUSAL_TELEMETRY.md').is_file()
     assert (staged_root / 'docs' / 'STATE_FLOW_DIAGNOSTICS.md').is_file()
@@ -531,7 +545,7 @@ def test_each_release_fruth_skill_file_is_required(
 def test_missing_required_reference_example_is_rejected(tmp_path: Path) -> None:
     source = _make_release_source(tmp_path)
     missing = Path(
-        'examples/reference-runs/2026-10-10-evening-rain/response.json'
+        'examples/reference-runs/2026-10-18-evening-rain/response.json'
     )
     (source / missing).unlink()
 
@@ -543,7 +557,7 @@ def test_missing_required_reference_example_is_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    'document', ['VISION_ALIGNMENT.md', 'SELF_ATTACK_STATUS_2026-09-19.md']
+    'document', ['VISION_ALIGNMENT.md', 'SELF_ATTACK_STATUS_2026-10-21.md']
 )
 def test_required_public_document_is_required(tmp_path: Path, document: str) -> None:
     source = _make_release_source(tmp_path)
@@ -1064,10 +1078,12 @@ def test_current_release_metadata_and_docs_match_public_selection() -> None:
     assert f'## [{version}] - {release_date}' in changelog
     selected = release.discover_release_files(repository_root)
     assert Path('docs/RELEASE_SCOPE.md') in selected
-    assert Path('docs/SELF_ATTACK_STATUS_2026-09-19.md') in selected
+    assert Path('docs/SELF_ATTACK_STATUS_2026-10-21.md') in selected
     for name in ['FRUTH_MIGRATION.md', 'PROJECT_HISTORY.md',
                  'RELEASE_CHECK_0.1.0.md', f'RELEASE_NOTES_{version}.md',
                  'SELF_ATTACK_STATUS_2026-09-06.md', 'SELF_ATTACK_STATUS_2026-09-14.md',
+                 'SELF_ATTACK_STATUS_2026-09-19.md', 'SELF_ATTACK_STATUS_2026-09-27.md',
+                 'SELF_ATTACK_STATUS_2026-10-10.md',
                  'CAUSAL_TELEMETRY_IMPLEMENTATION_REPORT.md']:
         assert Path('docs') / name not in selected
     assert f'**Status:** Fruth `{version}`' in (repository_root / 'README.md').read_text()

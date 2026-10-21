@@ -198,6 +198,7 @@ def _fetch_backend_runtime_metadata(instance: Optional[dict]) -> dict:
                 runtime['live_model_ids'] = live_ids
                 runtime['active_model_id'] = live_ids[0]
         if normalize_capability(instance.get('capability')) == 'embedding':
+            runtime.pop('chat_completions_url', None)
             runtime['embeddings_url'] = f'{base_url}/v1/embeddings' if base_url else None
         return {
             key: value
@@ -235,6 +236,25 @@ def _fetch_backend_runtime_metadata(instance: Optional[dict]) -> dict:
                     'cache_features': ['rotating_kv_cache', 'prompt_cache'],
                 }
             )
+        elif backend_package == 'mlx_vlm' and normalize_capability(instance.get('capability')) == 'embedding':
+            runtime.update({
+                'health_url': f'{base_url}/health' if base_url else None,
+                'models_url': f'{base_url}/v1/models' if base_url else None,
+                'embeddings_url': f'{base_url}/v1/embeddings' if base_url else None,
+                'request_model_strategy': 'embedding_model_selected_per_request',
+            })
+        elif backend_package == 'mlx_vlm' and normalize_capability(instance.get('capability')) == 'image_generation':
+            image_metadata = instance.get('backend_metadata') or {}
+            paths = image_metadata.get('native_endpoint_paths') or []
+            runtime.update({
+                'health_url': f'{base_url}/health' if base_url else None,
+                'models_url': f'{base_url}/v1/models' if base_url else None,
+                'images_generations_url': f'{base_url}/v1/images/generations' if base_url and '/v1/images/generations' in paths else None,
+                'images_edits_url': f'{base_url}/v1/images/edits' if base_url and '/v1/images/edits' in paths else None,
+                'request_model_strategy': 'image_model_selected_per_request',
+                'image_modes': image_metadata.get('image_modes', []),
+                'runtime_knobs': [],
+            })
         elif backend_package == 'mlx_vlm':
             runtime.update(
                 {

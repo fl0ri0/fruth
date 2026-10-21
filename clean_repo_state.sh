@@ -1,7 +1,7 @@
 #!/bin/bash
 # Repo-local reset helper for Fruth.
 # `clean` removes generated/runtime ballast.
-# `archiv` / `archive` first archives the same useful ballast into .fruth_archiv/<timestamp>/
+# `archiv` / `archive` first archives ballast into the configured timestamped directory
 # and then cleans the live runtime paths. The artifacts tree is copied before live cleanup so
 # standard artifact bucket directories can stay in place.
 
@@ -10,13 +10,17 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ARCHIVE_BASE_REL=".fruth_archiv"
 ARCHIVE_HELPER="$ROOT_DIR/scripts/maintenance_archive.py"
+STORAGE_HELPER="$ROOT_DIR/scripts/storage_locations.py"
+ARCHIVE_EXTERNAL=0
 
 RESET_REGISTRY=0
 FORGET_INFERENCE=0
 RESET_LLAMA_CATALOG=0
 DRY_RUN=0
 ARCHIVE_MODE=0
+EXCLUDE_SELF_ATTACK=0
 FULL_RESET=0
+MONITOR_HISTORY_PATHS=(state/fruth_run_monitor/last_seen.json state/fruth_run_monitor/reports.jsonl state/fruth_run_monitor/reports.md)
 RESET_CHROME_FILE_ACCESS_PROMPT=0
 
 ARCHIVE_RUN_REL=""
@@ -44,12 +48,14 @@ usage() {
 Usage: clean_repo_state.sh [options]
 
 Options:
-  --archiv, --archive   Archive useful cleanup ballast into .fruth_archiv/<timestamp>/ before cleaning.
+  --archiv, --archive   Archive cleanup ballast to the configured root (.fruth_archiv by default).
                          The artifacts tree is copied first; live cleanup then removes contents
                          while preserving standard artifact bucket dirs; missing ones are
                          created only as fallback.
   --full, --empty-state  Full reset shortcut. In clean mode, also forget interpretive inference preferences/memory.
-                         In archive mode, reset registry/catalog but preserve protected interpretive inference state.
+                         In archive mode, reset registry/catalog, preserve protected inference state,
+                         and remove local self-attack run directories without archiving them.
+  --exclude-self-attack Archive only: omit the state/self_attack snapshot; preserve its live tree.
   --dry-run             Show what would happen without deleting or moving anything.
   --reset-registry      Reset repo-local model_ports.json to [] after optional archiving.
   --forget-inference        Remove interpretive inference preferences and compiled-memory residue after optional archiving.
@@ -88,6 +94,7 @@ Default cleanup preserves:
   - state/self_learning/retained_sidecars/ generated from active learning refs
   - state/inference_learning_archives/ (including retained cache files)
   - state/graph_rebase/readiness_observations.jsonl
+  - state/storage_locations.json (operator configuration, in every mode)
   - state/self_attack/, state/benchmarks/, state/diagnostics/ (including cache files)
   - fruth_research/ in every mode, including nested caches and retained Gold evidence
   - .fruth_archiv/, 00_backup/ and fruth-upload/ (excluded from recursive cache sweeps)
@@ -101,9 +108,15 @@ interpretive inference preferences/compiled-memory residue after archiving. Use
 `python3 scripts/fruthctl.py inference --reset-learning-state --json` for self-learning reset.
 
 `--archiv` / `--archive` keeps the same live cleanup end state, but stores archived data under:
-  - .fruth_archiv/<timestamp>/
+  - .fruth_archiv/<timestamp>/ by default, or the archive write target in state/storage_locations.json
 
-Archive snapshots all three evidence trees and fruth_research/ once in full and preserves their live sources.
+Plain archive snapshots all three evidence trees and fruth_research/ and preserves their live sources.
+Archive --full always excludes state/self_attack; plain archive can opt out with
+--exclude-self-attack. Exclusion omits copying and space preflight for that tree,
+without changing learning retention. Full archive also removes local run directories
+after successful archive and retention checks. Move wanted runs out beforehand and
+stop their writers. External stores, existing archives, links and root-level helper
+files remain untouched. Plain archive exclusion does not delete campaigns.
 This includes completed campaigns without guessing completion for unknown/active runs.
 Reusable repository scripts remain active. Copies are space-checked and byte-verified;
 failure aborts before cleanup. Active evidence copies are not atomic final snapshots.
@@ -262,7 +275,7 @@ remove_cache_dirs() {
         log "[dry-run] remove directories named $pattern recursively (excluding protected learning/archive state, evidence trees, fruth_research, .fruth_archiv, 00_backup and fruth-upload)"
         return 0
     fi
-    find "$ROOT_DIR" \( -path "$ROOT_DIR/.fruth_archiv" -o -path "$ROOT_DIR/00_backup" -o -path "$ROOT_DIR/fruth-upload" -o -path "$ROOT_DIR/fruth_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" -o -path "$ROOT_DIR/state/self_learning" -o -path "$ROOT_DIR/state/inference_learning_archives" \) -prune -o -type d -name "$pattern" -prune -exec rm -rf {} +
+    find "$ROOT_DIR" \( "${CACHE_EXCLUSIONS[@]}" \) -prune -o -type d -name "$pattern" -prune -exec rm -rf {} +
 }
 
 remove_cache_files() {
@@ -272,7 +285,7 @@ remove_cache_files() {
         return 0
     fi
     # Do not use -delete: it implies depth-first traversal and defeats -prune.
-    find "$ROOT_DIR" \( -path "$ROOT_DIR/.fruth_archiv" -o -path "$ROOT_DIR/00_backup" -o -path "$ROOT_DIR/fruth-upload" -o -path "$ROOT_DIR/fruth_research" -o -path "$ROOT_DIR/state/self_attack" -o -path "$ROOT_DIR/state/benchmarks" -o -path "$ROOT_DIR/state/diagnostics" -o -path "$ROOT_DIR/state/self_learning" -o -path "$ROOT_DIR/state/inference_learning_archives" \) -prune -o -type f -name "$pattern" -exec rm -f {} +
+    find "$ROOT_DIR" \( "${CACHE_EXCLUSIONS[@]}" \) -prune -o -type f -name "$pattern" -exec rm -f {} +
 }
 
 archive_dir_contents() {
@@ -291,7 +304,11 @@ archive_dir_contents() {
     local entry
     for entry in "$source"/* "$source"/.[!.]* "$source"/..?*; do
         [[ -e "$entry" || -L "$entry" ]] || continue
-        mv "$entry" "$dest"/
+        if [[ "$ARCHIVE_EXTERNAL" -eq 1 ]]; then
+            python3 "$ARCHIVE_HELPER" move-verified "$entry" "$dest/$(basename "$entry")"
+        else
+            mv "$entry" "$dest"/
+        fi
     done
 }
 
@@ -363,7 +380,11 @@ archive_path() {
         return 0
     fi
     mkdir -p "$(dirname "$dest")"
-    mv "$source" "$dest"
+    if [[ "$ARCHIVE_EXTERNAL" -eq 1 ]]; then
+        python3 "$ARCHIVE_HELPER" move-verified "$source" "$dest"
+    else
+        mv "$source" "$dest"
+    fi
 }
 
 snapshot_path() {
@@ -397,10 +418,18 @@ write_archive_manifest() {
         printf 'created_utc=%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
         printf 'repo_root=%s\n' "$ROOT_DIR"
         printf 'archive_root=%s\n' "$ARCHIVE_RUN_REL"
+        printf 'storage_configuration_snapshot=state/storage_locations.json (when present)\n'
         printf 'live_cleanup_targets=artifact bucket contents(preserving standard artifact dirs including bundles),logs,outputs(legacy),state/chat_history,state/events.jsonl,state/infer_history.jsonl,state/artifact_registry.jsonl,state/generated_image_provenance.jsonl,state/response_frames(compact_ledger,current_index,sidecar_snapshots),state/runtime_status.json,caches\n'
         printf 'protected_inference_snapshot_paths=state/inference_preferences.json,state/inference_compiled_memory.json,state/inference_compiled_memory.md,state/self_learning\n'
         printf 'protected_graph_rebase_registry_snapshot_path=state/graph_rebase/readiness_observations.jsonl\n'
-        printf 'evidence_snapshot_paths=state/self_attack,state/benchmarks,state/diagnostics\n'
+        printf 'evidence_snapshot_paths=%s\n' "$(IFS=,; printf '%s' "${EVIDENCE_SNAPSHOT_PATHS[*]}")"
+        printf 'exclude_self_attack=%s\n' "$EXCLUDE_SELF_ATTACK"
+        if [[ "$FULL_RESET" -eq 1 ]]; then
+            printf 'monitor_history_snapshot_paths=%s\n' "$(IFS=,; printf '%s' "${MONITOR_HISTORY_PATHS[*]}")"
+            printf 'self_attack_cleanup_policy=remove_local_run_directories_without_snapshot_after_retention; preserve_external_stores_links_root_files\n'
+        else
+            printf 'self_attack_cleanup_policy=preserve\n'
+        fi
         printf 'research_snapshot_path=fruth_research (copy; active tree preserved in every mode)\n'
         printf 'evidence_policy=whole_tree_verified_copy; live_sources_preserved; no_completion_inference; no_pruning\n'
         printf 'learning_retention_status=%s\n' "$LEARNING_RETENTION_STATUS"
@@ -642,6 +671,9 @@ while [[ $# -gt 0 ]]; do
         --archiv|--archive)
             ARCHIVE_MODE=1
             ;;
+        --exclude-self-attack)
+            EXCLUDE_SELF_ATTACK=1
+            ;;
         --full|--empty-state)
             FULL_RESET=1
             ;;
@@ -673,17 +705,56 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
+if [[ "$EXCLUDE_SELF_ATTACK" -eq 1 && "$ARCHIVE_MODE" -ne 1 ]]; then
+    echo '--exclude-self-attack requires archive mode' >&2
+    exit 2
+fi
 if [[ "$FULL_RESET" -eq 1 ]]; then
     RESET_REGISTRY=1
     RESET_LLAMA_CATALOG=1
     if [[ "$ARCHIVE_MODE" -eq 0 ]]; then
         FORGET_INFERENCE=1
+    else
+        EXCLUDE_SELF_ATTACK=1
     fi
 fi
+EVIDENCE_SNAPSHOT_PATHS=()
+if [[ "$EXCLUDE_SELF_ATTACK" -eq 0 ]]; then
+    EVIDENCE_SNAPSHOT_PATHS+=(state/self_attack)
+fi
+EVIDENCE_SNAPSHOT_PATHS+=(state/benchmarks state/diagnostics)
+
+# Validate before listener stops, retention writes or cleanup. Even disabled
+# locations retain their data; read/write selection never grants deletion.
+STORAGE_ROOTS="$(python3 "$STORAGE_HELPER" --root "$ROOT_DIR" protected-roots)"
+CACHE_EXCLUSIONS=()
+add_cache_exclusion() {
+    local pattern="$1"
+    # find -path is a pattern, even when the shell argument is quoted.
+    pattern="${pattern//\\/\\\\}"
+    pattern="${pattern//\*/\\*}"
+    pattern="${pattern//\?/\\?}"
+    pattern="${pattern//\[/\\[}"
+    if [[ ${#CACHE_EXCLUSIONS[@]} -gt 0 ]]; then
+        CACHE_EXCLUSIONS+=(-o)
+    fi
+    CACHE_EXCLUSIONS+=(-path "$pattern")
+}
+add_cache_exclusion "$ROOT_DIR/.fruth_archiv"
+for rel in 00_backup fruth-upload fruth_research state/self_attack state/benchmarks state/diagnostics state/self_learning state/inference_learning_archives; do
+    add_cache_exclusion "$ROOT_DIR/$rel"
+done
+while IFS= read -r storage_path; do
+    add_cache_exclusion "$storage_path"
+done <<< "$STORAGE_ROOTS"
 
 if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
-    ARCHIVE_RUN_REL="$ARCHIVE_BASE_REL/$(timestamp_utc)"
-    ARCHIVE_RUN_DIR="$ROOT_DIR/$ARCHIVE_RUN_REL"
+    ARCHIVE_BASE_DIR="$(python3 "$STORAGE_HELPER" --root "$ROOT_DIR" write-root archive)"
+    ARCHIVE_RUN_DIR="$ARCHIVE_BASE_DIR/$(timestamp_utc)"
+    ARCHIVE_RUN_REL="${ARCHIVE_RUN_DIR#"$ROOT_DIR/"}"
+    if [[ "$ARCHIVE_BASE_DIR" != "$ROOT_DIR/$ARCHIVE_BASE_REL" ]]; then
+        ARCHIVE_EXTERNAL=1
+    fi
 fi
 
 log "=== Fruth Repo Reset ==="
@@ -691,6 +762,12 @@ log "repo: $ROOT_DIR"
 if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     log "mode: archive"
     log "archive: $ARCHIVE_RUN_REL"
+    if [[ "$EXCLUDE_SELF_ATTACK" -eq 1 ]]; then
+        log "self-attack snapshot: excluded by request"
+        if [[ "$FULL_RESET" -eq 1 ]]; then
+            log "self-attack cleanup: local run directories only, after successful archive/retention; external stores and links preserved"
+        fi
+    fi
 elif [[ "$DRY_RUN" -eq 1 ]]; then
     log "mode: dry-run"
 fi
@@ -704,11 +781,22 @@ fi
 log
 if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     # Run before listener stops, retention writes, copies, moves or cleanup.
-    python3 "$ARCHIVE_HELPER" preflight "$ROOT_DIR" "$ARCHIVE_RUN_DIR" \
-        artifacts state/inference_preferences.json state/inference_compiled_memory.json \
-        state/inference_compiled_memory.md state/self_learning \
-        state/graph_rebase/readiness_observations.jsonl \
-        state/self_attack state/benchmarks state/diagnostics fruth_research
+    if [[ "$FULL_RESET" -eq 1 ]]; then
+        python3 "$ARCHIVE_HELPER" clean-local-self-attack-runs "$ROOT_DIR" --dry-run
+    fi
+    ARCHIVE_COPY_PATHS=(
+        artifacts state/inference_preferences.json state/inference_compiled_memory.json
+        state/inference_compiled_memory.md state/self_learning
+        state/graph_rebase/readiness_observations.jsonl
+        "${EVIDENCE_SNAPSHOT_PATHS[@]}" fruth_research
+        state/storage_locations.json logs outputs state/chat_history state/events.jsonl
+        state/infer_history.jsonl state/artifact_registry.jsonl state/generated_image_provenance.jsonl
+        state/response_frames state/runtime_status.json state/llama_cpp_catalog.json model_ports.json
+    )
+    if [[ "$FULL_RESET" -eq 1 ]]; then
+        ARCHIVE_COPY_PATHS+=("${MONITOR_HISTORY_PATHS[@]}")
+    fi
+    python3 "$ARCHIVE_HELPER" preflight "$ROOT_DIR" "$ARCHIVE_RUN_DIR" "${ARCHIVE_COPY_PATHS[@]}"
 fi
 
 log "1. Stopping repo-local listeners on standard Fruth ports..."
@@ -730,9 +818,9 @@ if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     log
     log "2. Archiving useful runtime/generated ballast into $ARCHIVE_RUN_REL ..."
     snapshot_path "fruth_research"
-    snapshot_path "state/self_attack"
-    snapshot_path "state/benchmarks"
-    snapshot_path "state/diagnostics"
+    for rel in "${EVIDENCE_SNAPSHOT_PATHS[@]}"; do
+        snapshot_path "$rel"
+    done
     archive_artifacts_preserving_base_dirs
     # Verify every protected copy before moving any live runtime/history path.
     snapshot_path "state/inference_preferences.json"
@@ -740,6 +828,7 @@ if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     snapshot_path "state/inference_compiled_memory.md"
     snapshot_path "state/self_learning"
     snapshot_path "state/graph_rebase/readiness_observations.jsonl"
+    snapshot_path "state/storage_locations.json"
 
     archive_dir_contents "logs"
     archive_path "outputs"
@@ -761,6 +850,11 @@ if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
 
     if [[ "$RESET_REGISTRY" -eq 1 ]]; then
         archive_path "model_ports.json"
+    fi
+    if [[ "$FULL_RESET" -eq 1 ]]; then
+        for rel in "${MONITOR_HISTORY_PATHS[@]}"; do
+            archive_path "$rel"
+        done
     fi
 
     write_archive_manifest
@@ -832,6 +926,14 @@ remove_cache_dirs "__pycache__"
 remove_cache_files "*.pyc"
 remove_cache_files "*.pyo"
 remove_cache_files ".DS_Store"
+
+if [[ "$ARCHIVE_MODE" -eq 1 && "$FULL_RESET" -eq 1 ]]; then
+    if [[ "$LEARNING_RETENTION_FAILED" -eq 1 || "$READINESS_RETENTION_FAILED" -eq 1 ]]; then
+        log "Warning: preserving local self-attack runs because an evidence-retention preflight failed."
+    elif [[ "$DRY_RUN" -eq 0 ]]; then
+        python3 "$ARCHIVE_HELPER" clean-local-self-attack-runs "$ROOT_DIR"
+    fi
+fi
 
 log
 SUMMARY_PREFIX=""

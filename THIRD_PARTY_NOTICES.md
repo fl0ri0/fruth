@@ -40,6 +40,22 @@ Python packages installed through `requirements.txt`, local AI runtimes,
 model weights, and models are not bundled with Fruth. They remain subject to
 their respective upstream licenses and terms.
 
+### Image decoding
+
+`Pillow` validates decoded image bytes and dimensions before the native MLX image
+adapter hands results to Fruth's artifact writer. It is installed separately
+through `requirements.txt`; its code and binary wheels are not bundled here.
+
+- Copyright © 2010 Jeffrey 'Alex' Clark and contributors; inherited PIL copyrights
+  © 1997–2011 Secret Labs AB and © 1995–2011 Fredrik Lundh and contributors.
+- License: [MIT-CMU, Pillow 12.3.0](https://github.com/python-pillow/Pillow/blob/12.3.0/LICENSE).
+  It permits use, modification and distribution for any purpose without a fee,
+  with its copyright/permission notices retained and restrictions on promotional
+  use of the authors' names.
+- Binary wheels carry additional notices for included codecs and libraries.
+  Preserve the complete license file shipped in the installed Pillow distribution
+  if redistributing it; the main Pillow license does not replace those notices.
+
 ### Apple Foundation Models
 
 Apple FM integration uses the Mac's installed `fm` command and Apple-managed

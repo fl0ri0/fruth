@@ -253,6 +253,8 @@ from fruth_server.recovery_contract import (
     normalize_recovery_suggested_action,
 )
 from fruth_server.responses_runtime import (
+    ResponseMutationConflict,
+    require_response_mutation_base,
     ResponsesRuntimeOwner,
     derive_response_lifecycle_state,
     late_fill_has_actionable_repair_work,
@@ -3551,6 +3553,7 @@ _INFER_RUNTIME = InferRuntimeOwner(
         'extract_image_data_url_from_generate_output': lambda *args, **kwargs: _extract_image_data_url_from_generate_output(*args, **kwargs),
         'extract_generate_seed': lambda *args, **kwargs: _extract_generate_seed(*args, **kwargs),
         'ollama_openai_image_generation': lambda *args, **kwargs: _ollama_openai_image_generation(*args, **kwargs),
+        'mlx_vlm_image_request': lambda *args, **kwargs: _BACKEND_TRANSPORT_RUNTIME.mlx_vlm_image_request(*args, **kwargs),
         'persist_audio_bytes_locally': lambda *args, **kwargs: _persist_audio_bytes_locally(*args, **kwargs),
         'persist_image_data_url_locally': lambda *args, **kwargs: _persist_image_data_url_locally(*args, **kwargs),
         'extract_generate_content': lambda *args, **kwargs: _extract_generate_content(*args, **kwargs),
@@ -3698,6 +3701,7 @@ _INFERENCE_ROUTE_RUNTIME = InferenceRouteRuntimeOwner(
         'requests_post': lambda *args, **kwargs: requests.post(*args, **kwargs),
         'chat_timeout_seconds': lambda *args, **kwargs: _chat_timeout_seconds(*args, **kwargs),
         'execute_embedding_backend_request': lambda **kwargs: _execute_embedding_backend_request(**kwargs),
+        'resolve_saved_file_input_path': lambda path: _resolve_saved_downloadable_artifact_path(path),
     },
     wrapper_capability_aliases=_WRAPPER_CAPABILITY_ALIASES,
     max_recent_messages=MAX_RECENT_MESSAGES,
@@ -4057,6 +4061,7 @@ _MULTI_MATERIALIZATION_RUNTIME = MultiMaterializationRuntimeOwner(
 
 
 _LATE_FILL_RUNTIME = LateFillRuntimeOwner(
+    response_mutation=lambda response_id: _RESPONSES_RUNTIME.response_mutation(response_id),
     resolve_saved_file_input_path=lambda path: _resolve_saved_downloadable_artifact_path(path),
     normalize_request_payload=lambda payload: _normalize_request_payload(payload),
     extract_request_meta=lambda payload: extract_request_meta(payload),
@@ -4144,12 +4149,14 @@ def _prepare_late_fill_request_payload(
     expected_capability: str,
     assistant_message: str,
     artifact_gap: Optional[dict[str, Any]] = None,
+    guarded_pending: bool = False,
 ) -> dict[str, Any]:
     return _LATE_FILL_RUNTIME.prepare_late_fill_request_payload(
         request_payload,
         expected_capability=expected_capability,
         assistant_message=assistant_message,
         artifact_gap=artifact_gap,
+        **({"guarded_pending": True} if guarded_pending else {}),
     )
 
 
@@ -4228,6 +4235,7 @@ def _prepare_late_fill_branch_plan(
     source_route_payload: Optional[dict[str, Any]],
     failed_instance_id: Optional[str],
     excluded_instance_ids: Optional[list[str]] = None,
+    guarded_pending: bool = False,
 ) -> dict[str, Any]:
     return _LATE_FILL_RUNTIME.prepare_late_fill_branch_plan(
         expected_capability=expected_capability,
@@ -4238,6 +4246,7 @@ def _prepare_late_fill_branch_plan(
         source_route_payload=source_route_payload,
         failed_instance_id=failed_instance_id,
         excluded_instance_ids=excluded_instance_ids,
+        **({"guarded_pending": True} if guarded_pending else {}),
         build_deferred_follow_up_gap_for_capability=_build_deferred_follow_up_gap_for_capability,
         prepare_late_fill_request_payload=_prepare_late_fill_request_payload,
         resolve_late_fill_route=_resolve_late_fill_route,
@@ -4298,6 +4307,7 @@ def _complete_response_late_fill(
     assistant_message: str,
     artifact_gap: dict[str, Any],
     source_route_payload: Optional[dict[str, Any]],
+    pending_continuation: Optional[Any] = None,
 ) -> None:
     _LATE_FILL_RUNTIME.complete_response_late_fill(
         response_payload=response_payload,
@@ -4305,6 +4315,7 @@ def _complete_response_late_fill(
         assistant_message=assistant_message,
         artifact_gap=artifact_gap,
         source_route_payload=source_route_payload,
+        **({'pending_continuation': pending_continuation} if pending_continuation is not None else {}),
         build_deferred_follow_up_gap_for_capability=_build_deferred_follow_up_gap_for_capability,
         prepare_late_fill_branch_plan=_prepare_late_fill_branch_plan,
         execute_prepared_late_fill_branch=_execute_prepared_late_fill_branch,
@@ -4318,6 +4329,7 @@ def _schedule_response_late_fill(
     assistant_message: str,
     artifact_gap: dict[str, Any],
     source_route_payload: Optional[dict[str, Any]],
+    pending_continuation: Optional[Any] = None,
 ) -> bool:
     return _LATE_FILL_RUNTIME.schedule_response_late_fill(
         response_payload=response_payload,
@@ -4325,6 +4337,7 @@ def _schedule_response_late_fill(
         assistant_message=assistant_message,
         artifact_gap=artifact_gap,
         source_route_payload=source_route_payload,
+        **({'pending_continuation': pending_continuation} if pending_continuation is not None else {}),
         complete_response_late_fill=_complete_response_late_fill,
     )
 
@@ -4941,6 +4954,8 @@ def _build_late_fill_retry_wave_branch(
         'excluded_instance_ids': excluded_instance_ids,
         'retry_wave_anchor_branch_id': anchor_branch_id if anchor_branch_id and anchor_branch_id != branch_id else None,
     }
+    if target_branch.get('retry_dependency_failure'):
+        recovery_attempt['prior_dependency_failure'] = copy.deepcopy(target_branch['retry_dependency_failure'])
     explicit_image_pool_retry = bool(
         capability == 'image_generation'
         and prior_error_code == 'NO_COMPATIBLE_INSTANCE'
@@ -5248,6 +5263,9 @@ def _retry_response_late_fill_branch(response_id: str, body: Optional[dict[str, 
         cancelled_branches=cancelled_branch_records,
         selected_branch_id=branch_id,
     )
+    retry_wave_candidates.extend(_LATE_FILL_RUNTIME.retry_dependency_continuations(
+        current_payload, [retry_branch, *retry_wave_candidates],
+    ))
     retry_wave_branches: list[dict[str, Any]] = []
     for candidate in retry_wave_candidates:
         wave_branch, _wave_state, _wave_attempt, _wave_excluded = _build_late_fill_retry_wave_branch(
@@ -5348,17 +5366,18 @@ def _retry_response_late_fill_branch(response_id: str, body: Optional[dict[str, 
         return jsonify({'error': 'Late-fill retry is already running for this response.'}), 409
     updated_payload = _attach_late_fill_state(current_payload, retry_late_fill)
     try:
-        finalized_payload = _finalize_response_frame_payload(
-            updated_payload,
-            request_payload=_request_payload_for_late_fill_retry(current_payload),
-            persist=True,
-        )
-        _touch_response_lookup(
-            normalized_response_id,
-            status='completed',
-            output_text=str(finalized_payload.get('output_text') or ''),
-            response_payload=finalized_payload,
-        )
+        with _LATE_FILL_RUNTIME._late_fill_publication(updated_payload, expected_payload=current_payload):
+            finalized_payload = _finalize_response_frame_payload(
+                updated_payload,
+                request_payload=_request_payload_for_late_fill_retry(current_payload),
+                persist=True,
+            )
+            _touch_response_lookup(
+                normalized_response_id,
+                status='completed',
+                output_text=str(finalized_payload.get('output_text') or ''),
+                response_payload=finalized_payload,
+            )
         request_payload = _request_payload_for_late_fill_retry(finalized_payload)
         source_route_payload = record.get('route_payload') if isinstance(record.get('route_payload'), dict) else None
         if app.config.get('TESTING'):
@@ -5376,6 +5395,9 @@ def _retry_response_late_fill_branch(response_id: str, body: Optional[dict[str, 
                 daemon=True,
             )
             worker.start()
+    except ResponseMutationConflict as exc:
+        _release_response_late_fill(normalized_response_id)
+        return jsonify({'error': {'code': 'response_mutation_conflict', 'message': str(exc)}}), 409
     except Exception:
         _release_response_late_fill(normalized_response_id)
         raise
@@ -5576,21 +5598,41 @@ def _control_response_late_fill_branch(response_id: str, body: Optional[dict[str
             'failed_branches': failed_branches,
             'cancelled_branches': cancelled_branches,
             'branch_controls': branch_controls,
+            # Control changes eligibility, not previously accepted result evidence.
+            'fill_results': copy.deepcopy(current_late_fill.get('fill_results') or []),
             'execution_gate_status': 'user_control_applied',
             'control_reason': reason,
         },
     )
-    updated_payload = _finalize_response_frame_payload(
-        _attach_late_fill_state(current_payload, next_late_fill),
-        request_payload=current_payload.get('request') if isinstance(current_payload.get('request'), dict) else {},
-        persist=True,
-    )
-    _touch_response_lookup(
-        normalized_response_id,
-        status='completed',
-        output_text=str(updated_payload.get('output_text') or ''),
-        response_payload=updated_payload,
-    )
+    try:
+        with _RESPONSES_RUNTIME.response_mutation(normalized_response_id):
+            latest = (_get_response_lookup_record(normalized_response_id) or {}).get('response_payload') or {}
+            require_response_mutation_base(current_payload, latest)
+            latest_late = latest.get('late_fill') or {}
+            available_now = {
+                _branch_id(branch): branch
+                for branch in _normalize_late_fill_branches([
+                    *(latest_late.get('pending_branches') or []),
+                    *(latest_late.get('active_branches') or []),
+                ])
+            }
+            if (any(available_now.get(branch_id) != available_by_id[branch_id]
+                    for branch_id in controlled_ids)
+                    or latest_late.get('fill_results') != current_late_fill.get('fill_results')):
+                raise ResponseMutationConflict('response_mutation_conflict: control target changed')
+            updated_payload = _finalize_response_frame_payload(
+                _attach_late_fill_state(current_payload, next_late_fill),
+                request_payload=current_payload.get('request') if isinstance(current_payload.get('request'), dict) else {},
+                persist=True,
+            )
+            _touch_response_lookup(
+                normalized_response_id,
+                status='completed',
+                output_text=str(updated_payload.get('output_text') or ''),
+                response_payload=updated_payload,
+            )
+    except ResponseMutationConflict as exc:
+        return jsonify({'error': {'code': 'response_mutation_conflict', 'message': str(exc)}}), 409
     reason_preview, reason_ref = _response_wire_text_preview(
         reason,
         json_path='control.reason',
@@ -6560,6 +6602,10 @@ def _normalize_late_fill_branches(values: Any) -> list[dict[str, Any]]:
                     ] = dict(prior_audio_integrity)
             if capability == 'vision_analysis' and isinstance(recovery_attempt.get('prior_vision_evidence_failure'), Mapping):
                 branch_recovery_attempt['prior_vision_evidence_failure'] = copy.deepcopy(recovery_attempt['prior_vision_evidence_failure'])
+            if capability == 'vision_analysis' and isinstance(recovery_attempt.get('prior_vision_backend_failure'), Mapping):
+                branch_recovery_attempt['prior_vision_backend_failure'] = copy.deepcopy(recovery_attempt['prior_vision_backend_failure'])
+            if isinstance(recovery_attempt.get('prior_dependency_failure'), Mapping):
+                branch_recovery_attempt['prior_dependency_failure'] = copy.deepcopy(recovery_attempt['prior_dependency_failure'])
             if branch_recovery_attempt:
                 branch['recovery_attempt'] = branch_recovery_attempt
         canonical_excluded_instance_ids: list[str] = []
@@ -7420,7 +7466,7 @@ def _attach_late_fill_state(
     runtime['late_fill'] = normalized_state
     runtime = _sync_graph_patch_successor_execution_truth(runtime, normalized_state)
     updated['runtime'] = runtime
-    return updated
+    return _LATE_FILL_RUNTIME.reconcile_completed_inline_outputs(updated)
 
 
 def _sync_graph_patch_successor_execution_truth(
@@ -10116,7 +10162,7 @@ def _execute_embedding_backend_request(
     target_port: int,
     model_name: str,
     backend: str,
-    inputs: list[str],
+    inputs: list[str | dict[str, str]],
     request_model_override: Optional[str] = None,
     embedding_transport: Optional[str] = None,
     instance: Optional[dict[str, Any]] = None,
@@ -10137,11 +10183,13 @@ def _attach_embedding_hints_to_route_context(
     *,
     runtime_manifest: dict[str, Any],
     instances: list[dict[str, Any]],
+    upload=None,
 ) -> None:
     _INFERENCE_ROUTE_RUNTIME.attach_embedding_hints_to_route_context(
         route_context,
         runtime_manifest=runtime_manifest,
         instances=instances,
+        upload=upload,
     )
 
 

@@ -3,6 +3,8 @@ import sys
 
 import pytest
 
+pytest_plugins = ('scripts.test_selection',)
+
 
 def pytest_configure(config):
     config.addinivalue_line('markers','legacy_response_index: explicit simulation of pre-migration JSON history/owners')

@@ -517,6 +517,62 @@ Helper execution is transport-aware:
 - Ollama helpers use `/api/embed`
 - other helpers can participate when their backend contract advertises a compatible embeddings endpoint such as `/v1/embeddings`
 
+Text helpers are backend-neutral. A supported preferred `embedding_helper` wins;
+otherwise readiness, activity, dedicated embedding capability and stable instance
+identity determine selection. There is no Ollama-family tie-break. An unavailable
+preferred target retains the existing available-helper fallback and the audit
+reports whether the preference was applied. Selection does not start a model.
+
+MLX dense encoders use the installed `mlx_vlm` embedding loader/server, with a
+local snapshot preloaded through `--embedding-model`. Discovery requires the
+embedding endpoint/loader and a supported encoder module; older installations
+retain cached-only entries with a reason. Ordinary MLX chat/vision models do not
+gain embedding capability merely because their server package has that endpoint.
+llama.cpp embedding instances use `--embedding` and advertise vector output.
+Bound Hugging Face snapshots may supply embedding metadata; standalone GGUFs
+without that evidence require explicit `embedding` capability at startup.
+
+Each comparison uses one selected model and one ordered batch. The complete
+response must contain exactly one finite, nonzero, equally sized vector per input.
+OpenAI-shaped `data` results require unique integer indices contiguous from zero;
+response ordering is reconstructed from those indices. Malformed, missing or
+inconsistent results reject the entire batch. Failed refreshes discard old hints
+and record the fallback instead of retaining another model's scores.
+
+Transport preserves input strings, including any task prefixes. It does not guess
+model-specific prefixes, truncate vector dimensions or combine embeddings from
+different models. New model adoption must verify its input recipe and compare
+routing quality and latency against the existing helper. Existing score/margin
+thresholds are unchanged and are not a model-independent quality guarantee.
+Modalities follow the intersection of discovered model inputs and the native
+adapter contract, without a model-name allowlist. Ollama 0.40.6 or newer advertises
+image/audio embeddings only when `/api/show` reports `vision`/`audio` alongside
+`embedding` and the server version was observed. Unknown/older versions retain
+text support. MLX-VLM 0.7.8 or newer supports image inputs when the local encoder
+has a vision configuration and declared image processor; its embedding endpoint
+does not accept audio. Other OpenAI-shaped endpoints currently remain text-only.
+Input modalities do not make an embedding encoder a chat, vision-analysis or STT
+generator. Startup refreshes the model/backend contract.
+
+When the existing semantic helper runs, it can include the current upload,
+explicit `file_path` or caller-selected image/audio references. It never scans
+historical media or fetches remote image/audio URLs. Original bytes are sent
+inline; upload positions are restored. The optional media helper is bounded to
+8 inputs and 32 MiB total bytes (`fruth_core/embeddings.py`). Unsupported,
+unreadable, invalid or over-budget media leaves a reason in
+`runtime.embedding_helper.media`; preparation failure retains the text helper.
+A native request failure rejects the whole comparison batch.
+
+`runtime.embedding_hints.media` contains per-input SHA-256, byte count, mixed-batch
+index and advisory similarities against the same text candidates. It contains
+neither media bytes nor retained vectors. These scores do not use the deterministic
+text routing thresholds and do not prove transcription, artifact identity,
+fulfillment or closure. Passive previews and disabled embedding signals perform
+no media helper work. Text strings and task prefixes remain unchanged; multimodal
+Ollama requests also disable native text truncation. Audio decoding belongs to
+the native backend; malformed audio fails the batch. Video and token-level
+multi-vector retrieval remain unsupported.
+
 They are not normal `/api/chat` or `/api/responses` targets.
 
 If no supported helper is running, or if helper execution fails, the interpretive inference layer records that fallback state in `runtime.embedding_helper` and behaves exactly like before.

@@ -47,6 +47,159 @@ def evidence_fixture(root: Path) -> dict[str, bytes]:
     return files
 
 
+@pytest.mark.parametrize('full_flag', [None, '--full', '--empty-state'])
+@pytest.mark.parametrize('external_destination', [False, True])
+def test_archive_can_omit_campaign_copy_without_losing_learning_or_work(
+    tmp_path: Path, full_flag: str | None, external_destination: bool,
+) -> None:
+    from test_storage_locations import configure, external
+
+    root, env, _ = make_isolated_cleanup_repo(tmp_path, readiness_summary={
+        'status': 'unchanged', 'selected_observation_count': 1,
+        'settled_observation_count': 1, 'registered_observation_count': 1,
+        'missing_settled_observation_count': 0, 'active_observation_count': 0,
+        'scan_error_count': 0, 'hydration_error_count': 0,
+        'registry_error_count': 0, 'appended_record_count': 0,
+        'already_present_count': 1, 'error_count': 0,
+    })
+    files = evidence_fixture(root)
+    for relative, body in {
+        'state/self_learning/eval_cases.jsonl': b'{"case_id":"retained"}\n',
+        'state/self_learning/accepted_policy_snapshot.json': b'{"enabled":false}\n',
+        'state/self_learning/retained_sidecars/proof.json': b'{"evidence":true}\n',
+        'state/inference_preferences.json': b'{"preserve":"preferences"}\n',
+        'state/fruth_run_monitor/last_seen.json': b'{"last":"historical"}\n',
+        'state/fruth_run_monitor/reports.jsonl': b'{"response":"historical"}\n',
+        'state/fruth_run_monitor/reports.md': b'Historical monitor report\n',
+    }.items():
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(body)
+        files[relative] = body
+    frame = (root / 'state/response_frames/responses.jsonl').read_bytes()
+    archive_root = root / '.fruth_archiv'
+    if external_destination:
+        archive_root = tmp_path / 'external archive'
+        archive_root.mkdir()
+        configure(root, archive=dict(write_target='external',
+                  locations=[external(archive_root, write=True)]))
+
+    flags = ('--archive', full_flag or '--exclude-self-attack')
+    result = run_isolated_cleanup(root, env, *flags)
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    destination, = archive_root.iterdir()
+    assert not (destination / 'state/self_attack').exists()
+    assert 'archive copy bytes: state/self_attack =' not in result.stdout
+    assert 'self-attack snapshot: excluded by request' in result.stdout
+    for relative, body in files.items():
+        if relative.startswith('state/fruth_run_monitor/'):
+            if full_flag:
+                assert not (root / relative).exists()
+                assert (destination / relative).read_bytes() == body
+            else:
+                assert (root / relative).read_bytes() == body
+                assert not (destination / relative).exists()
+            continue
+        if full_flag and relative.startswith('state/self_attack/') and len(Path(relative).parts) > 3:
+            assert not (root / relative).exists()
+            continue
+        assert (root / relative).read_bytes() == body
+        if relative.startswith(('state/self_learning/', 'state/inference_preferences',
+                                'state/benchmarks/', 'state/diagnostics/', 'fruth_research/')):
+            assert (destination / relative).read_bytes() == body
+    assert (destination / 'artifacts/bundles/keep.html').read_text() == '<p>fixture</p>\n'
+    assert (destination / 'state/response_frames/responses.jsonl').read_bytes() == frame
+    assert not (root / 'state/response_frames/responses.jsonl').exists()
+    assert not (root / 'artifacts/bundles/keep.html').exists()
+    manifest = (destination / 'manifest.txt').read_text()
+    assert 'evidence_snapshot_paths=state/benchmarks,state/diagnostics\n' in manifest
+    assert 'exclude_self_attack=1\n' in manifest
+    if full_flag:
+        assert 'self_attack_cleanup_policy=remove_local_run_directories_without_snapshot_after_retention;' in manifest
+        assert 'monitor_history_snapshot_paths=state/fruth_run_monitor/last_seen.json,state/fruth_run_monitor/reports.jsonl,state/fruth_run_monitor/reports.md\n' in manifest
+    else:
+        assert 'self_attack_cleanup_policy=preserve\n' in manifest
+
+
+def test_campaign_exclusion_preview_is_read_only_and_matches_copy_scope(tmp_path: Path) -> None:
+    root, env, _ = make_isolated_cleanup_repo(tmp_path)
+    files = evidence_fixture(root)
+    before = archive.inventory(root)
+    result = run_isolated_cleanup(root, env, '--archive', '--full', '--dry-run')
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert archive.inventory(root) == before
+    for relative, body in files.items():
+        assert (root / relative).read_bytes() == body
+    assert 'archive copy bytes: state/self_attack =' not in result.stdout
+    assert 'snapshot protected path: state/self_attack' not in result.stdout
+    assert 'snapshot protected path: state/benchmarks' in result.stdout
+    assert 'snapshot protected path: fruth_research' in result.stdout
+
+
+def test_campaign_exclusion_rejects_clean_before_side_effects(tmp_path: Path) -> None:
+    root, env, args_file = make_isolated_cleanup_repo(tmp_path)
+    before = archive.inventory(root)
+    result = run_isolated_cleanup(root, env, '--full', '--exclude-self-attack')
+    assert result.returncode == 2
+    assert 'requires archive mode' in result.stderr
+    assert '1. Stopping' not in result.stdout
+    assert not args_file.exists()
+    assert archive.inventory(root) == before
+
+
+def test_local_campaign_cleanup_preserves_external_targets_aliases_and_helpers(tmp_path: Path) -> None:
+    root = tmp_path / 'repo'
+    local = root / 'state/self_attack'
+    run = local / 'run'
+    run.mkdir(parents=True)
+    (run / 'raw.json').write_bytes(b'local raw')
+    external = tmp_path / 'external'
+    external.mkdir()
+    proof = external / 'proof.json'
+    proof.write_bytes(b'external proof')
+    (run / 'external-link').symlink_to(external, target_is_directory=True)
+    (local / 'external-link').symlink_to(external, target_is_directory=True)
+    (local / 'monitor.py').write_bytes(b'helper')
+    (local / 'Finder alias').write_bytes(b'alias')
+    before = archive.inventory(root)
+    archive.clean_local_self_attack_runs(root, dry_run=True)
+    assert archive.inventory(root) == before
+    archive.clean_local_self_attack_runs(root, dry_run=False)
+    assert not run.exists()
+    assert proof.read_bytes() == b'external proof'
+    assert (local / 'external-link').is_symlink()
+    assert (local / 'monitor.py').read_bytes() == b'helper'
+    assert (local / 'Finder alias').read_bytes() == b'alias'
+
+
+def test_local_campaign_cleanup_rejects_redirected_root(tmp_path: Path) -> None:
+    root = tmp_path / 'repo'
+    (root / 'state').mkdir(parents=True)
+    external = tmp_path / 'external'
+    external.mkdir()
+    proof = external / 'proof.json'
+    proof.write_bytes(b'external proof')
+    (root / 'state/self_attack').symlink_to(external, target_is_directory=True)
+    for dry_run in (True, False):
+        with pytest.raises(ValueError, match='real checkout directory'):
+            archive.clean_local_self_attack_runs(root, dry_run=dry_run)
+    assert proof.read_bytes() == b'external proof'
+
+
+def test_local_campaign_cleanup_rejects_mount_before_any_deletion(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / 'repo'
+    local = root / 'state/self_attack'
+    for name in ('a-run', 'z-mount'):
+        (local / name).mkdir(parents=True)
+        (local / name / 'proof.json').write_bytes(b'proof')
+    monkeypatch.setattr(archive.os.path, 'ismount', lambda path: Path(path).name == 'z-mount')
+    with pytest.raises(ValueError, match='mounted store'):
+        archive.clean_local_self_attack_runs(root, dry_run=False)
+    assert (local / 'a-run/proof.json').read_bytes() == b'proof'
+    assert (local / 'z-mount/proof.json').read_bytes() == b'proof'
+
+
 @pytest.mark.parametrize('flags', [(), ('--full',), ('--empty-state',), ('--forget-inference',), ('--archive',), ('--archive', '--full'), ('--archive', '--full', '--forget-inference')])
 def test_cleanup_preserves_all_evidence_and_reusable_code(tmp_path: Path, flags: tuple) -> None:
     root, env, _ = make_isolated_cleanup_repo(tmp_path)
@@ -68,11 +221,14 @@ def test_cleanup_preserves_all_evidence_and_reusable_code(tmp_path: Path, flags:
     if '--archive' in flags:
         destination, = [p for p in (root / '.fruth_archiv').iterdir() if p.name != 'old']
         for relative, body in files.items():
-            if relative.startswith(EVIDENCE_ROOTS):
+            if '--full' in flags and relative.startswith('state/self_attack/'):
+                assert not (destination / relative).exists()
+            elif relative.startswith(EVIDENCE_ROOTS):
                 assert (destination / relative).read_bytes() == body
             else:
                 assert not (destination / relative).exists()
-        assert (destination / 'state/self_attack/completed/replay.py').stat().st_mode & 0o111
+        if '--full' not in flags:
+            assert (destination / 'state/self_attack/completed/replay.py').stat().st_mode & 0o111
         for report in destination.glob('state/*/completed/**/report.md'):
             for target in re.findall(r'\]\(([^)]+)\)', report.read_text()):
                 assert (report.parent / target).is_file()
@@ -194,7 +350,7 @@ def test_copy_scope_and_archive_base_symlinks_fail_safely(tmp_path: Path) -> Non
     with pytest.raises(ValueError, match='symlink'):
         archive.preflight(root, root / '.fruth_archiv/run', ['state/self_attack'])
     (root / '.fruth_archiv').symlink_to(outside, target_is_directory=True)
-    with pytest.raises(ValueError, match='repo-local'):
+    with pytest.raises(ValueError, match='symlink|overlap'):
         archive.preflight(root, root / '.fruth_archiv/run', [])
 
 
@@ -207,3 +363,75 @@ def test_missing_artifact_buckets_recreated_without_entering_research(tmp_path: 
     assert (root / 'artifacts/bundles').is_dir()
     for relative, body in files.items():
         assert (root / relative).read_bytes() == body
+
+
+@pytest.mark.parametrize('flags', [(), ('--full',), ('--empty-state',), ('--forget-inference',),
+    ('--archive',), ('--archive', '--full'), ('--archive', '--full', '--forget-inference')])
+def test_storage_configuration_and_registered_roots_survive_all_modes(tmp_path, flags):
+    from test_storage_locations import configure, external
+    root, env, _ = make_isolated_cleanup_repo(tmp_path)
+    archive_root = tmp_path / 'external archive'
+    archive_root.mkdir()
+    retained = root / 'retained-campaigns[1]/old/__pycache__/evidence.pyc'
+    retained.parent.mkdir(parents=True)
+    retained.write_bytes(b'retained evidence')
+    (root / 'retained-link').symlink_to(root / 'retained-campaigns[1]')
+    config = configure(root,
+        archive=dict(default_enabled=False, write_target='external',
+                     locations=[external(archive_root, write=True)]),
+        self_attack=dict(locations=[external(root / 'retained-link')]))
+    before = config.read_bytes()
+    (root / 'logs').mkdir()
+    (root / 'logs/runtime.log').write_bytes(b'archive me')
+    result = run_isolated_cleanup(root, env, *flags)
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert config.read_bytes() == before
+    assert retained.read_bytes() == b'retained evidence'
+    assert not (root / '.fruth_archiv').exists()
+    if '--archive' in flags:
+        archives = list(archive_root.iterdir())
+        assert len(archives) == 1
+        assert (archives[0] / 'state/storage_locations.json').read_bytes() == before
+        assert (archives[0] / 'logs/runtime.log').read_bytes() == b'archive me'
+        assert not (root / 'logs/runtime.log').exists()
+    else:
+        assert list(archive_root.iterdir()) == []
+
+
+def test_missing_external_archive_stops_before_retention_or_lifecycle(tmp_path):
+    from test_storage_locations import configure, external
+    root, env, args_file = make_isolated_cleanup_repo(tmp_path)
+    missing = tmp_path / 'missing disk/archive'
+    configure(root, archive=dict(write_target='external', locations=[external(missing, write=True)]))
+    before = (root / 'state/response_frames/responses.jsonl').read_bytes()
+    result = run_isolated_cleanup(root, env, '--archive', '--full')
+    assert result.returncode != 0
+    assert 'no fallback' in result.stderr
+    assert '1. Stopping' not in result.stdout
+    assert not args_file.exists()
+    assert not missing.parent.exists()
+    assert (root / 'state/response_frames/responses.jsonl').read_bytes() == before
+
+
+def test_verified_external_move_retains_source_on_bad_copy(tmp_path, monkeypatch):
+    source = tmp_path / 'source'
+    source.write_bytes(b'exact original')
+    destination = tmp_path / 'destination'
+    real_copy = archive.shutil.copy2
+    def corrupt_copy(src, dst, **kwargs):
+        real_copy(src, dst, **kwargs)
+        Path(dst).write_bytes(b'corrupt')
+    monkeypatch.setattr(archive.shutil, 'copy2', corrupt_copy)
+    with pytest.raises(ValueError):
+        archive.verified_move(source, destination)
+    assert source.read_bytes() == b'exact original'
+    assert destination.read_bytes() == b'corrupt'
+
+
+def test_verified_external_move_removes_source_only_after_exact_copy(tmp_path):
+    source = tmp_path / 'source'
+    source.mkdir()
+    (source / 'proof').write_bytes(b'exact evidence')
+    archive.verified_move(source, tmp_path / 'destination')
+    assert not source.exists()
+    assert (tmp_path / 'destination/proof').read_bytes() == b'exact evidence'

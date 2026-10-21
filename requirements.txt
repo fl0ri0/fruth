@@ -1,10 +1,12 @@
 Requests
 Flask
 Flask-Cors
-urllib3<2
+urllib3>=2,<3
 pyyaml
 pydantic
 pypdf
+# Decode/verify native image results before artifact persistence.
+Pillow>=12.3,<13
 # Native macOS PDF rendering; pulls PyObjC core/Cocoa, not the full PyObjC bundle.
 pyobjc-framework-Quartz ; sys_platform == "darwin"
 pytest

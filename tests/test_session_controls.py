@@ -291,6 +291,36 @@ class SessionControlsTests(unittest.TestCase):
         self.assertIn('2:3', schema['fields']['image_aspect_ratio']['options'])
         self.assertIn('multiple of 16', schema['fields']['image_width']['description'])
         self.assertIn('base image', schema['fields']['image_meta']['description'])
+        self.assertNotIn('image_steps', schema['fields'])
+
+    def test_native_image_defaults_are_descriptive_and_minimum_is_exposed(self):
+        schema = build_session_controls({
+            'model': 'community/custom-image', 'backend': 'mlx',
+            'capability': 'image_generation', 'backend_package': 'mlx_vlm',
+            'backend_metadata': {'image_transport': 'mlx_vlm_images_v1',
+                'image_modes': ['generate'], 'image_request_controls': ['steps'],
+                'image_steps_min': 2, 'image_sampling_defaults': {'generate': {'steps': 9}}},
+        })
+        field = schema['fields']['image_steps']
+        self.assertEqual(field['minimum'], 2)
+        self.assertIn('Generation default: 9', field['description'])
+        self.assertNotIn('default_value', field)
+        self.assertIn('does not advertise', schema['fields']['image_meta']['description'])
+
+    def test_image_steps_require_qualified_adapter_and_declared_support(self):
+        instance = {
+            'model': 'mlx-community/Qwen-Image-2.1-MLX-4bit', 'backend': 'mlx',
+            'capability': 'image_generation', 'backend_package': 'mlx_vlm',
+            'backend_metadata': {'image_transport': 'mlx_vlm_images_v1', 'image_request_controls': ['steps']},
+        }
+        field = build_session_controls(instance)['fields']['image_steps']
+        self.assertEqual(field['kind'], 'number')
+        self.assertNotIn('default_value', field)
+        self.assertIn('model default', field['description'])
+        for overrides in ({'backend': 'ollama'}, {'backend_package': 'mlx_lm'},
+                          {'backend_metadata': {}}, {'capability': 'chat'}):
+            with self.subTest(overrides=overrides):
+                self.assertNotIn('image_steps', build_session_controls({**instance, **overrides})['fields'])
 
     def test_kitten_tts_schema_exposes_required_speaker_with_default(self):
         schema = build_session_controls(

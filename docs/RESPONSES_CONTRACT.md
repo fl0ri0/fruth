@@ -502,6 +502,26 @@ The `stages` array remains compatibility state. The `cycle` field is the general
 
 `late_fill` records continuation of obligations already present in the request phase graph. It must not create a new user intent.
 
+State rebuilds carry accepted results and the admitted execution envelope through
+pending, running and terminal checkpoints. This includes terminal Closure repair
+and partial-rebase identities as well as graph-patch successor identity. Carrying
+an envelope does not admit new work or bypass the current-frame, execution and
+branch-control checks. A completed terminal repair handoff must not dispatch again
+when its branch completion evidence is recovered.
+
+Terminal materialization refreshes current artifact/output projections and new
+results. Previously accepted `fill_results` retain their original content,
+digests and execution identities even when a later authorized repair replaces
+the same file. History does not become a new submission or confer execution
+authority; current repair results still pass the publication target checks.
+
+If terminal Closure replaces a repair's executable branch with a bounded
+materialization branch, the exact replaced contract is retained in the repair
+loop's `superseded_contracts`, with its replacement identity. It is no longer
+counted as another executable duty. This records a transfer, not fulfillment:
+the replacement must pass graph admission, execution and Closure. Unrelated
+contracts sharing a target remain separate obligations.
+
 Historical frames without `request.intent_source` remain readable audit truth.
 Their saved effective prompt is not evidence of original caller authority. Retry
 may continue an existing accepted branch under its exact local contract and
@@ -561,6 +581,61 @@ exact execution record; old/foreign callbacks cannot select it. Fresh authorized
 repair remains possible, with the earlier frozen frame and execution retained.
 
 UI surfaces should treat `pending_branches`, `active_branches`, `completed_branches`, `failed_branches`, and `fill_results` as branch-state truth before older slot projections. Slots are still useful for layout and artifact identity, but a stale pending slot must not keep showing queued when the matching branch is completed or blocked.
+
+Branch control, retry publication and worker checkpoints share a response-scoped
+mutation boundary in `ResponsesRuntimeOwner`. Prepared worker results remain
+candidates until publication rechecks the current frame id/sequence, execution
+binding and target disposition under that boundary. It stays held through frame
+commit and live publication. Current live controls within the same frame are
+carried into the candidate before result revalidation, preserving normal sibling
+cancellation processing. A changed durable version rejects the candidate.
+A stale worker rejects its candidate with `stale_result_rejected`
+diagnostics; saved physical artifacts remain inspectable but are not accepted
+outputs. A control whose admitted target changed returns HTTP 409 with
+`response_mutation_conflict`; a fresh control with no pending/active target still
+returns 404. HTTP 200 cancellation cannot be replaced by that stale worker.
+
+A legitimately scheduled, still-live worker may then attempt one guarded handoff
+through the existing Late Fill release-then-schedule seam. This continues its
+existing admitted execution; it does not admit work or mint an execution key.
+The private invocation context retains the original promoted scope, exact local
+contracts/request, submitted IDs and consumed one-attempt allowance. Only a newer
+committed exact user-control frame with unchanged execution, graph, unaffected
+contracts and accepted evidence qualifies. The rejected result is never accepted.
+An accepted sibling S remains accepted; cancelled T remains cancelled; independent
+still-pending P may run only if it was never submitted in this invocation chain.
+
+The child revalidates after winning the existing claim, at entry, before dispatch
+and at acceptance. Scope is a dispatch filter; other pending obligations remain
+visible. Local instructions and accepted dependency bindings remain exact. Missing
+local/dependency evidence blocks progress; a direct local prompt does not waive a
+declared dependency. No root/assistant fallback or first-pending dependency bypass
+is allowed in guarded mode. Evidence types without a qualifying existing owner
+predicate remain pending. In particular, the materialization predicate used here
+qualifies image and required text artifacts; it does not establish audio-producer
+dependency integrity. Existing normal execution and failed retry remain unchanged.
+
+The allowance is spent on qualification, including denial or unsuccessful
+scheduling. Duplicate submission/entry is inert, a losing claimant releases
+nothing, submission failure releases its own claim, and a successfully started
+child exclusively owns cleanup even if later tracing fails. A second conflict
+stops the child. Cancellation after logical dispatch cannot recall physical
+provider work, but still prevents stale acceptance. Passive reads and recovery
+never schedule; process-context loss ends this permission. Pending-only retry
+still returns 409. There is no durable resume queue, new endpoint or UI action.
+Existing availability polling remains conditional on finite provider/capacity and
+scheduling assumptions, with no new total waiting deadline.
+
+This boundary coordinates threads of one control-plane process, including its
+claimed worker and progress callbacks. It does not serialize independent
+responses or claim support for multiple control-plane processes writing the same
+response. Provider calls and terminal materialization run outside it. The lock
+registry is held only to retain/release a response lock, never while waiting.
+Acquisition order is response mutation, then short lookup/stream or existing
+artifact/frame storage operations, then the frame writer's SQLite lock. Worker
+claim acquisition/release remains separate; no provider wait, join, or lock
+acquisition from an already-held lookup/claim/storage lock is allowed. Existing
+append locks and exact successor parent CAS remain independent requirements.
 
 Availability selection happens inside the dependency-ready batch, before resource
 priorities. Work without a recorded availability wait is considered first; if
@@ -908,9 +983,35 @@ frame storage in `recovery_attempt.prior_vision_evidence_failure`, while a secon
 rejection retains its own error evidence. Existing frames without dispatch proof
 are not retroactively made retryable.
 
-Recovery is user-triggered and branch-scoped. It preserves the original request intent and reopens only an existing failed branch.
+For transient backend failures of these same direct-image branches,
+`vision_bounded_backend_recovery_v1` permits one available alternate instance.
+Runtime first binds the prepared input to its accepted producer, exact saved
+path, digest, response, branch, phase and dependencies. This is preparation
+evidence, not a claim that the failed provider inspected the image. Typed timeout,
+unavailability, and HTTP 408/429/500/502/503/504 failures qualify; invalid requests
+do not. The original failure and binding remain in
+`recovery_attempt.prior_vision_backend_failure`. Backend and answer-evidence
+recovery share the same two-attempt ceiling; switching failure classes cannot
+reset it. Successful dispatch must return a matching native image receipt.
+An explicit generation refusal is not an image inspection; these deterministic
+rejection checks do not certify the semantic accuracy of an accepted description.
 
-The failure side exposes `recovery_state.status == "candidate"`. The retry endpoint promotes exactly one candidate into `recovery_state.status == "attempting"` and records a `recovery_attempt`. This is preparation for operational recovery, not general automatic recovery.
+Explicit recovery is user-triggered and branch-scoped. It preserves accepted
+sibling results and the original request intent. The retry wave may also include
+existing dependent branches that never dispatched because this prerequisite
+failed at the dependency gate. Their original identities and edges must still
+match the accepted graph; cancellation, external-input requirements and opt-outs
+remain binding. Normal dependency gates decide when they can execute. Completed
+inline results clear stale retry errors only for their exact output slots; saved
+file obligations retain their separate artifact-evidence requirements. Historical
+frames remain unchanged, and evidence lost by an older retry is not reconstructed
+by this correction.
+
+The failure side exposes `recovery_state.status == "candidate"`. The retry endpoint
+promotes the selected candidate into `recovery_state.status == "attempting"` and
+records a `recovery_attempt`. Related branches admitted to the bounded retry wave
+retain their own recovery records. This is preparation for operational recovery,
+not general automatic recovery.
 
 Endpoint:
 

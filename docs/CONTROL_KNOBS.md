@@ -10,6 +10,26 @@ Its purpose is practical:
 
 ---
 
+## Archive and Self-Attack storage
+
+`state/storage_locations.json` selects independent write targets and named read
+locations for `archive` and `self_attack`. `default_enabled` controls each built-in
+location; `write_target` selects one writable location or `null` disables defaulted
+writes. Missing configuration retains `.fruth_archiv/` and `state/self_attack/`.
+Unavailable selected media fails without fallback. Location registration does not
+move data or change runtime recovery/closure authority. Configuration survives
+cleanup; `./fruth storage status` observes it without lifecycle operations.
+See [configuration and examples](../FRUTH_FOR_AGENTS.md#storage-locations).
+
+`archive --full` (also `--empty-state`) always omits the raw local self-attack
+campaign snapshot and, after successful archive/retention checks, deletes local
+run directories without backup. Operators stop writers and move wanted runs
+beforehand. External stores, existing archives, links and root-level helpers stay
+untouched; learning and storage configuration remain protected. Plain archive
+can omit the copy with `--exclude-self-attack` while keeping campaigns in place.
+The manifest records the scope and cleanup policy. Storage routing alone does
+not change the plain archive payload.
+
 ## Core Principle
 
 When something feels wrong, the question is no longer:
@@ -31,6 +51,27 @@ This is a serialization safety limit, not a provider context size or a guarantee
 of sufficient generation headroom. It does not shorten the inference policy.
 
 ---
+
+## Apple process ownership compatibility
+
+Local AFM and the PCC bridge share process-identity capture in
+`fruth_runtime/apple_fm_model_manager.py`. New `ps -ww` captures set `LC_ALL=C`
+and `LANG=C`; persisted identities remain strings containing the full start time
+and command. Stop checks accept the two English `ps lstart` layouts
+`Wed Oct 14 21:21:30 2026` and `Wed 14 Oct 21:21:30 2026` without rewriting records.
+Calendar/weekday validation and exact observed executable/command equality are
+required, along with each backend's recorded server arguments. Unknown locales,
+ambiguous numeric dates, missing or malformed evidence cannot establish ownership,
+even when two invalid strings are equal. There is no PID-, port- or command-only
+fallback. PCC retains its framework-Python versus venv-symlink compatibility by
+checking the observed executable against the persisted observed executable.
+
+This compatibility does not infer timezone changes: historical `lstart` strings
+have no timezone and only second precision. Different displayed start times remain
+mismatches. Existing observation-then-SIGTERM timing is not an atomic process handle;
+post-signal checks revalidate identity, do not escalate to SIGKILL, and preserve the
+record if the matching process remains. The isolated runner admits real owned disposable-process identity capture and
+comparison; its sleep fixture does not prove a production service stop or restart.
 
 ## Apple PCC instance transport
 
@@ -133,6 +174,14 @@ Primary posture:
 - Route preview is read-only. Interpretive inference route selection may choose a compatible live target, but it must not start, load, unload, or restart model instances.
 
 Non-UI interpretive inference preview semantic compute policy:
+
+The selected embedding helper exposes only modalities supported by both its
+model and native adapter. Optional current-turn media comparisons have named
+limits `EMBEDDING_MEDIA_MAX_ITEMS=8` and `EMBEDDING_MEDIA_MAX_BYTES=32 MiB` in
+`fruth_core/embeddings.py`; exceeding either skips media hints with an explicit
+reason, without clipping input or changing the caller's generation request.
+No separate UI toggle is introduced. See the
+[embedding helper contract](INFERENCE_ROUTING.md#embedding-helper-note).
 
 - `FRUTH_INFERENCE_PREVIEW_COMPUTE_SEMANTICS` controls the default when `/api/inference_route_preview` omits `compute_semantics`.
   - `off`, `false`, `0`, `no`, or `n`: omitted preview stays cached/passive.
@@ -240,6 +289,52 @@ If something feels:
 - truncated despite the model being capable of longer output
 
 Then this is the knob to inspect.
+
+#### Image generation controls
+
+Image calls use the selected instance's qualified adapter. Width and height must
+be supplied together. The public API retains its existing 4 MP budget and
+multiple-of-16 requirement; the qualified MLX-VLM image loaders additionally
+require each side to be 256–2048 pixels. MLX rejects invalid explicit controls
+without clamping. `seed` remains an optional nonnegative integer within the API's
+existing range, and the request's inference timeout is forwarded to the adapter.
+The optional **Steps** session control is shown for qualified MLX-VLM image
+instances that advertise it. It sends a positive integer `steps` for generation
+or reference editing; blank omits the field and preserves the native model
+default. The schema describes the native default and loader-specific minimum
+(2 for the installed Z-Image loader); an explicit value below that minimum is
+rejected before dispatch. Invalid values are rejected without rounding or clamping. Backends that
+do not support this control reject explicit `steps`. The setting is saved per
+model through the existing session settings. Fewer diffusion steps can reduce
+generation time at a quality cost; they do not bound loading or post-processing.
+Unspecified dimensions and guidance retain native defaults; guidance is not
+exposed by this integration.
+
+One supplied image selects reference editing only when the selected instance
+advertises an edit loader; otherwise the request is rejected. MLX reference bytes are held in a
+temporary Fruth-owned file until the synchronous native call completes. This is
+single-reference editing; multiple-image composition is not implied. Output
+PNG bytes must decode and match returned/requested dimensions before persistence.
+
+`image_execution` records adapter/model, requested and sent controls, reported seed,
+decoded output size/digest and, for editing, the reference digest. Provenance omits
+empty optional values. These facts also survive in the canonical response's
+runtime projection. Ollama records requested and reported seed separately; a seed
+requested by the caller is not substituted for missing provider evidence.
+Explicit steps survive as requested/sent control evidence; the current native
+HTTP response does not report effective steps, so Fruth does not claim them as
+independently observed. Existing instances must be restarted on the updated code
+to advertise this newly supported control.
+Existing artifact qualification and closure checks still decide acceptance.
+
+Newly started MLX image instances release idle generation/edit model ownership
+and unused allocator cache after completed image requests, including failures.
+This is automatic, not a session setting. Overlapping image work delays release
+until safe; output bytes and unrelated model kinds stay intact. The server remains
+available and reloads weights for the next request, which can add latency. Startup
+preloading is unchanged; generation peaks and immediate macOS compression/swap
+recovery are not bounded by this policy. See [backend memory handling](BACKEND_FABRIC.md)
+for activation and logs.
 
 Generation token budgets should be explicit and high enough for the requested work. Normal chat/responses calls should not add a Fruth-side `max_tokens` cap when the user did not request one; internal resolver and translation helper budgets should avoid small hidden ceilings. The explicit `planner_timeout_ms` developer flag is a named resolver compatibility safety budget, not a small hidden wait cap, and is allowed up to the local long-running job budget of 2 hours.
 
@@ -363,6 +458,16 @@ reuses an excluded one. Missing/unbound input, ambiguous producer evidence,
 PDF/text-only analysis, and optional/deferred work retain their existing recovery.
 The alternate result must pass the unchanged dependency evidence and Closure gates.
 
+`vision_bounded_backend_recovery_v1` shares that ceiling for a transient backend
+failure after Runtime binds the prepared image to the same unique accepted
+producer. It retains the original error and prepared-input binding, excludes the
+failed instance, and verifies exact input bytes again before the alternate call.
+Backend and answer-evidence failures together still allow only two attempts;
+the smaller explicit generic budget continues to win. This adds no new knob,
+model-start action, or fallback to a text-only inspection. Explicit retry retains
+accepted siblings and reconsiders only existing dependency-gated consumers of
+the repaired branch, subject to their unchanged execution controls.
+
 Generated-media graph joins must preserve artifact-specific dependencies. Image analysis depends on generated image phases; spoken-text checks depend on generated audio phases; final text joins depend on those evidence phases, not on whichever media branch happened to appear immediately before them in prompt order.
 
 Text-to-speech branches must execute on the branch-local speakable text, not on wrapper wording such as "read that reply aloud". When the current turn or branch payload clearly indicates language, the branch must carry `lang_code` through to `/api/infer`; backend defaults must not silently replace declared German, French, Spanish, or other spoken-language truth.
@@ -467,6 +572,28 @@ After `authorize_partial`, Runtime joins authorization only from the trusted reg
 Self-learning retention is a cleanup/archive truth knob. Before `clean` or `archive` removes response-frame ballast, `clean_repo_state.sh` collects sidecar refs reachable from active `state/self_learning/*.json` and `*.jsonl`, writes `state/self_learning/retention_manifest.json`, and copies retained sidecars to `state/self_learning/retained_sidecars/`. Dry-runs print retained and missing counts. Missing sidecars are diagnostics in the manifest/report; they must not disappear silently or promote learning authority.
 
 Late-fill surface state is branch-control aware. A visible queued or running branch can be cancelled from the UI through `/api/responses/<response_id>/late_fill/control`; the surface should then show the terminal branch state instead of an endless spinner. Cancellation is not a claim that the provider stopped instantly; it is runtime truth that queued work is skipped and late-arriving results from that branch are stale.
+
+Cancel, waive and supersede controls preserve already accepted result records
+through the immediate response and persisted frame, including unaffected sibling
+outputs. Branch, batch and all scopes select pending/active work; they do not
+revoke completed work or accept result claims from the control request.
+
+Control and worker publication now revalidate under one response-scoped mutation
+boundary. A changed frame, execution or target disposition rejects a stale worker
+publication; a stale control admission returns `response_mutation_conflict` (409).
+Cancellation acknowledged before a worker publishes remains authoritative.
+Provider execution is outside this boundary, so cancellation does not promise
+provider termination. See the [Late Fill contract](RESPONSES_CONTRACT.md#late-fill)
+for the supported thread model and lock order.
+
+`C9_CONTROL_CONTINUATION_MAX_HANDOFFS = 1` is the Late Fill owner's fixed
+process-local safety bound, not an environment knob. The one attempt includes
+qualification denial, claim loss and thread submission failure; the child shares
+the consumed allowance. It may continue only exact admitted, still-pending,
+never-submitted work after a qualifying committed control conflict. Existing
+availability polling, provider timeouts, resource limits and repair budgets are
+unchanged. Neither the constant nor a pending projection authorizes recovery to
+schedule. See [Late Fill](RESPONSES_CONTRACT.md#late-fill).
 
 Promoted obligations close through runtime truth, not prose. Valid terminal/working states include `fulfilled`, `pending`, `blocked`, `waived`, and `superseded`. Use `waived` when owed work was explicitly released; use `superseded` when owed work was replaced or made no longer relevant by newer evidence. A superseded obligation should not trigger retry or late fill execution, but its replacement edge and reason should remain inspectable.
 

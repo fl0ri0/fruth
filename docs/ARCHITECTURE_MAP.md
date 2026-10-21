@@ -19,11 +19,27 @@ Current request/closure diagrams:
 
 Fruth's semantic contract is to preserve required meaning across interpretation,
 execution and representation. Possibilities become obligations through explicit
-admission. Actions require appropriate authority and current prerequisites;
-accepted claims require evidence for the relevant subject and version. Frozen
-historical content remains stable, and continuations retain explicit lineage.
-Making eligible work advance also requires scheduling and recovery rules under
-stated runtime and provider assumptions.
+admission. Three concerns organize the contract:
+
+- **Required meaning:** accepted obligations remain accounted for through
+  execution, representation and recovery, including authorized cancellation,
+  waiver or replacement. Frozen history stays stable; continuations retain lineage.
+- **Operation contracts:** execution, observation and state changes must satisfy
+  their authority, current prerequisites, exact input bindings and permitted effects.
+- **Evidence for claims:** accepted results and exposed claims need suitable
+  evidence for their exact subject, version and scope. Saved bytes, review judgments
+  and durable-write confirmation establish different facts.
+
+These concerns govern accepted work and evidence supplied by users, models and
+ordinary tools. At a handoff, each step can meet its own local contract while the
+next view still lacks information required by the overall task. Publication and
+recovery must therefore preserve an available evidence path for that requirement;
+a valid partial view need not contain the whole history.
+
+This is a practical organization of the contracts, not a claim of a minimal or
+complete axiom system. Property and stateful tests exercise selected boundaries
+and interactions. Making eligible work advance additionally requires scheduling
+and recovery rules under stated runtime and provider assumptions.
 
 [Principles](PRINCIPLES.md) and [Core Contracts](CORE_CONTRACTS.md) describe these
 commitments in detail. [Control Knobs](CONTROL_KNOBS.md) and the

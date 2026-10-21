@@ -53,6 +53,106 @@ The current contract covers:
 
 `llama.cpp` is now part of the current contract as the `llama_cpp` backend variant.
 
+Embedding helpers use the same capability-based selection across Ollama,
+llama.cpp and supported MLX encoders. MLX embeddings remain the `mlx_vlm` variant,
+but expose an embedding instance contract and preload the encoder with
+`--embedding-model`; they do not advertise chat/vision generation or its KV-cache
+controls. Discovery checks the installed embedding server, loader and encoder
+module without loading weights. Missing support leaves a cached-only entry.
+llama.cpp uses `--embedding` for explicitly selected or snapshot-identified
+embedding models and reports text input/vector output. Model-card evidence is
+read only from a bound Hugging Face snapshot, not from arbitrary sibling files
+in a mixed GGUF directory. Runtime projections expose the embeddings URL rather
+than a chat URL for these embedding instances. See the
+[embedding helper contract](INFERENCE_ROUTING.md#embedding-helper-note).
+
+The helper exposes the intersection of model metadata and serving support:
+Ollama's qualified mixed-input endpoint supports text/image/audio; MLX-VLM's
+supports text/image; other OpenAI-shaped adapters currently support text only.
+Media capabilities on an encoder describe embedding inputs, not generation.
+An `mlx-community` image download likewise needs a compatible installed loader:
+MLX is a compute framework, not a universal checkpoint format. Native `config.json`
+`model` declarations are inspected as well as `model_type` and Diffusers indexes.
+For example, the Flux 3 Image Klein bf16 conversion targets a Swift/MLX port;
+installed Python MLX-VLM 0.7.8 has no loader for that checkpoint. A manual or gated
+download does not change this compatibility boundary.
+
+These integration contracts do not certify every model's weights, tokenizer,
+pooling, quantization or task-prefix recipe. Validate a new backend/model pair
+with a bounded real check before adopting it; backend package availability alone
+is not evidence of embedding quality.
+
+Ollama model-download failures expose plain CLI diagnostics to the browser and
+runtime event log; terminal controls and manifest spinner frames are removed
+before reporting. A failed CLI exit remains a failure and is not retried implicitly.
+
+Image execution also selects an adapter from the registered instance contract.
+Fruth retains the Ollama image adapter for versions that support those routes.
+Ollama removed experimental image generation in
+[0.32.6](https://github.com/ollama/ollama/releases/tag/v0.32.6); current versions
+reject those requests even when old image weights remain in the model list.
+Use a qualified MLX image instance when running a newer Ollama version.
+Qualified MLX image instances use the installed
+`mlx_vlm.server` image engine (0.7.8 or newer with the required modules), preloaded
+with `--image-model`. They advertise image output and generation/edit endpoints,
+not chat output or chat KV-cache controls. The adapter binds every call to the
+selected local snapshot; request-level model/backend overrides cannot redirect it.
+Image child processes use offline Hugging Face/Transformers settings.
+
+Fruth launches image instances through `helpers/mlx_image_server.py`, retaining
+the native server and its CLI. After generation/edit JSON or error serialization,
+it synchronizes MLX work, releases the native `image_generation` and `image_edit`
+model-cache groups, collects unreachable objects and clears unused allocator
+buffers. A successful response with no overlapping image request releases before
+response headers; other cases wait until the last image request leaves the native app. Exceptions,
+cancellation and disconnects also release idle ownership. Unrelated model-cache
+groups remain untouched. Cleanup failures are logged without replacing native
+output/errors or triggering generation retries.
+
+The server process stays available; the next image request reloads its selected
+model through the native loader. Startup preloading remains unchanged. Native
+health/model discovery distinguish a healthy server from resident weights;
+an unloaded model is not a stopped instance. This policy applies to supported
+image loader families, not a model-name list. It can add reload latency and does
+not cap generation peaks or promise immediate macOS swap recovery. Allocator
+bytes, unloaded groups, duration and failures are logged in the image instance
+log. The launcher requires native per-kind unloading.
+
+MLX image discovery follows the installed native loader rather than a list of
+model names. Fruth checks local component/shard prerequisites, then asks MLX-VLM
+which generation and editing classes accept that checkpoint and what defaults
+they resolve. The bounded probe forbids network access and weight loading;
+checkpoint changes invalidate its cached result. Compatible community conversions
+and new loader families do not require another model-name entry in Fruth.
+Unknown or incomplete layouts remain cached-only with a reason. This establishes
+loader prerequisites, not valid tensors, successful loading, memory demand or
+image quality. Generation and editing are separate capabilities/caches; an image
+model does not acquire chat or general vision-analysis support.
+
+The installed Z-Image loader resolves Turbo sampling from its scheduler metadata:
+9 requested generation steps with guidance disabled (8 DiT forwards in the
+upstream recipe), with a minimum of 2 steps. Other variants retain the defaults
+resolved by their loader. Default metadata is descriptive: blank session controls
+still omit the request override. See the
+[official Z-Image Turbo card](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo).
+
+The native JSON adapter supports one result and at most one reference image per
+call. It owns a temporary copy of the exact reference bytes through execution,
+then checks PNG decoding, dimensions, reported seed and image digest before the
+existing artifact writer runs. Provider output paths/URLs and malformed results
+are rejected. There is no protocol fallback from MLX to Ollama. Runtime image
+evidence and artifact provenance distinguish requested controls from reported
+values; a reported seed is provider evidence, not a guarantee of determinism.
+Canonical acceptance, branch identity and closure stay with their existing owners.
+See [image controls](CONTROL_KNOBS.md#image-generation-controls).
+
+`Pillow` is a main-environment dependency for decoding this adapter's images.
+See [third-party notices](../THIRD_PARTY_NOTICES.md#image-decoding). Model weights
+retain their own terms and are not bundled. Supported architectures and operations
+are determined by the installed native loader. A bounded real-model generation/edit check is
+required before treating a particular checkpoint as validated; offline adapter
+tests alone do not establish that it runs successfully on the host.
+
 In the current runtime slice, Fruth also treats backend-native cache/runtime knobs as part of the truthful contract. For `llama.cpp`, that means the runtime probe and registered instance metadata can expose launch defaults such as prompt caching, KV offload, and Flash Attention mode when the installed `llama-server` supports those flags.
 
 The same contract now applies more truthfully to MLX variants:

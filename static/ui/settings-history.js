@@ -92,12 +92,15 @@ function applySessionControlFieldPresentation(node, field) {
             node.dataset.defaultMeta = metaNode.textContent || '';
         }
         const fallbackMeta = getSessionControlDefaultMeta(fieldKey) || String(node.dataset.defaultMeta || '');
-        metaNode.textContent = fieldKey === 'ocr_mode' && field.description
+        metaNode.textContent = ['ocr_mode', 'image_steps', 'image_meta'].includes(fieldKey) && field.description
             ? String(field.description)
             : fallbackMeta;
     }
     const inputNode = node.querySelector('input, select, textarea');
     if (inputNode) {
+        if (fieldKey === 'image_steps') {
+            inputNode.min = String(Number.isInteger(field.minimum) && field.minimum > 0 ? field.minimum : 1);
+        }
         if ('required' in inputNode) {
             inputNode.required = Boolean(field.required);
         }
@@ -224,6 +227,12 @@ function sanitizeSettingsObject(raw = {}) {
         }
         return inferImageAspectPreset(imageWidth, imageHeight);
     })();
+    // Preserve invalid explicit values for API rejection instead of silently
+    // falling back to an expensive model default or rounding the step count.
+    const imageStepsToken = String(source.imageSteps ?? '').trim();
+    const imageSteps = imageStepsToken === '' ? null
+        : (/^[0-9]+$/.test(imageStepsToken) && Number.isSafeInteger(Number(imageStepsToken))
+            && Number(imageStepsToken) > 0 ? Number(imageStepsToken) : imageStepsToken);
     return {
         temperature: source.temperature === '' || source.temperature === null || typeof source.temperature === 'undefined'
             ? null
@@ -238,6 +247,7 @@ function sanitizeSettingsObject(raw = {}) {
         imageAspectRatio,
         imageWidth,
         imageHeight,
+        imageSteps,
         imageCount: Math.min(8, Math.max(1, parseInt(source.imageCount, 10) || settingsDefaults.imageCount)),
         ocrMode: String(source.ocrMode || settingsDefaults.ocrMode).trim() || settingsDefaults.ocrMode,
         pdfMaxPages: source.pdfMaxPages === '' || source.pdfMaxPages === null || typeof source.pdfMaxPages === 'undefined'
@@ -634,6 +644,7 @@ function applySettings(instance = getCurrentSettingsOwnerInstance()) {
         imageAspectRatio,
         imageWidth,
         imageHeight,
+        imageSteps,
         imageCount,
         ocrMode,
         pdfMaxPages,
@@ -671,6 +682,9 @@ function applySettings(instance = getCurrentSettingsOwnerInstance()) {
     }
     if (elements.settingImageHeight) {
         elements.settingImageHeight.value = imageHeight ?? '';
+    }
+    if (elements.settingImageSteps) {
+        elements.settingImageSteps.value = imageSteps ?? '';
     }
     if (elements.settingImageCount) {
         elements.settingImageCount.value = imageCount;
@@ -843,6 +857,13 @@ function attachSettingsListeners() {
             if (elements.settingImageAspectRatio) {
                 elements.settingImageAspectRatio.value = state.settings.imageAspectRatio;
             }
+        });
+    }
+    if (elements.settingImageSteps) {
+        bindNumberSetting(elements.settingImageSteps, 'image_steps', (event) => {
+            state.settings.imageSteps = sanitizeSettingsObject({
+                ...state.settings, imageSteps: event.target.value,
+            }).imageSteps;
         });
     }
     if (elements.settingImageCount) {

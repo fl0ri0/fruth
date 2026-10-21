@@ -1,13 +1,13 @@
-# Known Limitations in Fruth 0.1.6
+# Known Limitations in Fruth 0.1.7
 
-This list records limits of the current 0.1.6 source checkout. Working-source
+This list records limits of the current 0.1.7 source checkout. Working-source
 changes do not retroactively alter previously published release archives.
 It is not a roadmap or a general backlog.
 
 ## Platform and Packaging
 
 - The primary tested platform is macOS on Apple Silicon. Windows, Linux, and
-  Intel Mac behavior is not guaranteed for 0.1.6.
+  Intel Mac behavior is not guaranteed for 0.1.7.
 - Distribution is a source archive. It is not a signed or notarized macOS app,
   a container image, or a package-manager release.
 - Backend packages and model weights are not bundled. A capability can be
@@ -23,7 +23,7 @@ It is not a roadmap or a general backlog.
   warnings; password-locked or unreadable PDFs fail explicitly. Python environments
   that sandbox access to macOS application frameworks may prevent PDFKit from
   initializing; native rendering tests need access to those system services.
-- The bundled Fruth skill is Codex-specific in 0.1.6 and must be copied into
+- The bundled Fruth skill is Codex-specific in 0.1.7 and must be copied into
   the user's Codex skills directory manually; marketplace/plugin distribution
   and other agent integrations are outside this release.
 - The current dashboard source serves a fixed Axios 1.20.0 browser build locally,
@@ -69,14 +69,12 @@ It is not a roadmap or a general backlog.
   [PCC setup guide](../fruth_integrations/shortcuts/README.md). Its loopback adapter
   can be running while cloud access is unavailable or usage-limited. Fruth has
   no authoritative remaining-quota or reset-time API.
-- The October 10 AFM matrix passed 170/170 cases on its recorded source. Later
-  response corrections have offline and local reference evidence. Subsequent
-  monitor/classifier closeout changes have separate offline coverage; the full
-  AFM matrix and five reference packages retain their original source identities.
-  PCC coverage remains separate. See the
-  [current validation status](SELF_ATTACK_STATUS_2026-10-10.md). Older
-  [Apple campaigns](SELF_ATTACK_STATUS_2026-09-27.md) retain their original
-  INCOMPLETE verdicts; PCC quota limits are not cleared by a local/AFM pass.
+- The October 19 AFM matrix passed 170/170 cases after the image idle-residency
+  fix. PCC Cloud reached 170/170 through compatible bounded windows and a
+  successful audio retry on the same runtime source. Cloud Pro remains untested.
+  See the [current validation status](SELF_ATTACK_STATUS_2026-10-21.md) for source
+  identities and historical incomplete attempts. These passes establish the
+  checked integration contracts, not unlimited provider availability or quota.
 - PDF page dispatch and model transcription quality are separate. The observed
   four-page AFM response contained reading errors despite complete page coverage.
   Native OCR tool receipts establish execution/source binding, not perfect text
@@ -113,7 +111,7 @@ It is not a roadmap or a general backlog.
   interpreted semantically by the selected model and its available tools.
 - The fixed request limits are 5 files, 100 MiB per file, and 250 MiB in total.
   URLs, folders, and symbolic links are not accepted.
-- Direct API-key management remains outside this optional route's 0.1.6 contract.
+- Direct API-key management remains outside this optional route's 0.1.7 contract.
   Apple PCC is a separate integration with its own availability and sharing rules.
 
 ## Compatibility
@@ -122,4 +120,4 @@ It is not a roadmap or a general backlog.
   predate 0.1.0.
 - Public `0.x` interfaces may evolve as the runtime contracts mature.
 
-See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.6 release boundary.
+See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.7 release boundary.

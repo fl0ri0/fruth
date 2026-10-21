@@ -9,7 +9,8 @@ from fruth_services.state_flow import observe_state, note as state_flow_note
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Optional
 
 
@@ -559,6 +560,57 @@ def derive_response_lifecycle_state(
     return explicit_lifecycle
 
 
+class ResponseMutationConflict(RuntimeError):
+    """A prepared Late Fill mutation no longer owns its current response state."""
+
+
+def require_response_mutation_base(expected: Mapping[str, Any], current: Mapping[str, Any]) -> None:
+    """Check existing durable version and execution bindings; caller holds the lock."""
+    from fruth_server.response_lookup_runtime import response_wire_frame_identity
+
+    if (expected.get('id') != current.get('id')
+            or response_wire_frame_identity(expected) != response_wire_frame_identity(current)):
+        raise ResponseMutationConflict('response_mutation_conflict: response frame changed')
+    expected_late = expected.get('late_fill') or {}
+    current_late = current.get('late_fill') or {}
+    for name, keys in (
+        ('successor_reopen_execution', ('successor_execution_key', 'parent_response_id',
+                                      'parent_frame_id', 'parent_frame_sequence',
+                                      'successor_graph_digest', 'scheduled_branch_ids')),
+        ('terminal_closure_repair_reopen', ('execution_key',)),
+        ('partial_rebase_execution', ('execution_key',)),
+    ):
+        before, now = expected_late.get(name) or {}, current_late.get(name) or {}
+        if any(before.get(key) != now.get(key) for key in keys):
+            raise ResponseMutationConflict('response_mutation_conflict: execution changed')
+    for name in ('branch_controls', 'cancelled_branches'):
+        # A worker may add a terminal disposition, but cannot remove current truth.
+        if any(record not in (expected_late.get(name) or [])
+               for record in (current_late.get(name) or [])):
+            raise ResponseMutationConflict('response_mutation_conflict: branch disposition changed')
+
+
+def require_response_mutation_target(target: Mapping[str, Any], current: Mapping[str, Any]) -> None:
+    """Recheck declared target bindings against current branch/phase records."""
+    branch_id = str(target.get('branch_id') or '')
+    late_fill = current.get('late_fill') or {}
+    records = [record for name in ('pending_branches', 'active_branches', 'completed_branches',
+                                   'failed_branches', 'cancelled_branches', 'branch_progress')
+               for record in (late_fill.get(name) or []) if isinstance(record, Mapping)]
+    graph = (current.get('runtime') or {}).get('request_phase_graph') or {}
+    records.extend(record for record in (graph.get('phases') or []) if isinstance(record, Mapping))
+    matches = [record for record in records
+               if branch_id and str(record.get('branch_id') or record.get('phase_id') or '') == branch_id]
+    if not matches:
+        raise ResponseMutationConflict('response_mutation_conflict: target is no longer present')
+    for record in matches:
+        for key in ('phase_id', 'capability', 'obligation_id', 'task_id', 'repair_contract_id'):
+            if (record.get(key) not in (None, '')
+                    and (key in {'phase_id', 'capability'} or target.get(key) not in (None, ''))
+                    and target.get(key) != record[key]):
+                raise ResponseMutationConflict('response_mutation_conflict: target binding changed')
+
+
 @dataclass
 class ResponsesRuntimeOwner:
     response_lookup: dict[str, dict[str, Any]]
@@ -570,6 +622,34 @@ class ResponsesRuntimeOwner:
     response_lookup_ttl_sec: int
     normalize_response_lookup_id: Callable[[Any], str]
     response_registry_now_iso: Callable[[], str]
+    _mutation_registry_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
+    _mutation_locks: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
+
+    @contextmanager
+    def response_mutation(self, response_id: str):
+        """Serialize short publications for one response in this server process.
+
+        Registry lock is released before waiting. Order: response mutation ->
+        lookup/stream or artifact/frame append -> SQLite; never enter from a
+        held lookup/claim/storage lock. Claims are separate, short operations.
+        Waiters retain the same entry; the final user removes it. No provider,
+        materialization, thread join or claim wait belongs in this section.
+        Cross-process successor writers still require the existing parent CAS.
+        """
+        response_id = self.normalize_response_lookup_id(response_id)
+        if not response_id:
+            raise ValueError('Response id is required for mutation')
+        with self._mutation_registry_lock:
+            entry = self._mutation_locks.setdefault(response_id, [threading.RLock(), 0])
+            entry[1] += 1
+        try:
+            with entry[0]:
+                yield
+        finally:
+            with self._mutation_registry_lock:
+                entry[1] -= 1
+                if not entry[1]:
+                    del self._mutation_locks[response_id]
 
     def _prune_response_lookup_registry(self, now_ts: Optional[float] = None) -> None:
         cutoff = float(now_ts or time.time())

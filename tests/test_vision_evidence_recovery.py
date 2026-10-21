@@ -194,8 +194,11 @@ def test_smaller_explicit_budget_is_respected(tmp_path, monkeypatch):
     assert retry_for(owner, branch, result, payload)[2] is None
 
 
-@pytest.mark.parametrize('outcome', ['success', 'exhausted', 'unavailable', 'cancelled'])
-def test_worker_routes_one_alternative_and_persists_evidence(tmp_path, monkeypatch, outcome):
+@pytest.mark.parametrize('failure_kind,outcome', [
+    (kind, outcome) for kind in ('evidence', 'backend')
+    for outcome in ('success', 'exhausted', 'unavailable', 'cancelled')
+] + [('backend', 'bad_request'), ('backend', 'mixed')])
+def test_worker_routes_one_alternative_and_persists_evidence(tmp_path, monkeypatch, outcome, failure_kind):
     import fruth_webserver
     from tests.fake_backends import FakeBackendHarness
     from fruth_inference.request_phase_graph import build_request_phase_graph
@@ -222,7 +225,7 @@ def test_worker_routes_one_alternative_and_persists_evidence(tmp_path, monkeypat
         second = copy.deepcopy(first)
         second.update(instance_id='second-vision', model='second-vision-model')
         if outcome != 'unavailable': harness.instances['vision_alternative'] = second
-        if outcome == 'exhausted':
+        if outcome in {'exhausted', 'mixed'}:
             harness.instances['vision_third'] = {**copy.deepcopy(second), 'instance_id': 'third-vision'}
         # The continuation owner retains these callables at composition time;
         # override them as well as the harness's public route hooks.
@@ -241,7 +244,11 @@ def test_worker_routes_one_alternative_and_persists_evidence(tmp_path, monkeypat
                 assert Path(payload['file_path']).read_bytes() == initial_image
                 assert prompt not in payload['prompt']
                 vision_calls = [call for call in calls if call[0] == 'vision_analysis']
-                text = str(image) if len(vision_calls) == 1 or outcome == 'exhausted' else GOOD_TEXT
+                if outcome == 'bad_request':
+                    return {'error': '400 invalid request'}, 400
+                if failure_kind == 'backend' and (len(vision_calls) == 1 or outcome == 'exhausted'):
+                    return {'error': '500 fixture vision failure'}, 500
+                text = str(image) if len(vision_calls) == 1 or outcome in {'exhausted', 'mixed'} else GOOD_TEXT
                 return dispatch(initial_image, text, instance=payload['instance_id']), 200
             assert capability == 'chat'
             assert GOOD_TEXT in payload['prompt']
@@ -264,7 +271,7 @@ def test_worker_routes_one_alternative_and_persists_evidence(tmp_path, monkeypat
         final = runtime.get_response_lookup_record(payload['id'])['response_payload']
         (tmp_path / 'worker-result.json').write_text(json.dumps({'final': final, 'calls': calls}, default=str))
         vision_calls = [call for call in calls if call[0] == 'vision_analysis']
-        assert len(vision_calls) == (2 if outcome in {'success', 'exhausted'} else 1), final['late_fill']
+        assert len(vision_calls) == (2 if outcome in {'success', 'exhausted', 'mixed'} else 1), final['late_fill']
         if len(vision_calls) == 2:
             assert vision_calls[0][1] != vision_calls[1][1]
         assert image.read_bytes() == initial_image
@@ -283,9 +290,19 @@ def test_worker_routes_one_alternative_and_persists_evidence(tmp_path, monkeypat
         records = [r for k in ('completed_branches', 'failed_branches', 'cancelled_branches')
                    for r in late_fill.get(k) or [] if r['branch_id'] == vision['branch_id']]
         assert len(records) == 1
+        if outcome == 'bad_request':
+            assert records[0]['error']['status_code'] == 400
+            assert not records[0].get('recovery_attempt')
+            return
         retained = records[0]['recovery_attempt']
-        assert retained['recovery_policy_id'] == POLICY
-        assert retained['prior_vision_evidence_failure']['rejected_text'] == str(image)
+        assert retained['recovery_policy_id'] == (POLICY if failure_kind == 'evidence' else 'vision_bounded_backend_recovery_v1')
+        if failure_kind == 'evidence':
+            assert retained['prior_vision_evidence_failure']['rejected_text'] == str(image)
+        else:
+            prior = retained['prior_vision_backend_failure']
+            assert prior['authority'] == 'runtime_prepared_vision_input'
+            assert prior['artifact']['image_sha256'] == hashlib.sha256(initial_image).hexdigest()
+            assert prior['error']['status_code'] == 500
         assert retained['attempt_number'] == 2
         normalized = fruth_webserver._normalize_late_fill_branches(records)[0]
         assert normalized['auto_executable_repair_retry_count'] == 1
@@ -299,7 +316,7 @@ def test_worker_routes_one_alternative_and_persists_evidence(tmp_path, monkeypat
                            for r in hydrated['late_fill'].get(k) or [] if r['branch_id'] == vision['branch_id']]
         assert hydrated_records[0]['recovery_attempt'] == retained
         assert hydrated_records[0]['auto_executable_repair_retry_count'] == 1
-        if outcome == 'exhausted':
+        if outcome == 'exhausted' and failure_kind == 'evidence':
             second_failure = hydrated_records[0]['error']['vision_evidence_failure']
             assert second_failure['input_evidence']['instance_id'] != retained['failed_instance_id']
             assert not runtime.auto_executable_repair_recovery_allowed(

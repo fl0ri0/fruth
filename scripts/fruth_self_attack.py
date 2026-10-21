@@ -37,6 +37,9 @@ from scripts.self_attack_checks import (
     rejected_audio_mismatch_evidence,
 )
 from scripts.self_attack_knobs import build_profiles, discover_knobs, validate_saved_profile, diverse_live_profiles, select_profiles
+from scripts.storage_locations import (
+    evidence_path, find as find_storage, write_root as storage_write_root,
+)
 from scripts.self_attack_windows import (
     DispatchWindow, sequence_corpora, select_cases, plan_windows, local_full_plan, preview_recovery,
     quota_evidence, runtime_files, file_receipt, campaign_configuration, compatible_runtime_inputs,
@@ -931,13 +934,23 @@ def recheck_captures(source: Path, output: Path, inventory: dict) -> int:
     baseline = {}
     for previous in prior['runs']:
         cases = []
+        unavailable_group = False
         for group in previous.get('groups', [{'output': previous['output']}]):
-            directory = Path(group['output'])
+            try:
+                directory = evidence_path(ROOT, group['output'], source)
+            except (OSError, ValueError):
+                unavailable_group = True
+                continue  # Missing/ambiguous retained evidence cannot pass.
             manifest = directory / 'manifest.json'
             if manifest.exists():
                 cases.extend(evaluate_capture(load_manifest(manifest), directory / 'captures'))
+            else:
+                unavailable_group = True
         if not cases:
             cases = [dict(c, findings=[], missing=['retained_capture_unavailable']) for c in previous['cases']]
+        elif unavailable_group:
+            for case in cases:
+                case['missing'].append('retained_capture_group_unavailable')
         run = dict(previous, cases=cases)
         for case in cases:
             if case.get('payload') and not case['missing']:
@@ -1280,6 +1293,11 @@ def launch_detached(argv, output):
         return 0
 
 
+def storage_output(output, name):
+    """Explicit output keeps its meaning; defaults follow operator configuration."""
+    return (output if output is not None else storage_write_root(ROOT, 'self_attack') / name).resolve()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', choices=['fake', 'live'], default='fake')
@@ -1316,7 +1334,8 @@ def main(argv=None):
     parser.add_argument('--jobs', type=int, choices=range(1, 5), default=2,
                         help='Bounded isolated profile processes in parallel (results remain in seeded order).')
     parser.add_argument('--owner-timeout', type=float, default=600)
-    parser.add_argument('--regressions', type=Path, default=ROOT / 'state/self_attack/regressions')
+    parser.add_argument('--regressions', type=Path,
+                        help='Saved regressions directory; defaults to the selected Self-Attack write location.')
     parser.add_argument('--skip-owner-tests', action='store_true')
     parser.add_argument('--live-after-fake', action='store_true', help='Run bounded live interpretive inference observations only after a complete passing fake sweep.')
     parser.add_argument('--live-profile-limit', type=int, default=2)
@@ -1344,6 +1363,18 @@ def main(argv=None):
     parser.add_argument('--refresh-report', type=Path,
                         help='Update completed JSON/Markdown reporting only; do not execute or recheck the suite.')
     args = parser.parse_args(argv)
+    # Read inputs may have been manually relocated as whole evidence directories.
+    # Resolve only explicit names/registered-root suffixes; never rewrite receipts.
+    try:
+        for key in ('fake_evidence', 'recover_missing_from', 'preview_recovery',
+                    'replay', 'recheck', 'audit_convergence', 'refresh_report'):
+            value = getattr(args, key)
+            if value is not None and not value.exists():
+                setattr(args, key, find_storage(ROOT, 'self_attack', value))
+        args.combine_evidence = [p if p.exists() else find_storage(ROOT, 'self_attack', p)
+                                 for p in args.combine_evidence]
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
     if args.local_full_sweep and (
             (args.mode != 'live' and not args.preview_window) or args.case_cap != 100
             or args.window_number != 1 or args.profile_id or args.profile_limit or args.case_ids
@@ -1391,7 +1422,10 @@ def main(argv=None):
     if args.audit_production:
         if args.audit_convergence or args.live_after_fake or args.mode != 'fake' or args.replay or args.recheck or args.refresh_report:
             parser.error('--audit-production cannot be combined with other audit/execution modes.')
-        output = (args.output or ROOT / 'state/self_attack' / f'production-convergence-{time.time_ns()}').resolve()
+        try:
+            output = storage_output(args.output, f'production-convergence-{time.time_ns()}')
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
         if output == args.audit_production.resolve() or output.is_relative_to(args.audit_production.resolve()):
             parser.error('Production audit output must be outside the response-frame evidence directory.')
         output.mkdir(parents=True, exist_ok=True)
@@ -1438,10 +1472,17 @@ def main(argv=None):
         parser.error('Budgets must be finite and positive (attempt/minimize budgets may be zero).')
     if args.live_high_risk and (args.profile_limit if args.mode == 'live' else args.live_profile_limit) != 6:
         parser.error('--live-high-risk requires six live profiles.')
-    output = (args.output or ROOT / 'state/self_attack' / f'run-{time.time_ns()}').resolve()
+    try:
+        output = storage_output(args.output, f'run-{time.time_ns()}')
+        if args.regressions is None:
+            args.regressions = storage_write_root(ROOT, 'self_attack') / 'regressions'
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
     output.mkdir(parents=True, exist_ok=True)
     if args.detach:
-        return launch_detached(list(sys.argv[1:] if argv is None else argv), output)
+        child_args = list(sys.argv[1:] if argv is None else argv)
+        child_args += ['--regressions', str(args.regressions)]
+        return launch_detached(child_args, output)
     with manifest_lock(output / 'run.json'):
         inventory = discover_knobs(ROOT)
         if args.mode == 'live':

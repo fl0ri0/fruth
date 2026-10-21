@@ -18,6 +18,12 @@ For development, start with [CONTRIBUTING.md](CONTRIBUTING.md) and use
 The portable [Fruth skill](skills/fruth/SKILL.md) covers client task selection,
 checkout discovery and the observation/execution/lifecycle boundaries.
 
+Development checkouts also contain separate maintenance skills at
+`skills/fruth-learning-merge/SKILL.md`, `skills/fruth-research-curation/SKILL.md`
+and `skills/fruth-archive/SKILL.md`. These development-only resources are not
+included in the source package. They reuse the existing owners and keep
+candidate synchronization, Gold adjudication and runtime cleanup distinct.
+
 Runtime-policy note:
 
 - `FRUTH_INFERENCE.md` is the interpretive inference layer's canonical runtime policy source.
@@ -66,11 +72,15 @@ Repo-local green-field reset:
 - `./fruth archiv`
 - `./fruth archive`
 - `./fruth archive --full`
+
+Full archive also rotates `state/fruth_run_monitor/last_seen.json`, `reports.jsonl`
+and `reports.md` into the archive, preserving their bytes and leaving the monitor
+ready for the fresh epoch. Other monitor files are untouched.
 - `./fruth clean --dry-run`
 
 This reset helper only touches files inside this repo. By default it clears runtime ballast such as generated contents under `artifacts/` buckets, `logs/`, volatile `state/` history/status/provenance/frame files, and Python/test caches while preserving the standard empty artifact bucket directories, including `artifacts/bundles/`. Missing standard artifact directories are created only as a fallback if they were manually deleted or do not exist yet. It preserves `model_ports.json`, interpretive inference preferences, interpretive inference compiled-memory files, bounded self-learning snapshots, and `state/llama_cpp_catalog.json` unless you opt into the deeper flags. Before response-frame cleanup, it collects sidecar refs reachable from active `state/self_learning/` JSON/JSONL, writes `state/self_learning/retention_manifest.json`, and copies retained evidence into `state/self_learning/retained_sidecars/`. Dry-run output shows retained and missing learning sidecar counts. The response-frame cleanup covers the compact ledger, selected JSON/SQLite Index generations and selector, and sidecar snapshots under `state/response_frames/`.
 
-`./fruth archiv` and `./fruth archive` do the same live cleanup, but first copy the `artifacts/` tree and archive the other useful runtime/generated ballast into `.fruth_archiv/<timestamp>/` as hidden repo-local data storage. Live artifact cleanup then removes generated contents while preserving the standard bucket directories, including `artifacts/bundles/`; missing standard directories are created only as a fallback.
+`./fruth archiv` and `./fruth archive` do the same live cleanup, but first copy the `artifacts/` tree and archive the other useful runtime/generated ballast into the configured archive location (`.fruth_archiv/<timestamp>/` by default). Live artifact cleanup then removes generated contents while preserving the standard bucket directories, including `artifacts/bundles/`; missing standard directories are created only as a fallback.
 
 The legacy root-level `outputs` path, when present, moves into the archive before
 cleanup. Protected copies (including inference preferences, compiled-memory
@@ -79,7 +89,7 @@ path moves. A failed copy leaves those live paths in place and retains the parti
 archive. Missing targets are skipped; dry-run summaries describe planned outcomes
 and apply no reset, archive, lifecycle or permission change.
 
-Archive also copies all of `state/self_attack/`, `state/benchmarks/` and
+Plain archive also copies all of `state/self_attack/`, `state/benchmarks/` and
 `state/diagnostics/` with their original relative topology. This preserves completed
 campaigns plus unknown/in-progress evidence without inferring completion or moving
 live evidence. All evidence sources and reusable repository scripts stay active;
@@ -92,6 +102,21 @@ space; nothing prunes them automatically. A changing campaign can fail verificat
 and active copies are not atomic final snapshots. External/absolute references are
 preserved verbatim and are not crawled. Use `--dry-run` to preview evidence paths,
 copy size and destination without lifecycle changes.
+
+`./fruth archive --full` (also `--empty-state`) always excludes the raw
+`state/self_attack/` snapshot and its copy-space estimate. After successful
+archive and retention checks, it deletes real local run directories immediately
+under `state/self_attack/`, without backing them up. Stop their writers and move
+any wanted runs beforehand; the operator manages that preparation. Existing
+archives and configured external stores remain untouched. Root-level symlinks,
+Finder aliases and helper files such as `monitor.py` are kept; links inside a
+deleted run are removed without following their targets. A redirected cleanup root or
+mounted campaign tree is rejected. Learning and storage configuration remain
+protected. The archive manifest records the exclusion and cleanup policy.
+Plain `archive` retains the existing copy behavior unless
+`--exclude-self-attack` is supplied; that flag is rejected in `clean` mode.
+Plain archive exclusion leaves local campaigns in place.
+Selecting external storage alone does not change the plain archive payload.
 
 If you want archive-first rotation with protected interpretive inference state preserved, use:
 
@@ -110,7 +135,94 @@ If you want a truly blank repo-local runtime state, use:
 - `./fruth clean --full`
 - `./fruth clean --forget-inference --reset-registry --reset-llama-catalog`
 
-For `clean`, `--full` is equivalent to `--forget-inference --reset-registry --reset-llama-catalog`. For `archive`, `--full` resets registry/catalog state but does not imply `--forget-inference`. Prefer the archive form when rotating real test data so old truth remains inspectable under `.fruth_archiv/<timestamp>/`.
+For `clean`, `--full` is equivalent to `--forget-inference --reset-registry --reset-llama-catalog`. For `archive`, `--full` resets registry/catalog state but does not imply `--forget-inference`. Prefer the archive form when rotating real test data so old truth remains inspectable under the selected archive root (`.fruth_archiv/<timestamp>/` by default).
+
+### Storage locations
+
+`state/storage_locations.json` is an optional, operator-edited configuration for
+archives and Self-Attack evidence. A missing file or section preserves the existing
+defaults. It survives **all** cleanup/full/forget modes and is copied into archives
+when present. Private machine paths are not included in release packages.
+
+Start with this configuration; it keeps both current write destinations:
+
+```json
+{
+  "version": 1,
+  "archive": {
+    "default_enabled": true,
+    "write_target": "default",
+    "locations": []
+  },
+  "self_attack": {
+    "default_enabled": true,
+    "write_target": "default",
+    "locations": []
+  }
+}
+```
+
+Each section can list additional locations, for example:
+
+```json
+"locations": [
+  {"id": "external1", "path": "/Volumes/MyDisk/fruth/archive", "read": true, "write": true},
+  {"id": "external2", "path": "/Volumes/OlderDisk/fruth/archive", "read": true, "write": false}
+]
+```
+
+Use separate directories for archives and Self-Attack. Location IDs are unique
+within a section. Absolute paths are recommended for external volumes; relative
+paths resolve from the checkout. Locations must not overlap each other, contain
+the checkout, or overlap live state/source/cleanup paths. Named write directories
+must already exist and must be real directories, with no symlink components.
+
+- `write_target: "default"` writes to `.fruth_archiv/` or `state/self_attack/`.
+  `write_target: "external1"` routes new data to that named writable location.
+- `read: true` includes a location in name lookup and listing; `write: true` makes
+  it eligible for selection. Only the selected target receives defaulted writes.
+- `default_enabled: false` excludes the default from lookup and defaulted writes.
+  Select another writable target, or set `write_target: null` to disable defaulted
+  writes. Disabling a location does not delete its data.
+- Missing/unwritable selected media or invalid configuration fails; there is no
+  fallback to the internal disk. Keep the selected drive connected throughout
+  an operation; hot-unplug and power-loss recovery are not guaranteed.
+
+Inspect or find data without starting Fruth or models:
+
+```sh
+./fruth storage status
+./fruth storage list archive
+./fruth storage list self_attack
+./fruth storage find archive 20261016T120000Z
+./fruth storage find self_attack my-completed-run
+python3 scripts/self_attack_monitor.py my-completed-run --once
+```
+
+You can manually move **complete, stopped** archive/run directories between
+registered roots, keeping their names and internal structure. Lookup uses exact
+relative names; duplicate matches require an explicit path. The monitor, retained
+capture recheck and window evidence reader can resolve missing old references
+whose original storage root is still registered, including the built-in default.
+They require the result to belong to the selected evidence tree. Historical files
+and digests are not rewritten. Arbitrary old absolute paths, active-job relocation
+and automatic resumption/restoration are not supported. Other tools and Markdown
+links may still need an explicit current path; registration does not hydrate
+archived response frames into the active runtime.
+
+Self-Attack's explicit `--output` and `--regressions` remain overrides. Without
+them, new campaigns and regression envelopes use the selected write root.
+Detached launches retain those selected paths. Read-oriented commands can accept
+an exact registered run name or relative file name such as `my-run/results.json`.
+Derived recheck reports retain their existing destination semantics.
+
+Configured roots are excluded from recursive cleanup cache sweeps, even when
+disabled. Archive still copies the local evidence trees described above; registering
+external Self-Attack stores does **not** recursively copy them into each archive.
+There is no automatic move, prune or storage balancing. Non-default archive
+destinations use verified copies before removing each archived source entry.
+On failure, keep the partial archive and remaining sources: earlier verified
+moves may already have completed. Inspect both before any recovery or retry.
 
 macOS/Chrome local preview caveat: `clean` and `archive` preserve the standard `artifacts/` bucket structure. Chrome may need Desktop Folder or Full Disk Access permission re-granted before `file://` bundle previews can load `assets/css` or `assets/images`. If Chrome shows `net::ERR_ACCESS_DENIED` for a local `artifacts/bundles/.../index.html`, quit Chrome and re-grant the permission in macOS Privacy & Security, or reset the Desktop Folder permission with `tccutil reset SystemPolicyDesktopFolder com.google.Chrome` and approve it again. Safari may keep working while Chrome is blocked. To make macOS ask again on the next Chrome file access, use the opt-in flag `./fruth archive --full --reset-chrome-file-access-prompt`.
 

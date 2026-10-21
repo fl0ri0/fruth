@@ -35,13 +35,17 @@ import tempfile
 import threading
 import time
 import unicodedata
+from contextlib import contextmanager
 from collections import Counter
 from difflib import SequenceMatcher
 from html.parser import HTMLParser
 from flask import current_app, has_app_context
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Literal, Mapping, Optional
+
+from fruth_server.response_lookup_runtime import response_wire_frame_identity
+
 
 from helpers.session_controls import (
     normalize_reasoning_effort,
@@ -76,6 +80,9 @@ from fruth_server.recovery_contract import (
 )
 from fruth_server.repair_gate_runtime import classify_repair_execution_policy
 from fruth_server.responses_runtime import (
+    ResponseMutationConflict,
+    require_response_mutation_base,
+    require_response_mutation_target,
     repair_contract_matches_completion,
     terminal_repair_loop_is_fully_satisfied,
 )
@@ -460,6 +467,12 @@ _DEPENDENCY_EVIDENCE_MISSING_CLAIM_RE = re.compile(
     r')\b',
     re.IGNORECASE,
 )
+_VISION_GENERATION_REFUSAL_RE = re.compile(
+    r'^(?:as\s+[^\n.!?]+,\s*)?i\s+(?:'
+    r'generate\s+(?:only\s+text|text\s+only)\b|'
+    r'(?:cannot|can[\'’]?t|am\s+unable\s+to)\s+(?:create|generate|produce)\s+(?:any\s+)?images?\b)',
+    re.IGNORECASE,
+)
 _BRANCH_CONTRACT_REPAIR_RE = re.compile(
     r'\b('
     r'contract|execution\s+contract|branch\s+identity|obligation|'
@@ -605,6 +618,8 @@ _TTS_AUTO_RECOVERY_POLICY_ID = 'tts_bounded_materialization_recovery_v1'
 _TTS_AUTO_RECOVERY_TRIGGER = 'tts_auto_recovery'
 _TTS_AUTO_RECOVERY_MAX_ATTEMPTS = 2
 _VISION_EVIDENCE_RECOVERY_POLICY_ID = 'vision_bounded_evidence_recovery_v1'
+_VISION_BACKEND_RECOVERY_POLICY_ID = 'vision_bounded_backend_recovery_v1'
+_VISION_BACKEND_RECOVERY_TRIGGER = 'vision_backend_recovery'
 _VISION_EVIDENCE_RECOVERY_TRIGGER = 'vision_evidence_recovery'
 _VISION_EVIDENCE_RECOVERY_MAX_ATTEMPTS = 2
 EXPLICIT_IMAGE_EXCLUDED_POOL_RETRY_POLICY_ID = (
@@ -802,6 +817,52 @@ def _extract_raw_image_data_url(value: Any) -> str:
     return ''
 
 
+C9_CONTROL_CONTINUATION_MAX_HANDOFFS = 1
+
+
+@dataclass(eq=False)
+class _PendingContinuationChain:
+    """Process-local execution permission; never restored from response JSON."""
+
+    admission: dict[str, Any]
+    contracts: dict[str, dict[str, Any]]
+    request: dict[str, Any]
+    submitted: set[str] = field(default_factory=set)
+    attempts: int = 0
+    lock: Any = field(default_factory=threading.Lock, repr=False)
+
+    def take_attempt(self) -> bool:
+        with self.lock:
+            if self.attempts >= C9_CONTROL_CONTINUATION_MAX_HANDOFFS:
+                return False
+            self.attempts += 1
+            return True
+
+
+@dataclass(eq=False)
+class _PendingContinuation:
+    chain: _PendingContinuationChain
+    base: dict[str, Any]
+    scope: Optional[frozenset[str]] = None
+    submitted: bool = False
+    entered: bool = False
+    wave_active: bool = False
+
+    def take_submission(self) -> bool:
+        with self.chain.lock:
+            if self.submitted or self.scope is None:
+                return False
+            self.submitted = True
+            return True
+
+    def take_entry(self) -> bool:
+        with self.chain.lock:
+            if self.entered:
+                return False
+            self.entered = True
+            return True
+
+
 @dataclass
 class LateFillRuntimeOwner:
     normalize_request_payload: Callable[[dict[str, Any]], dict[str, Any]]
@@ -857,6 +918,7 @@ class LateFillRuntimeOwner:
     claim_response_late_fill: Callable[[str], bool]
     release_response_late_fill: Callable[[str], None]
     persist_image_data_url_locally: Callable[[Optional[str], str], Optional[str]]
+    response_mutation: Callable[..., Any]
     schedule_post_response_substrate_hygiene: Optional[Callable[..., Any]] = None
     attach_runtime_graph_repair_evidence: Optional[
         Callable[[dict[str, Any]], dict[str, Any]]
@@ -3579,6 +3641,7 @@ class LateFillRuntimeOwner:
             'failed_dependency_ids',
             'semantic_evidence',
             'vision_evidence_failure',
+            'vision_backend_failure',
             'audio_integrity_evidence',
             'tts_generation_budget',
             'tts_sampling_profile',
@@ -3761,6 +3824,8 @@ class LateFillRuntimeOwner:
             )
         if isinstance(error.get('vision_evidence_failure'), Mapping):
             payload['vision_evidence_failure'] = copy.deepcopy(error['vision_evidence_failure'])
+        if isinstance(error.get('vision_backend_failure'), Mapping):
+            payload['vision_backend_failure'] = copy.deepcopy(error['vision_backend_failure'])
         if branch_contract_repair:
             payload['repair_required'] = True
             payload['blocked_by_branch_contract'] = True
@@ -4225,6 +4290,9 @@ class LateFillRuntimeOwner:
         )
         vision_auto_recovery = self._vision_evidence_recovery_allowed(branch, recovery_context)
         resolved_trigger = (
+            _VISION_BACKEND_RECOVERY_TRIGGER
+            if vision_auto_recovery and recovery_context.get('vision_backend_failure')
+            else
             _VISION_EVIDENCE_RECOVERY_TRIGGER
             if vision_auto_recovery
             else _TTS_AUTO_RECOVERY_TRIGGER
@@ -4347,17 +4415,20 @@ class LateFillRuntimeOwner:
                 }
             )
         elif vision_auto_recovery:
+            backend_failure = recovery_context.get('vision_backend_failure')
+            policy = _VISION_BACKEND_RECOVERY_POLICY_ID if backend_failure else _VISION_EVIDENCE_RECOVERY_POLICY_ID
             retry_recovery_state.update({
-                'recovery_policy_id': _VISION_EVIDENCE_RECOVERY_POLICY_ID,
+                'recovery_policy_id': policy,
                 'attempt_number': retry_count + 2,
                 'maximum_attempts': max_attempts,
             })
             recovery_attempt.update({
-                'recovery_policy_id': _VISION_EVIDENCE_RECOVERY_POLICY_ID,
+                'recovery_policy_id': policy,
                 'attempt_number': retry_count + 2,
                 'maximum_attempts': max_attempts,
                 'prior_error_code': recovery_context['error_code'],
-                'prior_vision_evidence_failure': copy.deepcopy(recovery_context['vision_evidence_failure']),
+                ('prior_vision_backend_failure' if backend_failure else 'prior_vision_evidence_failure'):
+                    copy.deepcopy(backend_failure or recovery_context['vision_evidence_failure']),
             })
         elif target_bound_syntax_evidence:
             recovery_attempt.update(
@@ -5056,6 +5127,7 @@ class LateFillRuntimeOwner:
         expected_capability: str,
         assistant_message: str,
         artifact_gap: Optional[dict[str, Any]] = None,
+        guarded_pending: bool = False,
     ) -> dict[str, Any]:
         late_fill_payload = self.normalize_request_payload(request_payload)
         missing_root_intent = request_intent_evidence_missing(late_fill_payload)
@@ -5073,7 +5145,7 @@ class LateFillRuntimeOwner:
         )
         late_fill_trigger = str(artifact_gap_payload.get('trigger') or '').strip().lower()
         late_fill_code = str(artifact_gap_payload.get('code') or '').strip().lower()
-        successor_branch_execution = late_fill_trigger in {
+        successor_branch_execution = guarded_pending or late_fill_trigger in {
             'graph_patch_successor_reopen',
             'graph_rebase_partial_successor',
         }
@@ -7106,6 +7178,8 @@ class LateFillRuntimeOwner:
             return True
         if not text:
             return False
+        if capability == 'vision_analysis' and _VISION_GENERATION_REFUSAL_RE.search(text):
+            return True
         if capability in {'vision_analysis', 'speech_to_text'}:
             return bool(_DEPENDENCY_EVIDENCE_MISSING_CLAIM_RE.search(text))
         if capability == 'chat':
@@ -7862,21 +7936,11 @@ class LateFillRuntimeOwner:
         except (OSError, ValueError):
             return {}
 
-    def _vision_evidence_failure(
-        self, branch: Mapping[str, Any], result: Mapping[str, Any],
-        current_payload: Optional[Mapping[str, Any]],
+    def _vision_direct_image_binding(
+        self, branch: Mapping[str, Any], payload: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Prove supplied direct-producer bytes before allowing output recovery."""
-        payload = current_payload if isinstance(current_payload, Mapping) else {}
-        receipt = result.get('vision_input_evidence')
-        if (
-            self.branch_capability(branch) != 'vision_analysis'
-            or not self._valid_vision_input_receipt(receipt)
-            or not payload.get('id')
-            or receipt.get('response_id') != payload.get('id')
-            or receipt.get('branch_id') != self.branch_id(branch)
-            or receipt.get('phase_id') != branch.get('phase_id')
-        ):
+        """Resolve one completed producer; never recover an input by recency."""
+        if self.branch_capability(branch) != 'vision_analysis' or not payload.get('id'):
             return {}
         dependencies = self.late_fill_branch_dependency_ids(branch, current_payload=payload)
         late_fill = payload.get('late_fill') or {}
@@ -7898,23 +7962,185 @@ class LateFillRuntimeOwner:
         if len(completed) != 1 or completed[0].get('status') not in {'completed', 'fulfilled'}:
             return {}
         snapshot = self._vision_image_snapshot(producer.get('saved_image_path'))
-        if not snapshot or any(snapshot[key] != receipt.get(key) for key in ('image_sha256', 'size_bytes')):
+        if not snapshot:
             return {}
+        for artifact in producer.get('artifacts') or []:
+            if not isinstance(artifact, Mapping):
+                continue
+            if str(artifact.get('path') or '') != str(producer.get('saved_image_path') or ''):
+                continue
+            metadata = artifact.get('metadata') if isinstance(artifact.get('metadata'), Mapping) else {}
+            for source in (artifact, metadata):
+                if source.get('file_sha256') and source['file_sha256'] != snapshot['image_sha256']:
+                    return {}
         return {
-            'policy_id': _VISION_EVIDENCE_RECOVERY_POLICY_ID,
-            'input_evidence': dict(receipt),
             'artifact': snapshot,
             'producer_branch_id': producer['branch_id'],
             'producer_phase_id': producer['phase_id'],
             'depends_on': dependencies,
+        }
+
+    def _vision_evidence_failure(
+        self, branch: Mapping[str, Any], result: Mapping[str, Any],
+        current_payload: Optional[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Prove supplied direct-producer bytes before allowing output recovery."""
+        payload = current_payload if isinstance(current_payload, Mapping) else {}
+        receipt = result.get('vision_input_evidence')
+        if (not self._valid_vision_input_receipt(receipt)
+                or receipt.get('response_id') != payload.get('id')
+                or receipt.get('branch_id') != self.branch_id(branch)
+                or receipt.get('phase_id') != branch.get('phase_id')):
+            return {}
+        binding = self._vision_direct_image_binding(branch, payload)
+        if not binding or any(binding['artifact'][k] != receipt.get(k) for k in ('image_sha256', 'size_bytes')):
+            return {}
+        return {
+            **binding, 'policy_id': _VISION_EVIDENCE_RECOVERY_POLICY_ID,
+            'input_evidence': dict(receipt),
             'rejected_text': self.late_fill_text_from_result_payload(result),
         }
+
+    def _has_generated_image_dependency(self, branch: Mapping[str, Any], payload: Mapping[str, Any]) -> bool:
+        if self.branch_capability(branch) != 'vision_analysis':
+            return False
+        dependencies = set(self.late_fill_branch_dependency_ids(branch, current_payload=payload))
+        late = payload.get('late_fill') or {}
+        graph = (payload.get('runtime') or {}).get('request_phase_graph') or {}
+        return any(isinstance(item, Mapping) and item.get('capability') == self.capability_image_generation
+                   and dependencies.intersection({item.get('branch_id'), item.get('phase_id')})
+                   for key, owner in (('fill_results', late), ('completed_branches', late),
+                                      ('downstream_branches', graph), ('phases', graph))
+                   for item in owner.get(key) or [])
+
+    def _prepared_vision_dependency(
+        self, branch: Mapping[str, Any], payload: Mapping[str, Any],
+        infer_payload: Mapping[str, Any], instance_id: str,
+    ) -> dict[str, Any]:
+        """Bind a generated input before dispatch without claiming it was supplied."""
+        if not self._has_generated_image_dependency(branch, payload):
+            return {}
+        snapshot = self._vision_image_snapshot(infer_payload.get('file_path'))
+        binding = self._vision_direct_image_binding(branch, payload)
+        if not binding or snapshot != binding['artifact']:
+            raise ValueError('Vision dependency input missing, changed or ambiguous.')
+        binding.update(policy_id=_VISION_BACKEND_RECOVERY_POLICY_ID,
+                       authority='runtime_prepared_vision_input', response_id=payload.get('id'),
+                       branch_id=branch.get('branch_id'), phase_id=branch.get('phase_id'),
+                       instance_id=instance_id)
+        return binding
+
+    def reconcile_completed_inline_outputs(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Refresh old retry slots only from an accepted, exact inline result.
+
+        This runs on a state transition, never on a passive historical read.
+        Completion markers alone and saved-file obligations are insufficient.
+        """
+        late = payload.get('late_fill') or {}
+        graph = (payload.get('runtime') or {}).get('request_phase_graph') or {}
+        refreshed = []
+        for raw in payload.get('output_slots') or []:
+            slot = dict(raw)
+            identity = (slot.get('branch_id'), slot.get('phase_id'))
+            def matches(record):
+                return isinstance(record, Mapping) and all(identity) and identity == (
+                    record.get('branch_id'), record.get('phase_id'))
+            results = [r for r in late.get('fill_results') or [] if matches(r)]
+            completed = [r for r in late.get('completed_branches') or [] if matches(r)]
+            branches = [r for r in graph.get('downstream_branches') or [] if matches(r)]
+            conflicting = any(matches(r) for key in (
+                'failed_branches', 'cancelled_branches', 'pending_branches', 'active_branches')
+                for r in late.get(key) or [])
+            if (slot.get('type') == 'text' and len(results) == len(completed) == len(branches) == 1
+                    and not conflicting and not results[0].get('error')
+                    and completed[0].get('status') in {'fulfilled', 'completed'}
+                    and slot.get('status') not in {'cancelled', 'waived', 'superseded', 'skipped'}
+                    and not self._branch_is_required_text_artifact(branches[0])
+                    and not any(source.get('requires_artifact') or source.get('artifact_request')
+                                or source.get('text_artifact_requests') or source.get('target_extension')
+                                or source.get('fulfillment_policy') == 'runtime_text_artifact'
+                                for source in (branches[0], branches[0].get('output_contract') or {},
+                                               results[0].get('execution_contract') or {}))
+                    and not any(slot.get(k) or results[0].get(k) for k in (
+                        'artifact_ref', 'artifact_path', 'saved_text_path', 'saved_text_artifacts'))):
+                text = self.late_fill_text_from_result_payload(results[0])
+                if text:
+                    slot.update(status='fulfilled', lifecycle='materialized_output', value=text)
+                    for key in ('blocked_reason', 'error_ref', 'recovery_context', 'recovery_state', 'placeholder_ref'):
+                        slot.pop(key, None)
+            refreshed.append(slot)
+        if refreshed:
+            payload['output_slots'] = refreshed
+        return payload
+
+    def retry_dependency_continuations(
+        self, payload: Mapping[str, Any], retries: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Reconsider only never-dispatched consumers of this explicit retry wave.
+
+        This does not repair a graph or certify its inputs. Ordinary dependency,
+        execution and result gates still run after each prerequisite settles.
+        """
+        late = payload.get('late_fill') or {}
+        graph = (payload.get('runtime') or {}).get('request_phase_graph') or {}
+        graph_branches = graph.get('downstream_branches') or []
+        candidates = list(late.get('failed_branches') or [])
+        queued = list(retries)
+        continuations = []
+        while True:
+            aliases = {item.get(key) for item in queued for key in ('branch_id', 'phase_id')
+                       if item.get(key)}
+            added = []
+            for branch in candidates:
+                if self.branch_id(branch) in aliases:
+                    continue
+                error = branch.get('error') or {}
+                failed = error.get('failed_dependency_ids') or []
+                dependencies = self.late_fill_branch_dependency_ids(branch)
+                matching = [b for b in graph_branches if b.get('branch_id') == branch.get('branch_id')
+                            and b.get('phase_id') == branch.get('phase_id')]
+                if (error.get('code') != 'DEPENDENCY_CHAIN_REPAIR_REQUIRED'
+                        or error.get('stage') != 'dependency_gate'
+                        or not failed or not set(failed).issubset(aliases)
+                        or not set(failed).issubset(dependencies)
+                        or len(matching) != 1
+                        or self.late_fill_branch_dependency_ids(matching[0]) != dependencies
+                        or self.semantic_execution_gate_decision(branch, payload).get('action') == 'skip'):
+                    continue
+                if any(source.get('optional') is True or source.get('required') is False
+                       or source.get('needs_external_input') is True
+                       or source.get('automatic_follow_up_allowed') is False
+                       or source.get('status') in {'cancelled', 'waived', 'superseded', 'deferred'}
+                       for source in (branch, branch.get('execution_contract') or {},
+                                      branch.get('output_contract') or {}, branch.get('recovery_context') or {},
+                                      matching[0], matching[0].get('output_contract') or {})):
+                    continue
+                candidate = copy.deepcopy(branch)
+                candidate['retry_dependency_failure'] = copy.deepcopy(error)
+                candidate['recovery_context'] = {
+                    'can_retry': True, 'preserve_intent': True, 'retry_scope': 'same_branch',
+                    'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
+                }
+                added.append(candidate)
+            if not added:
+                return continuations
+            continuations.extend(added)
+            queued.extend(added)
 
     def _vision_evidence_recovery_allowed(
         self, branch: Mapping[str, Any], context: Mapping[str, Any],
     ) -> bool:
+        backend_failure = context.get('vision_backend_failure') or {}
+        backend_recovery = bool(
+            context.get('error_code') in {'BACKEND_ERROR', 'BACKEND_TIMEOUT', 'INSTANCE_UNAVAILABLE'}
+            and backend_failure.get('policy_id') == _VISION_BACKEND_RECOVERY_POLICY_ID
+            and backend_failure.get('authority') == 'runtime_prepared_vision_input'
+            and backend_failure.get('branch_id') == self.branch_id(branch)
+            and backend_failure.get('phase_id') == branch.get('phase_id')
+            and backend_failure.get('instance_id') in (context.get('exclude_instance_ids') or [])
+        )
         if (self.branch_capability(branch) != 'vision_analysis'
-                or context.get('error_code') != 'VISION_DEPENDENCY_EVIDENCE_REJECTED'
+                or (context.get('error_code') != 'VISION_DEPENDENCY_EVIDENCE_REJECTED' and not backend_recovery)
                 or context.get('can_retry') is not True
                 or context.get('preserve_intent') is not True
                 or context.get('retry_scope') != 'same_branch'
@@ -7936,15 +8162,34 @@ class LateFillRuntimeOwner:
             return False
         return bool(
             retry_count == 0
-            and prior_attempt.get('recovery_policy_id') != _VISION_EVIDENCE_RECOVERY_POLICY_ID
-            and failure.get('policy_id') == _VISION_EVIDENCE_RECOVERY_POLICY_ID
-            and receipt.get('branch_id') == self.branch_id(branch)
-            and receipt.get('phase_id') == branch.get('phase_id')
-            and receipt.get('instance_id') in (context.get('exclude_instance_ids') or [])
+            and prior_attempt.get('recovery_policy_id') not in {
+                _VISION_EVIDENCE_RECOVERY_POLICY_ID, _VISION_BACKEND_RECOVERY_POLICY_ID}
+            and (backend_recovery or (
+                failure.get('policy_id') == _VISION_EVIDENCE_RECOVERY_POLICY_ID
+                and receipt.get('branch_id') == self.branch_id(branch)
+                and receipt.get('phase_id') == branch.get('phase_id')
+                and receipt.get('instance_id') in (context.get('exclude_instance_ids') or [])))
         )
 
     def _validate_vision_retry_input(self, plan: Mapping[str, Any]) -> None:
         attempt = plan.get('vision_recovery_attempt') or {}
+        prepared = plan.get('vision_dependency_binding') or {}
+        if prepared:
+            inputs = plan.get('infer_payload') or {}
+            if (any(prepared.get(key) != plan.get(key) for key in ('response_id', 'branch_id', 'phase_id'))
+                    or prepared.get('instance_id') != (plan.get('instance') or {}).get('instance_id')
+                    or prepared.get('instance_id') != inputs.get('instance_id')
+                    or prepared.get('depends_on') != self.late_fill_branch_dependency_ids(plan.get('execution_contract') or {})
+                    or self._vision_image_snapshot(inputs.get('file_path')) != prepared.get('artifact')):
+                raise RuntimeError('Vision dependency binding changed before dispatch.')
+        if attempt.get('recovery_policy_id') == _VISION_BACKEND_RECOVERY_POLICY_ID:
+            prior = attempt.get('prior_vision_backend_failure') or {}
+            if (not prepared or any(prepared.get(k) != prior.get(k) for k in (
+                    'response_id', 'branch_id', 'phase_id', 'depends_on', 'artifact',
+                    'producer_branch_id', 'producer_phase_id'))
+                    or prepared.get('instance_id') == prior.get('instance_id')):
+                raise RuntimeError('Vision recovery did not preserve its prepared image binding.')
+            return
         if attempt.get('recovery_policy_id') != _VISION_EVIDENCE_RECOVERY_POLICY_ID:
             return
         failure = attempt.get('prior_vision_evidence_failure') or {}
@@ -7988,6 +8233,12 @@ class LateFillRuntimeOwner:
             'run_global_semantic_closure_review',
             'run_branch_semantic_review',
         }
+        if (not semantic_review_branch and isinstance(current_payload, Mapping)
+                and self._has_generated_image_dependency(branch, current_payload)
+                and not self._vision_evidence_failure(branch, result_payload, current_payload)):
+            return {'code': 'DEPENDENCY_CHAIN_REPAIR_REQUIRED', 'retryable': False,
+                    'stage': 'semantic_evidence_gate',
+                    'message': 'Generated-image inspection has no matching exact image dispatch evidence.'}
         if (
             not semantic_review_branch
             and self.late_fill_result_has_missing_dependency_evidence(result_payload)
@@ -13320,6 +13571,7 @@ class LateFillRuntimeOwner:
         payload: dict[str, Any],
         *,
         current_outputs: Optional[list[dict[str, Any]]] = None,
+        accepted_fill_results: Optional[list[dict[str, Any]]] = None,
     ) -> dict[str, Any]:
         # Use the freshly reconciled eligibility view only for binding. Publishing
         # it before Closure would add output handles to unrelated repair/rebase
@@ -13458,7 +13710,8 @@ class LateFillRuntimeOwner:
         late_fill = dict(updated_payload.get('late_fill') or {}) if isinstance(updated_payload.get('late_fill'), Mapping) else {}
         if isinstance(late_fill.get('fill_results'), list):
             late_fill['fill_results'] = [
-                update_text_record_content(item)
+                copy.deepcopy(item) if item in (accepted_fill_results or [])
+                else update_text_record_content(item)
                 for item in late_fill.get('fill_results') or []
             ]
         existing_rebinds = [
@@ -13941,6 +14194,8 @@ class LateFillRuntimeOwner:
     def _repair_terminal_text_artifact_syntax(
         self,
         payload: dict[str, Any],
+        *,
+        accepted_fill_results: Optional[list[dict[str, Any]]] = None,
     ) -> dict[str, Any]:
         if not isinstance(payload, dict):
             return payload
@@ -14028,7 +14283,8 @@ class LateFillRuntimeOwner:
         )
         if isinstance(late_fill.get('fill_results'), list):
             late_fill['fill_results'] = [
-                update_text_record_content(item)
+                copy.deepcopy(item) if item in (accepted_fill_results or [])
+                else update_text_record_content(item)
                 for item in late_fill.get('fill_results') or []
             ]
         existing_repairs = [
@@ -14049,6 +14305,8 @@ class LateFillRuntimeOwner:
     def _refresh_terminal_text_artifacts_from_saved_files(
         self,
         payload: dict[str, Any],
+        *,
+        accepted_fill_results: Optional[list[dict[str, Any]]] = None,
     ) -> dict[str, Any]:
         if not isinstance(payload, dict):
             return payload
@@ -14185,7 +14443,8 @@ class LateFillRuntimeOwner:
         )
         if isinstance(late_fill.get('fill_results'), list):
             late_fill['fill_results'] = [
-                refresh_text_record(item)
+                copy.deepcopy(item) if item in (accepted_fill_results or [])
+                else refresh_text_record(item)
                 for item in late_fill.get('fill_results') or []
             ]
         existing_refreshes = [
@@ -17010,6 +17269,7 @@ class LateFillRuntimeOwner:
         route_payload: Optional[dict[str, Any]],
         artifact_gap: Optional[dict[str, Any]],
         terminal_status: str,
+        accepted_fill_results: Optional[list[dict[str, Any]]] = None,
     ) -> tuple[dict[str, Any], str]:
         effective_status = str(terminal_status or '').strip().lower() or 'completed'
         updated_payload, inline_materialization_open_checks = (
@@ -17023,13 +17283,21 @@ class LateFillRuntimeOwner:
         )
         updated_payload = self.rebind_terminal_linked_artifacts(
             updated_payload, current_outputs=current_output_state['outputs'],
+            accepted_fill_results=accepted_fill_results,
         )
-        updated_payload = self._repair_terminal_text_artifact_syntax(updated_payload)
+        updated_payload = self._repair_terminal_text_artifact_syntax(
+            updated_payload, accepted_fill_results=accepted_fill_results,
+        )
         updated_payload = self._repair_terminal_hero_image_composition(
             updated_payload,
             request_payload=request_payload,
         )
-        updated_payload = self._refresh_terminal_text_artifacts_from_saved_files(updated_payload)
+        # Accepted results describe their original execution and bytes. A later
+        # repair may replace the same file, but its refreshed evidence belongs
+        # to the new result and current artifact projections, not to that history.
+        updated_payload = self._refresh_terminal_text_artifacts_from_saved_files(
+            updated_payload, accepted_fill_results=accepted_fill_results,
+        )
         # A terminal repair may create or replace a named dependency after the
         # initial rebind. Re-run the idempotent resolver over final saved truth
         # before Closure evaluates local links and consumer contracts.
@@ -17038,6 +17306,7 @@ class LateFillRuntimeOwner:
         )
         updated_payload = self.rebind_terminal_linked_artifacts(
             updated_payload, current_outputs=current_output_state['outputs'],
+            accepted_fill_results=accepted_fill_results,
         )
         late_fill = (
             dict(updated_payload.get('late_fill') or {})
@@ -19241,6 +19510,7 @@ class LateFillRuntimeOwner:
         source_route_payload: Optional[dict[str, Any]],
         failed_instance_id: Optional[str],
         excluded_instance_ids: Optional[list[str]] = None,
+        guarded_pending: bool = False,
         build_deferred_follow_up_gap_for_capability: Optional[Callable[..., dict[str, Any]]] = None,
         prepare_late_fill_request_payload: Optional[Callable[..., dict[str, Any]]] = None,
         resolve_late_fill_route: Optional[Callable[..., tuple[dict[str, Any], Optional[dict[str, Any]], Optional[str]]]] = None,
@@ -19265,6 +19535,7 @@ class LateFillRuntimeOwner:
             expected_capability=expected_capability or '',
             assistant_message=assistant_message,
             artifact_gap=active_gap,
+            **({"guarded_pending": True} if guarded_pending else {}),
         )
         branch_contract_error = str(
             late_fill_request_payload.get('branch_contract_error') or ''
@@ -19280,8 +19551,8 @@ class LateFillRuntimeOwner:
                 'preparation failed closed without a fallback prompt carrier.'
             )
         if (
-            str(active_gap.get('trigger') or '').strip().lower()
-            in {'graph_patch_successor_reopen', 'graph_rebase_partial_successor'}
+            (guarded_pending or str(active_gap.get('trigger') or '').strip().lower()
+             in {'graph_patch_successor_reopen', 'graph_rebase_partial_successor'})
             and branch_contract_error
         ):
             raise RuntimeError(
@@ -19585,11 +19856,16 @@ class LateFillRuntimeOwner:
             )
         )
         direct_audio_dependency = bind_direct_audio_dependency(current_payload, execution_contract)
+        vision_binding = self._prepared_vision_dependency(
+            execution_contract, current_payload, infer_payload,
+            str(late_fill_instance.get('instance_id') or ''),
+        ) if expected_capability == 'vision_analysis' else {}
         return {
             'response_id': current_payload.get('id'),
             'capability': expected_capability,
             'vision_recovery_attempt': copy.deepcopy(active_gap.get('recovery_attempt') or {})
             if expected_capability == 'vision_analysis' else {},
+            'vision_dependency_binding': vision_binding,
             'direct_audio_dependency': direct_audio_dependency,
             'branch_id': str((execution_contract or {}).get('branch_id') or effective_data.get('branch_id') or '').strip() or None,
             'phase_id': str((execution_contract or {}).get('phase_id') or effective_data.get('phase_id') or '').strip() or None,
@@ -20209,7 +20485,9 @@ class LateFillRuntimeOwner:
                 **internal_inputs,
             )
             if status_code >= 400:
-                raise RuntimeError(str(infer_result.get('error') or 'Late fill request failed.'))
+                exc = RuntimeError(str(infer_result.get('error') or 'Late fill request failed.'))
+                exc.status_code = status_code
+                raise exc
             infer_result = self.filter_responses_infer_result(
                 infer_result,
                 expose_input_artifacts=bool(plan.get('expose_input_artifacts')),
@@ -20221,6 +20499,12 @@ class LateFillRuntimeOwner:
                         **receipt, **{key: plan.get(key) for key in ('response_id', 'branch_id', 'phase_id')},
                     }
                 recovery = plan.get('vision_recovery_attempt') or {}
+                prepared = plan.get('vision_dependency_binding') or {}
+                if prepared and (not self._valid_vision_input_receipt(receipt)
+                        or any(receipt.get(key) != prepared['artifact'].get(key)
+                               for key in ('image_sha256', 'size_bytes'))
+                        or receipt.get('instance_id') != late_fill_instance.get('instance_id')):
+                    raise RuntimeError('Vision dependency did not preserve the exact image dispatch evidence.')
                 if recovery.get('recovery_policy_id') == _VISION_EVIDENCE_RECOVERY_POLICY_ID:
                     prior = recovery['prior_vision_evidence_failure']['input_evidence']
                     if (not self._valid_vision_input_receipt(receipt)
@@ -20381,13 +20665,14 @@ class LateFillRuntimeOwner:
         assistant_message: str,
         source_route_payload: Optional[dict[str, Any]],
         failed_instance_id: Optional[str],
+        guarded_pending: bool = False,
     ) -> Optional[dict[str, Any]]:
         capability = self.branch_capability(branch)
         branch_id = self.branch_id(branch)
         if not capability or not branch_id:
             return None
         branch_gap = dict(artifact_gap or {})
-        successor_branch_execution = (
+        successor_branch_execution = guarded_pending or (
             str(branch_gap.get('trigger') or branch.get('trigger') or '').strip().lower()
             in {'graph_patch_successor_reopen', 'graph_rebase_partial_successor'}
         )
@@ -20759,6 +21044,7 @@ class LateFillRuntimeOwner:
             'reservation_group': capability,
             'branch': dict(branch),
             'prepare_args': {
+                **({'guarded_pending': True} if guarded_pending else {}),
                 'expected_capability': capability,
                 'artifact_gap': branch_gap,
                 'current_payload': dict(current_payload),
@@ -21915,6 +22201,254 @@ class LateFillRuntimeOwner:
                 return True
         return False
 
+    @staticmethod
+    def _pending_contract(record: Mapping[str, Any]) -> dict[str, Any]:
+        # Unknown fields remain binding. Do not expand this operational allowlist
+        # to recover a missing or changed semantic contract.
+        return {key: copy.deepcopy(value) for key, value in record.items()
+                if key not in {'status', 'updated_at', 'timing', 'scheduling_policy'}}
+
+    @classmethod
+    def _pending_accepted_evidence(cls, value):
+        # Frame compaction removes transport bytes, timestamps and empty values.
+        # Preserve every other (including unknown) identity/evidence field.
+        if isinstance(value, Mapping):
+            return {key: cls._pending_accepted_evidence(item) for key, item in value.items()
+                    if key not in {'created_at', 'updated_at', 'started_at', 'completed_at',
+                                   'failed_at', 'image_data_url'} and item not in (None, '', [], {})}
+        if isinstance(value, list):
+            return [cls._pending_accepted_evidence(item) for item in value]
+        return value
+
+    def _new_pending_continuation(self, payload, request_payload):
+        late = payload.get('late_fill') or {}
+        graph = (payload.get('runtime') or {}).get('request_phase_graph') or {}
+        pending = self.normalize_late_fill_branches(late.get('pending_branches'))
+        obligations = graph.get('output_obligations') or []
+        contracts = {}
+        for branch in pending:
+            branch_id = self.branch_id(branch)
+            if (not branch_id or branch_id in contracts
+                    or branch.get('contract_state') != 'promoted'
+                    or not any(item.get('obligation_id') == branch.get('obligation_id')
+                               and item.get('branch_id') == branch_id
+                               and item.get('phase_id') == branch.get('phase_id')
+                               and item.get('contract_state') == 'promoted'
+                               for item in obligations if isinstance(item, Mapping))):
+                return None
+            contracts[branch_id] = copy.deepcopy(branch)
+        if not contracts:
+            return None
+        admission = copy.deepcopy(payload)
+        admission.setdefault('response_frame', {})['request'] = copy.deepcopy(self._pending_frame_request(payload))
+        chain = _PendingContinuationChain(admission, contracts, copy.deepcopy(request_payload))
+        return _PendingContinuation(chain, copy.deepcopy(payload))
+
+    @staticmethod
+    def _pending_execution_binding(payload):
+        late = payload.get('late_fill') or {}
+        return tuple(copy.deepcopy(late.get(name) or {}) for name in (
+            'successor_reopen_execution', 'terminal_closure_repair_reopen', 'partial_rebase_execution'))
+
+    def _pending_frame_request(self, payload):
+        request = (payload.get('response_frame') or {}).get('request')
+        if request is not None:
+            return request
+        # Wire projections deliberately omit the full request. Use the existing
+        # passive canonical reader, bound to this exact frame, not root replay.
+        if not callable(self.load_latest_response_state):
+            raise ResponseMutationConflict('pending continuation canonical request unavailable')
+        durable = self.load_latest_response_state(str(payload.get('id') or ''))
+        frame = durable.get('response_frame') or {}
+        if not durable.get('ok') or (frame.get('frame_id'), frame.get('frame_sequence')) != response_wire_frame_identity(payload):
+            raise ResponseMutationConflict('pending continuation canonical request frame changed')
+        return frame.get('request')
+
+    def _require_pending_continuation(self, context, current, *, exact_frame=True):
+        if not isinstance(context, _PendingContinuation) or not current:
+            raise ResponseMutationConflict('pending continuation context unavailable')
+        base, admission = context.base, context.chain.admission
+        if response_persistence_blocked(current) or current.get('id') != admission.get('id'):
+            raise ResponseMutationConflict('pending continuation response/storage changed')
+        if exact_frame:
+            # Preserve normal same-frame control handling; a durable version or
+            # execution change still rejects before any new dispatch.
+            expected = {**base, 'late_fill': {**(base.get('late_fill') or {}),
+                        'branch_controls': (current.get('late_fill') or {}).get('branch_controls', []),
+                        'cancelled_branches': (current.get('late_fill') or {}).get('cancelled_branches', [])}}
+            require_response_mutation_base(expected, current)
+        # Execution operational status can advance; its immutable identity cannot.
+        if self._pending_execution_identity(base) != self._pending_execution_identity(current):
+            raise ResponseMutationConflict('pending continuation execution changed')
+        for execution in self._pending_execution_binding(current):
+            if str(execution.get('status') or '').lower() in {
+                    'completed', 'fulfilled', 'failed', 'cancelled', 'waived', 'superseded'}:
+                raise ResponseMutationConflict('pending continuation execution is terminal')
+        current_request = self._pending_frame_request(current)
+        # Existing control checkpoints may omit the request carrier entirely.
+        # That projection does not replace the invocation's immutable request;
+        # an explicit current carrier or request_meta still must match exactly.
+        if ((admission.get('runtime') or {}).get('request_phase_graph')
+                != (current.get('runtime') or {}).get('request_phase_graph')
+                or admission.get('request') != current.get('request')
+                or admission.get('request_meta') != current.get('request_meta')
+                or (current_request is not None
+                    and self._pending_frame_request(admission) != current_request)):
+            raise ResponseMutationConflict('pending continuation admission changed')
+        if context.scope is not None:
+            for branch in (current.get('late_fill') or {}).get('pending_branches', []):
+                branch_id = self.branch_id(branch)
+                if branch_id not in context.chain.contracts:
+                    raise ResponseMutationConflict('pending continuation scope widened')
+                if branch_id not in context.chain.submitted and self._pending_contract(branch) != self._pending_contract(context.chain.contracts[branch_id]):
+                    raise ResponseMutationConflict('pending continuation local contract changed')
+        prior = (base.get('late_fill') or {}).get('fill_results') or []
+        accepted = (current.get('late_fill') or {}).get('fill_results') or []
+        if any(self._pending_accepted_evidence(result) not in [self._pending_accepted_evidence(r) for r in accepted]
+               for result in prior):
+            raise ResponseMutationConflict('pending continuation accepted evidence changed')
+
+    @staticmethod
+    def _pending_execution_identity(payload):
+        late = payload.get('late_fill') or {}
+        return tuple(tuple(copy.deepcopy((late.get(name) or {}).get(key)) for key in keys)
+            for name, keys in (
+                ('successor_reopen_execution', ('successor_execution_key', 'parent_response_id',
+                    'parent_frame_id', 'parent_frame_sequence', 'successor_graph_digest', 'scheduled_branch_ids')),
+                ('terminal_closure_repair_reopen', ('execution_key',)),
+                ('partial_rebase_execution', ('execution_key',))))
+
+    def _pending_branch_prerequisites(self, branch, payload, context):
+        """Eligibility is separate from the invocation's scheduling permission."""
+        branch_id = self.branch_id(branch)
+        if (branch_id not in (context.scope or ())
+                or self.semantic_execution_gate_decision(branch, payload).get('action') == 'skip'):
+            return False
+        graph = (payload.get('runtime') or {}).get('request_phase_graph') or {}
+        late = payload.get('late_fill') or {}
+        for dependency in self.late_fill_branch_dependency_ids(branch, current_payload=payload):
+            producers = [p for p in graph.get('phases', []) if dependency in {
+                p.get('branch_id'), p.get('phase_id'), p.get('task_id'), p.get('obligation_id')}]
+            if len(producers) != 1:
+                return False
+            producer = producers[0]
+            producer_id = self.branch_id(producer)
+            if self.semantic_execution_gate_decision(producer, payload).get('action') == 'skip':
+                return False
+            if any(self.branch_id(r) == producer_id for key in ('failed_branches', 'cancelled_branches')
+                   for r in late.get(key, [])):
+                return False
+            results = [r for r in late.get('fill_results', []) if self.branch_id(r) == producer_id]
+            if len(results) != 1:
+                # A canonical source-phase text output can precede Late Fill.
+                outputs = ((payload.get('response_frame') or {}).get('output') or {}).get('outputs') or []
+                if results or not any(o.get('phase_id') == producer.get('phase_id')
+                        and o.get('branch_id') == producer_id and o.get('status') == 'fulfilled'
+                        and o.get('type') in {'text', 'message'} for o in outputs):
+                    return False
+            else:
+                result = results[0]
+                if (any(producer.get(k) and result.get(k) != producer[k]
+                        for k in ('branch_id', 'phase_id', 'obligation_id'))
+                        or self.late_fill_result_has_missing_dependency_evidence(result)):
+                    return False
+                if (producer.get('output_type') in {'image', 'audio'}
+                        or self._branch_is_required_text_artifact(producer)):
+                    if not self._terminal_materialization_branch_has_canonical_evidence(producer, payload, late):
+                        return False
+        local = [branch.get(k) for k in ('artifact_prompt', 'content_payload', 'phase_summary', 'stage_direction')]
+        if not any(isinstance(v, str) and v.strip() for v in local):
+            dependency = self.branch_dependency_payload(branch, current_payload=payload)
+            if not dependency.get('content_payload') or not dependency.get('content_payload_source'):
+                return False
+        return True
+
+    def _prepare_pending_control_handoff(self, context, *, artifact_gap, source_route_payload):
+        if not isinstance(context, _PendingContinuation) or not context.chain.take_attempt():
+            return None
+        response_id = context.chain.admission.get('id')
+        try:
+            if context.wave_active:
+                raise ResponseMutationConflict('pending continuation wave is not quiescent')
+            with self.response_mutation(response_id):
+                current = copy.deepcopy((self.get_response_lookup_record(response_id) or {}).get('response_payload') or {})
+                self._require_pending_continuation(context, current, exact_frame=False)
+                old_frame, new_frame = response_wire_frame_identity(context.base), response_wire_frame_identity(current)
+                receipt = current.get('persistence') or {}
+                if (not old_frame[0] or not new_frame[0] or new_frame[1] <= old_frame[1]
+                        or receipt.get('status') != 'committed'
+                        or receipt.get('response_id') != response_id
+                        or (receipt.get('frame_id'), receipt.get('frame_sequence')) != new_frame):
+                    raise ResponseMutationConflict('pending continuation requires committed control frame')
+                old = context.base.get('late_fill') or {}
+                late = current.get('late_fill') or {}
+                controls = late.get('branch_controls') or []
+                added = [c for c in controls if c not in (old.get('branch_controls') or [])]
+                if (not added or any(c not in controls for c in old.get('branch_controls') or [])
+                        or any(c not in (late.get('cancelled_branches') or []) for c in old.get('cancelled_branches') or [])):
+                    raise ResponseMutationConflict('pending continuation requires monotone control')
+                for control in added:
+                    target = context.chain.contracts.get(self.branch_id(control))
+                    if (not target or control.get('authority') != 'user_control'
+                            or control.get('status') not in {'cancelled', 'waived', 'superseded'}
+                            or control.get('action') != control.get('status')
+                            or not any(self.branch_id(c) == self.branch_id(control)
+                                       and c.get('status') == control['status']
+                                       for c in late.get('cancelled_branches') or [])):
+                        raise ResponseMutationConflict('pending continuation control is not exact')
+                    require_response_mutation_target(target, current)
+                pending = self.normalize_late_fill_branches(late.get('pending_branches'))
+                terminal = {self.branch_id(b) for key in ('completed_branches', 'failed_branches', 'cancelled_branches')
+                            for b in late.get(key, [])}
+                scope = set()
+                for branch in pending:
+                    branch_id = self.branch_id(branch)
+                    original = context.chain.contracts.get(branch_id)
+                    if not original or self._pending_contract(original) != self._pending_contract(branch):
+                        raise ResponseMutationConflict('pending continuation local contract changed')
+                    if (branch.get('status') == 'pending' and branch_id not in terminal
+                            and branch_id not in context.chain.submitted
+                            and not any(self.branch_id(b) == branch_id for b in late.get('active_branches', []))):
+                        scope.add(branch_id)
+                if any(branch_id not in terminal and branch_id not in context.chain.submitted
+                       and branch_id not in {self.branch_id(b) for b in pending}
+                       for branch_id in context.chain.contracts):
+                    raise ResponseMutationConflict('pending continuation lost an obligation')
+                if not scope:
+                    return None
+                child = _PendingContinuation(context.chain, current, frozenset(scope))
+            # Preparation/evidence is outside mutation; scheduling revalidates.
+            if not any(self._pending_branch_prerequisites(b, current, child) for b in pending):
+                return None
+            gap = copy.deepcopy(artifact_gap)
+            for key in ('artifact_prompt', 'artifact_prompt_source', 'content_payload', 'content_payload_source',
+                        'phase_summary', 'stage_direction', 'batch_prompts', 'batch_prompts_source'):
+                gap.pop(key, None)
+            gap.update(pending_branches=copy.deepcopy(pending), authoritative_pending_branches=True)
+            self.log_unified_event(category='responses', action='pending_control_continuation', status='prepared',
+                                   response_id=response_id, handoff_attempt=1, branch_ids=sorted(scope))
+            return dict(response_payload=current, request_payload=copy.deepcopy(context.chain.request),
+                        assistant_message='', artifact_gap=gap, source_route_payload=copy.deepcopy(source_route_payload),
+                        pending_continuation=child)
+        except (ResponseMutationConflict, ValueError, TypeError, OSError) as exc:
+            self.log_unified_event(category='responses', action='pending_control_continuation', status='pending',
+                                   response_id=response_id, message=str(exc))
+            return None
+
+    def _park_pending_continuation(self, context, pending, request_payload):
+        payload = copy.deepcopy(context.base)
+        late = dict(payload.get('late_fill') or {})
+        late.update(status='pending', pending_branches=copy.deepcopy(pending), active_branches=[],
+                    active_capabilities=[], active_capability=None,
+                    branch_progress=[r for r in late.get('branch_progress', [])
+                                     if self.branch_id(r) not in {self.branch_id(b) for b in pending}])
+        late['scheduling_policy'] = {**(late.get('scheduling_policy') or {}),
+                                     'pending_continuation': 'blocked_prerequisites'}
+        payload = self.attach_late_fill_state(payload, late)
+        with self._late_fill_publication(payload, expected_payload=context.base, pending_continuation=context):
+            final = self.finalize_response_frame_payload(payload, request_payload=request_payload, persist=True)
+            self.touch_response_lookup(str(payload['id']), response_payload=final)
+
     def _initial_late_fill_branch_eligibility(
         self,
         branch: Mapping[str, Any],
@@ -21967,6 +22501,52 @@ class LateFillRuntimeOwner:
             return 'fulfilled'
         return 'pending'
 
+    @contextmanager
+    def _late_fill_publication(
+        self, payload: dict[str, Any], *, expected_payload: Optional[Mapping[str, Any]] = None,
+        pending_continuation: Optional[_PendingContinuation] = None,
+    ):
+        """Revalidate a prepared candidate and hold authority through publication.
+
+        Preparation/physical writes are not accepted evidence. The existing frame
+        identity is the version: a changed control frame rejects this candidate,
+        retaining its physical artifacts without publishing them as fulfillment.
+        """
+        response_id = str(payload.get('id') or '')
+        with self.response_mutation(response_id):
+            current = (self.get_response_lookup_record(response_id) or {}).get('response_payload') or {}
+            if current:
+                base = expected_payload or payload
+                current_controls = (current.get('late_fill') or {}).get('branch_controls') or []
+                # Runtime controls may arrive in the live view without a new
+                # frame. Carry them forward before revalidation, so an unrelated
+                # sibling control does not abort the normal continuation loop.
+                # A new durable control frame still conflicts below.
+                base = {**base, 'late_fill': {
+                    **(base.get('late_fill') or {}), 'branch_controls': current_controls,
+                }}
+                require_response_mutation_base(base, current)
+                if current_controls:
+                    candidate_late = dict(payload.get('late_fill') or {})
+                    candidate_late['branch_controls'] = [
+                        *[record for record in (candidate_late.get('branch_controls') or [])
+                          if record not in current_controls],
+                        *copy.deepcopy(current_controls),
+                    ]
+                    payload['late_fill'] = candidate_late
+                prior_results = (current.get('late_fill') or {}).get('fill_results') or []
+                for result in (payload.get('late_fill') or {}).get('fill_results') or []:
+                    if result in prior_results:
+                        continue
+                    require_response_mutation_target(result, current)
+                    decision = self.semantic_execution_gate_decision(result, current)
+                    if decision.get('action') == 'skip':
+                        raise ResponseMutationConflict('response_mutation_conflict: target is terminal')
+            yield
+            if pending_continuation is not None:
+                pending_continuation.base = copy.deepcopy(
+                    (self.get_response_lookup_record(response_id) or {}).get('response_payload') or payload)
+
     @observe_worker
     def complete_response_late_fill(
         self,
@@ -21976,6 +22556,7 @@ class LateFillRuntimeOwner:
         assistant_message: str,
         artifact_gap: dict[str, Any],
         source_route_payload: Optional[dict[str, Any]],
+        pending_continuation: Optional[_PendingContinuation] = None,
         build_deferred_follow_up_gap_for_capability: Optional[Callable[..., dict[str, Any]]] = None,
         prepare_late_fill_branch_plan: Optional[Callable[..., dict[str, Any]]] = None,
         execute_prepared_late_fill_branch: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
@@ -21988,6 +22569,10 @@ class LateFillRuntimeOwner:
         response_id = str((response_payload or {}).get('id') or '').strip()
         if not response_id:
             return
+        # A duplicate entry did not acquire a claim and must never release one.
+        if pending_continuation is not None and not pending_continuation.take_entry():
+            return
+        guarded_pending = pending_continuation is not None and pending_continuation.scope is not None
         trace = LateFillTrace(response_id)
         successor_handoff: Optional[dict[str, Any]] = None
         completed_capabilities: list[str] = []
@@ -22004,6 +22589,14 @@ class LateFillRuntimeOwner:
                 if isinstance(existing_record.get('response_payload'), Mapping)
                 else {}
             )
+            if guarded_pending:
+                with self.response_mutation(response_id):
+                    recovered_payload = copy.deepcopy((self.get_response_lookup_record(response_id) or {}).get('response_payload') or {})
+                    self._require_pending_continuation(pending_continuation, recovered_payload)
+                    if not any(self._pending_branch_prerequisites(b, recovered_payload, pending_continuation)
+                               for b in (recovered_payload.get('late_fill') or {}).get('pending_branches', [])):
+                        return
+                response_payload = recovered_payload
             explicit_payload = response_payload if isinstance(response_payload, Mapping) else {}
             terminal_closure_execution_key = self._terminal_closure_repair_execution_key(
                 explicit_payload,
@@ -22057,50 +22650,54 @@ class LateFillRuntimeOwner:
             completed_branches = [self.branch_id(item) for item in completed_branch_records if self.branch_id(item)]
             failed_branches = [self.branch_id(item) for item in failed_branch_records if self.branch_id(item)]
             cancelled_branches = [self.branch_id(item) for item in cancelled_branch_records if self.branch_id(item)]
-            extracted_pending_branches = self.extract_pending_deferred_branches(
-                route_payload=source_route_payload,
-                artifact_payload=current_payload,
-            )
-            gap_pending_branches = self.normalize_late_fill_branches(
-                artifact_gap.get('pending_branches')
-            )
-            if gap_pending_branches and (
-                artifact_gap.get('authoritative_pending_branches') is True
-                or len(gap_pending_branches) > len(extracted_pending_branches)
-                or artifact_gap.get('prepared_image_prompt_branch_expansion') not in (None, '', [], {})
-            ):
-                pending_branch_seed = gap_pending_branches
+            if guarded_pending:
+                pending_branches = self.normalize_late_fill_branches(current_late_fill.get('pending_branches'))
+                pending_capabilities = self.normalize_capability_list([self.branch_capability(b) for b in pending_branches])
             else:
-                pending_branch_seed = extracted_pending_branches
-            pending_branches = self.build_pending_late_fill_branches(
-                artifact_gap=artifact_gap,
-                late_fill_state=current_late_fill,
-                pending_branches=pending_branch_seed,
-            )
-            pending_capabilities = self.normalize_capability_list(artifact_gap.get('pending_capabilities'))
-            if not pending_capabilities:
-                pending_capabilities = self.normalize_capability_list(
-                    [self.branch_capability(item) for item in pending_branches if self.branch_capability(item)]
-                )
-            if not pending_branches and not pending_capabilities:
-                pending_capabilities = self.extract_pending_deferred_capabilities(
+                extracted_pending_branches = self.extract_pending_deferred_branches(
                     route_payload=source_route_payload,
                     artifact_payload=current_payload,
                 )
-            if not pending_branches and pending_capabilities:
+                gap_pending_branches = self.normalize_late_fill_branches(
+                    artifact_gap.get('pending_branches')
+                )
+                if gap_pending_branches and (
+                    artifact_gap.get('authoritative_pending_branches') is True
+                    or len(gap_pending_branches) > len(extracted_pending_branches)
+                    or artifact_gap.get('prepared_image_prompt_branch_expansion') not in (None, '', [], {})
+                ):
+                    pending_branch_seed = gap_pending_branches
+                else:
+                    pending_branch_seed = extracted_pending_branches
                 pending_branches = self.build_pending_late_fill_branches(
                     artifact_gap=artifact_gap,
                     late_fill_state=current_late_fill,
-                    pending_capabilities=pending_capabilities,
+                    pending_branches=pending_branch_seed,
                 )
-            if not pending_branches and not pending_capabilities:
-                expected_capability = self.normalize_capability(artifact_gap.get('expected_capability'))
-                if expected_capability:
+                pending_capabilities = self.normalize_capability_list(artifact_gap.get('pending_capabilities'))
+                if not pending_capabilities:
+                    pending_capabilities = self.normalize_capability_list(
+                        [self.branch_capability(item) for item in pending_branches if self.branch_capability(item)]
+                    )
+                if not pending_branches and not pending_capabilities:
+                    pending_capabilities = self.extract_pending_deferred_capabilities(
+                        route_payload=source_route_payload,
+                        artifact_payload=current_payload,
+                    )
+                if not pending_branches and pending_capabilities:
                     pending_branches = self.build_pending_late_fill_branches(
                         artifact_gap=artifact_gap,
                         late_fill_state=current_late_fill,
-                        pending_capabilities=[expected_capability],
+                        pending_capabilities=pending_capabilities,
                     )
+                if not pending_branches and not pending_capabilities:
+                    expected_capability = self.normalize_capability(artifact_gap.get('expected_capability'))
+                    if expected_capability:
+                        pending_branches = self.build_pending_late_fill_branches(
+                            artifact_gap=artifact_gap,
+                            late_fill_state=current_late_fill,
+                            pending_capabilities=[expected_capability],
+                        )
             def _remember_branch(
                 records: list[dict[str, Any]],
                 record_ids: list[str],
@@ -22220,6 +22817,9 @@ class LateFillRuntimeOwner:
 
             pruned_pending: list[dict[str, Any]] = []
             for branch in pending_branches:
+                if guarded_pending:
+                    pruned_pending.append(branch)
+                    continue
                 eligibility = self._initial_late_fill_branch_eligibility(
                     branch,
                     artifact_gap=artifact_gap,
@@ -22284,18 +22884,20 @@ class LateFillRuntimeOwner:
                     route_payload=source_route_payload,
                     artifact_gap=artifact_gap,
                     terminal_status=str(skipped_late_fill.get('status') or terminal_status or 'skipped'),
+                    accepted_fill_results=(current_payload.get('late_fill') or {}).get('fill_results') or [],
                 )
-                finalized_payload = self.finalize_response_frame_payload(
-                    payload_for_finalize,
-                    request_payload=request_payload,
-                    persist=True,
-                )
-                self.touch_response_lookup(
-                    response_id,
-                    status=_final_lookup_status_for_late_fill(effective_terminal_status),
-                    output_text=str(finalized_payload.get('output_text') or ''),
-                    response_payload=finalized_payload,
-                )
+                with self._late_fill_publication(payload_for_finalize, expected_payload=current_payload, pending_continuation=pending_continuation):
+                    finalized_payload = self.finalize_response_frame_payload(
+                        payload_for_finalize,
+                        request_payload=request_payload,
+                        persist=True,
+                    )
+                    self.touch_response_lookup(
+                        response_id,
+                        status=_final_lookup_status_for_late_fill(effective_terminal_status),
+                        output_text=str(finalized_payload.get('output_text') or ''),
+                        response_payload=finalized_payload,
+                    )
                 successor_handoff = self._terminal_closure_repair_handoff(
                     finalized_payload,
                     request_payload=request_payload,
@@ -22335,6 +22937,8 @@ class LateFillRuntimeOwner:
             while pending_branches:
                 latest_record = self.get_response_lookup_record(response_id) or {}
                 latest_payload = latest_record.get('response_payload') if isinstance(latest_record.get('response_payload'), dict) else None
+                if guarded_pending:
+                    self._require_pending_continuation(pending_continuation, latest_payload)
                 if latest_payload:
                     current_payload = dict(latest_payload)
                     current_late_fill = current_payload.get('late_fill') if isinstance(current_payload.get('late_fill'), dict) else current_late_fill
@@ -22401,19 +23005,21 @@ class LateFillRuntimeOwner:
                         route_payload=source_route_payload,
                         artifact_gap=artifact_gap,
                         terminal_status=str(gate_state.get('status') or 'completed'),
+                        accepted_fill_results=(current_payload.get('late_fill') or {}).get('fill_results') or [],
                     )
-                    current_payload = self.finalize_response_frame_payload(
-                        payload_for_finalize,
-                        request_payload=last_effective_request_payload,
-                        persist=True,
-                    )
-                    current_late_fill = gate_state
-                    self.touch_response_lookup(
-                        response_id,
-                        status=_final_lookup_status_for_late_fill(effective_gate_status),
-                        output_text=str(current_payload.get('output_text') or ''),
-                        response_payload=current_payload,
-                    )
+                    with self._late_fill_publication(payload_for_finalize, expected_payload=current_payload, pending_continuation=pending_continuation):
+                        current_payload = self.finalize_response_frame_payload(
+                            payload_for_finalize,
+                            request_payload=last_effective_request_payload,
+                            persist=True,
+                        )
+                        current_late_fill = gate_state
+                        self.touch_response_lookup(
+                            response_id,
+                            status=_final_lookup_status_for_late_fill(effective_gate_status),
+                            output_text=str(current_payload.get('output_text') or ''),
+                            response_payload=current_payload,
+                        )
                     if not pending_branches:
                         successor_handoff = self._terminal_closure_repair_handoff(
                             current_payload,
@@ -22453,7 +23059,7 @@ class LateFillRuntimeOwner:
                     failed_capabilities=failed_capabilities,
                 )
                 active_branches = [dict(branch) for branch in (executable_batches[0] if executable_batches else [])]
-                if not active_branches and pending_branches:
+                if not active_branches and pending_branches and not guarded_pending:
                     active_branches = [dict(pending_branches[0])]
                 pending_branch_by_id = {
                     self.branch_id(branch): dict(branch)
@@ -22467,6 +23073,12 @@ class LateFillRuntimeOwner:
                     )
                     for branch in active_branches
                 ]
+                if guarded_pending:
+                    active_branches = [b for b in active_branches
+                        if self._pending_branch_prerequisites(b, current_payload, pending_continuation)]
+                    if not active_branches:
+                        self._park_pending_continuation(pending_continuation, pending_branches, request_payload)
+                        return
                 dependency_ready_branches = active_branches
                 active_branches, scheduling_policy = self.select_active_late_fill_branches(
                     dependency_ready_branches,
@@ -22524,12 +23136,16 @@ class LateFillRuntimeOwner:
                         extra=running_state_extra,
                     )
                 current_payload = self.attach_late_fill_state(current_payload, running_late_fill)
-                self.touch_response_lookup(
-                    response_id,
-                    status='completed',
-                    output_text=str(current_payload.get('output_text') or ''),
-                    response_payload=current_payload,
-                )
+                with self._late_fill_publication(current_payload, pending_continuation=pending_continuation):
+                    self.touch_response_lookup(
+                        response_id,
+                        status='completed',
+                        output_text=str(current_payload.get('output_text') or ''),
+                        response_payload=current_payload,
+                    )
+
+                callback_base = copy.deepcopy(current_payload)
+                callback_scope = frozenset(self.branch_id(b) for b in active_branches)
 
                 def publish_live_branch_progress(event: dict[str, Any]) -> None:
                     if not isinstance(event, Mapping):
@@ -22565,54 +23181,64 @@ class LateFillRuntimeOwner:
                                 for key, value in dict(error).items()
                                 if value not in (None, '', [], {})
                             }
-                    with callback_trace.span('callback.lookup'):
-                        latest_record = self.get_response_lookup_record(response_id) or {}
-                    with callback_trace.span('callback.state_build'):
-                        latest_payload = (
-                            latest_record.get('response_payload')
-                            if isinstance(latest_record.get('response_payload'), dict)
-                            else current_payload
-                        )
-                        latest_late_fill = (
-                            dict(latest_payload.get('late_fill'))
-                            if isinstance(latest_payload.get('late_fill'), dict)
-                            else dict(running_late_fill)
-                        )
-                        branch_progress = [
-                            dict(item)
-                            for item in (latest_late_fill.get('branch_progress') or [])
-                            if isinstance(item, Mapping) and self.branch_id(item) and self.branch_id(item) != branch_id
-                        ]
-                        branch_progress.append(
-                            {
-                                key: value
-                                for key, value in progress_record.items()
-                                if value not in (None, '', [], {})
+                    with self.response_mutation(response_id):
+                        with callback_trace.span('callback.lookup'):
+                            latest_record = self.get_response_lookup_record(response_id) or {}
+                        if pending_continuation is not None:
+                            try:
+                                require_response_mutation_base(callback_base, (latest_record or {}).get('response_payload') or {})
+                                if branch_id not in callback_scope:
+                                    return
+                            except ResponseMutationConflict:
+                                return
+                        if self.semantic_execution_gate_decision(event, (latest_record or {}).get('response_payload') or {}).get('action') == 'skip':
+                            return
+                        with callback_trace.span('callback.state_build'):
+                            latest_payload = (
+                                latest_record.get('response_payload')
+                                if isinstance(latest_record.get('response_payload'), dict)
+                                else current_payload
+                            )
+                            latest_late_fill = (
+                                dict(latest_payload.get('late_fill'))
+                                if isinstance(latest_payload.get('late_fill'), dict)
+                                else dict(running_late_fill)
+                            )
+                            branch_progress = [
+                                dict(item)
+                                for item in (latest_late_fill.get('branch_progress') or [])
+                                if isinstance(item, Mapping) and self.branch_id(item) and self.branch_id(item) != branch_id
+                            ]
+                            branch_progress.append(
+                                {
+                                    key: value
+                                    for key, value in progress_record.items()
+                                    if value not in (None, '', [], {})
+                                }
+                            )
+                            terminal_progress_ids = {
+                                self.branch_id(item)
+                                for item in branch_progress
+                                if str(item.get('status') or '').strip().lower()
+                                in {'completed', 'fulfilled', 'failed', 'blocked', 'cancelled', 'waived', 'superseded'}
+                                and self.branch_id(item)
                             }
-                        )
-                        terminal_progress_ids = {
-                            self.branch_id(item)
-                            for item in branch_progress
-                            if str(item.get('status') or '').strip().lower()
-                            in {'completed', 'fulfilled', 'failed', 'blocked', 'cancelled', 'waived', 'superseded'}
-                            and self.branch_id(item)
-                        }
-                        if terminal_progress_ids:
-                            for key in ('active_branches', 'pending_branches'):
-                                latest_late_fill[key] = [
-                                    dict(branch)
-                                    for branch in self.normalize_late_fill_branches(latest_late_fill.get(key))
-                                    if self.branch_id(branch) not in terminal_progress_ids
-                                ]
-                        latest_late_fill['branch_progress'] = branch_progress
-                        updated_payload = dict(latest_payload)
-                        updated_payload = self.attach_late_fill_state(updated_payload, latest_late_fill)
-                    with callback_trace.span('callback.publication'):
-                        self.touch_response_lookup(
-                            response_id,
-                            output_text=str(updated_payload.get('output_text') or ''),
-                            response_payload=updated_payload,
-                        )
+                            if terminal_progress_ids:
+                                for key in ('active_branches', 'pending_branches'):
+                                    latest_late_fill[key] = [
+                                        dict(branch)
+                                        for branch in self.normalize_late_fill_branches(latest_late_fill.get(key))
+                                        if self.branch_id(branch) not in terminal_progress_ids
+                                    ]
+                            latest_late_fill['branch_progress'] = branch_progress
+                            updated_payload = dict(latest_payload)
+                            updated_payload = self.attach_late_fill_state(updated_payload, latest_late_fill)
+                        with callback_trace.span('callback.publication'):
+                            self.touch_response_lookup(
+                                response_id,
+                                output_text=str(updated_payload.get('output_text') or ''),
+                                response_payload=updated_payload,
+                            )
 
                 branch_results: dict[str, dict[str, Any]] = {}
                 preblocked_branch_errors: dict[str, dict[str, Any]] = {}
@@ -22656,6 +23282,7 @@ class LateFillRuntimeOwner:
                             assistant_message=assistant_message,
                             source_route_payload=source_route_payload,
                             failed_instance_id=failed_instance_id,
+                            **({"guarded_pending": True} if guarded_pending else {}),
                         )
                         for branch in executable_active_branches
                     )
@@ -22791,6 +23418,18 @@ class LateFillRuntimeOwner:
                 branch_specs = executable_branch_specs_for_wave
                 branch_specs = self._coalesce_required_text_artifact_branch_specs(branch_specs)
                 if branch_specs:
+                    if pending_continuation is not None:
+                        with self.response_mutation(response_id):
+                            dispatch_payload = (self.get_response_lookup_record(response_id) or {}).get('response_payload') or {}
+                            require_response_mutation_base(current_payload, dispatch_payload)
+                            if guarded_pending:
+                                self._require_pending_continuation(pending_continuation, dispatch_payload)
+                                if not all(self._pending_branch_prerequisites(b, dispatch_payload, pending_continuation)
+                                           for b in executable_active_branches):
+                                    self._park_pending_continuation(pending_continuation, pending_branches, request_payload)
+                                    return
+                            pending_continuation.chain.submitted.update(self.branch_id(b) for b in executable_active_branches)
+                            pending_continuation.wave_active = True
                     materialization_result = self.execute_materialization_branches(
                         branch_specs,
                         prepare_branch_plan=prepare_plan,
@@ -22814,6 +23453,17 @@ class LateFillRuntimeOwner:
                         'prepared_branch_plans': [],
                         'concurrency_policy': {},
                     }
+                if pending_continuation is not None:
+                    # The materialization owner drains asynchronous callbacks before returning.
+                    pending_continuation.wave_active = False
+                if guarded_pending:
+                    with self.response_mutation(response_id):
+                        acceptance_payload = (self.get_response_lookup_record(response_id) or {}).get('response_payload') or {}
+                        self._require_pending_continuation(pending_continuation, acceptance_payload)
+                        if not all(self._pending_branch_prerequisites(b, acceptance_payload, pending_continuation)
+                                   for b in executable_active_branches):
+                            self._park_pending_continuation(pending_continuation, pending_branches, request_payload)
+                            return
                 materialization_concurrency_policy = (
                     dict(materialization_result.get('concurrency_policy'))
                     if isinstance(materialization_result.get('concurrency_policy'), Mapping)
@@ -22983,6 +23633,16 @@ class LateFillRuntimeOwner:
                             )
                             continue
                         error_payload = branch_errors.get(branch_id) or self.normalize_late_fill_error_payload(None)
+                        plan = prepared_plans_by_branch_id.get(branch_id) or {}
+                        binding = plan.get('vision_dependency_binding') or {}
+                        if (binding and error_payload.get('stage') == 'execute_prepared_branch'
+                                and error_payload.get('retryable') is True
+                                and error_payload.get('code') in {'BACKEND_ERROR', 'BACKEND_TIMEOUT', 'INSTANCE_UNAVAILABLE'}
+                                and self._vision_image_snapshot((plan.get('infer_payload') or {}).get('file_path')) == binding.get('artifact')
+                                and (error_payload.get('status_code') in {408, 429, 500, 502, 503, 504}
+                                     or error_payload.get('code') in {'BACKEND_TIMEOUT', 'INSTANCE_UNAVAILABLE'})):
+                            error_payload = {**error_payload, 'vision_backend_failure': {
+                                **copy.deepcopy(binding), 'error': copy.deepcopy(error_payload)}}
                         attempt_payload = self.late_fill_failure_attempt(
                             branch,
                             error_payload,
@@ -23565,7 +24225,7 @@ class LateFillRuntimeOwner:
                     failed_capabilities=failed_capabilities,
                 )
                 next_active_branches = [dict(branch) for branch in (next_batches[0] if next_batches else [])]
-                if not next_active_branches and pending_branches:
+                if not next_active_branches and pending_branches and not guarded_pending:
                     next_active_branches = [dict(pending_branches[0])]
                 next_pending_branch_by_id = {
                     self.branch_id(branch): dict(branch)
@@ -23579,6 +24239,9 @@ class LateFillRuntimeOwner:
                     )
                     for branch in next_active_branches
                 ]
+                if guarded_pending:
+                    next_active_branches = [b for b in next_active_branches
+                                            if self.branch_id(b) in pending_continuation.scope]
                 next_active_branches, next_scheduling_policy = self.select_active_late_fill_branches(
                     next_active_branches,
                     artifact_gap=artifact_gap,
@@ -23682,57 +24345,59 @@ class LateFillRuntimeOwner:
                         route_payload=source_route_payload,
                         artifact_gap=next_gap,
                         terminal_status=next_status,
+                        accepted_fill_results=(current_payload.get('late_fill') or {}).get('fill_results') or [],
                     )
                 checkpoint_mode = (
                     'terminal_full_frame'
                     if terminal_without_pending
                     else 'lightweight_nonterminal'
                 )
-                if terminal_without_pending:
-                    finalize_started_at = trace.clock()
-                    current_payload = self.finalize_response_frame_payload(
-                        payload_for_finalize,
-                        request_payload=request_payload,
-                        persist=True,
+                with self._late_fill_publication(payload_for_finalize, expected_payload=current_payload, pending_continuation=pending_continuation):
+                    if terminal_without_pending:
+                        finalize_started_at = trace.clock()
+                        current_payload = self.finalize_response_frame_payload(
+                            payload_for_finalize,
+                            request_payload=request_payload,
+                            persist=True,
+                        )
+                        finalize_elapsed_ms = trace.elapsed_ms(finalize_started_at)
+                        response_frame_finalize_timing = trace.finalizer_timing(current_payload)
+                    else:
+                        finalize_started_at = trace.clock()
+                        current_payload = dict(payload_for_finalize)
+                        finalize_elapsed_ms = trace.elapsed_ms(finalize_started_at)
+                        response_frame_finalize_timing = trace.checkpoint_timing(
+                            finalize_elapsed_ms, checkpoint_mode,
+                            pending_branch_count=len(pending_branches),
+                            active_branch_count=len(next_active_branches),
+                            completed_branch_count=len(completed_branch_records),
+                            failed_branch_count=len(failed_branch_records),
+                        )
+                    current_late_fill = (
+                        current_payload.get('late_fill')
+                        if isinstance(current_payload.get('late_fill'), dict)
+                        else next_state
                     )
-                    finalize_elapsed_ms = trace.elapsed_ms(finalize_started_at)
-                    response_frame_finalize_timing = trace.finalizer_timing(current_payload)
-                else:
-                    finalize_started_at = trace.clock()
-                    current_payload = dict(payload_for_finalize)
-                    finalize_elapsed_ms = trace.elapsed_ms(finalize_started_at)
-                    response_frame_finalize_timing = trace.checkpoint_timing(
-                        finalize_elapsed_ms, checkpoint_mode,
+                    post_wave_backend_timing = trace.post_wave_timing(
+                        effective_next_status, terminal_without_pending, checkpoint_mode,
+                        finalize_elapsed_ms, response_frame_finalize_timing,
                         pending_branch_count=len(pending_branches),
                         active_branch_count=len(next_active_branches),
                         completed_branch_count=len(completed_branch_records),
                         failed_branch_count=len(failed_branch_records),
                     )
-                current_late_fill = (
-                    current_payload.get('late_fill')
-                    if isinstance(current_payload.get('late_fill'), dict)
-                    else next_state
-                )
-                post_wave_backend_timing = trace.post_wave_timing(
-                    effective_next_status, terminal_without_pending, checkpoint_mode,
-                    finalize_elapsed_ms, response_frame_finalize_timing,
-                    pending_branch_count=len(pending_branches),
-                    active_branch_count=len(next_active_branches),
-                    completed_branch_count=len(completed_branch_records),
-                    failed_branch_count=len(failed_branch_records),
-                )
-                if isinstance(current_late_fill, dict):
-                    current_late_fill = dict(current_late_fill)
-                    current_late_fill['post_wave_backend_timing'] = dict(post_wave_backend_timing)
-                    current_payload = self.attach_late_fill_state(current_payload, current_late_fill)
-                lookup_touch_started_at = trace.clock()
-                self.touch_response_lookup(
-                    response_id,
-                    status=_final_lookup_status_for_late_fill(effective_next_status),
-                    output_text=str(current_payload.get('output_text') or ''),
-                    response_payload=current_payload,
-                    stream_view='ui' if terminal_without_pending else 'status',
-                )
+                    if isinstance(current_late_fill, dict):
+                        current_late_fill = dict(current_late_fill)
+                        current_late_fill['post_wave_backend_timing'] = dict(post_wave_backend_timing)
+                        current_payload = self.attach_late_fill_state(current_payload, current_late_fill)
+                    lookup_touch_started_at = trace.clock()
+                    self.touch_response_lookup(
+                        response_id,
+                        status=_final_lookup_status_for_late_fill(effective_next_status),
+                        output_text=str(current_payload.get('output_text') or ''),
+                        response_payload=current_payload,
+                        stream_view='ui' if terminal_without_pending else 'status',
+                    )
                 lookup_touch_elapsed_ms = trace.elapsed_ms(lookup_touch_started_at)
                 post_wave_backend_timing['touch_response_lookup_elapsed_ms'] = lookup_touch_elapsed_ms
                 if isinstance(current_late_fill, dict):
@@ -23770,6 +24435,13 @@ class LateFillRuntimeOwner:
                             route_payload=source_route_payload,
                             reason='late_fill_terminal',
                         )
+        except ResponseMutationConflict as exc:
+            successor_handoff = self._prepare_pending_control_handoff(
+                pending_continuation, artifact_gap=artifact_gap, source_route_payload=source_route_payload)
+            self.log_unified_event(
+                category='responses', action='late_fill', status='stale_result_rejected',
+                response_id=response_id, message=str(exc),
+            )
         except ResponsePersistenceError as exc:
             # Stop this worker. The finalizer retained the candidate frame and
             # exact outputs in lookup; storage recovery must not execute again.
@@ -23850,20 +24522,21 @@ class LateFillRuntimeOwner:
             )
             updated_payload = self.attach_late_fill_state(current_payload, failed_late_fill)
             try:
-                finalized_payload = self.finalize_response_frame_payload(
-                    updated_payload,
-                    request_payload=request_payload,
-                    persist=True,
-                )
-            except ResponsePersistenceError:
+                with self._late_fill_publication(updated_payload, pending_continuation=pending_continuation):
+                    finalized_payload = self.finalize_response_frame_payload(
+                        updated_payload,
+                        request_payload=request_payload,
+                        persist=True,
+                    )
+                    self.touch_response_lookup(
+                        response_id,
+                        status='incomplete' if completed_branch_records else 'failed',
+                        output_text=str(finalized_payload.get('output_text') or ''),
+                        response_payload=finalized_payload,
+                    )
+            except (ResponsePersistenceError, ResponseMutationConflict):
                 successor_handoff = None
                 return
-            self.touch_response_lookup(
-                response_id,
-                status='incomplete' if completed_branch_records else 'failed',
-                output_text=str(finalized_payload.get('output_text') or ''),
-                response_payload=finalized_payload,
-            )
             self.log_unified_event(
                 category='responses',
                 action='late_fill',
@@ -23880,6 +24553,7 @@ class LateFillRuntimeOwner:
                     if isinstance(successor_handoff.get('artifact_gap'), dict)
                     else {}
                 )
+                pending_control_handoff = successor_handoff.get('pending_continuation') is not None
                 terminal_closure_reopen = isinstance(
                     successor_gap.get('terminal_closure_repair_reopen'),
                     Mapping,
@@ -23890,7 +24564,7 @@ class LateFillRuntimeOwner:
                     scheduled = False
                     logging.warning(
                         'Could not schedule %s Late Fill: %s',
-                        'terminal Closure repair' if terminal_closure_reopen else 'graph-patch successor',
+                        'pending control continuation' if pending_control_handoff else 'terminal Closure repair' if terminal_closure_reopen else 'graph-patch successor',
                         exc,
                     )
                 if not scheduled:
@@ -23902,8 +24576,8 @@ class LateFillRuntimeOwner:
                     self.log_unified_event(
                         category='responses',
                         action=(
-                            'terminal_closure_repair_reopen'
-                            if terminal_closure_reopen
+                            'pending_control_continuation' if pending_control_handoff
+                            else 'terminal_closure_repair_reopen' if terminal_closure_reopen
                             else 'graph_patch_successor_reopen'
                         ),
                         status='pending',
@@ -23911,7 +24585,7 @@ class LateFillRuntimeOwner:
                         successor_execution_key=(execution or {}).get('successor_execution_key'),
                         message=(
                             'Pending continuation truth is durable but its Late Fill worker was not newly claimed; '
-                            'an existing worker or explicit recovery remains authoritative.'
+                            'no additional pending-work attempt is implied.'
                         ),
                     )
 
@@ -23943,30 +24617,59 @@ class LateFillRuntimeOwner:
         artifact_gap: dict[str, Any],
         source_route_payload: Optional[dict[str, Any]],
         complete_response_late_fill: Optional[Callable[..., None]] = None,
+        pending_continuation: Optional[_PendingContinuation] = None,
     ) -> bool:
         response_id = str((response_payload or {}).get('id') or '').strip()
         if response_persistence_blocked(response_payload):
             return False
+        if pending_continuation is not None and not pending_continuation.take_submission():
+            return False
         if not response_id or not self.claim_response_late_fill(response_id):
             return False
-        if has_app_context() and bool(current_app.config.get('TESTING')):
-            # Keep tests deterministic by avoiding background late-fill workers unless a test patches the scheduler explicitly.
-            self.release_response_late_fill(response_id)
+        transferred = False
+        try:
+            if pending_continuation is not None:
+                with self.response_mutation(response_id):
+                    current = (self.get_response_lookup_record(response_id) or {}).get('response_payload') or {}
+                    self._require_pending_continuation(pending_continuation, current)
+                    if not any(self._pending_branch_prerequisites(b, current, pending_continuation)
+                               for b in (current.get('late_fill') or {}).get('pending_branches', [])):
+                        return False
+            if has_app_context() and bool(current_app.config.get('TESTING')):
+                # A deterministic test shortcut is not evidence of child execution.
+                return True
+            context = pending_continuation
+            if context is None:
+                with self.response_mutation(response_id):
+                    admission = (self.get_response_lookup_record(response_id) or {}).get('response_payload') or {}
+                    if admission:
+                        require_response_mutation_base(response_payload, admission)
+                        try:
+                            context = self._new_pending_continuation(admission, request_payload)
+                        except ResponseMutationConflict:
+                            context = None
+            target = complete_response_late_fill or self.complete_response_late_fill
+            trace = LateFillTrace(response_id)
+            with trace.handoff():
+                worker = threading.Thread(
+                    target=traced_thread_target(target),
+                    kwargs={
+                        'response_payload': dict(response_payload or {}),
+                        'request_payload': dict(request_payload or {}),
+                        'assistant_message': str(assistant_message or '').strip(),
+                        'artifact_gap': dict(artifact_gap or {}),
+                        'source_route_payload': dict(source_route_payload or {}) if isinstance(source_route_payload, dict) else None,
+                        **({'pending_continuation': context} if context is not None else {}),
+                    },
+                    daemon=True,
+                )
+                with trace.span('worker_submission'):
+                    worker.start()
+                    # After start, only the worker releases; tracing can still fail.
+                    transferred = True
             return True
-        target = complete_response_late_fill or self.complete_response_late_fill
-        trace = LateFillTrace(response_id)
-        with trace.handoff():
-            worker = threading.Thread(
-                target=traced_thread_target(target),
-                kwargs={
-                    'response_payload': dict(response_payload or {}),
-                    'request_payload': dict(request_payload or {}),
-                    'assistant_message': str(assistant_message or '').strip(),
-                    'artifact_gap': dict(artifact_gap or {}),
-                    'source_route_payload': dict(source_route_payload or {}) if isinstance(source_route_payload, dict) else None,
-                },
-                daemon=True,
-            )
-            with trace.span('worker_submission'):
-                worker.start()
-        return True
+        except ResponseMutationConflict:
+            return False
+        finally:
+            if not transferred:
+                self.release_response_late_fill(response_id)

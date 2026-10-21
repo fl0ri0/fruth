@@ -20,7 +20,7 @@ from fruth_core.start_policy import attach_start_audit, validate_start_source
 from fruth_integrations.shortcuts.pcc import list_pcc_shortcuts
 from fruth_integrations.shortcuts.setup import pcc_setup_available
 from fruth_runtime.apple_fm_model_manager import (
-    APPLE_FM_PORT_MAX, process_identity, owns_listener, _terminate_child, _now,
+    APPLE_FM_PORT_MAX, process_identity, process_identity_matches, owns_listener, _terminate_child, _now,
 )
 from fruth_runtime.child_process_env import sanitized_child_process_env
 from fruth_runtime.ollama_model_manager import find_free_port, is_port_listening
@@ -228,7 +228,7 @@ def stop_apple_pcc_instance(instance_id, *, config_path=None):
     pid = target.get('pid')
     if pid and pid_is_running(pid):
         expected, command = target.get('process_identity'), target.get('server_command')
-        if (not expected or process_identity(pid) != expected or not isinstance(command, list)
+        if (not expected or not process_identity_matches(process_identity(pid), expected) or not isinstance(command, list)
                 or len(command) != 5 or command[1:] != _server_command(target.get('port'))[1:]
                 # macOS may report the framework executable instead of the
                 # venv symlink. The complete recorded identity must still match;
@@ -237,14 +237,14 @@ def stop_apple_pcc_instance(instance_id, *, config_path=None):
             raise RuntimeError('PCC process ownership cannot be verified; no process was stopped.')
         os.kill(pid, 15)
         deadline = time.monotonic() + 5
-        while time.monotonic() < deadline and process_identity(pid) == expected:
+        while time.monotonic() < deadline and process_identity_matches(process_identity(pid), expected):
             try:
                 if os.waitpid(pid, os.WNOHANG)[0]:
                     break
             except ChildProcessError:
                 pass
             time.sleep(.1)
-        if process_identity(pid) == expected:
+        if process_identity_matches(process_identity(pid), expected):
             return False, target
     current = read_registry_entries(path)
     write_registry_entries([e for e in current if not (e.get('instance_id') == instance_id and e.get('pid') == pid)], path=path)

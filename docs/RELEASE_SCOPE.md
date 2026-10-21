@@ -1,10 +1,12 @@
 # Fruth source packaging scope
 
-This document defines the contents and support boundaries of the Fruth `0.1.6`
-source package. See the [installation guide](../README.md#install-and-start)
+This document defines the current source selection and support boundaries.
+This scope applies to Fruth `0.1.7`. The [changelog](../CHANGELOG.md) and
+[October 21 status](SELF_ATTACK_STATUS_2026-10-21.md) describe its changes and
+source-bound validation evidence. See the [installation guide](../README.md#install-and-start)
 for setup and [known limitations](KNOWN_LIMITATIONS.md) for current constraints.
-This package includes the post-0.1.5 hardening and refreshed October 10 reference
-selection; these additions do not alter the previously published 0.1.5 archive.
+The current selection includes the refreshed October 18 references and current
+conformance summary. Existing published archives are unchanged.
 
 ## Included capabilities
 
@@ -30,13 +32,12 @@ The source package includes:
   retained validation and recoverable publication of reviewed cases.
 
 See the [changelog](../CHANGELOG.md) and
-[October 10 validation status](SELF_ATTACK_STATUS_2026-10-10.md). The full local
-and AFM matrices passed on their recorded pre-correction source; later response
-fixes passed fresh offline validation and five local reference workflows. The
-subsequent monitor/classifier closeout has separate offline evidence; those five
-packages preserve their original executions. PCC remains separate. The
-[historical Apple results](SELF_ATTACK_STATUS_2026-09-27.md)
-retain their original INCOMPLETE verdicts for those earlier campaigns.
+[October 21 validation status](SELF_ATTACK_STATUS_2026-10-21.md). Local, AFM and
+PCC Cloud each have complete 170-case live coverage with matching offline gates.
+The local campaign preceded the image idle-residency fix; AFM and PCC tested the
+corrected runtime. The five reference packages preserve their October 18
+executions. PCC Cloud Pro remains untested, and historical native verdicts remain
+unchanged.
 Release preparation validates the selected source package separately; building
 it does not publish it or change those historical verdicts.
 
@@ -94,11 +95,11 @@ This is current source selection, not a claim that this addition shipped in
 previously published 0.1.5 archives. Google Fonts and Font Awesome remain remote
 dashboard dependencies; see [third-party notices](../THIRD_PARTY_NOTICES.md).
 
-`PUBLIC_DOCS` includes the normative contracts, `SELF_ATTACK.md`, the dated
-[September 19 conformance summary](SELF_ATTACK_STATUS_2026-09-19.md) and
-[September 25–27 Apple results](SELF_ATTACK_STATUS_2026-09-27.md), the current
-[October 10 validation status](SELF_ATTACK_STATUS_2026-10-10.md), causal
-telemetry and state-flow diagnostics. The dated summary records the tested
+`PUBLIC_DOCS` includes the normative contracts, `SELF_ATTACK.md`, the single
+current [October 21 validation status](SELF_ATTACK_STATUS_2026-10-21.md), causal
+telemetry and state-flow diagnostics. Earlier summaries and reference selections
+are retained privately; the current report preserves their historical verdicts.
+The dated summary records the tested
 source and scope; packaging it does not establish a new conformance result.
 `PUBLIC_CONFIG_PATHS` includes exactly `config/self_attack_corpus.json` and
 `config/graph_rebase_shadow_corpus.json` as compact reproducible inputs. Harness
@@ -145,7 +146,7 @@ separate actions.
 The primary tested environment is a recent macOS release on Apple Silicon
 with Python 3.11 or newer. Individual local capabilities additionally require
 their own backend and model packages. Other operating systems and processor
-architectures are not part of the 0.1.6 support promise.
+architectures are not part of the 0.1.7 support promise.
 
 Fruth is intended for local, single-user use and binds its web control plane
 to `127.0.0.1` by default. Remote and multi-user deployment are outside this
@@ -187,7 +188,7 @@ ChatGPT is a separate optional cloud path:
   silently resumed.
 
 Direct provider API-key management and external providers beyond the documented
-ChatGPT and Apple PCC integrations are not part of 0.1.6.
+ChatGPT and Apple PCC integrations are not part of 0.1.7.
 
 ## Compatibility
 

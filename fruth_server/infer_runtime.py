@@ -15,6 +15,7 @@ from flask import jsonify
 
 from helpers.model_capabilities import CAPABILITY_SPEECH_TO_TEXT, supports_capability
 from fruth_core.apple_fm_tools import APPLE_FM_IMAGE_TOOL_MODES
+from fruth_core.image_generation import parse_mlx_image_control, supports_image_steps, validate_image_steps
 from fruth_services.artifact_contracts import DirectAudioDependency, execution_input_artifact_ref, selected_audio_source_binding
 from fruth_services.responses import capture_request_intent, request_intent_payload
 from fruth_server.response_semantics_runtime import classify_phase_output_text
@@ -840,6 +841,18 @@ class InferRuntimeOwner:
             return jsonify({'error': 'Apple AI supports chat and vision_analysis; speech and image generation are unsupported.'}), 400
         if not capability:
             capability = infer_capability(model_name, backend)
+        if instance.get('backend') == 'mlx' and (
+            capability == 'image_generation' or instance.get('capability') == 'image_generation'
+        ):
+            bound_model = str(instance.get('request_model') or instance.get('model_path') or '')
+            allowed_models = {str(instance.get('model') or ''), bound_model}
+            if (backend != 'mlx' or capability != 'image_generation'
+                    or instance.get('capability') != 'image_generation'
+                    or not bound_model or not Path(bound_model).is_absolute()
+                    or any(str(data.get(key)) not in allowed_models for key in ('model', 'request_model') if data.get(key))):
+                return jsonify({'error': 'MLX image execution must retain the selected image instance and snapshot.'}), 400
+            model_name = str(instance.get('model') or '')
+            request_model_name = bound_model
         supports_vision_input = capability in {'chat', self.capability_vision_analysis} and supports_capability(
             self.capability_vision_analysis,
             model_name=model_name,
@@ -967,10 +980,25 @@ class InferRuntimeOwner:
         image_width: Optional[int] = None
         image_height: Optional[int] = None
         image_seed: Optional[int] = None
+        image_steps: Optional[int] = None
+        if data.get('steps') not in (None, ''):
+            if capability != 'image_generation' or not supports_image_steps(
+                backend, str(instance.get('backend_package') or ''),
+                instance.get('backend_metadata') or {},
+            ):
+                return jsonify({'error': 'Selected instance does not support image steps.'}), 400
+            try:
+                image_steps = validate_image_steps(data['steps'], instance.get('backend_metadata') or {})
+            except ValueError as exc:
+                return jsonify({'error': str(exc)}), 400
         if has_width and has_height:
             try:
-                image_width = parse_int_with_bounds(raw_width, default=1024, minimum=64, maximum=4096)
-                image_height = parse_int_with_bounds(raw_height, default=1024, minimum=64, maximum=4096)
+                if backend == 'mlx' and capability == 'image_generation':
+                    image_width = parse_mlx_image_control(raw_width, 'width')
+                    image_height = parse_mlx_image_control(raw_height, 'height')
+                else:
+                    image_width = parse_int_with_bounds(raw_width, default=1024, minimum=64, maximum=4096)
+                    image_height = parse_int_with_bounds(raw_height, default=1024, minimum=64, maximum=4096)
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
             if image_width % 16 != 0 or image_height % 16 != 0:
@@ -979,7 +1007,11 @@ class InferRuntimeOwner:
                 return jsonify({"error": "Width × Height must not exceed 4 MP."}), 400
         if raw_seed not in (None, ''):
             try:
-                image_seed = parse_int_with_bounds(raw_seed, default=0, minimum=0, maximum=2_147_483_647)
+                image_seed = (
+                    parse_mlx_image_control(raw_seed, 'seed')
+                    if backend == 'mlx' and capability == 'image_generation'
+                    else parse_int_with_bounds(raw_seed, default=0, minimum=0, maximum=2_147_483_647)
+                )
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
         pdf_prefer_text = parse_bool(data.get("pdf_prefer_text"), default=False)
@@ -1228,12 +1260,16 @@ class InferRuntimeOwner:
                 image_height=image_height,
                 image_seed=image_seed,
                 text_artifact_requests=text_artifact_requests,
+                image_steps=image_steps,
                 prompt_is_semantic_materializer_payload=bool(
                     semantic_materializer_prompt
                 ),
                 reasoning_effort=reasoning_effort,
                 phase_system_prompt=phase_system_prompt,
                 supports_vision_input=supports_vision_input,
+                backend_package=str(instance.get('backend_package') or ''),
+                backend_metadata=dict(instance.get('backend_metadata') or {}) if isinstance(instance.get('backend_metadata'), dict) else {},
+                request_model=request_model_name,
             )
             infer_artifacts = InferArtifacts(
                 temp_path=temp_path,
@@ -1275,6 +1311,7 @@ class InferRuntimeOwner:
                 "extract_image_data_url_from_generate_output": extract_image_data_url_from_generate_output,
                 "extract_generate_seed": extract_generate_seed,
                 "ollama_openai_image_generation": ollama_openai_image_generation,
+                "mlx_vlm_image_request": self.hooks.get('mlx_vlm_image_request'),
                 "persist_audio_bytes_locally": persist_audio_bytes_locally,
                 "persist_image_data_url_locally": persist_image_data_url_locally,
                 "extract_generate_content": extract_generate_content,

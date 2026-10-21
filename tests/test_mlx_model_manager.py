@@ -26,7 +26,8 @@ class MlxModelManagerTests(unittest.TestCase):
         self.assertEqual(record["backend_metadata"]["launch_defaults"]["prefill_step_size"], 2048)
         self.assertIn("rotating_kv_cache", record["backend_metadata"]["cache_features"])
 
-    def test_build_instance_record_adds_mlx_vlm_contract_metadata(self):
+    @patch.object(mlx_model_manager, "_python_module_available", return_value=False)
+    def test_build_instance_record_adds_mlx_vlm_contract_metadata(self, _module_probe):
         record = mlx_model_manager.build_instance_record(
             "mlx-community/DeepSeek-OCR-2-bf16",
             "/tmp/deepseek-ocr",
@@ -413,7 +414,8 @@ class MlxModelManagerTests(unittest.TestCase):
         self.assertEqual(details["runnable_checks"]["model_runtime_module"], "mlx_lm.models.gemma4")
         self.assertFalse(details["runnable_checks"]["model_runtime_module_available"])
 
-    def test_resolve_hf_cli_prefers_mlx_venv_sibling_binary(self):
+    @patch.object(mlx_model_manager, "_python_module_available", return_value=False)
+    def test_resolve_hf_cli_prefers_mlx_venv_sibling_binary(self, _module_probe):
         with tempfile.TemporaryDirectory() as tmpdir:
             bin_dir = Path(tmpdir) / "bin"
             bin_dir.mkdir(parents=True)

@@ -285,6 +285,23 @@ class RuntimeApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         mock_pull_model.assert_called_once_with("mlx-community/Qwen3.5-27B-4bit", "mlx")
 
+    @patch('fruth_webserver._log_unified_event')
+    @patch('fruth_runtime.ollama_model_manager.subprocess.run')
+    def test_ollama_pull_failure_reports_diagnostic_to_browser_and_event(self, run, event):
+        from types import SimpleNamespace
+        spinner = '\x1b[?2026h\x1b[1Gpulling manifest ⠋ \x1b[K\x1b[?2026l'
+        diagnostic = 'Error: pull model manifest: connection reset by peer'
+        run.return_value = SimpleNamespace(returncode=1, stdout='', stderr=spinner * 100 + '\n' + diagnostic)
+
+        response = self.client.post('/api/pull_model', json={'model': 'embeddinggemma-2:740m', 'backend': 'ollama'})
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.get_json(), {'success': False, 'message': diagnostic})
+        event.assert_called_once()
+        self.assertEqual(event.call_args.kwargs['message'], diagnostic)
+        self.assertEqual(event.call_args.kwargs['status'], 'failed')
+        self.assertEqual(run.call_count, 1)
+
     @patch("fruth_webserver.pull_model")
     def test_pull_model_route_passes_llama_cpp_backend(self, mock_pull_model):
         mock_pull_model.return_value = (True, "ok")

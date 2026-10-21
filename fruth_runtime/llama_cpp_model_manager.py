@@ -33,6 +33,7 @@ from helpers.model_capabilities import (
     build_registry_metadata,
     normalize_capability,
 )
+from helpers.tts_model_metadata import read_snapshot_model_metadata
 from fruth_core.start_policy import attach_start_audit, validate_start_source
 from fruth_core.status import remove_instance_status
 from fruth_runtime.child_process_env import sanitized_child_process_env
@@ -656,9 +657,25 @@ def _build_catalog_model_payload(
     inputs = ['text']
     outputs = ['text']
     backend_capabilities = ['completion']
+    # Only a bound HF snapshot supplies adjacent model-card evidence. A random
+    # directory may contain unrelated GGUFs; use explicit capability there.
+    snapshot_path = Path(model_path).parent if model_path else None
+    is_hf_snapshot = bool(
+        snapshot_path and snapshot_path.parent.name == 'snapshots'
+        and snapshot_path.parent.parent.name.startswith('models--')
+        and (not hf_repo or snapshot_path.parent.parent.name == 'models--' + hf_repo.replace('/', '--'))
+    )
+    snapshot_metadata = read_snapshot_model_metadata(
+        model_name, str(snapshot_path) if is_hf_snapshot else None,
+    )
+    is_embedding = CAPABILITY_EMBEDDING in (snapshot_metadata.get('provider_capabilities') or [])
     resolved_mmproj_path = str(mmproj_path or '').strip() or None
     requires_local_mmproj = source_kind == 'local_gguf' or startup_source == 'local_gguf'
-    if _looks_like_multimodal_chat_family(model_name, hf_repo, hf_file, model_path) and (
+    if is_embedding:
+        provider_capabilities = [CAPABILITY_EMBEDDING]
+        outputs = ['embedding']
+        backend_capabilities = [CAPABILITY_EMBEDDING]
+    elif _looks_like_multimodal_chat_family(model_name, hf_repo, hf_file, model_path) and (
         not requires_local_mmproj or resolved_mmproj_path
     ):
         provider_capabilities.append(CAPABILITY_VISION_ANALYSIS)
@@ -669,7 +686,7 @@ def _build_catalog_model_payload(
         'backend_package': 'llama_cpp',
         'backend_contract': 'llama.cpp.server',
         'startup_source': startup_source,
-        'native_endpoint_paths': ['/v1/models', '/v1/chat/completions'],
+        'native_endpoint_paths': ['/v1/models', '/v1/embeddings' if is_embedding else '/v1/chat/completions'],
         'request_model_strategy': 'model_bound_at_launch',
         'capabilities': backend_capabilities,
     }
@@ -688,7 +705,9 @@ def _build_catalog_model_payload(
         'outputs': outputs,
         'backend_metadata': backend_metadata,
     }
-    payload = build_registry_metadata(model_name, 'llama_cpp', CAPABILITY_CHAT, metadata=metadata)
+    payload = build_registry_metadata(
+        model_name, 'llama_cpp', CAPABILITY_EMBEDDING if is_embedding else CAPABILITY_CHAT, metadata=metadata,
+    )
     payload.update(
         {
             'name': model_name,
@@ -1269,7 +1288,6 @@ def build_instance_record(
     mmproj_path: Optional[str] = None,
     request_model: Optional[str] = None,
 ) -> dict[str, Any]:
-    resolved_capability = normalize_capability(capability) or CAPABILITY_CHAT
     resolved_mmproj_path = str(mmproj_path or '').strip() or None
     if not resolved_mmproj_path and source_kind == 'local_gguf':
         resolved_mmproj_path = _resolve_local_mmproj_for_model_path(model_name, model_path)
@@ -1281,6 +1299,11 @@ def build_instance_record(
         hf_file=hf_file,
         mmproj_path=resolved_mmproj_path,
     )
+    resolved_capability = normalize_capability(capability) or next(
+        iter(source_contract.get('provider_capabilities') or []), CAPABILITY_CHAT,
+    )
+    if CAPABILITY_EMBEDDING in (source_contract.get('provider_capabilities') or []):
+        resolved_capability = CAPABILITY_EMBEDDING
     provider_capabilities = [
         token
         for token in source_contract.get('provider_capabilities', [])
@@ -1290,7 +1313,9 @@ def build_instance_record(
         provider_capabilities.insert(0, resolved_capability)
     native_endpoint_paths = ['/v1/models', '/v1/chat/completions']
     if resolved_capability == CAPABILITY_EMBEDDING:
-        native_endpoint_paths.append('/v1/embeddings')
+        provider_capabilities = [CAPABILITY_EMBEDDING]
+        native_endpoint_paths = ['/v1/models', '/v1/embeddings']
+        source_contract = {'inputs': ['text'], 'outputs': ['embedding'], 'backend_capabilities': [CAPABILITY_EMBEDDING]}
     normalized_launch_defaults = launch_defaults if isinstance(launch_defaults, dict) else {}
     metadata = {
         'backend_package': 'llama_cpp',
@@ -1381,7 +1406,16 @@ def start_llama_cpp_instance(
     instance_id = sanitize_instance_id(display_name, port)
     log_name = f"llama_cpp_server_{safe_log_fragment(display_name)}_{port}.log"
     log_path = LOG_DIR / log_name
-    resolved_capability = normalize_capability(capability) or CAPABILITY_CHAT
+    source_contract = _source_contract_metadata(
+        display_name, source_kind=str(source['source_kind']),
+        model_path=source.get('model_path'), hf_repo=source.get('hf_repo'),
+        hf_file=source.get('hf_file'), mmproj_path=source.get('mmproj_path'),
+    )
+    resolved_capability = normalize_capability(capability) or next(
+        iter(source_contract.get('provider_capabilities') or []), CAPABILITY_CHAT,
+    )
+    if CAPABILITY_EMBEDDING in (source_contract.get('provider_capabilities') or []):
+        resolved_capability = CAPABILITY_EMBEDDING
     launch_defaults = _llama_cpp_launch_defaults(
         server_bin,
         model_name=display_name,

@@ -14,6 +14,7 @@ from helpers.model_capabilities import (
 )
 from helpers.ocr_modes import get_ocr_model_family, get_ocr_mode_copy, get_ocr_mode_options
 from fruth_core.apple_fm_tools import available_apple_fm_image_tool_modes
+from fruth_core.image_generation import supports_image_steps
 
 _DEFAULT_STT_LANGUAGES = ['de', 'en', 'fr', 'es', 'it', 'pt', 'ja', 'ko', 'ru', 'zh']
 _DEFAULT_STT_TASKS = ['transcribe', 'translate']
@@ -256,7 +257,7 @@ def build_session_controls(instance: dict | None) -> dict[str, Any]:
         }
 
     if capability == CAPABILITY_IMAGE_GENERATION:
-        return {
+        schema = {
             'enabled': True,
             'hint': 'Image size and batch controls for this image-generation model.',
             'fields': {
@@ -289,6 +290,25 @@ def build_session_controls(instance: dict | None) -> dict[str, Any]:
                 ),
             },
         }
+        image_metadata = instance.get('backend_metadata') or {}
+        if instance.get('backend') == 'mlx' and 'edit' not in image_metadata.get('image_modes', []):
+            schema['fields']['image_meta']['description'] = 'Text-to-image generation. This loader does not advertise reference-image editing.'
+        if supports_image_steps(
+            str(instance.get('backend') or ''), str(instance.get('backend_package') or ''),
+            instance.get('backend_metadata') or {},
+        ):
+            minimum = image_metadata.get('image_steps_min', 1)
+            defaults = image_metadata.get('image_sampling_defaults') or {}
+            default_steps = (defaults.get('generate') or {}).get('steps')
+            description = f'Optional integer, at least {minimum}. Leave blank for the native model default.'
+            if default_steps is not None:
+                description += f' Generation default: {default_steps}; editing may differ.'
+            schema['fields']['image_steps'] = _field(
+                'number', label='Steps',
+                description=description,
+            )
+            schema['fields']['image_steps']['minimum'] = minimum
+        return schema
 
     if capability == CAPABILITY_VISION_ANALYSIS:
         ocr_family = get_ocr_model_family(model_name)

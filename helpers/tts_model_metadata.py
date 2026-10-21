@@ -8,7 +8,10 @@ import zipfile
 from pathlib import Path
 from typing import Any, Optional
 
+from helpers.image_model_metadata import read_image_snapshot_metadata
+
 from helpers.model_capabilities import (
+    CAPABILITY_EMBEDDING,
     CAPABILITY_SPEECH_TO_TEXT,
     CAPABILITY_TEXT_TO_SPEECH,
     CAPABILITY_VISION_ANALYSIS,
@@ -16,6 +19,8 @@ from helpers.model_capabilities import (
 
 _TTS_RESPONSE_FORMATS = ['mp3', 'wav', 'flac']
 _SUPPORTED_PIPELINE_TAG_CAPABILITIES = {
+    'feature-extraction': CAPABILITY_EMBEDDING,
+    'sentence-similarity': CAPABILITY_EMBEDDING,
     'text-to-speech': CAPABILITY_TEXT_TO_SPEECH,
     'automatic-speech-recognition': CAPABILITY_SPEECH_TO_TEXT,
     'image-to-text': CAPABILITY_VISION_ANALYSIS,
@@ -232,6 +237,9 @@ def _pipeline_capability_tag(front_matter: dict[str, Any], model_type: str, name
 def _config_capability_tag(config_payload: dict[str, Any]) -> str:
     if not isinstance(config_payload, dict):
         return ''
+    model_type = str(config_payload.get('model_type') or '').lower()
+    if model_type.startswith('embedding_') or model_type.endswith('_embedding'):
+        return CAPABILITY_EMBEDDING
     if config_payload.get('image_token_id') is not None:
         return CAPABILITY_VISION_ANALYSIS
     if isinstance(config_payload.get('vision_config'), dict):
@@ -261,6 +269,10 @@ def read_snapshot_model_metadata(model_name: Optional[str], model_path: Optional
     front_matter = _parse_front_matter(model_card_text)
     model_type = str(config_payload.get('tts_model_type') or config_payload.get('model_type') or '').strip().lower()
     capability = _pipeline_capability_tag(front_matter, model_type, name)
+    # An embedding encoder with vision towers is not a generative VLM. Its
+    # architecture takes precedence over broad "multimodal" model-card tags.
+    if _config_capability_tag(config_payload) == CAPABILITY_EMBEDDING:
+        capability = CAPABILITY_EMBEDDING
     if not capability:
         capability = _config_capability_tag(config_payload)
 
@@ -292,7 +304,24 @@ def read_snapshot_model_metadata(model_name: Optional[str], model_path: Optional
 
     if capability:
         metadata['provider_capabilities'] = [capability]
-        if capability == CAPABILITY_TEXT_TO_SPEECH:
+        if capability == CAPABILITY_EMBEDDING:
+            metadata['inputs'] = ['text']
+            metadata['outputs'] = ['embedding']
+            metadata['snapshot_embedding_modalities'] = ['text']
+            # A vision tower plus a declared image processor is discovery
+            # evidence; the backend still qualifies its own input interface.
+            try:
+                processor = json.loads((snapshot_path / 'preprocessor_config.json').read_text())
+            except (OSError, ValueError):
+                processor = {}
+            if (isinstance(config_payload.get('vision_config'), dict)
+                    and isinstance(processor, dict) and processor.get('image_processor_type')):
+                metadata['snapshot_embedding_modalities'].append('image')
+            # mlx-vlm's LFM2 loader selects a token-level ColBERT encoder for
+            # this layout. The dense helper must not advertise it as usable.
+            if model_type == 'lfm2' and (snapshot_path / '1_Dense' / 'config.json').is_file():
+                metadata['snapshot_embedding_layout'] = 'token_vectors'
+        elif capability == CAPABILITY_TEXT_TO_SPEECH:
             metadata['inputs'] = ['text']
             metadata['outputs'] = ['audio']
             metadata.setdefault('tts_response_formats', list(_TTS_RESPONSE_FORMATS))
@@ -350,6 +379,9 @@ def read_snapshot_model_metadata(model_name: Optional[str], model_path: Optional
         if 'realtime' in lowered_card or 'real-time' in lowered_card or 'websocket' in lowered_card or 'stream' in lowered_card:
             metadata['stt_realtime'] = True
 
+    # Diffusion snapshots use model_index.json and component configs rather than
+    # a root chat config. Their evidence must override broad model-card VLM tags.
+    metadata.update(read_image_snapshot_metadata(str(model_name or ''), snapshot_path))
     return metadata
 
 

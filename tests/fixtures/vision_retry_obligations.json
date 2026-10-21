@@ -1,0 +1,438 @@
+{
+  "intent_obligations": [
+    {
+      "branch_id": "branch-image_generation-1",
+      "capability": "image_generation",
+      "count": 1,
+      "evidence": "request_phase_graph_post_artifact_continuation",
+      "kind": "media_artifact",
+      "obligation_id": "intent-obligation-media-image-generation-1",
+      "output_type": "image",
+      "phase_id": "phase-2",
+      "promotion_policy": "promote_if_current_turn_explicit",
+      "queue_index": 1,
+      "relationship": "materializes",
+      "required": true,
+      "source": "current_user_intent",
+      "target_extension": "image",
+      "target_name": "image-1"
+    },
+    {
+      "branch_id": "branch-image_generation-2",
+      "capability": "image_generation",
+      "count": 1,
+      "evidence": "request_phase_graph_post_artifact_continuation",
+      "kind": "media_artifact",
+      "obligation_id": "intent-obligation-media-image-generation-2",
+      "output_type": "image",
+      "phase_id": "phase-3",
+      "promotion_policy": "promote_if_current_turn_explicit",
+      "queue_index": 2,
+      "relationship": "materializes",
+      "required": true,
+      "source": "current_user_intent",
+      "target_extension": "image",
+      "target_name": "image-2"
+    },
+    {
+      "branch_id": "branch-image_generation-3",
+      "capability": "image_generation",
+      "count": 1,
+      "evidence": "request_phase_graph_post_artifact_continuation",
+      "kind": "media_artifact",
+      "obligation_id": "intent-obligation-media-image-generation-3",
+      "output_type": "image",
+      "phase_id": "phase-4",
+      "promotion_policy": "promote_if_current_turn_explicit",
+      "queue_index": 3,
+      "relationship": "materializes",
+      "required": true,
+      "source": "current_user_intent",
+      "target_extension": "image",
+      "target_name": "image-3"
+    },
+    {
+      "branch_id": "branch-vision_analysis-1",
+      "capability": "vision_analysis",
+      "count": 1,
+      "dependency_contract": "media_evidence_binding",
+      "depends_on_obligation_ids": [
+        "intent-obligation-media-image-generation-1"
+      ],
+      "evidence": "request_phase_graph_post_artifact_continuation",
+      "kind": "evidence_branch",
+      "obligation_id": "intent-obligation-evidence-vision-analysis-1",
+      "output_type": "text",
+      "phase_id": "phase-5",
+      "promotion_policy": "promote_if_current_turn_explicit",
+      "relationship": "evidence_for",
+      "required": true,
+      "source": "current_user_intent",
+      "target_extension": "text",
+      "target_name": "vision_analysis-1"
+    },
+    {
+      "branch_id": "branch-vision_analysis-2",
+      "capability": "vision_analysis",
+      "count": 1,
+      "dependency_contract": "media_evidence_binding",
+      "depends_on_obligation_ids": [
+        "intent-obligation-media-image-generation-2"
+      ],
+      "evidence": "request_phase_graph_post_artifact_continuation",
+      "kind": "evidence_branch",
+      "obligation_id": "intent-obligation-evidence-vision-analysis-2",
+      "output_type": "text",
+      "phase_id": "phase-6",
+      "promotion_policy": "promote_if_current_turn_explicit",
+      "relationship": "evidence_for",
+      "required": true,
+      "source": "current_user_intent",
+      "target_extension": "text",
+      "target_name": "vision_analysis-2"
+    },
+    {
+      "branch_id": "branch-vision_analysis-3",
+      "capability": "vision_analysis",
+      "count": 1,
+      "dependency_contract": "media_evidence_binding",
+      "depends_on_obligation_ids": [
+        "intent-obligation-media-image-generation-3"
+      ],
+      "evidence": "request_phase_graph_post_artifact_continuation",
+      "kind": "evidence_branch",
+      "obligation_id": "intent-obligation-evidence-vision-analysis-3",
+      "output_type": "text",
+      "phase_id": "phase-7",
+      "promotion_policy": "promote_if_current_turn_explicit",
+      "relationship": "evidence_for",
+      "required": true,
+      "source": "current_user_intent",
+      "target_extension": "text",
+      "target_name": "vision_analysis-3"
+    },
+    {
+      "branch_id": "branch-chat-1",
+      "capability": "chat",
+      "count": 1,
+      "dependency_contract": "media_evidence_binding",
+      "depends_on_obligation_ids": [
+        "intent-obligation-evidence-vision-analysis-1",
+        "intent-obligation-evidence-vision-analysis-2",
+        "intent-obligation-evidence-vision-analysis-3"
+      ],
+      "evidence": "request_phase_graph_post_artifact_continuation",
+      "kind": "evidence_branch",
+      "obligation_id": "intent-obligation-evidence-chat-4",
+      "output_type": "text",
+      "phase_id": "phase-8",
+      "promotion_policy": "promote_if_current_turn_explicit",
+      "relationship": "evidence_for",
+      "required": true,
+      "source": "current_user_intent",
+      "target_extension": "text",
+      "target_name": "chat-4"
+    }
+  ],
+  "output_obligations": [
+    {
+      "branch_id": "phase-1",
+      "capability": "chat",
+      "fulfillment_policy": "runtime_text",
+      "input_refs": [
+        {
+          "kind": "user_prompt",
+          "ref": "intent_anchor"
+        }
+      ],
+      "kind": "fruth.output_obligation",
+      "obligation_id": "obligation-phase-1",
+      "output_contract": {
+        "fulfillment_policy": "runtime_text",
+        "output_type": "text",
+        "required": true,
+        "status": "planned"
+      },
+      "output_type": "text",
+      "phase_id": "phase-1",
+      "required": true,
+      "review_criteria": [
+        "output_contract_matches_capability",
+        "runtime_status_reaches_fulfilled_blocked_failed_waived_superseded_or_pending",
+        "runtime_text_exists_when_fulfilled",
+        "preparation_text_is_bounded_to_downstream_inputs"
+      ],
+      "role": "preparation_output",
+      "source": "request_phase_graph",
+      "status": "planned"
+    },
+    {
+      "branch_id": "branch-image_generation-1",
+      "capability": "image_generation",
+      "depends_on": [
+        "phase-1"
+      ],
+      "fulfillment_policy": "runtime_artifact_or_branch_state",
+      "input_refs": [
+        {
+          "kind": "phase_output",
+          "phase_id": "phase-1",
+          "role": "dependency"
+        }
+      ],
+      "kind": "fruth.output_obligation",
+      "obligation_id": "obligation-phase-2",
+      "output_contract": {
+        "fulfillment_policy": "runtime_artifact_or_branch_state",
+        "output_type": "image",
+        "required": true,
+        "status": "planned"
+      },
+      "output_type": "image",
+      "phase_id": "phase-2",
+      "queue_index": 1,
+      "required": true,
+      "review_criteria": [
+        "output_contract_matches_capability",
+        "runtime_status_reaches_fulfilled_blocked_failed_waived_superseded_or_pending",
+        "runtime_artifact_exists_when_fulfilled",
+        "consumes_declared_input_refs"
+      ],
+      "role": "final_output",
+      "source": "request_phase_graph_post_artifact_continuation",
+      "status": "planned"
+    },
+    {
+      "branch_id": "branch-image_generation-2",
+      "capability": "image_generation",
+      "depends_on": [
+        "phase-1"
+      ],
+      "fulfillment_policy": "runtime_artifact_or_branch_state",
+      "input_refs": [
+        {
+          "kind": "phase_output",
+          "phase_id": "phase-1",
+          "role": "dependency"
+        }
+      ],
+      "kind": "fruth.output_obligation",
+      "obligation_id": "obligation-phase-3",
+      "output_contract": {
+        "fulfillment_policy": "runtime_artifact_or_branch_state",
+        "output_type": "image",
+        "required": true,
+        "status": "planned"
+      },
+      "output_type": "image",
+      "phase_id": "phase-3",
+      "queue_index": 2,
+      "required": true,
+      "review_criteria": [
+        "output_contract_matches_capability",
+        "runtime_status_reaches_fulfilled_blocked_failed_waived_superseded_or_pending",
+        "runtime_artifact_exists_when_fulfilled",
+        "consumes_declared_input_refs"
+      ],
+      "role": "final_output",
+      "source": "request_phase_graph_post_artifact_continuation",
+      "status": "planned"
+    },
+    {
+      "branch_id": "branch-image_generation-3",
+      "capability": "image_generation",
+      "depends_on": [
+        "phase-1"
+      ],
+      "fulfillment_policy": "runtime_artifact_or_branch_state",
+      "input_refs": [
+        {
+          "kind": "phase_output",
+          "phase_id": "phase-1",
+          "role": "dependency"
+        }
+      ],
+      "kind": "fruth.output_obligation",
+      "obligation_id": "obligation-phase-4",
+      "output_contract": {
+        "fulfillment_policy": "runtime_artifact_or_branch_state",
+        "output_type": "image",
+        "required": true,
+        "status": "planned"
+      },
+      "output_type": "image",
+      "phase_id": "phase-4",
+      "queue_index": 3,
+      "required": true,
+      "review_criteria": [
+        "output_contract_matches_capability",
+        "runtime_status_reaches_fulfilled_blocked_failed_waived_superseded_or_pending",
+        "runtime_artifact_exists_when_fulfilled",
+        "consumes_declared_input_refs"
+      ],
+      "role": "final_output",
+      "source": "request_phase_graph_post_artifact_continuation",
+      "status": "planned"
+    },
+    {
+      "branch_id": "branch-vision_analysis-1",
+      "capability": "vision_analysis",
+      "depends_on": [
+        "phase-2"
+      ],
+      "fulfillment_policy": "runtime_text",
+      "input_refs": [
+        {
+          "kind": "phase_output",
+          "phase_id": "phase-2",
+          "role": "dependency"
+        }
+      ],
+      "kind": "fruth.output_obligation",
+      "obligation_id": "obligation-phase-5",
+      "output_contract": {
+        "fulfillment_policy": "runtime_evidence_text",
+        "output_type": "text",
+        "required": true,
+        "status": "planned"
+      },
+      "output_type": "text",
+      "phase_id": "phase-5",
+      "queue_index": 1,
+      "required": true,
+      "review_criteria": [
+        "output_contract_matches_capability",
+        "runtime_status_reaches_fulfilled_blocked_failed_waived_superseded_or_pending",
+        "runtime_evidence_text_exists_when_fulfilled",
+        "consumes_declared_input_refs"
+      ],
+      "role": "final_output",
+      "source": "request_phase_graph_post_artifact_continuation",
+      "status": "planned"
+    },
+    {
+      "branch_id": "branch-vision_analysis-2",
+      "capability": "vision_analysis",
+      "depends_on": [
+        "phase-3"
+      ],
+      "fulfillment_policy": "runtime_text",
+      "input_refs": [
+        {
+          "kind": "phase_output",
+          "phase_id": "phase-3",
+          "role": "dependency"
+        }
+      ],
+      "kind": "fruth.output_obligation",
+      "obligation_id": "obligation-phase-6",
+      "output_contract": {
+        "fulfillment_policy": "runtime_evidence_text",
+        "output_type": "text",
+        "required": true,
+        "status": "planned"
+      },
+      "output_type": "text",
+      "phase_id": "phase-6",
+      "queue_index": 2,
+      "required": true,
+      "review_criteria": [
+        "output_contract_matches_capability",
+        "runtime_status_reaches_fulfilled_blocked_failed_waived_superseded_or_pending",
+        "runtime_evidence_text_exists_when_fulfilled",
+        "consumes_declared_input_refs"
+      ],
+      "role": "final_output",
+      "source": "request_phase_graph_post_artifact_continuation",
+      "status": "planned"
+    },
+    {
+      "branch_id": "branch-vision_analysis-3",
+      "capability": "vision_analysis",
+      "depends_on": [
+        "phase-4"
+      ],
+      "fulfillment_policy": "runtime_text",
+      "input_refs": [
+        {
+          "kind": "phase_output",
+          "phase_id": "phase-4",
+          "role": "dependency"
+        }
+      ],
+      "kind": "fruth.output_obligation",
+      "obligation_id": "obligation-phase-7",
+      "output_contract": {
+        "fulfillment_policy": "runtime_evidence_text",
+        "output_type": "text",
+        "required": true,
+        "status": "planned"
+      },
+      "output_type": "text",
+      "phase_id": "phase-7",
+      "queue_index": 3,
+      "required": true,
+      "review_criteria": [
+        "output_contract_matches_capability",
+        "runtime_status_reaches_fulfilled_blocked_failed_waived_superseded_or_pending",
+        "runtime_evidence_text_exists_when_fulfilled",
+        "consumes_declared_input_refs"
+      ],
+      "role": "final_output",
+      "source": "request_phase_graph_post_artifact_continuation",
+      "status": "planned"
+    },
+    {
+      "branch_id": "branch-chat-1",
+      "capability": "chat",
+      "content_payload_source": "prior_artifact_result",
+      "depends_on": [
+        "phase-5",
+        "phase-6",
+        "phase-7"
+      ],
+      "fulfillment_policy": "runtime_text",
+      "input_refs": [
+        {
+          "kind": "phase_output",
+          "phase_id": "phase-5",
+          "role": "dependency"
+        },
+        {
+          "kind": "phase_output",
+          "phase_id": "phase-6",
+          "role": "dependency"
+        },
+        {
+          "kind": "phase_output",
+          "phase_id": "phase-7",
+          "role": "dependency"
+        }
+      ],
+      "kind": "fruth.output_obligation",
+      "obligation_id": "obligation-phase-8",
+      "output_contract": {
+        "fulfillment_policy": "runtime_text",
+        "output_type": "text",
+        "required": true,
+        "status": "planned"
+      },
+      "output_type": "text",
+      "phase_id": "phase-8",
+      "queue_index": 1,
+      "required": true,
+      "review_criteria": [
+        "output_contract_matches_capability",
+        "runtime_status_reaches_fulfilled_blocked_failed_waived_superseded_or_pending",
+        "runtime_text_exists_when_fulfilled",
+        "consumes_declared_input_refs",
+        "uses_dependency_evidence",
+        "does_not_restart_root_request"
+      ],
+      "role": "final_output",
+      "source": "request_phase_graph_post_artifact_continuation",
+      "stage_direction": "write_text_after_artifact_generation",
+      "status": "planned"
+    }
+  ]
+}

@@ -36,6 +36,13 @@ def fetch_ollama_ps(port: int, *, timeout: int = 5) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def fetch_ollama_version(port: int, *, timeout: int = 5) -> str:
+    response = _requests_module().get(f"{_ollama_base_url(port)}/api/version", timeout=timeout)
+    response.raise_for_status()
+    payload = response.json()
+    return str(payload.get('version') or '') if isinstance(payload, dict) else ''
+
+
 def ollama_chat(port: int, model: str, messages: list[dict], timeout=90) -> str:
     """
     Call a specific Ollama port with a chat payload and return plain text.

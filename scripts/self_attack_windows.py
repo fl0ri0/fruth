@@ -16,6 +16,9 @@ from scripts.run_graph_rebase_shadow_corpus import (
     CorpusError, atomic_write_json, manifest_lock, stable_digest, utc_now,
 )
 from scripts.self_attack_checks import compare_profiles
+from scripts.storage_locations import evidence_path
+
+ROOT = Path(__file__).resolve().parents[1]
 
 SETTLED = {'settled_terminal', 'settled_repair_needed'}
 UNDISPATCHED = {'planned', 'unobserved', 'waiting_runtime', 'dependency_blocked'}
@@ -342,11 +345,10 @@ def compatible_runtime_inputs(controls, current, attestations=()):
 
 
 def final_capture(case, evidence_root):
-    folder = Path(case.get('capture_path', ''))
-    if not folder.is_absolute():
-        folder = Path(evidence_root) / folder
-    if not folder.is_relative_to(Path(evidence_root).resolve()):
-        raise CorpusError('Capture path is outside its evidence window.')
+    try:
+        folder = evidence_path(ROOT, case.get('capture_path', ''), Path(evidence_root))
+    except (OSError, ValueError) as exc:
+        raise CorpusError(f'Capture path is outside or unavailable in its evidence window: {exc}') from exc
     candidates = []
     for path in folder.glob('*.json'):
         # Native sorted-key JSON puts source at the end; avoid loading huge

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Space preflight and verified copies for clean_repo_state.sh (no source removal)."""
+"""Space preflight, verified copies and copy-before-remove archive moves."""
 from __future__ import annotations
 
 import argparse
@@ -9,6 +9,10 @@ from pathlib import Path
 import shutil
 import stat
 import sys
+
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.storage_locations import write_root
 
 
 # Extra room for filesystem metadata, modest growth and unrelated disk activity.
@@ -49,8 +53,9 @@ def preflight(root: Path, destination: Path, paths: list[str]) -> None:
     ancestor = destination.parent
     while not ancestor.exists():
         ancestor = ancestor.parent
-    if destination.parent.resolve() != root / '.fruth_archiv':
-        raise ValueError('Archive base must be a real repo-local .fruth_archiv directory')
+    selected = write_root(root, 'archive')
+    if destination.parent != selected or destination.parent.resolve() != selected:
+        raise ValueError('Archive base must be the selected real directory (default: repo-local .fruth_archiv)')
     total = 0
     for relative in paths:
         source = root / relative
@@ -112,6 +117,48 @@ def verified_copy(source: Path, destination: Path) -> None:
     print(f'verified archive copy: {source} -> {destination}', flush=True)
 
 
+def verified_move(source: Path, destination: Path) -> None:
+    """External archival: verify every byte before removing this source entry."""
+    before = inventory(source)
+    verified_copy(source, destination)
+    if inventory(source) != before:
+        raise ValueError(f'Archive source changed before removal: {source}')
+    if source.is_dir():
+        shutil.rmtree(source)
+    else:
+        source.unlink()
+
+
+def clean_local_self_attack_runs(root: Path, *, dry_run: bool) -> None:
+    """Full archive rotates local run directories, never external stores or links."""
+    root = root.resolve()
+    source = root / 'state/self_attack'
+    if source.is_symlink() or source.resolve() != source:
+        raise ValueError(f'Local campaign cleanup root must be a real checkout directory: {source}')
+    if not source.exists():
+        return
+    if not source.is_dir() or os.path.ismount(source):
+        raise ValueError(f'Invalid local campaign cleanup root: {source}')
+    device = source.stat().st_dev
+    targets = []
+    for child in sorted(source.iterdir()):
+        if child.is_symlink() or not child.is_dir():
+            continue  # Keep monitor helpers, Finder aliases and symlinks.
+        entries = inventory(child)
+        if os.path.ismount(child) or any(row[4] != device for row in entries.values()):
+            raise ValueError(f'Local campaign cleanup must not cross a mounted store: {child}')
+        targets.append(child)
+    # Validate every selected tree before deleting any. Nested symlinks are not followed.
+    for child in targets:
+        if dry_run:
+            print(f'[dry-run] remove local self-attack run without archiving: {child}', flush=True)
+        else:
+            if child.is_symlink() or child.resolve() != child:
+                raise ValueError(f'Local campaign cleanup target changed: {child}')
+            shutil.rmtree(child)
+            print(f'removed local self-attack run without archiving: {child}', flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
@@ -122,14 +169,25 @@ def main() -> int:
     copy = commands.add_parser('copy')
     copy.add_argument('source', type=Path)
     copy.add_argument('destination', type=Path)
+    move = commands.add_parser('move-verified')
+    move.add_argument('source', type=Path)
+    move.add_argument('destination', type=Path)
+    cleanup = commands.add_parser('clean-local-self-attack-runs')
+    cleanup.add_argument('root', type=Path)
+    cleanup.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
     try:
-        if args.command == 'preflight':
+        if args.command == 'clean-local-self-attack-runs':
+            clean_local_self_attack_runs(args.root, dry_run=args.dry_run)
+        elif args.command == 'preflight':
             preflight(args.root.resolve(), args.destination.absolute(), args.paths)
+        elif args.command == 'move-verified':
+            verified_move(args.source, args.destination)
         else:
             verified_copy(args.source, args.destination)
     except (OSError, ValueError, shutil.Error) as exc:
-        print(f'Archive aborted: {exc}. Sources and any partial archive are retained.', file=sys.stderr)
+        print(f'Archive aborted: {exc}. Unmoved sources and partial archive are retained; '
+              'earlier verified moves may have completed.', file=sys.stderr)
         return 1
     return 0
 

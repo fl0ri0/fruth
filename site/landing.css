@@ -959,7 +959,6 @@ h1 {
 
 .install-commands code {
     display: block;
-    min-block-size: 5.55em;
 }
 
 .today > .provider-note {

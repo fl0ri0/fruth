@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - optional in lightweight test environme
             raise RuntimeError("requests is required for Ollama HTTP probes.")
 
     requests = _RequestsFallback()
-from helpers.ollama_client import fetch_ollama_show
+from helpers.ollama_client import fetch_ollama_show, fetch_ollama_version
 from helpers.model_capabilities import (
     CAPABILITY_CHAT,
     CAPABILITY_EMBEDDING,
@@ -197,6 +197,7 @@ def list_local_model_entries() -> List[Dict[str, Any]]:
             print("   No models found.")
             return []
 
+        server_version = _observed_server_version(DEFAULT_SERVER_PORT)
         entries: List[Dict[str, Any]] = []
         for line in lines[1:]:
             parts = line.split()
@@ -216,7 +217,7 @@ def list_local_model_entries() -> List[Dict[str, Any]]:
                 "capability": capability,
                 "size": size,
             }
-            show_summary = build_ollama_show_summary(provider_metadata)
+            show_summary = build_ollama_show_summary(provider_metadata, server_version=server_version)
             if show_summary:
                 entry["backend_metadata"] = show_summary
             provider_capabilities = _normalize_provider_capabilities(provider_metadata.get("capabilities"))
@@ -232,6 +233,13 @@ def list_local_model_entries() -> List[Dict[str, Any]]:
 
 def is_port_listening(port: int, host: str = "localhost") -> bool:
     return registry_is_port_listening(port, host)
+
+
+def _observed_server_version(port: int) -> str:
+    try:
+        return fetch_ollama_version(port)
+    except Exception:
+        return ''  # Unknown serving contract retains text-only embeddings.
 
 
 def pid_is_running(pid: Optional[int]) -> bool:
@@ -603,7 +611,9 @@ def start_model(
             model_name,
             "ollama",
             resolved_capability,
-            metadata={"backend_metadata": build_ollama_show_summary(show_metadata)},
+            metadata={"backend_metadata": build_ollama_show_summary(
+                show_metadata, server_version=_observed_server_version(port),
+            )},
         )
 
         print(f"   Server for '{display_label}' is listening on port {port}.")
@@ -879,6 +889,30 @@ def get_available_models(include_limits: bool = False) -> List:
     return enriched
 
 
+def _plain_pull_diagnostic(output: str) -> str:
+    """Remove CLI presentation frames without clipping provider diagnostics."""
+    # Ollama redraws each spinner at column one, even when stderr is a pipe.
+    # Preserve those boundaries before removing ANSI presentation sequences.
+    text = re.sub(r'\x1b\[(?:1)?G', '\n', str(output or ''))
+    text = re.sub(
+        r'\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-_])',
+        '', text,
+    ).replace('\r', '\n')
+    text = re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '', text)
+    lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if re.fullmatch(
+            r'(?:pulling manifest|verifying sha256 digest|writing manifest|'
+            r'removing any unused layers|success)\s+[\u2800-\u28ff]', line,
+        ):
+            continue
+        lines.append(line)
+    return '\n'.join(lines)
+
+
 def pull_model(model_name: str) -> Tuple[bool, str]:
     if not model_name:
         return False, "No model name was provided."
@@ -891,9 +925,13 @@ def pull_model(model_name: str) -> Tuple[bool, str]:
             env=build_ollama_env(),
         )
         if result.returncode == 0:
-            message = result.stdout.strip() or f"Model {model_name} was loaded successfully."
+            message = _plain_pull_diagnostic(result.stdout) or f"Model {model_name} was loaded successfully."
             return True, message
-        error = result.stderr.strip() or result.stdout.strip() or f"Pull failed for {model_name}."
+        error = (
+            _plain_pull_diagnostic(result.stderr)
+            or _plain_pull_diagnostic(result.stdout)
+            or f"Pull failed for {model_name} (exit code {result.returncode})."
+        )
         return False, error
     except Exception as exc:  # noqa: BLE001
         return False, str(exc)

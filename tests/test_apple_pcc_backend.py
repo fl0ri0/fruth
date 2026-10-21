@@ -330,7 +330,7 @@ def test_stop_refuses_reused_pid(monkeypatch):
 
 
 def test_stop_accepts_framework_python_identity_but_checks_birth_and_arguments(monkeypatch):
-    identity = 'birth /Frameworks/Python.app/Contents/MacOS/Python -m fruth_integrations.shortcuts.server --port 11651'
+    identity = 'Wed Oct 14 21:21:30 2026 /Frameworks/Python.app/Contents/MacOS/Python -m fruth_integrations.shortcuts.server --port 11651'
     Path('model_ports.json').write_text(json.dumps([{'instance_id': 'pcc', 'backend': 'apple_pcc',
         'pid': 3, 'port': 11651, 'process_identity': identity, 'server_command': pcc._server_command(11651)}]))
     monkeypatch.setattr(pcc, 'pid_is_running', lambda _: True)

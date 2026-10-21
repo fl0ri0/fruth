@@ -36,6 +36,7 @@ from fruth_services.tts_audio_integrity import (
     tts_audio_has_qwen_generation_limit_exhaustion,
 )
 from fruth_services.tts_source import extract_legacy_tts_wrapper_text
+from fruth_core.image_generation import ImageAdapterError, ImageRequest, select_image_adapter, supports_image_steps, validate_image_steps
 
 TEXT_ARTIFACT_EXTENSIONS = {
     'txt',
@@ -2586,6 +2587,10 @@ class InferContext:
     reasoning_effort: Optional[str] = None
     phase_system_prompt: Optional[str] = None
     supports_vision_input: bool = False
+    backend_package: str = ''
+    backend_metadata: dict = field(default_factory=dict)
+    request_model: Optional[str] = None
+    image_steps: Optional[int] = None
 
 
 @dataclass
@@ -4076,6 +4081,48 @@ def _run_image_generation(
     if not ctx.prompt:
         return {'error': 'image_generation requires a text prompt.'}, 400
     has_reference_image = bool(artifacts.image_b64)
+    try:
+        adapter = select_image_adapter(
+            ctx.backend, ctx.backend_package, ctx.backend_metadata,
+            editing=has_reference_image,
+        )
+    except ValueError as exc:
+        return {'error': str(exc)}, 400
+    if ctx.image_steps is not None and not supports_image_steps(
+        ctx.backend, ctx.backend_package, ctx.backend_metadata,
+    ):
+        return {'error': 'Selected instance does not support image steps.'}, 400
+    if adapter == 'mlx_vlm_images_v1':
+        if ctx.image_steps is not None:
+            try:
+                validate_image_steps(ctx.image_steps, ctx.backend_metadata)
+            except ValueError as exc:
+                return {'error': str(exc)}, 400
+        request = ImageRequest(
+            model=ctx.request_model or ctx.model_name, prompt=ctx.prompt,
+            width=ctx.image_width, height=ctx.image_height, seed=ctx.image_seed,
+            reference_b64=artifacts.image_b64, timeout_sec=ctx.infer_timeout_sec,
+            steps=ctx.image_steps,
+        )
+        try:
+            generated = ops['mlx_vlm_image_request'](ctx.port, request)
+        except ImageAdapterError as exc:
+            return {'error': str(exc)}, 502
+        except ValueError as exc:
+            return {'error': str(exc)}, 400
+        saved_path = ops['persist_image_data_url_locally'](generated['image_data_url'], ctx.model_name)
+        if not saved_path:
+            return {'error': 'Generated image could not be persisted.'}, 502
+        return {
+            'instance_id': ctx.instance_id, 'capability': ctx.capability,
+            'mode': 'image_generation_edit' if has_reference_image else 'image_generation',
+            'content': 'Image generated.', 'image_data_url': generated['image_data_url'],
+            'saved_image_path': saved_path, 'seed': generated['seed'],
+            'reference_image_count': 1 if has_reference_image else 0,
+            'reference_image_kind': artifacts.file_kind if has_reference_image else None,
+            'image_execution': generated['image_execution'],
+            'result': {'image_execution': generated['image_execution']},
+        }, 200
     data_out: dict[str, Any] = {}
     saved_image_path = None
     image_data_url = None
@@ -4087,6 +4134,8 @@ def _run_image_generation(
             ctx.prompt,
             width=ctx.image_width,
             height=ctx.image_height,
+            seed=ctx.image_seed,
+            timeout_sec=ctx.infer_timeout_sec,
         )
     if not image_data_url:
         data_out = ops['ollama_generate'](
@@ -4115,8 +4164,6 @@ def _run_image_generation(
     extract_seed = ops.get('extract_generate_seed')
     if callable(extract_seed):
         image_seed = extract_seed(data_out)
-    if image_seed is None:
-        image_seed = ctx.image_seed
     if not content:
         if image_data_url:
             content = 'Image generated.'
@@ -4134,6 +4181,10 @@ def _run_image_generation(
             'image_data_url': image_data_url,
             'saved_image_path': saved_image_path,
             'seed': image_seed,
+            'image_execution': {
+                'adapter': adapter, 'requested_seed': ctx.image_seed,
+                'reported_seed': image_seed,
+            },
             'reference_image_count': 1 if has_reference_image else 0,
             'reference_image_kind': artifacts.file_kind if has_reference_image else None,
             'result': data_out,

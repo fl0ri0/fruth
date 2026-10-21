@@ -282,9 +282,9 @@ On macOS 27.0 on 2026-09-21:
 
 Detailed local probe records are retained in the development checkout and are
 not included in the source distribution. The public
-[September 25–27 conformance report](../../docs/SELF_ATTACK_STATUS_2026-09-27.md)
-records the later integration campaign, evidence identities and quota-limited
-coverage without converting its INCOMPLETE verdict into a pass.
+[current conformance report](../../docs/SELF_ATTACK_STATUS_2026-10-21.md)
+records complete October PCC Cloud coverage, exact source/evidence identities
+and historical incomplete campaigns. Cloud Pro remains separately untested.
 
 Apple's [CLI guide](https://support.apple.com/guide/shortcuts-mac/run-shortcuts-from-the-command-line-apd455c82f02/mac)
 describes invocation, input/output files and signing for redistribution.
@@ -313,5 +313,7 @@ single-instance Fruth chat. Starting a new chat did not restore access.
 The available error did not specify a reset time. Fruth must preserve this
 provider failure rather than claim completion. Cloud Pro access fallback does
 not bypass the final Cloud tier's quota. See the
-[dated conformance results](../../docs/SELF_ATTACK_STATUS_2026-09-27.md) for the
-successful scope and untested cases.
+[historical conformance results](../../docs/SELF_ATTACK_STATUS_2026-10-21.md#historical-results)
+for that campaign's successful scope and gaps. The October 19–21 campaign later
+completed 170/170 Cloud cells through two bounded allocations and an audio retry,
+without a recorded quota stop. This does not establish a quota size or reset time.

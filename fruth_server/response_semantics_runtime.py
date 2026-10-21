@@ -9,6 +9,7 @@ from fruth_services.artifact_contracts import (
 )
 from fruth_services.events import observe_call, exact_target, judgment_summary
 
+import copy
 import hashlib
 import html
 import json
@@ -17850,7 +17851,6 @@ class ResponseSemanticsRuntimeOwner:
             'preserve_request_id',
             'pending_branch_scope',
             'authoritative_pending_branches',
-            'successor_reopen_execution',
         ):
             value = artifact_gap.get(key)
             if value in (None, '', [], {}):
@@ -17859,6 +17859,17 @@ class ResponseSemanticsRuntimeOwner:
                 value = None
             if value not in (None, '', [], {}):
                 payload[key] = value
+        # Running/checkpoint state belongs to the same admitted execution. Losing
+        # its envelope makes the publication guard reject the worker's own state.
+        # New execution authority still comes from the admitting owner; this
+        # constructor only carries the supplied record, like successor state.
+        for key in ('successor_reopen_execution', 'terminal_closure_repair_reopen',
+                    'partial_rebase_execution'):
+            value = artifact_gap.get(key)
+            if value in (None, '', [], {}):
+                value = previous.get(key)
+            if value not in (None, '', [], {}):
+                payload[key] = copy.deepcopy(value)
         batch_prompts = artifact_gap.get('batch_prompts')
         if not isinstance(batch_prompts, list):
             batch_prompts = previous.get('batch_prompts') if isinstance(previous.get('batch_prompts'), list) else None
@@ -17923,6 +17934,11 @@ class ResponseSemanticsRuntimeOwner:
                 value = previous.get(key) if isinstance(previous.get(key), list) else None
             if isinstance(value, list):
                 payload[key] = normalize_capability_list(value)
+        # A state transition carries accepted evidence as well as completion
+        # markers. Retry/control callers must not have to reconstruct saved
+        # sibling results from paths or public projections.
+        if isinstance(previous.get('fill_results'), list):
+            payload['fill_results'] = copy.deepcopy(previous['fill_results'])
         if extra:
             payload.update(
                 {
@@ -17940,6 +17956,8 @@ class ResponseSemanticsRuntimeOwner:
             for key in ('pending_branches', 'completed_branches', 'failed_branches', 'cancelled_branches', 'active_branches'):
                 if key in extra and isinstance(extra.get(key), list):
                     payload[key] = normalize_late_fill_branches(extra.get(key))
+            if isinstance(extra.get('fill_results'), list):
+                payload['fill_results'] = copy.deepcopy(extra['fill_results'])
             for key in ('expected_branch_id', 'expected_phase_id'):
                 if key in extra and extra.get(key) not in (None, '', [], {}):
                     payload[key] = str(extra.get(key)).strip() or None

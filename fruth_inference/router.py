@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import math
 import re
 from pathlib import Path
 from typing import Any, Iterable, Optional
@@ -369,6 +370,9 @@ def _summarize_backend_metadata(metadata: Any) -> dict[str, Any]:
         'runtime_constraints': _compact_string_list(metadata.get('runtime_constraints')),
         'runtime_knobs': _compact_string_list(metadata.get('runtime_knobs')),
         'native_endpoint_paths': _compact_string_list(metadata.get('native_endpoint_paths')),
+        'embedding_input_format': metadata.get('embedding_input_format'),
+        'embedding_input_modalities': _compact_string_list(metadata.get('embedding_input_modalities')),
+        'server_version': metadata.get('server_version'),
         'lazy_loads_model': bool(metadata.get('lazy_loads_model')) if 'lazy_loads_model' in metadata else None,
         'single_loaded_model': bool(metadata.get('single_loaded_model')) if 'single_loaded_model' in metadata else None,
         'supports_unload': bool(metadata.get('supports_unload')) if 'supports_unload' in metadata else None,
@@ -492,6 +496,9 @@ def _instance_supports_embedding(instance: dict[str, Any]) -> bool:
 
 def _instance_embedding_transport(instance: dict[str, Any]) -> Optional[str]:
     if not _instance_supports_embedding(instance):
+        return None
+    inputs = instance.get('inputs') or []
+    if inputs and 'text' not in inputs:
         return None
     backend = normalize_backend(instance.get('backend'))
     if backend == 'ollama':
@@ -1176,7 +1183,6 @@ def select_embedding_instance(
             _readiness_rank(item.get('readiness')),
             _activity_rank(item.get('activity')),
             1 if normalize_capability(item.get('capability')) == CAPABILITY_EMBEDDING else 0,
-            1 if item.get('embedding_transport') == 'ollama_api_embed' else 0,
             str(item.get('instance_id') or ''),
         ),
         reverse=True,
@@ -1320,21 +1326,52 @@ def _normalize_embedding_vector(value: Any) -> Optional[list[float]]:
         return None
     normalized: list[float] = []
     for raw in value:
-        if not isinstance(raw, (int, float)):
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
             return None
-        normalized.append(float(raw))
+        try:
+            number = float(raw)
+        except OverflowError:
+            return None
+        if not math.isfinite(number):
+            return None
+        normalized.append(number)
     return normalized if normalized else None
+
+
+def validate_embedding_batch(value: Any, expected_count: Optional[int] = None) -> list[list[float]]:
+    """Accept one complete, ordered, dense text batch from one model call."""
+    if not isinstance(value, list) or not value:
+        raise ValueError('Embedding batch must be a non-empty list.')
+    if expected_count is not None and len(value) != expected_count:
+        raise ValueError('Embedding response count does not match the input batch.')
+    vectors = []
+    dimension = None
+    for raw in value:
+        vector = _normalize_embedding_vector(raw)
+        if vector is None or not any(vector):
+            raise ValueError('Embedding vector must contain finite numbers and have nonzero norm.')
+        if dimension is not None and len(vector) != dimension:
+            raise ValueError('Embedding vector dimensions differ within the batch.')
+        dimension = len(vector)
+        vectors.append(vector)
+    return vectors
 
 
 def _cosine_similarity(left: list[float], right: list[float]) -> Optional[float]:
     if not left or not right or len(left) != len(right):
         return None
-    left_norm = sum(value * value for value in left) ** 0.5
-    right_norm = sum(value * value for value in right) ** 0.5
+    # Scale first so finite very large/small vectors do not overflow/underflow.
+    left_scale, right_scale = max(map(abs, left)), max(map(abs, right))
+    if not left_scale or not right_scale:
+        return None
+    left = [value / left_scale for value in left]
+    right = [value / right_scale for value in right]
+    left_norm = math.sqrt(math.fsum(value * value for value in left))
+    right_norm = math.sqrt(math.fsum(value * value for value in right))
     if left_norm <= 0.0 or right_norm <= 0.0:
         return None
-    dot_product = sum(left_value * right_value for left_value, right_value in zip(left, right))
-    return dot_product / (left_norm * right_norm)
+    dot_product = math.fsum(left_value * right_value for left_value, right_value in zip(left, right))
+    return max(-1.0, min(1.0, dot_product / (left_norm * right_norm)))
 
 
 def build_embedding_hints_from_vectors(
@@ -1344,9 +1381,11 @@ def build_embedding_hints_from_vectors(
     *,
     limit: int = MAX_EMBEDDING_HINTS,
 ) -> Optional[dict[str, Any]]:
-    normalized_prompt = _normalize_embedding_vector(prompt_vector)
-    if not normalized_prompt or len(candidates) != len(candidate_vectors):
+    try:
+        vectors = validate_embedding_batch([prompt_vector, *candidate_vectors], len(candidates) + 1)
+    except (ValueError, TypeError):
         return None
+    normalized_prompt, candidate_vectors = vectors[0], vectors[1:]
 
     capability_matches: list[dict[str, Any]] = []
     instance_matches: list[dict[str, Any]] = []

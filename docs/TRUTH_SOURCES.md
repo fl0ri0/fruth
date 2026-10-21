@@ -99,6 +99,25 @@ Recovered lookup reuse still checks physical ledger identity and appended bytes;
 unrelated validated append-only rows may advance its checkpoint, while target
 successors, malformed tails or replacement evidence require recovery.
 
+An eligibility read alone does not authorize later Late Fill publication.
+Control and worker checkpoints bind current frame/execution/disposition checks
+to commit and live publication under the response mutation boundary. Prepared
+results and saved files from a rejected stale writer remain diagnostics, not
+accepted-result evidence. Passive recovery continues to read the committed frame;
+it neither retries the rejected work nor repairs historical cancellation loss.
+
+A live-worker C9 handoff separates admitted obligation authority, current branch
+eligibility and a single-use operational scheduling permission. The permission is
+private invocation context created by the existing scheduler after claiming the
+worker; frames, output files and diagnostic events cannot recreate it. Recovery
+remains passive even when the committed frame retains pending work. The child
+uses the same execution identity and ordinary append-only frame owner. Existing
+control checkpoints may omit the request carrier; the immutable invocation request
+supplies controls/context, never replacement branch instructions. Explicit current
+request metadata/carriers must match. Accepted result comparison permits only
+existing transport-byte/timestamp/empty-field compaction, preserving other evidence
+and unknown fields. See [Late Fill](RESPONSES_CONTRACT.md#late-fill).
+
 Compaction-local prepared serialization/size representations and single-use
 Readiness observation reuse do not cache authority. Each owner retains its current
 source, binding, integrity and freshness checks. In particular, the Readiness

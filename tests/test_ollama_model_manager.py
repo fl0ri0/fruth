@@ -8,6 +8,46 @@ from fruth_runtime import ollama_model_manager
 
 
 class OllamaModelManagerTests(unittest.TestCase):
+    @patch('fruth_runtime.ollama_model_manager.subprocess.run')
+    def test_pull_error_survives_terminal_spinner_frames(self, run):
+        spinner = '\x1b[?2026h\x1b[?25l\x1b[1Gpulling manifest ⠋ \x1b[K\x1b[?25h\x1b[?2026l'
+        diagnostic = 'Error: pull model manifest: registry request failed\nDetails: connection reset by peer'
+        run.return_value = SimpleNamespace(returncode=1, stdout='', stderr=spinner * 100 + '\n' + diagnostic)
+
+        ok, message = ollama_model_manager.pull_model('embeddinggemma-2:740m')
+
+        self.assertFalse(ok)
+        self.assertEqual(message, diagnostic)
+        self.assertEqual(run.call_args.args[0], [ollama_model_manager.OLLAMA_CLI, 'pull', 'embeddinggemma-2:740m'])
+        self.assertEqual(run.call_count, 1)
+
+    @patch('fruth_runtime.ollama_model_manager.subprocess.run')
+    def test_pull_plain_diagnostics_are_not_clipped_or_interpreted(self, run):
+        diagnostic = 'Warning: registry returned additional detail\nError: ' + 'évidence [42] ' * 300
+        run.return_value = SimpleNamespace(returncode=1, stdout='', stderr=diagnostic)
+
+        self.assertEqual(ollama_model_manager.pull_model('test:tag'), (False, diagnostic.strip()))
+
+    @patch('fruth_runtime.ollama_model_manager.subprocess.run')
+    def test_pull_progress_only_stderr_does_not_hide_stdout_error(self, run):
+        run.return_value = SimpleNamespace(returncode=1, stdout='\x1b[31mError: unavailable\x1b[0m',
+                                          stderr='\rpulling manifest ⠙\r')
+        self.assertEqual(ollama_model_manager.pull_model('test:tag'), (False, 'Error: unavailable'))
+
+    @patch('fruth_runtime.ollama_model_manager.subprocess.run')
+    def test_pull_terminal_controls_are_removed_and_exit_code_owns_success(self, run):
+        cases = [
+            (0, '\x1b[32msuccess\x1b[0m', '', True, 'success'),
+            (1, '', '\x1b[32msuccess\x1b[0m', False, 'success'),
+            (0, '', 'pulling manifest ⠋', True, 'Model test:tag was loaded successfully.'),
+            (2, '', '\x1b[?25l', False, 'Pull failed for test:tag (exit code 2).'),
+            (1, '', '\x1b]0;title\x07Error: blocked\x1b]0;done\x1b\\', False, 'Error: blocked'),
+        ]
+        for code, stdout, stderr, ok, message in cases:
+            with self.subTest(code=code, stdout=stdout, stderr=stderr):
+                run.return_value = SimpleNamespace(returncode=code, stdout=stdout, stderr=stderr)
+                self.assertEqual(ollama_model_manager.pull_model('test:tag'), (ok, message))
+
     @patch('fruth_runtime.ollama_model_manager.subprocess.Popen')
     @patch('fruth_runtime.ollama_model_manager.is_port_listening', return_value=True)
     def test_existing_default_server_is_reused_without_launching(
@@ -48,6 +88,7 @@ class OllamaModelManagerTests(unittest.TestCase):
                 archived_logs = list((log_dir / 'archive' / 'global').rglob('*.log'))
                 self.assertEqual(len(archived_logs), 1)
 
+    @patch('fruth_runtime.ollama_model_manager._observed_server_version', return_value='0.40.6')
     @patch('fruth_runtime.ollama_model_manager.wait_for_model_loaded', return_value=True)
     @patch('fruth_runtime.ollama_model_manager._fetch_model_metadata', return_value={})
     @patch('fruth_runtime.ollama_model_manager.is_port_listening', return_value=True)
@@ -64,6 +105,7 @@ class OllamaModelManagerTests(unittest.TestCase):
         _mock_is_port_listening,
         _mock_fetch_model_metadata,
         _mock_wait_for_model_loaded,
+        _mock_server_version,
     ):
         mock_popen.side_effect = [
             SimpleNamespace(pid=11111),

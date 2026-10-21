@@ -589,6 +589,7 @@ def start_instance(
         if normalized_backend == 'mlx':
             if normalized_capability in {
                 CAPABILITY_CHAT,
+                CAPABILITY_IMAGE_GENERATION,
                 CAPABILITY_SPEECH_TO_TEXT,
                 CAPABILITY_TEXT_TO_SPEECH,
                 CAPABILITY_VISION_ANALYSIS,

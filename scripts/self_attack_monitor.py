@@ -12,6 +12,11 @@ import json
 import sys
 import time
 
+CHECKOUT = Path(__file__).resolve().parents[1]
+if str(CHECKOUT) not in sys.path:
+    sys.path.insert(0, str(CHECKOUT))
+from scripts.storage_locations import find as find_storage
+
 ROOT = Path.cwd()
 SETTLED = {'settled_terminal', 'settled_repair_needed'}
 _cache = {}
@@ -138,6 +143,11 @@ def render():
         if not proof_name and '--fake-evidence' in argv:
             proof_name = argv[argv.index('--fake-evidence') + 1]
         proof = Path(proof_name) if proof_name else ROOT / 'missing-fake-evidence/results.json'
+        if proof_name and not proof.exists():
+            try:
+                proof = find_storage(CHECKOUT, 'self_attack', proof)
+            except (OSError, ValueError) as exc:
+                _read_errors.add(str(exc))
         fake = phase_snapshot(proof.parent, now)
         live = phase_snapshot(ROOT, now, stopped_at=stopped_at)
     else:
@@ -218,10 +228,16 @@ def render():
 def main(argv=None):
     global ROOT
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('output', type=Path, help='Existing native campaign directory (read-only).')
+    parser.add_argument('output', type=Path, help='Existing native campaign path or registered run name (read-only).')
     parser.add_argument('--once', action='store_true', help='Print one snapshot and exit.')
     args = parser.parse_args(argv)
-    ROOT = args.output.resolve()
+    try:
+        ROOT = (args.output.resolve() if args.output.is_dir()
+                else find_storage(CHECKOUT, 'self_attack', args.output))
+        if not ROOT.is_dir():
+            raise ValueError(f'Campaign is not a directory: {ROOT}')
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
     _cache.clear()
     try:
         while True:

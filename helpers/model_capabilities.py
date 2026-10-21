@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
@@ -176,7 +177,7 @@ def _ollama_model_info_context_length(model_info: Any) -> Optional[int]:
     return None
 
 
-def build_ollama_show_summary(payload: Optional[dict[str, Any]]) -> dict[str, Any]:
+def build_ollama_show_summary(payload: Optional[dict[str, Any]], *, server_version: str = '') -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
 
@@ -203,7 +204,33 @@ def build_ollama_show_summary(payload: Optional[dict[str, Any]]) -> dict[str, An
             "template_present": bool(str(payload.get("template") or "").strip()),
         }
     )
+    if 'embedding' in raw_capabilities:
+        version = re.fullmatch(r'v?(\d+)\.(\d+)\.(\d+)', str(server_version).strip())
+        multimodal = bool(version and tuple(map(int, version.groups())) >= (0, 40, 6))
+        summary['server_version'] = server_version or None
+        summary['embedding_input_format'] = 'ollama_multimodal_v1' if multimodal else 'text'
+        summary['embedding_input_modalities'] = ['text'] + (
+            [kind for capability, kind in (('vision', 'image'), ('audio', 'audio'))
+             if capability in raw_capabilities] if multimodal else []
+        )
     return summary
+
+
+def embedding_input_modalities(backend: str, metadata: Optional[dict[str, Any]]) -> list[str]:
+    """Intersect a model's discovered modalities with the concrete serving adapter."""
+    source = metadata if isinstance(metadata, dict) else {}
+    summary = source.get('routing_summary') if isinstance(source.get('routing_summary'), dict) else {}
+    native = source.get('backend_metadata') or summary.get('backend_metadata')
+    native = native if isinstance(native, dict) else {}
+    formats = {
+        ('ollama', 'ollama_multimodal_v1'): ('text', 'image', 'audio'),
+        ('mlx', 'mlx_vlm_image_v1'): ('text', 'image'),
+    }
+    input_format = str(native.get('embedding_input_format') or '')
+    supported = formats.get((normalize_backend(backend), input_format), ('text',))
+    declared = native.get('embedding_input_modalities')
+    declared = declared if isinstance(declared, list) and declared else ['text']
+    return [kind for kind in supported if kind in declared]
 
 
 def _ollama_model_variants(model_name: Optional[str]) -> set[str]:
@@ -588,6 +615,10 @@ def infer_supported_capabilities(
 
     add(resolved_capability)
 
+    # Vision/audio on an encoder describe inputs, not generative operations.
+    if resolved_capability == CAPABILITY_EMBEDDING and outputs == ['embedding']:
+        return supported
+
     provider_capabilities = _normalize_modality_list(source.get("provider_capabilities"))
     if not provider_capabilities:
         for raw in _metadata_backend_capabilities(source):
@@ -677,7 +708,19 @@ def build_feature_contract(
         normalize_capability(token)
         for token in backend_capabilities
     }
-    backend_contract_explicitly_nonvision = bool(backend_capabilities) and not backend_declares_vision
+    backend_metadata = source.get('backend_metadata')
+    image_modes = backend_metadata.get('image_modes') if isinstance(backend_metadata, dict) else None
+    if not isinstance(image_modes, list):
+        image_modes = source.get('image_modes') or []
+    backend_declares_image_edit = (
+        resolved_capability == CAPABILITY_IMAGE_GENERATION
+        and CAPABILITY_IMAGE_GENERATION in backend_capabilities
+        and 'edit' in image_modes
+    )
+    # Reference editing consumes images without offering image-to-text analysis.
+    backend_contract_explicitly_nonvision = bool(backend_capabilities) and not (
+        backend_declares_vision or backend_declares_image_edit
+    )
     if backend_contract_explicitly_nonvision:
         inputs = [item for item in inputs if item != "image"]
 
@@ -791,6 +834,12 @@ def build_feature_contract(
     if backend_contract_explicitly_nonvision:
         feature_values[FEATURE_VISION_INPUT] = False
         feature_sources[FEATURE_VISION_INPUT] = FEATURE_SOURCE_BACKEND_METADATA
+
+    if resolved_capability == CAPABILITY_EMBEDDING:
+        inputs = embedding_input_modalities(backend, source)
+        for kind, flag in (('image', FEATURE_VISION_INPUT), ('audio', FEATURE_AUDIO_INPUT)):
+            feature_values[flag] = kind in inputs
+            feature_sources[flag] = FEATURE_SOURCE_BACKEND_METADATA
 
     return {
         "features": feature_values,

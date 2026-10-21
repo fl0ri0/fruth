@@ -411,7 +411,8 @@ class GeneratedImagePostprocessOwner:
         ).strip()
         request_meta = self.compact_request_meta(self.extract_request_meta(request_data))
         seed = self.coerce_seed(payload.get('seed'))
-        if seed is None:
+        image_execution = payload.get('image_execution')
+        if seed is None and not isinstance(image_execution, dict):
             seed = image_seed
 
         record = self.build_generated_image_provenance(
@@ -441,6 +442,11 @@ class GeneratedImagePostprocessOwner:
             route_reason=str(request_data.get('provenance_route_reason') or '').strip() or None,
             request_meta=request_meta if isinstance(request_meta, dict) else None,
         )
+        if isinstance(image_execution, dict):
+            record['image_execution'] = dict(image_execution)
+            record['request'].pop('seed', None)
+            if image_seed is not None:
+                record['request']['seed'] = image_seed
         try:
             self.persist_generated_image_provenance(
                 record,

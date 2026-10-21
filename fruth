@@ -34,13 +34,14 @@ Commands:
   shutdown     Stop the FRUTH stack (alias: stop, down)
   restart      Restart the FRUTH stack
   clean        Stop local Fruth listeners and clean repo-local generated state (alias: reset-state)
-  archiv       Archive useful runtime/generated ballast into .fruth_archiv and then clean live paths
+  archiv       Archive runtime/generated ballast to the configured location, then clean live paths
   archive      Alias for `archiv`
   dashboard    Open FRUTH dashboard in browser (aliases: ui, browser)
   version      Show the Fruth version (alias: --version)
   sync         Manually sync supported external-client provider config
   ctl          Pass through to scripts/fruthctl.py
   self-attack  Run isolated adversarial conformance and write JSON/Markdown reports
+  storage      Inspect configured storage locations or find an archive/campaign
   send         Shorthand for: fruth ctl send <instance_id> "<prompt>"
   status       Show quick local stack status
   help         Show this help message
@@ -50,6 +51,7 @@ Examples:
   fruth send x/flux2-klein:latest-1 "a giraffe and a T-rex taking a selfie" --json
   fruth archive --full --dry-run
   fruth archive --full
+  fruth archive --full --exclude-self-attack
   fruth clean --full
   fruth clean --forget-inference --dry-run
 
@@ -289,6 +291,9 @@ case "$command" in
       python_bin="$ROOT_DIR/.venv/bin/python3"
     fi
     exec "$python_bin" "$ROOT_DIR/scripts/fruth_self_attack.py" "$@"
+    ;;
+  storage)
+    exec python3 "$ROOT_DIR/scripts/storage_locations.py" --root "$ROOT_DIR" "$@"
     ;;
   send)
     run_fruthctl send "$@"

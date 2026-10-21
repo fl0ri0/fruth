@@ -7,6 +7,7 @@ from fruth_services.events import observe_call
 import json
 import logging
 import requests
+from fruth_core.image_generation import mlx_vlm_image_request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -508,6 +509,8 @@ class BackendTransportRuntimeOwner:
         *,
         width: Optional[int] = None,
         height: Optional[int] = None,
+        seed: Optional[int] = None,
+        timeout_sec: int = 600,
     ) -> Optional[str]:
         requests_module = self._hook('requests_module')
         return ollama_openai_image_generation(
@@ -517,7 +520,12 @@ class BackendTransportRuntimeOwner:
             requests_module,
             width=width,
             height=height,
+            seed=seed,
+            timeout_sec=timeout_sec,
         )
+
+    def mlx_vlm_image_request(self, port, request):
+        return mlx_vlm_image_request(port, request, self._hook('requests_module'))
 
     def persist_audio_bytes_locally(
         self,

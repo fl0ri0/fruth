@@ -111,7 +111,10 @@ def test_modes_match_target_and_recovery_contracts(tmp_path, flags, dry_run):
     reset_registry = '--reset-registry' in flags or full
     reset_catalog = '--reset-llama-catalog' in flags or full
     for path in PROTECTED:
-        assert (root / path).read_bytes() == files[path], path
+        if archived and full and path.startswith('state/self_attack/'):
+            assert not (root / path).exists(), path
+        else:
+            assert (root / path).read_bytes() == files[path], path
     for path in VOLATILE:
         assert not (root / path).exists(), path
     for path in INFERENCE:
@@ -134,6 +137,11 @@ def test_modes_match_target_and_recovery_contracts(tmp_path, flags, dry_run):
     assert not (root / 'scripts/nested/.DS_Store').exists()
     if archived:
         destination, = [p for p in (root / '.fruth_archiv').iterdir() if p.name != 'old']
+        if full:
+            assert not (destination / 'state/self_attack').exists()
+        else:
+            assert (destination / 'state/self_attack/nested/.DS_Store').read_bytes() == files[
+                'state/self_attack/nested/.DS_Store']
         for path in (*VOLATILE, *INFERENCE):
             assert (destination / path).read_bytes() == files[path], path
         assert (destination / 'artifacts/extra.bin').read_bytes() == b'ordinary generated residue'

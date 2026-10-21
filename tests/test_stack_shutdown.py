@@ -87,12 +87,6 @@ if os.environ.get('FIXTURE_WEB_FAIL') != '1':
         '  printf "pip %s\\n" "$*" >> "$FIXTURE_STATE/events"\n'
         '  exit "${FIXTURE_PIP_EXIT:-0}"\n'
         'fi\n'
-        'if [[ "$1" == "-" && "$2" == "5011" ]]; then\n'
-        '  cat >/dev/null\n'
-        '  printf "probe 5011\\n" >> "$FIXTURE_STATE/events"\n'
-        '  lsof -iTCP:5011 -sTCP:LISTEN -t >/dev/null\n'
-        '  exit $?\n'
-        'fi\n'
         f'exec {shlex.quote(sys.executable)} "$@"\n'
     )
     python.chmod(0o755)
@@ -125,7 +119,26 @@ lsof() {
     done < "$FIXTURE_STATE/ports"
     # lsof can emit matching listeners and still return 1 for unmatched selectors.
     [[ "${FIXTURE_PARTIAL_LSOF:-0}" == 1 && "$selection" != 5011 ]] && return 1
+    if [[ "$selection" == 5011 ]]; then
+        printf 'listener 5011 result %s\n' "$found" >> "$FIXTURE_STATE/events"
+    fi
     return "$found"
+}
+# Intercept restart's TCP observation before PATH resolution. The isolated runner
+# pins python3 ahead of .venv; startup activation affects only its child shell.
+python3() {
+    if [[ "$#" == 2 && "$1" == '-' && "$2" == 5011 ]]; then
+        cat >/dev/null
+        printf 'probe 5011\n' >> "$FIXTURE_STATE/events"
+        local result=1
+        if [[ ! -f "$FIXTURE_STATE/probe-unreachable" ]] &&
+           [[ -f "$FIXTURE_STATE/live-81009" || -f "$FIXTURE_STATE/live-81001" ]]; then
+            result=0
+        fi
+        printf 'probe result %s\n' "$result" >> "$FIXTURE_STATE/events"
+        return "$result"
+    fi
+    command python3 "$@"
 }
 pgrep() {
     [[ "$*" == '-f fruth_webserver.py' ]] || return 75
@@ -243,8 +256,20 @@ def test_restart_runs_stop_then_start_even_with_no_models(shell_stack, initial):
     result = shell_stack.run('restart', FIXTURE_PARTIAL_LSOF='1')
     assert result.returncode == 0, result.stdout + result.stderr
     events = shell_stack.events()
-    assert events[-6:] == ['shutdown hygiene', 'model selection empty', 'prepare web log',
-                          'web start', 'probe 5011', 'open http://127.0.0.1:5011']
+    stopped = []
+    if initial == 'running':
+        stopped.append('kill TERM 81001')
+    if initial != 'stopped':
+        stopped.append('kill TERM 81002')
+    if initial == 'running':
+        stopped.append('kill TERM 81003')
+    assert events == stopped + [
+        'shutdown hygiene', 'model selection empty', 'listener 5011 result 1',
+        'prepare web log', 'web start', 'listener 5011 result 0',
+        'probe 5011', 'probe result 0', 'open http://127.0.0.1:5011',
+    ]
+    assert 'UI reachable' in result.stdout
+    assert 'opening browser anyway' not in result.stdout
     assert 'Startup complete' in result.stdout
     assert 'Aborting restart' not in result.stdout
 
@@ -254,7 +279,7 @@ def test_start_reuses_existing_webserver_after_model_selection(shell_stack):
     result = shell_stack.run('start')
     assert result.returncode == 0, result.stderr
     assert 'already running on port 5011' in result.stdout
-    assert shell_stack.events() == ['model selection empty']
+    assert shell_stack.events() == ['model selection empty', 'listener 5011 result 0']
 
 
 @pytest.mark.parametrize('command', ['start', 'restart'])
@@ -306,7 +331,13 @@ def test_restart_keeps_original_abort_on_actual_start_failure(shell_stack, failu
     result = shell_stack.run('restart', **overrides)
     assert result.returncode == 1, result.stdout + result.stderr
     assert 'start_multi_models.sh failed. Aborting restart.' in result.stdout
-    assert not any(event.startswith('open ') for event in shell_stack.events())
+    events = shell_stack.events()
+    assert not any(event.startswith(('open ', 'probe ')) for event in events)
+    expected = ['shutdown hygiene', 'model selection empty']
+    if failure == 'web':
+        expected += ['listener 5011 result 1', 'prepare web log', 'web start',
+                     'listener 5011 result 1']
+    assert events == expected
 
 
 def test_restart_keeps_original_abort_on_stop_script_failure(shell_stack):
@@ -369,3 +400,17 @@ def stop_instance(instance_id):
     else:
         assert not (shell_stack.state / 'live-81901').exists()
         assert 'shutdown hygiene' in shell_stack.events()
+
+
+def test_restart_wait_exhaustion_warns_and_opens_after_successful_start(shell_stack):
+    # TCP reachability and a successful startup listener check are distinct.
+    (shell_stack.state / 'probe-unreachable').touch()
+    result = shell_stack.run('restart')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'Startup complete' in result.stdout
+    assert 'UI did not become reachable; opening browser anyway.' in result.stdout
+    assert 'UI reachable' not in result.stdout
+    assert shell_stack.events() == [
+        'shutdown hygiene', 'model selection empty', 'listener 5011 result 1',
+        'prepare web log', 'web start', 'listener 5011 result 0',
+    ] + ['probe 5011', 'probe result 1'] * 40 + ['open http://127.0.0.1:5011']

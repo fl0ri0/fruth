@@ -881,6 +881,8 @@ def ollama_openai_image_generation(
     *,
     width: Optional[int] = None,
     height: Optional[int] = None,
+    seed: Optional[int] = None,
+    timeout_sec: int = 600,
 ) -> Optional[str]:
     payload: dict[str, Any] = {
         'model': model_name,
@@ -889,11 +891,13 @@ def ollama_openai_image_generation(
     }
     if width is not None and height is not None:
         payload['size'] = f'{int(width)}x{int(height)}'
+    if seed is not None:
+        payload['seed'] = seed
     try:
         response = requests_module.post(
             f'http://127.0.0.1:{port}/v1/images/generations',
             json=payload,
-            timeout=600,
+            timeout=timeout_sec,
         )
     except Exception as exc:  # noqa: BLE001
         logging.info('OpenAI image fallback request failed: %s', exc)

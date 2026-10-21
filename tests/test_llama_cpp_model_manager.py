@@ -8,12 +8,14 @@ from fruth_runtime import llama_cpp_model_manager
 
 
 class LlamaCppModelManagerTests(unittest.TestCase):
+    @patch.object(llama_cpp_model_manager, '_llama_server_help_text', return_value='')
     @patch('fruth_runtime.llama_cpp_model_manager.resolve_llama_cli_bin')
     @patch('fruth_runtime.llama_cpp_model_manager.resolve_llama_server_bin')
     def test_runtime_probe_reports_runnable_when_server_binary_exists(
         self,
         mock_server_bin,
         mock_cli_bin,
+        _help_text,
     ):
         mock_server_bin.return_value = '/opt/homebrew/bin/llama-server'
         mock_cli_bin.return_value = '/opt/homebrew/bin/llama-cli'

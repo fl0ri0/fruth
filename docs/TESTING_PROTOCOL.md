@@ -6,6 +6,32 @@ risk, and run release validation when preparing a release. Once relevant checks
 pass, repeat or broaden only for new changes, failures or unresolved concerns.
 Prose-only edits ordinarily need static contract/link checks, not live inference.
 
+For offline collection and the integrated regression route, use the portable
+[test runner](../scripts/run_tests.py) below. It stages disposable source before
+pytest imports any test/runtime module. Commands elsewhere in this guide name
+test slices; pass those selectors to this runner when isolation is required.
+Plain pytest applies category selection but does not supply the runner's guards
+or fresh-process scheduling. Do not use broad collection in a production checkout.
+
+For Late Fill execution-state continuity, start with
+`tests/test_terminal_repair_execution_continuity.py` and
+`tests/test_vision_retry_continuity.py`. The former exercises a real scheduled
+worker with synthetic provider transport, canonical persistence/recovery and
+completed terminal-handoff replay, plus state-carrier and changed-identity checks.
+Include `tests/test_terminal_repair_result_continuity.py` for saved-file repair
+through terminal publication, accepted historical results, exact repair-contract
+replacement and unrelated same-target duties.
+Broaden to the semantics, terminal reconciliation, Responses and affected control
+handoff suites. A state-constructor pass alone is not proof that a child dispatched.
+
+For embedding modality changes start with `tests/test_multimodal_embeddings.py`
+and `tests/test_embedding_backend_contract.py`, then affected model metadata,
+manager, registry, routing and Responses API suites. Preserve text-only positives,
+model/adapter intersection, ordered exact-size vectors, caller-selected media,
+upload position, passive previews and no history reads. Native cached-model
+checks establish transport/shape and only the measured semantic comparisons;
+an audio tone smoke test is not semantic audio validation.
+
 For HTTP admission/preference parsing run `tests/test_browser_api_authority.py`
 and `tests/test_http_callers.py`, then affected API, `fruthctl`, shadow-corpus and
 frontend transport suites. Positive owner fixtures explicitly declare native
@@ -63,13 +89,98 @@ Keep timing attribution independent of Closure, artifact and frame verdicts.
 
 ---
 
+For AFM/PCC process ownership changes, start with
+`tests/test_apple_process_identity.py`, then `tests/test_apple_fm_backend.py`,
+`tests/test_apple_pcc_backend.py`, `tests/test_runtime_liveness.py` and
+`tests/test_registry_core.py` through the isolated runner. Cover both historical
+start-time layouts, locale-pinned capture, exact command/birth checks, malformed
+evidence, disappearance, wait/reuse races and positive lifecycle delegation.
+These owner fixtures mock OS boundaries. Additionally run
+`tests/test_native_process_routes.py` for actual owned disposable-process capture,
+stable repeated observations, both production comparison owners and the demonstrated
+legacy layout. The process is `/bin/sleep 30`, never an AFM/PCC server substitute.
+No real service start/stop/restart, PCC call, timezone conversion, subsecond PID
+identity or atomic observation/signal guarantee follows from these checks.
+
 ## Quick Debug Flow
+
+For text-embedding backend integration, start with
+`tests/test_embedding_backend_contract.py` through the isolated runner. It covers
+Ollama and OpenAI-shaped transport, metadata-driven MLX/llama.cpp discovery and
+startup, preferred/automatic selection, unsupported endpoints, ordered batches,
+nonfinite/zero/mismatched vectors and observable failure without stale hints.
+It uses synthetic snapshots and mocked provider/process boundaries, never weights
+or production registries. Broaden to `test_mlx_model_manager.py`,
+`test_llama_cpp_model_manager.py`, `test_ollama_model_manager.py`,
+`test_tts_model_metadata.py`, `test_inference_router.py`, runtime-status,
+backend-fabric/startup and affected Responses API suites. Preserve normal
+chat/vision behavior, passive observation and existing routing thresholds.
+Real-model checks and routing-quality comparisons are separate evidence;
+passing these offline contracts does not certify a new embedding model.
+
+For image backend integration, start with `tests/test_image_backend_contract.py`
+through the isolated runner using an environment with the declared Pillow
+dependency. It covers qualified/cached-only snapshots, image-specific startup,
+including the frontend `/api/start_model` route through the real lifecycle and
+MLX owners (with isolated registry writes and mocked native process boundaries),
+bound instance/model selection, generation versus reference editing, exact
+reference lifetime, native control bounds, malformed result rejection before
+writes, provider failure without fallback, real HTTP/artifact/provenance owners
+and canonical runtime evidence. Providers/processes are synthetic; image bytes
+and artifact writes are real and temporary. Requested seed and reported seed
+must remain distinct, including when either is absent.
+For native image discovery also run `tests/test_mlx_image_discovery.py`: renamed
+checkpoints and new loader families must not need a name allowlist. Cover separate
+generation/edit discovery, local prerequisites and exact shards, offline/no-weight
+probe boundaries, bounded timeout/failure, checkpoint-sensitive cache invalidation
+and retry after transient failure. Native metadata/defaults are prerequisite
+evidence, not successful weight loading or model quality. Loader-specific step
+minimum rejection must occur before provider dispatch.
+Steps coverage includes omission, exact positive integer forwarding for generation
+and editing, malformed/unsupported controls rejected before dispatch, and saved
+and canonical requested/sent evidence. Run `test_session_controls.py` and the
+image-controls test in `test_frontend_codex_target.py` for schema-bound visibility,
+serialization, reset and per-model persistence; this is a Node fixture, not a
+real-browser or real-model performance test.
+For image startup changes include `test_start_model_api.py`, `test_runtime_core.py`
+and `test_startup_model_manager.py`; a direct model-manager test alone does not
+exercise the frontend's shared lifecycle admission.
+For completed-image residency release run `tests/test_mlx_image_success_cleanup.py`
+and the image/startup owners. Cover generation/edit aliases, serialization before
+cleanup, exact response preservation, cleanup errors and disconnects, non-image
+routes, failed requests/cancellation, overlapping generation/edit deliveries in
+both completion orders, native image-group release, unrelated-array retention,
+on-demand reload, launcher registration and no CLI reload. Native ASGI checks with
+synthetic tensors and the actual cache/unload owners establish allocator release,
+health/discovery and endpoint compatibility without loading weights; real-model
+memory/timing remains separate evidence. Never clear cache in Fruth's process
+and claim it freed a separate MLX backend process.
+Broaden to MLX discovery, metadata, inference-service/API, backend transport,
+runtime-status, backend-fabric, generated-image routing/canonical qualification,
+and affected Responses suites. Preserve ordinary Ollama/chat/vision/embedding
+paths. Separately qualify a real model with generation and one reference edit,
+including exact output bytes, source identity, control behavior, memory and
+failure cleanup. Do not infer native model compatibility from a mocked response.
 
 For startup dependency behavior, run `tests/test_stack_shutdown.py`. Its shell
 fixtures verify that existing environments never run pip on start/restart, even
 after requirements change, while a new environment installs once and stops on
 installation failure. All commands and environment files are isolated; tests do
 not install packages or start real models.
+
+The same module checks stop → empty model selection → web startup → TCP wait →
+browser opening. Startup's `lsof` check is required: a missing listener after
+launch fails startup and aborts restart. An existing listener is reused after
+model selection. After successful startup, `restart.sh` separately tries TCP
+reachability up to 40 times, then opens the browser even if that wait expires.
+Neither check proves HTTP/application readiness. `fruth dashboard` only warns
+about a missing listener before opening; it does not start the stack.
+
+The shell fixture records listener outcomes and intercepts the restart `python3`
+call in its exact BASH_ENV hook. Do not place this observation solely in the fake
+venv executable: the isolated runner pins its own Python shim first in PATH,
+and startup activation cannot change the restart parent's PATH. Reachable and
+exhausted waits use disposable markers, with no real socket or browser operation.
 
 1. Did it understand the request?
    → interpretive inference
@@ -243,6 +354,18 @@ instance must never be reused by this policy. The downstream join must execute
 only after accepted vision evidence. Also run the dependency-evidence API tests,
 the audio retry/regeneration tests, and the affected inference dispatch tests;
 do not use live models merely to exercise the retry mechanism.
+
+Also run `tests/test_vision_retry_continuity.py`. Exercise a failed inspection
+among three saved image siblings through freeze, explicit retry API, alternate
+dispatch, dependent join, append and cold lookup. Assert exact image bytes,
+unchanged accepted siblings and parent Ledger prefix, fulfilled output slots
+without stale errors, and retained failure provenance. Negative controls cover
+missing/ambiguous/mutated input, text-only dispatch, refusals versus quoted visible
+text, conflicting branch identities, cancelled/optional/external-input consumers,
+and saved-file obligations. Backend failures and rejected answers share one
+alternate attempt; invalid requests and a third available provider must not
+bypass it. Include affected frame/Responses, control-lineage and audio recovery
+regressions when changing the shared state carrier.
 
 For counted image handoff, explicit exhausted-pool retry, and frame-scoped recovery evidence, run:
 
@@ -436,6 +559,15 @@ campaign copies and source/script preservation, internal report links, archive/c
 exclusions, insufficient space, changing sources, copy verification and move failure
 before cleanup. A real checkout preview is a separate explicit read-only operation.
 
+For storage-location changes include `tests/test_storage_locations.py`, the two
+maintenance modules, `tests/test_self_attack_windows.py`, the affected command
+tests in `tests/test_self_attack.py`, and `tests/test_release_archive.py`. Cover
+missing/disabled write targets, duplicate names, exact moved-reference containment,
+symlink/path-pattern cache exclusions, configuration retention and verified
+external moves. Use synthetic external directories; real volume operations are
+separate. Run pure routes through the portable guarded runner. Maintained native maintenance shell fixtures run through the scoped routes below,
+retaining their listener/Chrome stubs and disposable checkout roots.
+
 Target/mode review also covers absent/current/legacy targets, archive coverage for
 root-level `outputs`, every protected-copy failure before runtime movement,
 protected learning/reset-archive cache exclusions, planned dry-run summaries,
@@ -521,6 +653,55 @@ startup and record the effective environment. Complete the selected bounded
 family and affected routes before one fresh source-matching full offline fake gate
 and native checker.
 
+For control-state evidence preservation,
+run `tests/test_late_cancel_c8_correction.py` and the timing, reduced endpoint and
+oracle-sensitivity controls in `tests/test_late_cancel_lineage_hypothesis.py`.
+The latter retains a historical failure-blob entrypoint and prefix-reduction
+expectations unchanged: use the correction module's exact replay wrapper and
+passing prefix checks on corrected source. Run its `TestLateCancelLineage`
+separately for bounded generation (up to 32 examples / 32 steps / 600 seconds).
+Cover both duty orders and image reply representations, cancellation before
+dispatch and during the provider callback, immediate response, persisted frame,
+recovery before callback return, final worker state and repeated callbacks.
+Retain successful execution/reuse, rejected post-acceptance controls, and shared
+cancel/waive/supersede branch/batch/all controls. Keep original witnesses and
+independent oracles unchanged. Include relevant C1–C7, eligibility, endpoint and
+frame/recovery routes under disposable I/O guards; only after these and the
+selected family pass run one fresh matching full offline gate and native checker.
+
+For control/worker overlap, run `tests/test_late_fill_c9_correction.py` focused
+cases before its separately selected `test_bounded_corrected_control_worker_schedules`
+(32 examples, 32 decisions, 600-second external deadline). It reuses the retained
+study's inputs and semantic oracle in `test_late_fill_control_overlap_hypothesis.py`
+and `test_late_fill_control_overlap_regression.py`. Historical expected-red
+diagnostic wrappers remain unchanged and are not corrected-source pass criteria.
+The scheduling adapter observes but does not pause seams now inside a production
+mutation section; it never disables synchronization. Check both duty orders,
+both winning orders, intermediate durable frames/acknowledgements/recovery,
+diagnostic physical outputs, sibling evidence, serial/no-control success, oracle
+sensitivity and claim/thread/lock cleanup. Include the C1–C8 routes above,
+eligibility/progress, Responses API, frame/recovery/persistence and parent-CAS
+checks. A timeout or fixture failure is not correctness evidence. A distinct
+counterexample stops fix expansion and withholds the matching fake gate.
+
+For guarded C9 pending continuation, first run
+`tests/test_c9_pending_handoff_contract.py` with isolated finite fake providers.
+These controls cross the actual scheduler, claim, child entry and provider path;
+a schedule record or Flask `TESTING` shortcut is not execution proof. Preserve
+`test_c9_continuation_hypothesis.py`'s historical no-context deterministic controls
+unchanged (select `test_positive_orders` and `test_independent_oracle_sensitivity`).
+Include the C9 correction's deterministic cases without rerunning its generated
+family, plus the affected routes above, multi-materialization, exact dependency,
+availability, saved-file-consumer, retry and telemetry checks. Select the new
+`tests/test_c9_pending_handoff_hypothesis.py` separately for one campaign: at most
+32 examples, 32 reached transitions each, 600-second external deadline. Record
+actual provider/child execution, claims, frames, passive reads and transition
+counts independently. Preserve/replay the first distinct counterexample with
+bounded reduction; stop scope expansion and withhold the full gate if one appears.
+Only after prerequisites pass run one fresh matching native offline fake gate
+and source checker. Finite availability controls establish conditional progress,
+not crash recovery or a total waiting lifetime.
+
 For the bounded initial Late Fill eligibility extraction, start with
 `tests/test_late_fill_initial_eligibility.py`, progress/telemetry, dependency,
 terminal-state and saved-file-consumer checks. The characterization uses the
@@ -537,6 +718,196 @@ lineage/binding and affected frame/recovery/Responses/E2E routes, followed by on
 fresh matching full offline fake gate and native source checker. Retain stable
 source, actual counts, isolation, deadlines, storage and completion receipts in
 the task's private implementation plan.
+
+## Post-0.1.6 research test selection
+
+The completed control/continuation and persistence studies supply scoped evidence,
+not an automatically integrated default test run. Use explicit selections in
+separate disposable interpreters with network/production I/O denied before runtime
+imports. A Flask test client and temporary frames alone do not establish isolation.
+Do not run broad collection in the development checkout to discover which guards
+are missing: collection imports runtime/test modules.
+
+| Selection | Role and required execution boundary |
+| --- | --- |
+| `tests/test_late_cancel_c8_correction.py` | Corrected-source replay/prefix and shared-control regressions; use the C8 route above. Historical blob/reducer expectations in the original study are discovery evidence, not a blanket passing selector. |
+| `tests/test_late_fill_c9_correction.py` | Deterministic overlap controls first; select `test_bounded_corrected_control_worker_schedules` separately under its declared campaign budget. Preserve original overlap diagnostic wrappers and the production lock. |
+| `tests/test_c9_pending_handoff_contract.py` | Real scheduler/claim/child controls; include the historical no-context controls named above. Select `tests/test_c9_pending_handoff_hypothesis.py` separately for bounded generation. |
+| `tests/test_persistence_trace_adapter.py` | Cheap pure-data/coordinator tests; no Fruth scenario execution. |
+| `tests/test_persistence_recovery_study.py::test_deterministic_composition` | Seven composition controls through the guarded child and native storage owners, in an isolated runtime process. |
+| `tests/test_persistence_recovery_campaign.py::test_one_bounded_immutable_corpus` | Explicit campaign only: 6 labeled seeds + 26 generated traces, at most 32 actual scenarios / 32 transitions each / 600 seconds. Seal before importing/constructing runtime fixtures; reserve execution starts independently. |
+| `tests/test_cold_process_recovery.py::test_cold_profile_is_pure_and_bounded` | Run in a separate interpreter whose collection has not imported any `fruth_*` module; the assertion intentionally checks process purity. |
+| `tests/test_cold_process_recovery.py::test_deterministic_cold_recovery` | Ten storage/termination seam controls with real exec-started writers/readers; preserve the success, missing-CAS, corrupt-only and restored positives. |
+| `tests/test_cold_process_recovery.py::test_one_cold_campaign` | Explicit campaign only: 10 labeled seeds + 22 generated traces, at most 32 scenarios / 32 transitions each / 600 seconds; fresh readers after writer exit, same-path Index variants and journaled exits. |
+
+The persistence/cold campaign entrypoints require a new, exclusive
+`FRUTH_HYPOTHESIS_EVIDENCE_DIR`; do not reuse retained labels or overwrite corpus,
+journal or coordinator files. Cold children also require `FRUTH_COLD_PLAN` (the
+isolated writable evidence root) and `FRUTH_COLD_PRODUCTION` (the source checkout
+whose production paths must be denied), plus isolated `TMPDIR`. These names are
+test-runner inputs, not runtime product knobs. A parent guard must admit only the
+exact writer/reader subprocess command, source and environment; children install
+network/process/production I/O guards before runtime imports. Readers must not
+receive or read writer receipts/expectations, acquire claims, schedule, append or
+repair substrate bytes. Selected SIGKILL seams need pipe handshakes, bounded waits
+and final child reaping; they do not simulate power loss.
+
+Keep deterministic controls, manually seeded entries, Hypothesis examples, actual
+scenario starts, transitions and process counts separate. The cold profile's seed
+and limits come from its sealed corpus/adapter, not generic legacy lineage-runner
+fields. Receiptless readable history does not attest the writer's fsync outcome.
+The original stateful persistence campaign failed in budget accounting; its
+passing trace assertions do not make that campaign green. The corrected adapter
+must retain its independent execution cap and stop-on-first-failure behavior.
+
+### Portable selection and isolation
+
+`tests/conftest.py` loads [test_selection.py](../scripts/test_selection.py).
+The default category is `regression`. Generated campaign entrypoints are
+`research`; retained original failure-blob/reduction and old overlap-scheduling
+entrypoints are `historical`. These categories are disjoint. Deterministic tests
+inside research modules remain regressions, including binding/lineage controls,
+the historical no-context continuation controls, corrected C8/C9 wrappers,
+persistence composition and cold recovery. Original overlap scheduling can pause
+inside the corrected runtime lock; use its maintained C9 wrappers for current
+pass criteria. Neither exclusion nor historical opt-in changes assertions or
+turns failures into xfail/skip. New Hypothesis-decorated entrypoints default to
+research until their intended routing is reviewed; pure adapter tests retain
+their deterministic outer test entrypoints.
+
+Use an existing Python environment with the project dependencies. Create one
+aggregate evidence directory, then use a **new job path for every invocation**:
+
+```sh
+mkdir -p /absolute/disposable-test-evidence
+python -B scripts/run_tests.py run --storage-root /absolute/disposable-test-evidence --output /absolute/disposable-test-evidence/ordinary-collection --collect-only --detach
+python -B scripts/run_tests.py monitor /absolute/disposable-test-evidence --watch
+```
+
+The runner's source defaults to its containing checkout; `--source` can identify
+another source tree. It uses the release owner's allowlist and physical copies,
+never private `plans/`, production configuration, runtime state or caches. The
+registry is synthetic and empty. Support scripts, conftest and cold/trace helpers
+are required for new release selections; existing archive verification remains
+compatible. No package installation or service operation is performed.
+
+A focused maintained route, including purity and real fresh-process recovery:
+
+```sh
+python -B scripts/run_tests.py run --storage-root /absolute/disposable-test-evidence --output /absolute/disposable-test-evidence/controls --seconds 600 --detach tests/test_persistence_trace_adapter.py tests/test_cold_process_recovery.py tests/test_persistence_recovery_study.py tests/test_c9_pending_handoff_contract.py tests/test_late_fill_c9_correction.py
+```
+
+Campaigns in these modules are excluded by default. The collection worker writes
+the complete selected/excluded node lists with category and execution group to
+`selection.json`; its log prints excluded identities and counts. Counts cover the
+requested selectors, not uncollected repository tests.
+Only relative test paths and exact node selectors are accepted; arbitrary pytest
+flags/plugins are not forwarded. Use collection output to choose exact nodes.
+After successful collection,
+the supervisor starts new OS interpreters for the pure adapter group, cold profile
+group and remaining selected tests. A worker recollects only its exact selectors.
+The pure assertions remain unchanged; deleting modules from `sys.modules` is never
+used as a substitute. Plain pytest execution reports a failure with the runner
+route if those fresh-process/evidence requirements are absent.
+
+Explicit opt-in selection can be inspected without executing a campaign:
+
+```sh
+python -B scripts/run_tests.py run --storage-root /absolute/disposable-test-evidence --output /absolute/disposable-test-evidence/research-selection --mode research --collect-only --detach tests/test_cold_process_recovery.py tests/test_persistence_recovery_campaign.py
+python -B scripts/run_tests.py run --storage-root /absolute/disposable-test-evidence --output /absolute/disposable-test-evidence/historical-selection --mode historical --collect-only --detach tests/test_late_cancel_lineage_hypothesis.py tests/test_late_fill_control_overlap_regression.py
+```
+
+To execute an authorized campaign, omit `--collect-only` and supply exactly one
+campaign node, such as
+`tests/test_persistence_recovery_campaign.py::test_one_bounded_immutable_corpus`,
+with `--mode research`. Historical execution similarly requires `--mode historical`
+and explicit selectors; its original expectations may fail on corrected source.
+Empty selection remains pytest exit 5, not success. Research/historical options
+without the pre-import runner context fail before collection. These instructions
+do not authorize campaigns, historical reruns or a full conformance gate.
+
+The public [isolation helper](../scripts/test_isolation.py) preserves the study
+guard design: deny network, arbitrary subprocesses, production I/O and writes
+outside the job before pytest/runtime imports. The exact existing cold
+writer/reader executable, script, role, input/output paths, working directory and
+environment remain admitted. Cold children retain their own pre-import guards,
+receipt/expectation exclusion, handshake timeouts and `finally` reaping.
+
+[Maintained process routes](../scripts/test_process_routes.py) additionally admit:
+
+- Node `-e` programs drawn from the selected staged frontend test source, with
+  fixed AFM metadata substitutions and the reference-selection literal wrapper.
+  Only that wrapper accepts one JSON object argument. Cwd is staged source;
+  executable resolution is pinned and inherited Node options are rejected.
+- Disposable cleanup/stack shell fixtures with exact staged entrypoints, reviewed
+  argument vocabularies, literal lifecycle hooks and fixture executable contents.
+  Environment differences are explicit dummy credentials, bounded fixture controls
+  and physical temporary paths. Public dashboard/version display and the exact
+  startup credential-capture prefix have separate routes.
+- Exact Python CLI argument schemas for frame attestation, readiness summary,
+  learning-policy/evaluation fixtures, temporary learning reset, operator script
+  entrypoints and monitor `--help`; two fixed import/version snippets and the
+  existing short deadline fixture. Paths bind to staged owners or phase temporary
+  roots, not production defaults.
+- `/bin/sleep 30` for owned native controls, and exact `ps -ww -p PID -o lstart=
+  -o command=` only while that task-created sleep handle remains live. `ps` is an
+  Apple setuid platform binary: this narrowly admitted read-only observation is
+  **not OS-sandboxed**. It receives the production owner's sanitized C locale.
+
+Other new children require macOS `sandbox-exec`/Seatbelt; unsupported platforms or
+blocked sandbox initialization fail closed. Python audit hooks do not sandbox
+native children. The native profile denies network, content reads outside staged
+source/interpreter/system dependencies and phase temporary roots, writes outside
+those temporary roots, unlisted executable paths, and signals outside the child's
+sandbox. Root-directory/metadata reads and inherited stdio descriptors support
+native startup. Bash display commands use disposable cwd for here-documents;
+Node uses `OPENSSL_CONF=/dev/null`. This is containment for trusted maintained
+fixtures, not a hostile-Python security boundary. An outer sandbox may require
+approved host execution to install the child sandbox; there is no unguarded fallback.
+
+Each admitted child records argv, environment, cwd, executable/source/fixture
+hashes, containment profile, PID, start and reaped exit in `processes.jsonl`.
+Children inherit the supervised worker group, cannot request new sessions or
+arbitrary launch options, and have a named 30-second child watchdog in addition to
+the job deadline. Existing shorter subprocess timeouts remain effective. Leftover
+children are terminated/reaped at item teardown. Rejected launches (even caught by
+a test), launch errors, watchdog expiry and teardown cleanup make the job fail;
+passing pytest assertions alone do not establish isolation success. Expected
+admission negatives call the validator directly; actual native containment controls
+assert denial from inside a bounded child. Native OS denial logging is not claimed
+as a complete syscall trace. Browser/network fixtures and arbitrary commands remain
+outside these routes.
+
+Three backend metadata fixtures explicitly mock incidental host module/help probes.
+Their hardcoded or empty fake binaries must not acquire native execution authority.
+Packaging requires the route helper in `TEST_RUNNER_FILES`; existing archive
+verification remains compatible. Run `tests/test_release_archive.py` after changes.
+
+Inherited runtime credentials, policy knobs, plugin paths and study budget
+overrides are removed. Test defaults retain their named examples/step limits;
+cold/persistence seeds and 32-scenario/32-transition limits remain in their
+original adapters. `--hashseed 0` (default) or `1` applies at interpreter startup.
+No generic runner field substitutes for a sealed corpus budget.
+
+Detached supervision uses the established new-session/no-terminal process model,
+with a wall deadline (default and maximum 600 seconds, shared across collection
+and execution), five-second interrupt and termination graces, then kill/reap.
+The supervisor measures the entire `--storage-root`, including previous jobs,
+with a 10 GiB cap and a graceful stop at 9 GiB. Keep all task output beneath that
+root. Source identities, input selection, PIDs/session/process groups, logs,
+per-worker selection/JUnit/receipts, child journals and final `completion.json`
+are retained. A killed worker, missing receipt, source drift, isolation violation
+or deadline/storage stop cannot report PASS. Monitoring reads these records and
+does not resume or terminate work. `--detach` returns after launch; only a final
+receipt confirms completion. Reusing an output path is rejected; do not delete
+failed evidence to retry. Monitor and review an existing job before starting
+another. Native detached execution is subject to the host's process lifetime;
+closing the client is not itself proof of survival.
+
+This integrated route does not establish a full repository/release pass. Reconcile
+the applicable release tests, external-tool routes, package/static checks and
+native fake gate against an unchanged candidate before release. Historical
+research receipts retain their original source maps and scope.
 
 ## Response-Ledger Lookup And Test Isolation
 

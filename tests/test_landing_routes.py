@@ -272,7 +272,7 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
     assert 'class="proof-cadence"' not in html
     assert (
         'https://github.com/fl0ri0/fruth/blob/HEAD/examples/reference-runs/'
-        '2026-10-10-echoes-of-the-pass/README.md'
+        '2026-10-18-echoes-of-the-pass/README.md'
     ) in html
     assert 'Arena sends one text prompt to two running local chat models' not in html
     assert 'compatible link-checked bundles' in html
@@ -634,7 +634,8 @@ def test_landing_styles_are_local_responsive_and_motion_safe():
     assert 'background: #151a17;' in install_terminal_rule
     assert 'scrollbar-gutter: stable;' in css
     assert '.install-commands code {' in css
-    assert 'min-block-size: 5.55em;' in css
+    install_code_rule = css.split('.install-commands code {', 1)[1].split('}', 1)[0]
+    assert 'min-block-size:' not in install_code_rule
     assert '.install {' not in css
     assert '.install-copy-button:focus-visible {' in css
     assert 'min-width: 2.25rem;' in css

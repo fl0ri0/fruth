@@ -6,10 +6,16 @@ from fruth_services.events import observe_call
 
 import logging
 import re
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Optional
 
 from fruth_core.backend_fabric import build_backend_fabric_snapshot
+from fruth_core.embeddings import (
+    EMBEDDING_MEDIA_MAX_BYTES, EMBEDDING_MEDIA_MAX_ITEMS,
+    encode_embedding_inputs, media_embedding_input,
+)
+from fruth_core.file_inputs import resolve_existing_local_path
 from helpers.model_capabilities import (
     CAPABILITY_CHAT,
     CAPABILITY_IMAGE_GENERATION,
@@ -17,6 +23,7 @@ from helpers.model_capabilities import (
     CAPABILITY_TEXT_TO_SPEECH,
     CAPABILITY_VISION_ANALYSIS,
     build_feature_contract,
+    embedding_input_modalities,
     infer_capability,
     infer_supported_capabilities,
     normalize_backend,
@@ -53,6 +60,7 @@ from fruth_inference.router import (
     build_route_memory_scope,
     maybe_apply_embedding_route_bias,
     select_embedding_instance,
+    validate_embedding_batch,
     validate_route_decision,
 )
 from fruth_services.chat_history import read_chat_history
@@ -1789,6 +1797,9 @@ class InferenceRouteRuntimeOwner:
             'runtime_constraints': self._compact_string_list(metadata.get('runtime_constraints')),
             'runtime_knobs': self._compact_string_list(metadata.get('runtime_knobs')),
             'native_endpoint_paths': self._compact_string_list(metadata.get('native_endpoint_paths')),
+            'embedding_input_format': metadata.get('embedding_input_format'),
+            'embedding_input_modalities': self._compact_string_list(metadata.get('embedding_input_modalities')),
+            'server_version': metadata.get('server_version'),
             'lazy_loads_model': bool(metadata.get('lazy_loads_model')) if 'lazy_loads_model' in metadata else None,
             'single_loaded_model': bool(metadata.get('single_loaded_model')) if 'single_loaded_model' in metadata else None,
             'supports_unload': bool(metadata.get('supports_unload')) if 'supports_unload' in metadata else None,
@@ -2341,7 +2352,7 @@ class InferenceRouteRuntimeOwner:
     def _embedding_endpoint_url(self, instance: dict[str, Any], target_port: int, transport: str) -> str:
         routing_summary = instance.get('routing_summary') if isinstance(instance.get('routing_summary'), dict) else {}
         backend_metadata = routing_summary.get('backend_metadata') if isinstance(routing_summary.get('backend_metadata'), dict) else {}
-        backend_runtime = routing_summary.get('backend_runtime') if isinstance(routing_summary, dict) else {}
+        backend_runtime = routing_summary.get('backend_runtime') if isinstance(routing_summary.get('backend_runtime'), dict) else {}
         native_base_url = str(backend_runtime.get('native_base_url') or '').strip() or f'http://127.0.0.1:{target_port}'
         native_base_url = native_base_url.rstrip('/')
 
@@ -2369,28 +2380,24 @@ class InferenceRouteRuntimeOwner:
         if not isinstance(payload, dict):
             raise ValueError('Embedding response was not a JSON object.')
         embeddings = payload.get('embeddings')
-        if isinstance(embeddings, list) and embeddings and all(isinstance(item, list) for item in embeddings):
-            return embeddings
+        if 'embeddings' in payload:
+            return validate_embedding_batch(embeddings)
         single_embedding = payload.get('embedding')
-        if isinstance(single_embedding, list):
-            return [single_embedding]
+        if 'embedding' in payload:
+            return validate_embedding_batch([single_embedding])
         if transport == 'openai_embeddings':
             data = payload.get('data')
             if isinstance(data, list):
                 ordered_rows = []
-                for index, item in enumerate(data):
-                    if not isinstance(item, dict):
-                        continue
-                    embedding = item.get('embedding')
-                    if not isinstance(embedding, list):
-                        continue
-                    try:
-                        sort_index = int(item.get('index'))
-                    except (TypeError, ValueError):
-                        sort_index = index
-                    ordered_rows.append((sort_index, embedding))
+                for item in data:
+                    if not isinstance(item, dict) or type(item.get('index')) is not int:
+                        raise ValueError('Embedding response requires an integer index for every result.')
+                    ordered_rows.append((item['index'], item.get('embedding')))
                 if ordered_rows:
-                    return [embedding for _index, embedding in sorted(ordered_rows, key=lambda row: row[0])]
+                    ordered_rows.sort(key=lambda row: row[0])
+                    if [index for index, _ in ordered_rows] != list(range(len(ordered_rows))):
+                        raise ValueError('Embedding response indices must be unique and contiguous from zero.')
+                    return validate_embedding_batch([embedding for _index, embedding in ordered_rows])
         raise ValueError('Embedding response did not include embeddings.')
 
     def _execute_embedding_backend_request(
@@ -2399,7 +2406,7 @@ class InferenceRouteRuntimeOwner:
         target_port: int,
         model_name: str,
         backend: str,
-        inputs: list[str],
+        inputs: list[str | dict[str, str]],
         request_model_override: Optional[str] = None,
         embedding_transport: Optional[str] = None,
         instance: Optional[dict[str, Any]] = None,
@@ -2409,16 +2416,77 @@ class InferenceRouteRuntimeOwner:
 
         normalized_backend = normalize_backend(backend)
         transport = str(embedding_transport or '').strip() or 'ollama_api_embed'
+        native_inputs, media = encode_embedding_inputs(
+            inputs, backend=normalized_backend, transport=transport, instance=instance or {},
+        )
+        request_model = request_model_override or model_name
+        payload = {'model': request_model, 'input': native_inputs}
+        if media and transport == 'ollama_api_embed':
+            payload['truncate'] = False
         response = requests_post(
             self._embedding_endpoint_url(instance or {}, target_port, transport),
-            json={
-                'model': request_model_override or model_name,
-                'input': inputs,
-            },
+            json=payload,
             timeout=max(30, chat_timeout_seconds(model_name, normalized_backend, CAPABILITY_CHAT)),
         )
         response.raise_for_status()
-        return self._parse_embedding_backend_response(response.json(), transport)
+        result = response.json()
+        reported_model = result.get('model') if isinstance(result, dict) else None
+        if reported_model and reported_model not in {request_model, model_name}:
+            raise ValueError('Embedding response reported a different model identity.')
+        return validate_embedding_batch(
+            self._parse_embedding_backend_response(result, transport), len(inputs),
+        )
+
+    def _embedding_media_inputs(self, route_context: dict, instance: dict, *, upload=None) -> tuple[list, dict]:
+        """Read only current caller-selected media; keep bytes out of route context."""
+        attachment = route_context.get('request_attachment') or {}
+        sources = []
+        kind = attachment.get('file_kind')
+        if kind in {'image', 'audio'} and attachment.get('has_explicit_file'):
+            sources.append((kind, attachment.get('file_path'), upload, False))
+        references = route_context.get('selected_reference_artifacts')
+        if not isinstance(references, list):
+            references = [route_context.get('selected_reference_artifact')]
+        for reference in references:
+            if isinstance(reference, dict) and reference.get('type') in {'image', 'audio'} and reference.get('path'):
+                sources.append((reference['type'], reference['path'], None, True))
+        if not sources:
+            return [], {'requested': [], 'attached': False, 'reason': 'no_current_media'}
+        requested = sorted({item[0] for item in sources})
+        status = {'requested': requested, 'attached': False}
+        allowed = embedding_input_modalities(instance.get('backend'), instance)
+        if any(kind not in allowed for kind in requested):
+            return [], {**status, 'reason': 'unsupported_media', 'supported': allowed}
+        try:
+            if len(sources) > EMBEDDING_MEDIA_MAX_ITEMS:
+                raise ValueError('Embedding media exceeds the 8 item helper budget.')
+            inputs, total_bytes = [], 0
+            for kind, path, current_upload, saved_reference in sources:
+                if current_upload is not None:
+                    stream = current_upload.stream
+                    position = stream.tell()
+                    try:
+                        stream.seek(0)
+                        raw = stream.read(EMBEDDING_MEDIA_MAX_BYTES - total_bytes + 1)
+                    finally:
+                        stream.seek(position)
+                else:
+                    resolved = (self._hook('resolve_saved_file_input_path')(path) if saved_reference
+                                else resolve_existing_local_path(path))
+                    if not resolved or not Path(resolved).is_file():
+                        raise ValueError('Selected embedding media is not an available file.')
+                    with Path(resolved).open('rb') as stream:
+                        raw = stream.read(EMBEDDING_MEDIA_MAX_BYTES - total_bytes + 1)
+                total_bytes += len(raw)
+                if total_bytes > EMBEDDING_MEDIA_MAX_BYTES:
+                    raise ValueError('Embedding media exceeds the 32 MiB helper budget.')
+                inputs.append(media_embedding_input(kind, raw))
+            _, evidence = encode_embedding_inputs(
+                inputs, backend=instance['backend'], transport=instance['embedding_transport'], instance=instance,
+            )
+            return inputs, {**status, 'reason': 'prepared', 'inputs': evidence}
+        except Exception as exc:  # Optional helper work must not consume or replace the original input.
+            return [], {**status, 'reason': 'media_input_failed', 'error': str(exc)}
 
     def attach_embedding_hints_to_route_context(
         self,
@@ -2426,10 +2494,13 @@ class InferenceRouteRuntimeOwner:
         *,
         runtime_manifest: dict[str, Any],
         instances: list[dict[str, Any]],
+        upload=None,
     ) -> None:
         execute_embedding_backend_request = self._hook('execute_embedding_backend_request')
 
         runtime_payload = route_context.setdefault('runtime', {})
+        # A failed refresh must not leave another model/batch's old hints active.
+        runtime_payload.pop('embedding_hints', None)
         inference_preferences = runtime_payload.get('inference_preferences') if isinstance(runtime_payload.get('inference_preferences'), dict) else {}
         preferred_embedding_helper = (
             inference_preferences.get('embedding_helper')
@@ -2476,13 +2547,18 @@ class InferenceRouteRuntimeOwner:
         if not candidates:
             helper_status['reason'] = 'no_route_candidates'
             return
+        media_inputs, media_status = self._embedding_media_inputs(route_context, embedding_instance, upload=upload)
+        for evidence in media_status.get('inputs', []):
+            evidence['index'] += len(candidates) + 1
+        helper_status['input_modalities'] = embedding_input_modalities(embedding_instance['backend'], embedding_instance)
+        helper_status['media'] = media_status
         try:
             helper_status['semantic_compute_performed'] = True
             vectors = execute_embedding_backend_request(
                 target_port=int(embedding_instance['port']),
                 model_name=str(embedding_instance.get('model') or ''),
                 backend=normalize_backend(embedding_instance.get('backend')),
-                inputs=[prompt, *[str(candidate.get('text') or '') for candidate in candidates]],
+                inputs=[prompt, *[str(candidate.get('text') or '') for candidate in candidates], *media_inputs],
                 request_model_override=str(embedding_instance.get('request_model') or '').strip() or None,
                 embedding_transport=str(embedding_instance.get('embedding_transport') or '').strip() or None,
                 instance=embedding_instance,
@@ -2493,17 +2569,18 @@ class InferenceRouteRuntimeOwner:
             helper_status['error'] = str(exc)
             return
 
-        if len(vectors) != len(candidates) + 1:
+        if len(vectors) != len(candidates) + 1 + len(media_inputs):
             logging.info(
                 'interpretive inference embedding hint fallback: expected %s vectors, received %s.',
-                len(candidates) + 1,
+                len(candidates) + 1 + len(media_inputs),
                 len(vectors),
             )
             helper_status['reason'] = 'helper_response_mismatch'
             helper_status['received_vectors'] = len(vectors)
             return
 
-        hints = build_embedding_hints_from_vectors(vectors[0], candidates, vectors[1:])
+        candidate_vectors = vectors[1:len(candidates) + 1]
+        hints = build_embedding_hints_from_vectors(vectors[0], candidates, candidate_vectors)
         if not hints:
             helper_status['reason'] = 'no_embedding_hints'
             return
@@ -2513,6 +2590,15 @@ class InferenceRouteRuntimeOwner:
             'embedding_instance_id': str(embedding_instance.get('instance_id') or '').strip() or None,
             'embedding_model': str(embedding_instance.get('model') or '').strip() or None,
         }
+        if media_inputs:
+            # Existing deterministic text bias uses only the top-level text
+            # scores. Cross-modal scores are separate, explicitly advisory.
+            runtime_payload['embedding_hints']['media'] = [
+                {**evidence, 'advisory_only': True,
+                 'similarities': build_embedding_hints_from_vectors(vector, candidates, candidate_vectors)}
+                for evidence, vector in zip(media_status['inputs'], vectors[len(candidates) + 1:])
+            ]
+            media_status.update(attached=True, reason='attached')
         helper_status['attached'] = True
         helper_status['reason'] = 'attached'
 
@@ -3116,6 +3202,7 @@ class InferenceRouteRuntimeOwner:
                 route_context,
                 runtime_manifest=runtime_manifest,
                 instances=instances,
+                upload=upload,
             )
             embedding_signals_attached = True
 
@@ -3126,6 +3213,7 @@ class InferenceRouteRuntimeOwner:
                     route_context,
                     runtime_manifest=runtime_manifest,
                     instances=instances,
+                    upload=upload,
                 )
                 embedding_signals_attached = True
             embedding_bias_route = maybe_apply_embedding_route_bias(

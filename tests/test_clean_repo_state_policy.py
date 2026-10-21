@@ -31,6 +31,7 @@ def make_isolated_cleanup_repo(
     cleanup_script = repo_root / 'clean_repo_state.sh'
     shutil.copy2(REPO_ROOT / 'clean_repo_state.sh', cleanup_script)
     shutil.copy2(REPO_ROOT / 'scripts' / 'maintenance_archive.py', scripts_dir)
+    shutil.copy2(REPO_ROOT / 'scripts' / 'storage_locations.py', scripts_dir)
     (repo_root / 'fruth').write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
     (repo_root / 'fruth').chmod(0o755)
     (repo_root / 'stop_multi_models.sh').write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
@@ -197,6 +198,7 @@ def test_clean_fail_closes_response_frames_when_retention_is_partial(tmp_path: P
     fake_bin.mkdir()
     cleanup_script = repo_root / 'clean_repo_state.sh'
     shutil.copy2(REPO_ROOT / 'clean_repo_state.sh', cleanup_script)
+    shutil.copy2(REPO_ROOT / 'scripts' / 'storage_locations.py', scripts_dir)
     collector = scripts_dir / 'collect_self_learning_retention_roots.py'
     collector.write_text(
         """import sys

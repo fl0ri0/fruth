@@ -28,6 +28,15 @@ state → structure → decision → execution → state
 - replay works
 - pending work exists
 - outputs evolve
+- C9 rejection discards the stale candidate; a live claimed worker may spend one
+  guarded handoff through existing Late Fill to continue only exact admitted,
+  never-submitted pending work under the same execution identity
+- keep admission, current eligibility and permission to acquire/dispatch a worker
+  distinct; retain sibling evidence and cancellations, and recheck exact local
+  contracts/dependencies at child entry, dispatch and acceptance
+- release the old claim before scheduling; failed submission cleans up its own
+  claim, duplicate delivery is inert, and passive recovery cannot recreate the
+  private handoff context (see [Late Fill](RESPONSES_CONTRACT.md#late-fill))
 
 ---
 

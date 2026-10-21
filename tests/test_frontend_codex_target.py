@@ -37,6 +37,67 @@ def _css_rule(source: str, selector: str) -> str:
     return match.group("body")
 
 
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is required for frontend VM tests")
+def test_image_steps_serialize_only_for_supported_target_and_persist_per_model():
+    result = _run_node(
+        r"""
+        const fs = require('fs');
+        const vm = require('vm');
+        const html = fs.readFileSync('fruth_webUI.html', 'utf8');
+        const context = {
+          console, elements: {}, state: { settings: {}, settingsGlobal: {}, settingsByModel: {} },
+          axios: { interceptors: { request: { use: () => {} } } },
+          makeModelKey: (model, backend) => `${backend}:${model}`,
+          getCurrentSettingsOwnerInstance: () => context.currentInstance,
+        };
+        vm.createContext(context);
+        for (const name of ['settingsDefaults', 'SESSION_CONTROL_BINDINGS']) {
+          const start = html.indexOf(`const ${name} = {`);
+          const end = html.indexOf('\n        };', start) + '\n        };'.length;
+          if (start < 0 || end < start) throw new Error(`Missing ${name}`);
+          vm.runInContext(html.slice(start, end), context);
+        }
+        vm.runInContext(fs.readFileSync('static/ui/settings-history.js', 'utf8'), context);
+        vm.runInContext(fs.readFileSync('static/ui/request-transport.js', 'utf8'), context);
+        vm.runInContext(`
+          const image = {
+            model: 'qwen-image', backend: 'mlx',
+            session_controls: { enabled: true, fields: { image_steps: { visible: true, kind: 'number' } } },
+          };
+          const other = { ...image, model: 'flux' };
+          const unsupported = { ...image, session_controls: { enabled: true, fields: {} } };
+          state.settings = sanitizeSettingsObject({});
+          const omitted = buildSessionControlRequestFields(image);
+          currentInstance = image;
+          state.settings = sanitizeSettingsObject({ imageSteps: '20' });
+          persistSettingsForCurrentInstance();
+          const explicit = buildSessionControlRequestFields(image);
+          const hidden = buildSessionControlRequestFields(unsupported);
+          const disabled = buildSessionControlRequestFields({ ...image,
+            session_controls: { enabled: true, fields: { image_steps: { visible: false } } } });
+          currentInstance = other;
+          state.settings = sanitizeSettingsObject({ imageSteps: 4 });
+          persistSettingsForCurrentInstance();
+          currentInstance = image;
+          loadSettingsForInstance(image);
+          const restored = buildSessionControlRequestFields(image);
+          state.settings = sanitizeSettingsObject({ imageSteps: '' });
+          const reset = buildSessionControlRequestFields(image);
+          const invalid = ['0', '-1', '1.5', 'bad'].map(value => {
+            state.settings = sanitizeSettingsObject({ imageSteps: value });
+            return buildSessionControlRequestFields(image).steps;
+          });
+          globalThis.result = { omitted, explicit, hidden, disabled, restored, reset, invalid };
+        `, context);
+        console.log(JSON.stringify(context.result));
+        """
+    )
+    assert result == {
+        'omitted': {}, 'explicit': {'steps': 20}, 'hidden': {}, 'disabled': {},
+        'restored': {'steps': 20}, 'reset': {}, 'invalid': ['0', '-1', '1.5', 'bad'],
+    }
+
+
 def test_codex_connection_is_a_compact_visible_external_card():
     html = WEB_UI_PATH.read_text()
     css = UI_CSS_PATH.read_text()

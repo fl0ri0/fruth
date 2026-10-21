@@ -3350,6 +3350,12 @@ def build_canonical_response_payload(
         if isinstance(route_runtime.get('route_traits'), dict) and route_runtime.get('route_traits'):
             response_payload['route_traits'] = route_runtime.get('route_traits')
     vision_evidence = payload.get('vision_input_evidence')
+    image_execution = payload.get('image_execution')
+    if isinstance(image_execution, dict) and image_execution:
+        response_payload['runtime'] = {
+            **response_payload.get('runtime', {}),
+            'image_execution': dict(image_execution),
+        }
     if isinstance(vision_evidence, dict) and vision_evidence:
         # Keep dispatch evidence in the persisted runtime snapshot. Provider text
         # alone cannot establish that the selected instance received an image.
@@ -3498,6 +3504,7 @@ def translate_responses_payload_to_infer_payload(payload: dict) -> dict:
         'width',
         'height',
         'seed',
+        'steps',
         'reasoning_effort',
         'execution_contract',
         'workload_task_ref',

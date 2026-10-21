@@ -5684,6 +5684,7 @@ class ResponsesRequestRuntimeOwner:
                 for index, branch in enumerate(merged_branches)
             }
             promoted_terminal_branches: list[dict[str, Any]] = []
+            replaced_contract_bindings: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
             for branch in terminal_materialization_branches:
                 identity = _projection_identity(branch)
                 existing_index = branch_index_by_identity.get(identity)
@@ -5704,6 +5705,9 @@ class ResponsesRequestRuntimeOwner:
                         # correctly reject the reserved original phase.
                         merged_branches[existing_index] = branch
                         promoted_terminal_branches.append(branch)
+                        prior_contract_id = str(existing_branch.get('repair_contract_id') or '').strip()
+                        if prior_contract_id:
+                            replaced_contract_bindings[prior_contract_id] = (existing_branch, branch)
                     continue
                 branch_index_by_identity[identity] = len(merged_branches)
                 merged_branches.append(branch)
@@ -5722,6 +5726,8 @@ class ResponsesRequestRuntimeOwner:
             )
             promoted_contracts: list[dict[str, Any]] = []
             promoted_contract_identities: set[tuple[str, ...]] = set()
+            superseded_contracts = [dict(item) for item in repair_loop.get('superseded_contracts') or []
+                                    if isinstance(item, Mapping)]
             for raw_contract in [
                 *(repair_loop.get('promoted_contracts') or []),
                 *[
@@ -5732,6 +5738,31 @@ class ResponsesRequestRuntimeOwner:
                 if not isinstance(raw_contract, Mapping):
                     continue
                 contract = dict(raw_contract)
+                replacement = replaced_contract_bindings.get(str(contract.get('contract_id') or ''))
+                if replacement is not None:
+                    prior_branch, new_branch = replacement
+                    binding = contract.get('execution_binding') or {}
+                    # Retire only the contract whose executable branch was just
+                    # replaced, not another duty sharing its artifact path. The
+                    # replacement still has to pass graph admission below and
+                    # later prove Closure; this is not a completion receipt.
+                    if (binding.get('contract_id') == contract.get('contract_id')
+                            and binding.get('branch_id') == prior_branch.get('branch_id')
+                            and binding.get('phase_id') == prior_branch.get('phase_id')
+                            and _repair_identity(contract)[1] == _repair_identity(new_branch)[1]
+                            and _repair_identity(contract)[1]):
+                        superseded_contracts.append({
+                            **contract, 'status': 'superseded',
+                            'supersession_evidence': {
+                                'authority': 'terminal_materialization_contract',
+                                'reason': 'executable_branch_replaced_by_bounded_terminal_repair',
+                                'replacement_contract_id': new_branch.get('repair_contract_id'),
+                                'replacement_branch_id': new_branch.get('branch_id'),
+                                'replacement_phase_id': new_branch.get('phase_id'),
+                                'target_path': _repair_identity(new_branch)[1],
+                            },
+                        })
+                        continue
                 identity = _promoted_contract_identity(contract)
                 if identity in promoted_contract_identities:
                     continue
@@ -5759,6 +5790,19 @@ class ResponsesRequestRuntimeOwner:
                     'promoted_contracts': promoted_contracts,
                 }
             )
+            if superseded_contracts:
+                repair_loop['superseded_contracts'] = superseded_contracts
+                repair_loop['superseded_contract_count'] = len(superseded_contracts)
+            feedback = dict(merged_gap.get('inference_repair_feedback') or {})
+            if feedback:
+                replaced_ids = {item.get('contract_id') for item in superseded_contracts}
+                feedback['items'] = [item for item in feedback.get('items') or []
+                                     if not isinstance(item, Mapping)
+                                     or (item.get('repair_contract_id')
+                                         or (item.get('repair_contract') or {}).get('contract_id')) not in replaced_ids]
+                feedback['repair_rebuild_contracts'] = promoted_contracts
+                feedback['repair_loop'] = dict(repair_loop)
+                merged_gap['inference_repair_feedback'] = feedback
             merged_gap.update(
                 {
                     'code': str(merged_gap.get('code') or '').strip()
@@ -5772,11 +5816,15 @@ class ResponsesRequestRuntimeOwner:
                         or (pending_capabilities[0] if pending_capabilities else None)
                     ),
                     'repair_loop': repair_loop,
-                    'reconsideration_rebuild': merged_gap.get('reconsideration_rebuild')
-                    or {
+                    'repair_rebuild_contracts': promoted_contracts,
+                    'reconsideration_rebuild': {
+                        **(merged_gap.get('reconsideration_rebuild') or {}),
                         'status': 'promoted',
-                        'auto_execute': True,
-                        'repair_work_available': True,
+                        'auto_execute': bool(executable_contract_count),
+                        'repair_work_available': bool(executable_contract_count),
+                        'repair_work_available_count': executable_contract_count,
+                        'promoted_contract_count': len(promoted_contracts),
+                        'pending_branch_count': len(merged_branches),
                     },
                 }
             )

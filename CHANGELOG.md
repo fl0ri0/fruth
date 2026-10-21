@@ -3,6 +3,119 @@
 Fruth changes are recorded here. The original Ollmo release history is retained
 below.
 
+## [0.1.7] - 2026-10-21
+
+Strengthen durable continuation and evidence preservation, widen local image and
+embedding support, and make validation and storage workflows easier to reproduce.
+The experimental `0.x` support scope remains unchanged.
+
+### Corrected and hardened
+
+- Preserve accepted result content and digests during later terminal file repair,
+  while refreshing current artifacts and new repair results. Keep replaced repair
+  contracts as explicit supersession history instead of leaving them executable
+  after their replacement completes. Retain publication and exact-target checks.
+- Preserve terminal Closure repair and partial-rebase execution identities when
+  rebuilding Late Fill state. An admitted repair worker can enter running state
+  without rejecting its own execution; stale execution checks remain enforced.
+- Make `archive --full` exclude raw self-attack campaigns from copying and space
+  preflight, then delete only local run directories after successful archive and
+  retention checks. Preserve external campaign stores, existing archives, links,
+  helpers, learning and storage-location configuration. Plain archive can omit
+  the copy without deleting runs via `--exclude-self-attack`. Record the scope
+  and cleanup policy in the manifest. Full archive also rotates the three monitor
+  history files so the new runtime epoch starts with fresh monitor state.
+- Preserve accepted image and sibling evidence through explicit Late Fill retry.
+  Bind generated-image inspections to exact saved inputs, reject text-only
+  dispatch and generation refusals, and allow one compatible alternate vision
+  instance after a transient backend failure. Share the existing two-attempt
+  limit with answer-evidence recovery. Reconsider only previously accepted
+  dependent work blocked by that prerequisite, clear stale inline-output errors
+  after accepted completion, and retain original failure provenance and frozen
+  parent frames.
+- Extend embedding helpers to model- and adapter-qualified image/audio inputs,
+  preserving text-only backends. Explicit current-turn media can supply bounded,
+  digest-labelled advisory similarities; unsupported inputs remain visible and
+  media scores do not inherit deterministic text routing thresholds. Recognize
+  native image checkpoint `config.json` model declarations so manual downloads
+  receive the installed loader's specific compatibility result.
+- Keep Ollama download errors readable by removing terminal controls and manifest
+  spinner frames before returning diagnostics to the browser and runtime event log.
+  Preserve the actual error text and CLI exit status without automatic retry.
+- Release unused MLX image allocator buffers and idle image model weights after
+  generation/edit requests, retaining completed output and lazily reloading for
+  the next request. Coordinate cleanup with in-flight requests and preserve
+  unrelated model groups.
+- Discover MLX image capabilities through the installed native loader and local
+  checkpoint metadata instead of a model-name allowlist. Keep incomplete/unknown
+  checkpoints unavailable with a reason; distinguish generation from editing,
+  expose native sampling defaults and enforce loader-specific step minima.
+  Include Z-Image through this shared discovery path.
+- Add an instance-bound image adapter for qualified local MLX-VLM image models
+  alongside existing Ollama image execution. Separate image discovery/startup
+  from chat/vision, retain exact reference bytes for editing, and validate PNG
+  results and controls before artifact persistence. Preserve image execution
+  evidence through provenance and canonical responses; distinguish requested
+  seeds from provider-reported seeds. Add Pillow decoding with MIT-CMU notices.
+- Allow qualified MLX image models through the frontend Start button's shared
+  lifecycle gate, matching terminal startup. Keep snapshot/package qualification
+  and explicit start-source checks.
+- Expose optional diffusion Steps in supported MLX image session controls for
+  generation and reference editing. Preserve native defaults when blank, reject
+  invalid/unsupported values, and retain requested/sent steps in image evidence.
+- Complete backend-neutral text-embedding helper integration: supported MLX
+  encoders use their embedding server, llama.cpp embedding instances report
+  vector output, and automatic selection no longer favors Ollama. Preserve
+  explicit helper preferences and existing routing thresholds. Reject malformed
+  or inconsistent vector batches and discard stale hints after helper failure.
+- Preserve previously accepted sibling results when cancelling, waiving or
+  superseding pending Late Fill work, including immediate durable recovery.
+- Serialize control and worker publication per response within one server process.
+  Recheck frame, execution and target identities through publication so stale
+  results cannot undo acknowledged controls. Stale control admission returns 409;
+  a fresh request with no controllable target retains 404.
+- Allow one guarded handoff of exact admitted, never-submitted pending work after
+  a control conflict, using the existing scheduler and original live worker
+  context. Preserve accepted siblings, cancellations, local contracts and
+  dependencies. Failed qualification or scheduling consumes the attempt;
+  passive recovery and pending-only retry do not gain execution authority.
+
+### Testing and maintainability
+
+- Record source-bound 170-case live coverage for local models, AFM and PCC Cloud,
+  supported by matching 380-case offline gates. Refresh the five public reference
+  packages from the October 18 runs. The
+  [October 21 report](docs/SELF_ATTACK_STATUS_2026-10-21.md) records source
+  identities, PCC window/retry coverage and validation limits.
+- Replace the obsolete urllib3 1.x constraint with urllib3 2.x (`>=2,<3`).
+  Document the OpenSSL requirement and separate main/backend environment updates.
+- Add optional `state/storage_locations.json` for independent archive and
+  Self-Attack write targets and multiple read locations. Keep existing defaults,
+  preserve configuration during cleanup, reject unavailable selected destinations,
+  and provide `fruth storage` discovery for manually relocated evidence. External
+  archive moves verify copied bytes before removing each source; historical
+  receipts remain unchanged.
+- Add deterministic conservation, overlap and continuation regressions, independent
+  fault-sensitivity controls and bounded Hypothesis studies using real runtime
+  owners with synthetic providers.
+- Separate complete trace generation from side-effecting persistence scenarios,
+  seal inputs before execution and count actual starts/transitions independently.
+- Add bounded persistence-fault and fresh-process recovery studies covering
+  selected writer interruptions, partial tails, unavailable Index data and missing
+  authoritative evidence. Distinguish readable historical work from write
+  confirmation and execution permission.
+- Separate ordinary regressions from opt-in research campaigns and historical
+  diagnostics while keeping deterministic controls in mixed study modules.
+  Package a portable pre-import guarded runner with fresh-process purity routes,
+  exclusive evidence, exact cold-child admission/reaping and bounded detached
+  supervision. Integrate bounded shell, Node, Python CLI and owned native-process
+  routes with exact admission, containment, deadlines and reaping receipts.
+  Correct restart-fixture probe instrumentation and add an exhausted-wait control.
+- Clarify the public semantic-core overview: required meaning, operation contracts
+  and evidence for the exact subject, version and scope, including coverage across
+  handoffs and recovery. This summarizes engineering obligations without claiming
+  a minimal or complete axiom system.
+
 ## [0.1.6] - 2026-10-11
 
 Hardening and validation since 0.1.5: strengthen caller authority, accepted file
@@ -60,7 +173,7 @@ scope remains unchanged.
 - Refresh all five public reference packages with October 10 executions, saved
   artifacts, exact-frame monitor evidence and checksums. Their retained historical
   phase timings carry the documented attribution limitation. See the
-  [validation report](docs/SELF_ATTACK_STATUS_2026-10-10.md) for scope and chronology.
+  [validation report](docs/SELF_ATTACK_STATUS_2026-10-21.md#historical-results) for scope and chronology.
 - Clarify collaboration guidance: the maintainer is open to contributions and
   learning the review process, with limited capacity and no guaranteed turnaround.
 
@@ -138,7 +251,7 @@ The experimental `0.x` support scope remains unchanged.
   a new response absent. The index still uses whole-file publication.
 - Record the September 25–27 AFM and PCC conformance observations, including
   correct mismatch rejections and PCC quota-limited coverage. See the
-  [dated results](docs/SELF_ATTACK_STATUS_2026-09-27.md); neither native verdict is
+  [dated results](docs/SELF_ATTACK_STATUS_2026-10-21.md#historical-results); neither native verdict is
   restated as a full pass.
 - Replace optional PyMuPDF and the first-page `sips` fallback with native macOS
   PDFKit/CoreGraphics rendering through PyObjC. Preserve selected page order,
@@ -203,7 +316,7 @@ carried forward.
 - Replace migrated examples with five recorded Fruth reference runs, retaining
   their response, monitor, artifact and checksum evidence.
 - Record the 18–19 September full conformance pass: 380 deterministic cases and
-  170 live cases. See the [dated report](docs/SELF_ATTACK_STATUS_2026-09-19.md)
+  170 live cases. See the [dated report](docs/SELF_ATTACK_STATUS_2026-10-21.md#historical-results)
   for tested scope and limitations.
 
 ## [0.1.1] - 2026-09-12

@@ -285,6 +285,13 @@
                                 <input id="setting-image-height" type="number" min="64" max="4096" step="16">
                             </div>
                         </div>
+                        <div class="setting-field" data-settings-mode="image" data-setting-key="image_steps" hidden>
+                            <span class="setting-label">Steps</span>
+                            <span class="setting-meta">Fewer diffusion steps can be faster with less detail. Leave blank for the model default.</span>
+                            <div class="setting-value">
+                                <input id="setting-image-steps" type="number" min="1" step="1" placeholder="Model default">
+                            </div>
+                        </div>
                         <div class="setting-field" data-settings-mode="image" data-setting-key="image_count" hidden>
                             <span class="setting-label">Image Count</span>
                             <span class="setting-meta"></span>
@@ -626,6 +633,7 @@
             imageAspectRatio: 'auto',
             imageWidth: null,
             imageHeight: null,
+            imageSteps: null,
             imageCount: 1,
             ocrMode: 'auto',
             pdfMaxPages: null,
@@ -817,6 +825,7 @@
                 serialize: (value) => String(value)
             },
             image_count: { stateKey: 'imageCount', requestKey: null },
+            image_steps: { stateKey: 'imageSteps', requestKey: 'steps' },
             ocr_mode: { stateKey: 'ocrMode', requestKey: 'ocr_mode' },
             pdf_max_pages: {
                 stateKey: 'pdfMaxPages',
@@ -1542,6 +1551,7 @@ function summarizeStopDetails(details) {
             settingImageAspectRatio: document.getElementById('setting-image-aspect-ratio'),
             settingImageWidth: document.getElementById('setting-image-width'),
             settingImageHeight: document.getElementById('setting-image-height'),
+            settingImageSteps: document.getElementById('setting-image-steps'),
             settingImageCount: document.getElementById('setting-image-count'),
             settingOcrMode: document.getElementById('setting-ocr-mode'),
             settingPdfMaxPages: document.getElementById('setting-pdf-max-pages'),

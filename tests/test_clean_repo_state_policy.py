@@ -104,14 +104,19 @@ def run_isolated_cleanup(
     env: Mapping[str, str],
     *args: str,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ['bash', str(repo_root / 'clean_repo_state.sh'), *args],
-        cwd=repo_root,
-        env=dict(env),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    # Bash can create transient here-document files in cwd when the native
+    # sandbox denies its system temporary directory. Keep shell scratch outside
+    # the checkout whose exact inventory the dry-run tests must preserve. The
+    # unchanged owner derives its root from its absolute script path.
+    with tempfile.TemporaryDirectory(prefix='cleanup-shell-', dir=repo_root.parent) as shell_cwd:
+        return subprocess.run(
+            ['bash', str(repo_root / 'clean_repo_state.sh'), *args],
+            cwd=shell_cwd,
+            env=dict(env),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
 
 def run_fruth_dry_run(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:

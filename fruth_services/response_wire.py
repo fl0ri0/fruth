@@ -459,7 +459,9 @@ def surface_handle(
         return {}
     collection_limit = int(profile.collection_limit or IN_MEMORY_COLLECTION_LIMIT)
     handle: dict[str, Any] = {}
-    for key in ('status', 'summary', 'message'):
+    for key in ('status', 'summary', 'message', 'content_requirement_policy',
+                'content_requirement_count', 'unresolved_content_requirement_count',
+                'content_coverage_status', 'completion_basis', 'correctness_basis'):
         item = value.get(key)
         if item not in (None, '', [], {}):
             handle[key] = item[:4096] if isinstance(item, str) else item

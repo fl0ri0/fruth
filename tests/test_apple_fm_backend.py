@@ -69,6 +69,30 @@ def test_license_not_accepted_automatically(monkeypatch):
     diagnostic.assert_called_once_with('/usr/bin/fm', 'license', '--status')
 
 
+@pytest.mark.parametrize('code,message,ready', [
+    (0, 'system model available', True),
+    (0, 'Apple Foundation Models\n  ✓ system (AFM 3 Core Advanced)', True),
+    (0, "Apple Foundation Models\n  ✓ system (AFM 3 Core Advanced)\n"
+        "warning: 'fm available' has been renamed to 'fm models'; 'available' still works but is deprecated.", True),
+    (1, 'Apple Foundation Models\n  ✓ system (AFM 3 Core Advanced)', False),
+    (0, 'Apple Foundation Models\n  ✗ system (not ready)', False),
+    (0, 'Apple Foundation Models\n  ✓ pcc (Cloud)', False),
+    (0, 'Apple Foundation Models\n  ✓ system (AFM)\n  ✗ system (not ready)', False),
+    (0, 'Apple Foundation Models\n  ✓ system (AFM)\n  ✓ system (AFM)', False),
+    (0, 'Apple Foundation Models\n  ✓ system (AFM)\nUnexpected failure', False),
+    (0, 'Apple Foundation Models', False),
+])
+def test_updated_and_legacy_availability_are_model_specific(monkeypatch, code, message, ready):
+    monkeypatch.setattr(fm.platform, 'system', lambda: 'Darwin')
+    monkeypatch.setattr(fm, 'resolve_fm_bin', lambda: '/usr/bin/fm')
+    diagnostic = Mock(side_effect=[(0, 'Agreed to license'), (code, message)])
+    monkeypatch.setattr(fm, '_diagnostic', diagnostic)
+    probe = fm.describe_apple_fm_runtime_probe()
+    assert probe['detection']['model_available'] is ready
+    assert (probe['runtime_state'] == 'runnable') is ready
+    diagnostic.assert_called_with('/usr/bin/fm', 'available', '--model', 'system')
+
+
 def _prepare_start(monkeypatch):
     monkeypatch.setattr(fm, 'system_model_metadata', lambda: {})
     monkeypatch.setattr(fm, 'describe_apple_fm_runtime_probe', lambda: {

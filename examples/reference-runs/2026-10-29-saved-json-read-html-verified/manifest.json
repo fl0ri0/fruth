@@ -1,0 +1,95 @@
+{
+  "files": [
+    {
+      "mime_type": "application/octet-stream",
+      "path": "README.md",
+      "role": "documentation",
+      "sha256": "2f0e33e339e4e6299e5a9625fd4146e60f03cfb9d21ab87d48aad784d3419729",
+      "size_bytes": 1848
+    },
+    {
+      "mime_type": "application/json",
+      "path": "artifacts/documents/document-01.json",
+      "role": "canonical_artifact_copy",
+      "sha256": "af64764250cf0caff759ece54b153cfb1dc57690577375c3016714381122b067",
+      "size_bytes": 10
+    },
+    {
+      "mime_type": "text/html",
+      "path": "artifacts/documents/index.html",
+      "role": "canonical_artifact_copy",
+      "sha256": "4b70d738d8d2a9369c93c2d5d057fd2053cdd5723422b5010167f7925bf07fd1",
+      "size_bytes": 1871
+    },
+    {
+      "mime_type": "application/json",
+      "path": "bundle/assets/files/file-01.json",
+      "role": "openable_bundle",
+      "sha256": "af64764250cf0caff759ece54b153cfb1dc57690577375c3016714381122b067",
+      "size_bytes": 10
+    },
+    {
+      "mime_type": "text/html",
+      "path": "bundle/index.html",
+      "role": "openable_bundle",
+      "sha256": "4b70d738d8d2a9369c93c2d5d057fd2053cdd5723422b5010167f7925bf07fd1",
+      "size_bytes": 1871
+    },
+    {
+      "mime_type": "application/json",
+      "path": "bundle/manifest.json",
+      "role": "openable_bundle",
+      "sha256": "384a29610711d1baa649cb6421f9019672facda69c27fea0a6e017d9012dc9f8",
+      "size_bytes": 1051
+    },
+    {
+      "mime_type": "application/json",
+      "path": "monitor-report.json",
+      "role": "observer_evidence",
+      "sha256": "87f0f59833671a0eccdb024046a0b753ca120765459d234534487521d95a8432",
+      "size_bytes": 1522
+    },
+    {
+      "mime_type": "text/plain",
+      "path": "prompt.txt",
+      "role": "request",
+      "sha256": "b72508683b77b9ff226f1b235e0712670d2c1fd5c2de5fe43dfad58beeb62873",
+      "size_bytes": 292
+    },
+    {
+      "mime_type": "application/json",
+      "path": "response.json",
+      "role": "response_truth",
+      "sha256": "faa0a092b74c4a2f39e52c7d6e9ee3eb5d2431fc434dbd8c74703fb4ffa66db6",
+      "size_bytes": 7501
+    }
+  ],
+  "frame_id": "resp_1793252268413_53d21e0320fb7:frame-3",
+  "frame_sequence": 3,
+  "provenance": {
+    "original_response_frame_authoritative": true,
+    "original_runtime_artifacts_authoritative": true,
+    "publication_copy_is_runtime_authority": false,
+    "raw_frame_published": false,
+    "raw_monitor_record_published": false
+  },
+  "response_id": "resp_1793252268413_53d21e0320fb7",
+  "schema": "fruth.reference_run_manifest.v1",
+  "source_frame_record_sha256": "238c8ab970c7d31e636d966920078a94a12d3ca265d962e7abc1d0995f2c644d",
+  "source_frame_record_size_bytes": 801924,
+  "summary": {
+    "artifact_count": 2,
+    "bundle_included": true,
+    "file_count": 9,
+    "total_bytes": 15976
+  },
+  "validation": {
+    "artifact_checksums_verified": true,
+    "indexed_frame_verified": true,
+    "local_absolute_paths_absent": true,
+    "monitor_verdict": "clean",
+    "prompt_identity_verified": true,
+    "terminal_runtime_truth_verified": true
+  },
+  "version": 1
+}

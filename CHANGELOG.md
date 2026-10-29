@@ -3,6 +3,77 @@
 Fruth changes are recorded here. The original Ollmo release history is retained
 below.
 
+## [0.1.8] - 2026-10-29
+
+Turn the completed bounded Hypothesis and semantic-core investigation round into
+stronger runtime contracts: preserve requested meaning across handoffs, retain
+caller authority through repair and recovery, and require current evidence before
+closing owed work. The experimental `0.x` support scope remains unchanged.
+
+### Property-based investigation and resulting hardening
+
+- Extend bounded Hypothesis and deterministic adversarial studies across request
+  intake, saved-file consumption, persistence/readback, semantic reviews,
+  cancellation and continuation. Independent requirements and physical bytes
+  supply the oracles; controlled providers exercise real runtime owners. Retain
+  counterexamples and promote corrected behavior into maintained regressions.
+- Preserve requested JSON content, exact named outputs, saved-read dependencies
+  and consumer requirements through supported intake and preparation. Recognize
+  affirmative bare-filename commands and scoped exclusions without admitting
+  provider-proposed extras or weakening explicit output bans.
+- Require current, bound content reviews for newly admitted named text producer
+  → saved read → consumer workflows. File existence, valid syntax and an exact
+  read receipt no longer discharge those accepted content duties on their own.
+  Missing or failed reviews leave the response visibly unresolved.
+- Validate review evidence references against the exact review packet and
+  required criteria. Preserve the reference policy through canonical request
+  persistence and recovery; reject missing, foreign or stale review evidence.
+- Preserve accepted caller context through control operations and publish a
+  fresh Closure assessment after a winning control. Accepted sibling reviews
+  remain covered; delayed results from cancelled work remain rejected.
+- Continue independently owed, admitted review work after a control conflict
+  through the existing bounded handoff. Preserve promotion, canonical requests,
+  exact dependency aliases and evidence-only quoted review context without
+  replaying the root request or bypassing cancellation/current-frame checks.
+- Require terminal links only where accepted consumer contracts actually owe
+  them. Independent mixed outputs and ordinary saved-data consumers no longer
+  inherit an unrelated link requirement; genuinely missing links remain open.
+- Complete the bounded dependency study and source-level follow-ups. Local
+  derivations and repeated formal constraints do not justify deleting substantive
+  runtime requirements. Safety checks, reviewer accuracy and progress remain
+  distinct claims; finite study coverage is not a universal proof.
+
+### Reference workflow corrections
+
+- Preserve the saved-read and content contract during exact-target HTML syntax
+  repair. Bind the source read, target snapshot, defect and prepared input; retain
+  fresh output evidence and require a current consumer review. Verify an already
+  saved repair instead of rewriting its bytes after capturing their digest.
+- Deliver all accepted individual image reports for supported separate-inspection
+  requests through an explicit identity-bound join. Reject omitted, duplicate or
+  substituted contributions and check the final rendered answer. Distinct
+  comparison and transformation requests retain their own execution paths.
+- Present each content review's accepted local duties and criteria before shared
+  context, and identify sibling duties by their accepted branch contracts.
+  Negative reviews still block completion; improved live reviewer reliability is
+  not inferred from offline fixtures.
+
+### Apple compatibility and validation
+
+- Restore PCC Pro → Cloud fallback for the observed opaque Shortcuts error when
+  current native diagnostics tie the owned request to the explicit Pro-access
+  rejection. Keep unrelated, stale or ambiguous errors from authorizing fallback.
+- Recognize the updated Foundation Models CLI system-model availability output
+  after the operator has accepted Apple's terms, preserving explicit readiness
+  and license failures.
+- Complete the matching 38-profile / 380-case offline gate and 198 owner checks,
+  followed by the source/evidence checker. Record local, AFM and PCC live windows
+  and targeted recovery with their actual source identities and original verdicts.
+- Refresh the two affected reference packages from October 29; retain the three
+  October 27 audio/site examples. Saved files, read chains, individual reviews and
+  canonical completion are verified. See the [current validation status](docs/SELF_ATTACK_STATUS_2026-10-29.md)
+  for coverage, source chronology and limitations.
+
 ## [0.1.7] - 2026-10-21
 
 Strengthen durable continuation and evidence preservation, widen local image and
@@ -85,7 +156,7 @@ The experimental `0.x` support scope remains unchanged.
 - Record source-bound 170-case live coverage for local models, AFM and PCC Cloud,
   supported by matching 380-case offline gates. Refresh the five public reference
   packages from the October 18 runs. The
-  [October 21 report](docs/SELF_ATTACK_STATUS_2026-10-21.md) records source
+  [October 21 results](docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results) records source
   identities, PCC window/retry coverage and validation limits.
 - Replace the obsolete urllib3 1.x constraint with urllib3 2.x (`>=2,<3`).
   Document the OpenSSL requirement and separate main/backend environment updates.
@@ -173,7 +244,7 @@ scope remains unchanged.
 - Refresh all five public reference packages with October 10 executions, saved
   artifacts, exact-frame monitor evidence and checksums. Their retained historical
   phase timings carry the documented attribution limitation. See the
-  [validation report](docs/SELF_ATTACK_STATUS_2026-10-21.md#historical-results) for scope and chronology.
+  [validation report](docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results) for scope and chronology.
 - Clarify collaboration guidance: the maintainer is open to contributions and
   learning the review process, with limited capacity and no guaranteed turnaround.
 
@@ -251,7 +322,7 @@ The experimental `0.x` support scope remains unchanged.
   a new response absent. The index still uses whole-file publication.
 - Record the September 25–27 AFM and PCC conformance observations, including
   correct mismatch rejections and PCC quota-limited coverage. See the
-  [dated results](docs/SELF_ATTACK_STATUS_2026-10-21.md#historical-results); neither native verdict is
+  [dated results](docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results); neither native verdict is
   restated as a full pass.
 - Replace optional PyMuPDF and the first-page `sips` fallback with native macOS
   PDFKit/CoreGraphics rendering through PyObjC. Preserve selected page order,
@@ -316,7 +387,7 @@ carried forward.
 - Replace migrated examples with five recorded Fruth reference runs, retaining
   their response, monitor, artifact and checksum evidence.
 - Record the 18–19 September full conformance pass: 380 deterministic cases and
-  170 live cases. See the [dated report](docs/SELF_ATTACK_STATUS_2026-10-21.md#historical-results)
+  170 live cases. See the [dated report](docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results)
   for tested scope and limitations.
 
 ## [0.1.1] - 2026-09-12

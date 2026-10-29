@@ -1,12 +1,12 @@
 # Fruth source packaging scope
 
 This document defines the current source selection and support boundaries.
-This scope applies to Fruth `0.1.7`. The [changelog](../CHANGELOG.md) and
-[October 21 status](SELF_ATTACK_STATUS_2026-10-21.md) describe its changes and
+This scope applies to Fruth `0.1.8`. The [changelog](../CHANGELOG.md) and
+[October 29 status](SELF_ATTACK_STATUS_2026-10-29.md) describe its changes and
 source-bound validation evidence. See the [installation guide](../README.md#install-and-start)
 for setup and [known limitations](KNOWN_LIMITATIONS.md) for current constraints.
-The current selection includes the refreshed October 18 references and current
-conformance summary. Existing published archives are unchanged.
+The reference selection contains three October 27 workflows and two October 29
+workflows. Existing published archives and their original evidence remain unchanged.
 
 ## Included capabilities
 
@@ -32,14 +32,13 @@ The source package includes:
   retained validation and recoverable publication of reviewed cases.
 
 See the [changelog](../CHANGELOG.md) and
-[October 21 validation status](SELF_ATTACK_STATUS_2026-10-21.md). Local, AFM and
-PCC Cloud each have complete 170-case live coverage with matching offline gates.
-The local campaign preceded the image idle-residency fix; AFM and PCC tested the
-corrected runtime. The five reference packages preserve their October 18
-executions. PCC Cloud Pro remains untested, and historical native verdicts remain
-unchanged.
-Release preparation validates the selected source package separately; building
-it does not publish it or change those historical verdicts.
+[October 29 validation status](SELF_ATTACK_STATUS_2026-10-29.md). The latest runtime
+has a matching complete offline gate and source/evidence check plus two targeted
+live reference checks. Earlier local, AFM and PCC campaigns retain their source
+identities and recovery history; they are not relabelled as complete live tests of
+the later reference fixes. PCC Cloud Pro remains untested.
+Release preparation checks the selected source package separately; a local build
+does not publish it or alter historical verdicts.
 
 ## Supported surfaces
 
@@ -96,7 +95,7 @@ previously published 0.1.5 archives. Google Fonts and Font Awesome remain remote
 dashboard dependencies; see [third-party notices](../THIRD_PARTY_NOTICES.md).
 
 `PUBLIC_DOCS` includes the normative contracts, `SELF_ATTACK.md`, the single
-current [October 21 validation status](SELF_ATTACK_STATUS_2026-10-21.md), causal
+current [October 29 validation status](SELF_ATTACK_STATUS_2026-10-29.md), causal
 telemetry and state-flow diagnostics. Earlier summaries and reference selections
 are retained privately; the current report preserves their historical verdicts.
 The dated summary records the tested
@@ -106,6 +105,12 @@ source and scope; packaging it does not establish a new conformance result.
 and test code are included through the normal source-tree rules. Raw captures,
 production ledgers, local forensic corpora and generated `state/` are excluded;
 running conformance creates new local evidence.
+
+The three reference replay fixtures use synthetic, portable paths. Review
+instruction and generation bindings are regenerated consistently after path
+normalization; original artifact bytes, content digests and verdicts are retained.
+These public derivatives support regression replay without exporting operator
+home/cache paths. Original live captures remain private.
 
 `PUBLIC_INTEGRATION_DOC_PATHS` includes the exact PCC setup guide at
 `fruth_integrations/shortcuts/README.md`. The bridge's Python sources are selected
@@ -146,7 +151,7 @@ separate actions.
 The primary tested environment is a recent macOS release on Apple Silicon
 with Python 3.11 or newer. Individual local capabilities additionally require
 their own backend and model packages. Other operating systems and processor
-architectures are not part of the 0.1.7 support promise.
+architectures are not part of the 0.1.8 support promise.
 
 Fruth is intended for local, single-user use and binds its web control plane
 to `127.0.0.1` by default. Remote and multi-user deployment are outside this
@@ -188,7 +193,7 @@ ChatGPT is a separate optional cloud path:
   silently resumed.
 
 Direct provider API-key management and external providers beyond the documented
-ChatGPT and Apple PCC integrations are not part of 0.1.7.
+ChatGPT and Apple PCC integrations are not part of 0.1.8.
 
 ## Compatibility
 

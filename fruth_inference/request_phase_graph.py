@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 from collections.abc import Mapping
 from pathlib import Path
 import re
@@ -24,6 +25,10 @@ from fruth_core.inference import (
     normalize_text_artifact_extension,
 )
 from fruth_inference.intent import (
+    _ORDINAL_INDEXES,
+    _prompt_reserves_materialization_capability,
+    _prompt_reserves_entire_materialization_capability,
+    _selected_image_candidate_index,
     materialization_is_deferred,
     analyze_prompt_intent,
     intent_span_is_literal_payload,
@@ -48,6 +53,7 @@ from fruth_services.responses import (
     request_intent_payload,
 )
 from fruth_services.tts_source import resolve_explicit_tts_source
+from fruth_services.artifact_contracts import SEPARATE_IMAGE_REPORTS_POLICY
 
 REQUEST_PHASE_GRAPH_VERSION = 3
 _INFERENCE_PREPARE_FIRST_MATERIALIZATION_CAPABILITIES = {
@@ -711,33 +717,12 @@ _NEGATED_AUDIO_MATERIALIZATION_RE = re.compile(
     r'[^.,;!?]{0,80}\b(?:audio|mp3|wav|spoken|vorlesen)\b',
     re.IGNORECASE,
 )
-_RESERVED_IMAGE_MATERIALIZATION_RE = re.compile(
-    r'\b(?:image|images|picture|pictures|posterbild(?:er)?|bildidee(?:n)?|bildkandidat(?:en)?|bild|bilder)\b'
-    r'[^.;!?]{0,120}\b(?:reserved|reserve|option|optional|reserviert(?:e|en|er|es)?|'
-    r'vormerk(?:e|en)?|merk(?:e|en)?|halte(?:n)?|festhalten)\b|'
-    r'\b(?:reserved|reserve|option|optional|reserviert(?:e|en|er|es)?|'
-    r'vormerk(?:e|en)?|merk(?:e|en)?|halte(?:n)?|festhalten)\b'
-    r'[^.;!?]{0,120}\b(?:image|images|picture|pictures|posterbild(?:er)?|bildidee(?:n)?|bildkandidat(?:en)?|bild|bilder)\b',
-    re.IGNORECASE,
-)
-_RESERVED_OPTION_ONLY_RE = re.compile(
-    r'\b(?:reserved|reserve|keep|note|remember|option|optional|reserviert(?:e|en|er|es)?|'
-    r'vormerk(?:e|en)?|merk(?:e|en)?|halte(?:n)?|festhalten)\b'
-    r'[^.;!?]{0,120}\b(?:reserved|option|optional|candidate|kandidat(?:en)?|reserviert(?:e|en|er|es)?|option(?:en)?)\b',
-    re.IGNORECASE,
-)
 _REJECTED_IMAGE_CANDIDATE_PLANNING_RE = re.compile(
     r'\b(?:do\s+not|don[\'’]?t|never|without|nicht|nie|ohne)\b'
     r'[^.;!?]{0,120}\b(?:plan|queue|schedule|reserve|propose|plan(?:e|en|t)?|vormerk|reservier)\w*\b'
     r'[^.;!?]{0,80}\b(?:image(?:s)?|picture(?:s)?|photo(?:s)?|illustration(?:s)?|bild(?:er)?|foto(?:s)?)\b|'
     r'\b(?:no|kein(?:e|en|er|es)?)\b[^.;!?]{0,32}'
     r'\b(?:image|picture|photo|illustration|bild|foto)[\s-]?(?:plan|candidate|option|planung|kandidat|option)\w*\b',
-    re.IGNORECASE,
-)
-_SELECTED_IMAGE_CANDIDATE_INDEX_RE = re.compile(
-    r'\b(?:generat(?:e|es|ed|ing)|create|render|show|make|generier(?:e|en)?|erzeuge|erstelle|zeige)\b'
-    r'[^.;!?]{0,80}\b(?:only\s+the\s+|nur\s+(?:die|den|das)\s+)?'
-    r'(?P<ordinal>first|second|third|fourth|fifth|sixth|erste|zweite|dritte|vierte|fuenfte|fünfte|sechste)\b',
     re.IGNORECASE,
 )
 _SELECTED_SPEAKABLE_CANDIDATE_INDEX_RE = re.compile(
@@ -756,25 +741,6 @@ _SELECTED_SPEAKABLE_CANDIDATE_RE = re.compile(
     r'[^.;!?]{0,120}\b(?:best|beste(?:n|r|s)?|chosen|selected|gewahlt(?:e|en|er|es)?|gewaehlt(?:e|en|er|es)?|gewählte(?:n|r|s)?)\b',
     re.IGNORECASE,
 )
-_IMAGE_CANDIDATE_CONTEXT_RE = re.compile(
-    r'\b(?:image\s+ideas?|image\s+candidates?|bildidee(?:n)?|bildkandidat(?:en)?|bildoption(?:en)?|bilder?)\b',
-    re.IGNORECASE,
-)
-_ORDINAL_INDEXES = {
-    'first': 1,
-    'erste': 1,
-    'second': 2,
-    'zweite': 2,
-    'third': 3,
-    'dritte': 3,
-    'fourth': 4,
-    'vierte': 4,
-    'fifth': 5,
-    'fuenfte': 5,
-    'fünfte': 5,
-    'sixth': 6,
-    'sechste': 6,
-}
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -2792,75 +2758,6 @@ def _prompt_negates_materialization_capability(
     return False
 
 
-def _prompt_reserves_materialization_capability(
-    prompt_analysis: Mapping[str, Any],
-    capability: Any,
-) -> bool:
-    normalized = normalize_capability(capability)
-    prompt_text = _clean_text(prompt_analysis.get('normalized_prompt'))
-    if not prompt_text:
-        return False
-    if normalized == CAPABILITY_IMAGE_GENERATION:
-        # Reservation belongs to its named object, not a neighboring image
-        # request. Keep pronoun continuations ("keep it reserved") together.
-        clauses = re.split(
-            r'[.,;!?\n]|(?=\b(?:keep|leave|hold|reserve)\s+(?!(?:it|them|this|that)\b))',
-            prompt_text, flags=re.IGNORECASE,
-        )
-        if any(
-            _RESERVED_IMAGE_MATERIALIZATION_RE.search(clause)
-            or (_IMAGE_CANDIDATE_CONTEXT_RE.search(clause)
-                and _RESERVED_OPTION_ONLY_RE.search(clause))
-            for clause in clauses
-        ):
-            return True
-        # A comma or sentence break must not erase an explicit "keep it" or
-        # "keep the first and third" reservation. Resolve only an anaphoric
-        # object, against the nearest sentence's last named artifact category.
-        ordinal = '|'.join(_ORDINAL_INDEXES)
-        anaphoric_reservation = re.compile(
-            r'^\s*(?:keep|leave|hold|reserve|note|remember|halte|behalte|merke|reserviere)\s+'
-            r'(?:it|them|this|that|es|sie|dieses|diese|'
-            rf'(?:the|die|den|das)\s+(?:{ordinal})'
-            rf'(?:\s+(?:and|und)\s+(?:(?:the|die|den|das)\s+)?(?:{ordinal}))*)'
-            r'\s+(?:(?:only|just|nur|as|als|a|an|eine|reserved|reservierte)\s+)*'
-            r'(?:options?|optionen|candidates?|kandidaten)(?:\s+fest)?\s*$',
-            re.IGNORECASE,
-        )
-        artifact_category = re.compile(
-            r'\b(?:images?|pictures?|bild(?:er)?|bildideen?|bildkandidaten?|'
-            r'audio|speech|transcripts?|svg|html|css|json|javascript|text|files?|dateien?)\b',
-            re.IGNORECASE,
-        )
-        previous_sentence = ''
-        for sentence in re.split(r'[.;!?\n]', prompt_text):
-            parts = sentence.split(',')
-            for index, clause in enumerate(parts):
-                if not anaphoric_reservation.fullmatch(clause):
-                    continue
-                antecedent = ','.join(parts[:index]).strip() or previous_sentence
-                categories = list(artifact_category.finditer(antecedent))
-                if categories and re.fullmatch(
-                    r'images?|pictures?|bild(?:er)?|bildideen?|bildkandidaten?',
-                    categories[-1].group(), re.IGNORECASE,
-                ):
-                    return True
-            if sentence.strip():
-                previous_sentence = sentence
-        return False
-    return False
-
-
-def _selected_image_candidate_index(prompt_analysis: Mapping[str, Any]) -> int:
-    prompt_text = _clean_text(prompt_analysis.get('normalized_prompt'))
-    if not prompt_text or not _IMAGE_CANDIDATE_CONTEXT_RE.search(prompt_text):
-        return 0
-    match = _SELECTED_IMAGE_CANDIDATE_INDEX_RE.search(prompt_text)
-    if not match:
-        return 0
-    return _ORDINAL_INDEXES.get(_clean_text(match.group('ordinal')).lower(), 0)
-
-
 def _selected_speakable_candidate_fields(prompt_analysis: Mapping[str, Any]) -> dict[str, Any]:
     prompt_text = _clean_text(prompt_analysis.get('normalized_prompt'))
     if not prompt_text or not _SELECTED_SPEAKABLE_CANDIDATE_RE.search(prompt_text):
@@ -3006,17 +2903,6 @@ def _retain_counted_audio_variant_contracts(
         for key, value in expected.items():
             if branch.get(key) in (None, '', [], {}):
                 branch[key] = value
-
-
-def _prompt_reserves_entire_materialization_capability(
-    prompt_analysis: Mapping[str, Any],
-    capability: Any,
-) -> bool:
-    if not _prompt_reserves_materialization_capability(prompt_analysis, capability):
-        return False
-    if normalize_capability(capability) == CAPABILITY_IMAGE_GENERATION:
-        return _selected_image_candidate_index(prompt_analysis) <= 0
-    return True
 
 
 def _post_artifact_continuation_sequence(prompt_analysis: Mapping[str, Any]) -> list[str]:
@@ -3631,7 +3517,8 @@ def _text_artifact_request_branches(
 
 
 def _guard_unbound_saved_file_consumers(
-    branches: list[dict[str, Any]], prompt: str,
+    branches: list[dict[str, Any]], prompt: str, *, content_requirement_policy: bool = False,
+    content_review_reference_policy: str = '',
 ) -> None:
     """Bind the bounded explicit save/read/derive grammar, otherwise fail closed.
 
@@ -3641,6 +3528,7 @@ def _guard_unbound_saved_file_consumers(
     read_saved_file = False
     preceding_clauses: list[str] = []
     producer_candidates: list[dict[str, Any]] = []
+    producer_clauses: list[str] = []
     clauses = re.split(r'(?<=[.!?;])\s+|\n', prompt)
     for clause_index, clause in enumerate(clauses):
         read = re.search(r'\b(?:read|reread|re-read|lies|lese)\b', clause, re.IGNORECASE)
@@ -3652,6 +3540,7 @@ def _guard_unbound_saved_file_consumers(
         )
         if saved_read:
             read_saved_file = True
+            producer_clauses = list(preceding_clauses)
             # A bounded, unambiguous new text producer is executable. Existing
             # inputs, joins and inferred/anaphoric multiple producers stay blocked.
             producer_candidates = []
@@ -3748,6 +3637,23 @@ def _guard_unbound_saved_file_consumers(
             }
             producer['artifact_request'] = {**producer_request, 'saved_file_producer': True}
             consumer['artifact_request'] = {**consumer_request, 'saved_file_dependency': contract}
+            if content_requirement_policy:
+                for branch, role, text in (
+                    (producer, 'producer', ' '.join(producer_clauses).strip()),
+                    (consumer, 'consumer', contract['consumer_instruction']),
+                ):
+                    branch['artifact_request']['content_requirement_policy'] = 'named_saved_text_v1'
+                    if content_review_reference_policy:
+                        branch['artifact_request']['content_review_reference_policy'] = content_review_reference_policy
+                    branch['artifact_request']['content_requirements'] = [{
+                        'requirement_id': f"{branch['branch_id']}:accepted_{role}_content",
+                        'criterion': f'accepted_{role}_content',
+                        'role': role,
+                        'branch_id': branch['branch_id'],
+                        'phase_id': branch['phase_id'],
+                        'text': text,
+                        'sha256': hashlib.sha256(text.encode('utf-8')).hexdigest(),
+                    }]
             consumer['depends_on'] = [producer['phase_id']]
             consumer['dependency_contract'] = 'saved_file_read_required'
             consumer['content_payload_source'] = 'saved_file_read_required'
@@ -4147,6 +4053,43 @@ def _structured_final_join_all_audio_pair_contract(
     ]
 
 
+def _bind_separate_image_report_delivery(branches: list[dict[str, Any]], prompt_text: str) -> None:
+    """Admit delivery-only per-image inspection; leave distinct transformations alone."""
+    prompt = mask_intent_literal_payloads(prompt_text)
+    delivery = re.search(
+        r'\b(?:then|afterwards)\s+(?:inspect|examine|review|analy[sz]e)\s+(?:each|every)\s+'
+        r'(?:generated\s+)?image\s+(?:separately|individually)\s+and\s+(?:briefly\s+)?describe\s+'
+        r'only\s+what\s+is\s+(?:actually\s+)?visible'
+        r'(?:,\s+including\s+any\s+(?:accidental\s+)?readable\s+text\s+or\s+obvious\s+visual\s+defects?)?'
+        r'[.!]?\s*$', prompt, re.IGNORECASE)
+    if not delivery:
+        return
+    terminals = [b for b in branches if b.get('role') == 'post_artifact_text_follow_up'
+                 and b.get('capability') == CAPABILITY_CHAT]
+    if len(terminals) != 1:
+        return
+    terminal = terminals[0]
+    if (terminal.get('structured_output_contract') or terminal.get('content_payload') or terminal.get('artifact_prompt')
+            or terminal.get('artifact_request') or terminal.get('stage_direction') != 'write_text_after_artifact_generation'):
+        return
+    by_phase = {b.get('phase_id'): b for b in branches}
+    bindings = []
+    for phase_id in terminal.get('depends_on') or []:
+        source = by_phase.get(phase_id) or {}
+        dependencies = source.get('depends_on') or []
+        producer = by_phase.get(dependencies[0]) if len(dependencies) == 1 else None
+        if (source.get('capability') != CAPABILITY_VISION_ANALYSIS or not producer
+                or producer.get('capability') != CAPABILITY_IMAGE_GENERATION):
+            return
+        bindings.append({'source_branch_id': source['branch_id'], 'source_phase_id': source['phase_id'],
+                         'producer_branch_id': producer['branch_id'], 'producer_phase_id': producer['phase_id']})
+    if not bindings or len({b['producer_branch_id'] for b in bindings}) != len(bindings):
+        return
+    terminal['dependency_contract'] = SEPARATE_IMAGE_REPORTS_POLICY
+    terminal['structured_output_contract'] = {'kind': 'fruth.structured_output_contract', 'version': 1,
+        'mode': SEPARATE_IMAGE_REPORTS_POLICY, 'format': 'separate_reports', 'required_bindings': bindings}
+
+
 def _bind_explicit_structured_multi_evidence_join(
     branches: list[dict[str, Any]],
     prompt_text: str,
@@ -4162,6 +4105,7 @@ def _bind_explicit_structured_multi_evidence_join(
     ordinary sequential summary continues to consume only its immediate source.
     """
 
+    _bind_separate_image_report_delivery(branches, prompt_text)
     normalized_prompt = normalize_intent_text(prompt_text)
     preserved_refs = [
         dict(item)
@@ -5766,7 +5710,11 @@ def build_request_phase_graph(
             prompt_analysis=prompt_analysis,
         )
     )
-    _guard_unbound_saved_file_consumers(downstream_branches, normalized_prompt)
+    _guard_unbound_saved_file_consumers(
+        downstream_branches, normalized_prompt,
+        content_requirement_policy=request.get('content_requirement_policy') == 'named_saved_text_v1',
+        content_review_reference_policy=request.get('content_review_reference_policy', ''),
+    )
     preserved_reference_input_refs, preserved_reference_error = (
         _preserved_visual_reference_input_refs(
             prompt_analysis,
@@ -6414,6 +6362,20 @@ def build_request_phase_graph(
         'prompt_intent': prompt_intent,
         'intent_obligations': intent_obligations,
     }
+    content_requirements = [
+        copy.deepcopy(requirement)
+        for branch in downstream_branches
+        for requirement in _mapping(branch.get('artifact_request')).get('content_requirements', [])
+    ]
+    if content_requirements:
+        graph_payload['content_requirement_policy'] = 'named_saved_text_v1'
+        graph_payload['content_requirements'] = content_requirements
+        reference_policy = request.get('content_review_reference_policy') or next((
+            _mapping(branch.get('artifact_request')).get('content_review_reference_policy')
+            for branch in downstream_branches
+            if _mapping(branch.get('artifact_request')).get('content_review_reference_policy')), '')
+        if reference_policy:
+            graph_payload['content_review_reference_policy'] = reference_policy
     if audio_cardinality_block:
         graph_payload.update(
             {
@@ -6454,6 +6416,7 @@ def next_executable_downstream_branches(
     pending_capabilities: Optional[list[Any]] = None,
     completed_capabilities: Optional[list[Any]] = None,
     failed_capabilities: Optional[list[Any]] = None,
+    resolve_dependency_aliases: bool = False,
 ) -> list[dict[str, Any]]:
     phases = _phase_records(phase_graph)
     pending = [
@@ -6503,9 +6466,38 @@ def next_executable_downstream_branches(
             for item in (phase.get('depends_on') or branch.get('depends_on') or [])
             if _clean_text(item)
         ]
-        if any(dep_id in failed_phase_ids for dep_id in depends_on):
+        dependency_ids = depends_on
+        if resolve_dependency_aliases:
+            # Guarded continuation has no first-pending fallback. An alias is
+            # usable only through one current graph phase and its exact result;
+            # capability-level completion cannot establish this identity.
+            dependency_ids = []
+            for dependency in depends_on:
+                matches = [item for item in phases if dependency in {
+                    _clean_text(item.get('phase_id')), _clean_text(item.get('branch_id'))}]
+                if len(matches) != 1 or _is_unpromoted_candidate_record(matches[0]):
+                    break
+                producer = matches[0]
+                producer_phase = _clean_text(producer.get('phase_id'))
+                if not producer_phase:
+                    break
+                if dependency != producer_phase:
+                    results = [item for item in (completed_branches or [])
+                               if isinstance(item, Mapping) and (
+                                   item.get('branch_id') == producer.get('branch_id')
+                                   or item.get('phase_id') == producer_phase)]
+                    if (len(results) != 1
+                            or results[0].get('status') not in {'fulfilled', 'completed'}
+                            or any(producer.get(key)
+                            and results[0].get(key) != producer[key]
+                            for key in ('branch_id', 'phase_id', 'obligation_id', 'capability', 'output_type'))):
+                        break
+                dependency_ids.append(producer_phase)
+            if len(dependency_ids) != len(depends_on):
+                continue
+        if any(dep_id in failed_phase_ids for dep_id in dependency_ids):
             continue
-        if all(dep_id in completed_phase_ids for dep_id in depends_on):
+        if all(dep_id in completed_phase_ids for dep_id in dependency_ids):
             ready.append(
                 {
                     **dict(phase),
@@ -6641,6 +6633,7 @@ def downstream_phase_branch_batches(
     pending_capabilities: Optional[list[Any]] = None,
     completed_capabilities: Optional[list[Any]] = None,
     failed_capabilities: Optional[list[Any]] = None,
+    resolve_dependency_aliases: bool = False,
 ) -> list[list[dict[str, Any]]]:
     remaining = [
         _normalize_explicit_downstream_branch(item, fallback_index=index)
@@ -6655,6 +6648,10 @@ def downstream_phase_branch_batches(
         for index, item in enumerate(completed_branches or [], start=1)
     ]
     completed = [item for item in completed if item]
+    if resolve_dependency_aliases:
+        # Keep exact completion identity fields (notably obligation_id) for
+        # alias proof; the normal scheduling projection intentionally omits them.
+        completed = [dict(item) for item in (completed_branches or []) if isinstance(item, Mapping)]
     failed = [
         _normalize_explicit_downstream_branch(item, fallback_index=index)
         for index, item in enumerate(failed_branches or [], start=1)
@@ -6670,6 +6667,7 @@ def downstream_phase_branch_batches(
             pending_capabilities=pending_capabilities,
             completed_capabilities=completed_capabilities,
             failed_capabilities=failed_capabilities,
+            resolve_dependency_aliases=resolve_dependency_aliases,
         )
         if not batch:
             break

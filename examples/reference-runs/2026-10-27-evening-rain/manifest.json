@@ -1,0 +1,67 @@
+{
+  "files": [
+    {
+      "mime_type": "application/octet-stream",
+      "path": "README.md",
+      "role": "documentation",
+      "sha256": "8ffe513d72c6c1590edd4554c68e509b2dfe551d84bf8f5ea0fbae6c603cd7e9",
+      "size_bytes": 1528
+    },
+    {
+      "mime_type": "audio/x-wav",
+      "path": "artifacts/audio/narration.wav",
+      "role": "canonical_artifact_copy",
+      "sha256": "fc0760d82a52896777a71ec0f6e78cc5c8eed1b632f2c18d9cf4bce5ed83f52d",
+      "size_bytes": 848684
+    },
+    {
+      "mime_type": "application/json",
+      "path": "monitor-report.json",
+      "role": "observer_evidence",
+      "sha256": "dffed4d7d96bb33e19eb3fcbeff0a2308b07a01fc067853244094f9eb658d330",
+      "size_bytes": 1532
+    },
+    {
+      "mime_type": "text/plain",
+      "path": "prompt.txt",
+      "role": "request",
+      "sha256": "03b83f7df475117f0736aba26572e320602cc0b5406e21e28d7a9e34abe402ea",
+      "size_bytes": 243
+    },
+    {
+      "mime_type": "application/json",
+      "path": "response.json",
+      "role": "response_truth",
+      "sha256": "2f8c51d9c919a5f71496a7355dd3a125b59c1921eb644470f4698a5c0d63f942",
+      "size_bytes": 3797
+    }
+  ],
+  "frame_id": "resp_1793127245156_efa149ac7b1a:frame-2",
+  "frame_sequence": 2,
+  "provenance": {
+    "original_response_frame_authoritative": true,
+    "original_runtime_artifacts_authoritative": true,
+    "publication_copy_is_runtime_authority": false,
+    "raw_frame_published": false,
+    "raw_monitor_record_published": false
+  },
+  "response_id": "resp_1793127245156_efa149ac7b1a",
+  "schema": "fruth.reference_run_manifest.v1",
+  "source_frame_record_sha256": "6a424bfc6637c9e22337086d1ad0565bb930d68258a87c5c736058674990cfbb",
+  "source_frame_record_size_bytes": 749368,
+  "summary": {
+    "artifact_count": 1,
+    "bundle_included": false,
+    "file_count": 5,
+    "total_bytes": 855784
+  },
+  "validation": {
+    "artifact_checksums_verified": true,
+    "indexed_frame_verified": true,
+    "local_absolute_paths_absent": true,
+    "monitor_verdict": "clean",
+    "prompt_identity_verified": true,
+    "terminal_runtime_truth_verified": true
+  },
+  "version": 1
+}

@@ -2,12 +2,12 @@
 
 **Knobs may change strategy, never truth.**
 
-Latest review: [October 21 validation status](SELF_ATTACK_STATUS_2026-10-21.md)
-records complete 170-case coverage for local models, AFM and PCC Cloud, matching
-offline gates, and five completed local reference workflows. PCC's derived pass
-combines compatible windows and an audio retry while preserving both native
-subset verdicts. Cloud Pro remains untested. The report includes exact source
-identities and [historical verdicts](SELF_ATTACK_STATUS_2026-10-21.md#historical-results).
+Latest review: [October 29 validation status](SELF_ATTACK_STATUS_2026-10-29.md)
+records the completed bounded research/hardening round, the matching full offline
+gate and source/evidence checker, and source-bound local, AFM and PCC live results.
+Original incomplete attempts and targeted recoveries remain distinct. The latest
+reference fixes have targeted local live validation; there is no full-current-source
+live-matrix claim. Cloud Pro remains untested.
 
 Run from the checkout:
 
@@ -49,7 +49,7 @@ production preferences, operator authorization, or learning state. Fake model
 decisions are deterministic substitutes; this mode does not certify a live
 interpretive inference model's interpretation.
 
-The source release ships this guide, the dated public campaign summaries, the
+The source release ships this guide, the current public campaign summary, the
 harness/tests and two compact inputs:
 `config/self_attack_corpus.json` (the default adversarial corpus) and
 `config/graph_rebase_shadow_corpus.json`. Retained captures, local regression

@@ -1,0 +1,62 @@
+{
+  "execution": {
+    "process_id": 32462,
+    "started_at": "2026-10-28T17:15:20.55+00:00",
+    "finished_at": "2026-10-28T17:15:20.74+00:00"
+  },
+  "records": [
+    {
+      "timestamp": "2026-10-28 18:15:20.639895+0100",
+      "processID": 32463,
+      "processImagePath": "/System/Library/PrivateFrameworks/WorkflowKit.framework/XPCServices/BackgroundShortcutRunner.xpc/Contents/MacOS/BackgroundShortcutRunner",
+      "processImageUUID": "7E64C49B-DE6D-312A-8707-0A4201EB6D59",
+      "bootUUID": "166109A3-CCC5-4294-A7EE-7FFB4679E934",
+      "senderImagePath": "/usr/lib/system/libxpc.dylib",
+      "subsystem": "com.apple.xpc",
+      "category": "connection",
+      "messageType": "Default",
+      "formatString": "[%p] %{public}s connection: mach=%{bool}d listener=%{bool}d peer=%{bool}d name=%{public}s",
+      "eventMessage": "[0x79572ec780] activating connection: mach=false listener=false peer=true name=com.apple.WorkflowKit.BackgroundShortcutRunner.peer[32462].0x79572ec780"
+    },
+    {
+      "timestamp": "2026-10-28 18:15:20.720640+0100",
+      "processID": 32463,
+      "processImagePath": "/System/Library/PrivateFrameworks/WorkflowKit.framework/XPCServices/BackgroundShortcutRunner.xpc/Contents/MacOS/BackgroundShortcutRunner",
+      "processImageUUID": "7E64C49B-DE6D-312A-8707-0A4201EB6D59",
+      "bootUUID": "166109A3-CCC5-4294-A7EE-7FFB4679E934",
+      "senderImagePath": "/System/Library/PrivateFrameworks/ActionKit.framework/Versions/A/ActionKit",
+      "subsystem": "com.apple.shortcuts",
+      "category": "Actions",
+      "messageType": "Error",
+      "formatString": "Throwing iCloudPlusRequired error because the account is not eligible for the Cloud Pro model",
+      "eventMessage": "Throwing iCloudPlusRequired error because the account is not eligible for the Cloud Pro model"
+    },
+    {
+      "timestamp": "2026-10-28 18:15:20.723583+0100",
+      "processID": 32463,
+      "processImagePath": "/System/Library/PrivateFrameworks/WorkflowKit.framework/XPCServices/BackgroundShortcutRunner.xpc/Contents/MacOS/BackgroundShortcutRunner",
+      "processImageUUID": "7E64C49B-DE6D-312A-8707-0A4201EB6D59",
+      "bootUUID": "166109A3-CCC5-4294-A7EE-7FFB4679E934",
+      "senderImagePath": "/System/Library/PrivateFrameworks/WorkflowKit.framework/Versions/A/WorkflowKit",
+      "subsystem": "com.apple.shortcuts",
+      "category": "WorkflowExecution",
+      "messageType": "Error",
+      "formatString": "%s Action %{public}@ finished with error {domain: %{public}@, code: %ld}. %@",
+      "eventMessage": "-[WFAction runWithInput:userInterface:runningDelegate:variableSource:workQueue:completionHandler:]_block_invoke Action <WFAskLLMAction: 0x1033d49b0, identifier: is.workflow.actions.askllm> finished with error {domain: WFAskLLMActionErrorDomain, code: 1511}. Error Domain=WFAskLLMActionErrorDomain Code=1511 UserInfo={NSLocalizedDescription=<private>, WFModelNameErrorKey=<private>}"
+    }
+  ],
+  "classification": {
+    "status": "confirmed",
+    "source": "macos_unified_log_xpc_peer",
+    "cli_pid": 32462,
+    "runner_pid": 32463,
+    "boot_uuid": "166109A3-CCC5-4294-A7EE-7FFB4679E934",
+    "runner_image_uuid": "7E64C49B-DE6D-312A-8707-0A4201EB6D59",
+    "error_domain": "WFAskLLMActionErrorDomain",
+    "error_code": 1511,
+    "reason": "iCloudPlusRequired",
+    "peer_bound_at": "2026-10-28T18:15:20.639895+01:00",
+    "eligibility_at": "2026-10-28 18:15:20.720640+0100",
+    "action_error_at": "2026-10-28 18:15:20.723583+0100"
+  }
+}

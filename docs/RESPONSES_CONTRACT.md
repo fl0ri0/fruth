@@ -58,11 +58,20 @@ Explicit inline/embedded implementation formats (for example embedded CSS or
 inline JavaScript) do not request additional file artifacts. An explicitly named
 separate stylesheet or script remains a separate output request.
 
+Local page-image inference requires visual asset cues outside quoted data.
+Generic version/variant nouns alone do not supply those cues; rendering a JSON
+version field in HTML does not request an image. Explicit image work retains its
+own admission and dependency requirements.
+
 An affirmative file-creation header also governs adjacent named file
 specifications (for example, “Create two files. note.txt must contain notes.
 status.json must contain data.”). This is file authority, not JSON response
 formatting. Quoted examples, source/reference descriptions, negation and an
-intervening independent instruction do not acquire that authority.
+intervening independent instruction do not acquire that authority. Affirmative
+named commands such as “Create note.txt. Create status.json.” also retain their
+file duties when followed by “Do not create other files”; a generic file noun
+is not required in each creation command. Recognition uses the existing local
+polarity and literal boundaries and does not grant execution permission.
 
 Materialization deferral is category-scoped. The compatibility field
 `prompt_intent.explicit_defer_materialization` records the presence of a defer
@@ -73,6 +82,20 @@ or audio cannot stop unrelated requested text files or remove saved-file depende
 edges. Matching deferred file obligations retain their identities and unresolved
 Closure checks; they are not silently waived or fulfilled. Older graphs without
 scoped evidence retain their compatibility interpretation until rebuilt.
+
+A relative generic-file exclusion (“do not create other/additional/extra files”)
+keeps `files=true` with an optional `file_exceptions` version 1 record. Fresh
+caller analysis resolves that record from recognized affirmative media counts
+and exact text-file requests. It is an eligibility ceiling, not output admission:
+planner/provider text cannot add targets or counts, and branch-local payload,
+reservation, dependency and current execution checks still apply. Explicit
+category/format deferral and a separate blanket file ban take precedence. With
+no recognized permitted outputs, the exclusion permits none. Named text requests
+use the existing file-intake grammar, including explicit file-creation headers.
+Older readers conservatively honor `files=true`; newer readers do not infer
+missing or unknown-version exceptions from historical effective prompts. Existing
+frames are not migrated or rewritten. Recovery uses their recorded scope; a new
+caller request can establish fresh scope after an older false block.
 
 Accepted current-turn file promises remain in `request_phase_graph.intent_obligations`
 when a later detector, planner, or response graph contains fewer requests. Graph
@@ -133,6 +156,108 @@ input digest and output snapshot. This is runtime handoff evidence, not a
 model's assertion or a general guarantee of semantic output quality. The
 isolated positive test independently computes its output from that submitted
 input.
+
+New caller captures opt into `content_requirement_policy=named_saved_text_v1`.
+The policy applies only when this existing unambiguous named text producer →
+saved read → named text consumer path is admitted. The graph and each existing
+artifact request retain separate producer and consumer `content_requirements`:
+stable branch/phase and requirement identities, exact accepted clause text, its
+SHA-256, and one review criterion per group. This does not parse arbitrary prose
+into a general semantic verifier. Other responses do not acquire this review gate.
+
+Technical snapshot, source binding, syntax and saved-output checks retain their
+existing meanings. They cannot discharge these content groups. Closure requires
+an accepted current branch semantic review (or an already-authorized applicable
+waiver/supersession) before marking the groups covered. Missing or inconsistent
+accounting on a newly governed request remains explicitly unresolved, even if
+all artifact checks pass. Unverified content is not thereby incorrect.
+
+The existing branch-review owner prepares the exact requirements and actual
+saved output content; the consumer packet also includes its bound saved source.
+Coverage requires complete content within the existing 16,000-byte semantic
+artifact excerpt budget, including requirement metadata. Truncated or omitted
+content and a digest alone are insufficient. Late Fill preserves this packet
+through dependency gathering and verifies its instruction digest before dispatch.
+Acceptance joins settled branch identity with the actual accepted fill result,
+current generation binding, and the existing strict verdict/criterion contract.
+Changed requirements, source or output invalidate the prior review. A completed
+summary or queued instruction alone is not accepted review evidence.
+
+Branch review instructions lead with the reviewed branch's accepted output,
+content duties and complete semantic criteria. The packet's
+`accepted_branch_scope` attributes sibling duties to their own branch/phase
+identities as context, using accepted contracts rather than filenames or reviewer
+prose. Applicable shared constraints remain attached to the reviewed branch.
+Stable logical duty fields keep reviewer admission/completion bookkeeping from
+changing the generation by itself; actual evidence and contract changes retain
+the existing invalidation rules. Context labels do not expand valid evidence
+references. Negative, uncertain and incomplete verdicts retain their blocking
+meaning even when saved files independently look correct. This presentation
+change does not establish live reviewer soundness.
+
+New caller captures additionally record
+`content_review_reference_policy=packet_exact_v1`. Only the named saved-text
+content-review path uses this rule. Its runtime-owned packet includes
+`evidence_reference_catalog.allowed_refs`: exact, unambiguous aliases of the
+supplied branch/phase, complete saved output, bound complete source, and accepted
+requirements. Artifact refs, paths/names and supplied source artifact IDs retain
+their existing spellings; no registry lookup or inferred alias expands the set.
+The instruction states these forms explicitly, and the catalog/instruction are
+part of the existing generation digest. The review binding records
+`evidence_reference_policy=packet_exact_v1` without changing its existing policy
+identifier or the verdict schema version.
+
+Every verdict-level reference and every reference on a passed required criterion
+must resolve within that exact packet. Required criteria need nonempty refs.
+Ordering and duplicates are allowed. Exact strings and `ref`, `id` or
+`name` envelopes are supported in arrays when all identity fields resolve to the
+same evidence; a criterion may also use a single exact
+string. Surrounding whitespace retains existing normalization. Unknown, mistyped,
+ambiguous, stale, malformed or out-of-scope refs reject the entire review for
+completion, including mixed valid/invalid lists. No fuzzy matching, citation
+repair or accepted-subset fallback occurs. Original returned text and reference
+declarations remain available, with per-entry rejection locations and reasons.
+The accepted request retains this policy independently of downstream graph and
+result metadata, so missing review labels cannot downgrade governed work. Missing
+or inconsistent required evidence remains unresolved. Correct technical artifacts
+stay available; existing manual-review/recovery authority and budgets still apply.
+
+Canonical request frames preserve the explicitly captured
+`content_review_reference_policy` through persistence and caller-intent restoration.
+An absent historical request policy remains absent; restoration does not infer it
+from graph metadata, model output, successful results or current defaults.
+Supported Late Fill controls restore their finalizer request from the current
+canonical frame inside the existing response mutation boundary. A missing or
+plain top-level request projection therefore cannot erase captured provenance,
+original caller scope, separate preparation text or saved policy identities.
+Bounded observation projections and claimed provenance in plain mappings cannot
+override that canonical source. If the canonical request or original-intent
+evidence is unavailable, it stays unavailable; controls neither backfill older
+frames nor gain root-reconstruction or scheduling authority.
+
+Restored pre-reference-policy requests and frozen reviews retain their original
+interpretation, including historical nonempty-reference acceptance. This rule
+does not recertify past completion. Exact reference validity establishes evidence
+membership only; a false positive with legitimate refs remains an A2 reviewer-
+soundness limitation.
+
+Review execution uses existing Closure promotion, routing and attempt budgets.
+Unavailable capacity or insufficient packet coverage leaves verification work
+unresolved for attention, without availability polling or regenerating good
+artifacts. Covered branch criteria do not independently create a duplicate global
+review; other whole-turn review signals retain their authority.
+
+Closure and its compact surface retain `completion_basis`,
+`content_coverage_status`, `content_requirement_count`,
+`unresolved_content_requirement_count`, and `correctness_basis`. Canonical frames
+retain the full groups, bindings and verdicts through ordinary CAS persistence;
+compact views may omit detail but retain this accounting. A bound positive review
+can be wrong: `completion_basis=bound_semantic_review` explicitly depends on
+reviewer soundness and is not independent proof of correctness. No new waiver,
+parallel store, compatibility-key replacement or saved-file dependency version
+change is introduced. Restoring a historical frozen request does not add this
+admission policy or rewrite its prior completion decision; absence there means
+this coverage was not recorded.
 
 Early existing-file fulfilment, missing-result fallback, Closure, and terminal
 branch reconciliation use the same strict saved-file evidence validator:
@@ -508,6 +633,17 @@ and partial-rebase identities as well as graph-patch successor identity. Carryin
 an envelope does not admit new work or bypass the current-frame, execution and
 branch-control checks. A completed terminal repair handoff must not dispatch again
 when its branch completion evidence is recovered.
+One terminal or cancelled member does not complete another exact admitted pending
+member of that execution. An explicitly activated handoff may continue the latter
+through the normal gates. Foreign/unbound work and stale pending copies of an
+already terminal branch do not reopen the execution.
+
+Terminal repair projection retains promotion on a new matching output obligation
+only when the promoted runtime repair contract, its exact execution binding and
+the accepted additive patch agree. The obligation retains the repair-contract and
+graph-review identities. Required/pending labels, missing proof, foreign identities
+and provider claims do not supply promotion; existing historical obligations are
+not backfilled by projection or passive recovery.
 
 Terminal materialization refreshes current artifact/output projections and new
 results. Previously accepted `fill_results` retain their original content,
@@ -595,6 +731,17 @@ outputs. A control whose admitted target changed returns HTTP 409 with
 `response_mutation_conflict`; a fresh control with no pending/active target still
 returns 404. HTTP 200 cancellation cannot be replaced by that stale worker.
 
+After those checks, a control restores the request from the current canonical
+frame, applies the exact disposition and rebuilds Closure with the ordinary
+assessment owner before freezing its successor. Checks, coverage, counts,
+semantic-review/repair diagnostics and the corresponding surface projections
+describe the same accepted evidence. An accepted sibling review remains covered;
+disposing a separate review task supplies no review evidence or disposition of
+its underlying content requirement. Assessment failure prevents that control
+publication. This assessment does not invoke a model, materialize repairs or
+activate continuation. Historical missing caller authority/policy remains absent,
+and passive reads return the saved assessment without refreshing it.
+
 A legitimately scheduled, still-live worker may then attempt one guarded handoff
 through the existing Late Fill release-then-schedule seam. This continues its
 existing admitted execution; it does not admit work or mint an execution key.
@@ -625,6 +772,28 @@ never schedule; process-context loss ends this permission. Pending-only retry
 still returns 409. There is no durable resume queue, new endpoint or UI action.
 Existing availability polling remains conditional on finite provider/capacity and
 scheduling assumptions, with no new total waiting deadline.
+
+C9 captures the exact frame's canonical request at admission and compares it with
+the current exact frame's canonical request. It retains full equality, including
+caller policy, provenance and unknown fields. Live/wire request carriers do not
+replace that source. Re-freezing an already compacted request preview preserves
+its original omission audit when no further projection occurs; new detail still
+passes through the existing compaction owner. This preserves audit provenance
+without excluding preview fields from the continuation comparison.
+
+For a guarded child, a dependency branch alias resolves only through one current
+accepted graph phase and its exact completed branch identity. Ambiguous aliases,
+conflicting completion identities and unpromoted candidates do not make work
+ready. Ordinary scheduling retains its existing wave ordering.
+
+An exact accepted branch semantic review may quote original intent as bounded
+review evidence. Runtime verifies its promoted repair and accepted graph patch,
+local execution contract, instruction/generation binding and freshly derived
+Closure evidence before allowing that exact instruction through the root-replay
+guard. Review labels and self-consistent hashes alone are insufficient. The
+exception applies only to the instruction's prompt/content carriers, never to
+other root-bearing fields, widened execution scope or partial/rebase successors.
+It creates no continuation permission and changes no result-acceptance gate.
 
 This boundary coordinates threads of one control-plane process, including its
 claimed worker and progress callbacks. It does not serialize independent
@@ -733,6 +902,23 @@ This candidate loop frame is not an autonomous retry. It tells clients and repai
 Late fill gates repair branches before backend execution. A `repair_dependency_chain` or `rebind_dependency_evidence` branch without dependency artifacts or prior branch evidence becomes a blocked failed branch with `DEPENDENCY_CHAIN_REPAIR_REQUIRED`. A `repair_branch_contract` branch without a bounded `execution_contract` becomes a blocked failed branch with `BRANCH_CONTRACT_REPAIR_REQUIRED`. These blocks apply to target materialization, not to the whole repair loop. Response frames should surface `materialization_blocked`, `blocked_scope`, `blocked_prerequisite`, `repair_work_available`, `repair_work_policy`, and `needs_external_input` so clients know whether Fruth can still repair the missing prerequisite locally. When the required dependency evidence or execution contract is present, the corresponding block flag is resolved and the bounded branch can run. These are repair states, not backend retries.
 
 ## Output Slots And Outputs
+
+The admitted delivery-only per-image inspection family carries
+`structured_output_contract.mode=separate_image_reports_v1` on its final text
+branch. Its required bindings name each accepted analysis branch/phase and image
+producer branch/phase. Runtime deterministically delivers those existing public
+reports in source order, with one contribution per source. It revalidates image
+identity/bytes, the existing vision input receipt and report digest at preparation,
+dispatch and Closure. `report_delivery_evidence` persists these bindings; public
+text must equal the complete rendered contributions. Missing, duplicate, foreign
+or substituted contributions leave Closure open even if synthesis text exists.
+
+Admission is conservative: an explicit separate visible-image inspection clause
+with no additional terminal transformation receives this delivery contract.
+Comparison, summary, translation and other distinct writing duties retain their
+execution contracts. Existing frozen contracts remain readable without adding
+new historical duties. Delivery coverage does not certify visual-description
+truth or explain an earlier live model's omission.
 
 Slots are presentation truth tied to work truth. They should stay compact and reference branch-local diagnostic truth instead of duplicating it.
 
@@ -861,6 +1047,41 @@ declaration.
 Exact target revisions still require their current-branch write proof; saved-file
 consumers still require the bound producer/read identities and digests. Neither
 text claiming a save nor an existing wrong file is completion evidence.
+
+A saved-read consumer's one bounded syntax repair preserves its original
+`saved_file_dependency` and content requirements. The separate version-1
+`artifact_request.saved_file_syntax_repair` binds the original logical consumer
+to exactly the rejected physical target, complete target snapshot, file identity
+and deterministic defects. Preparation combines that packet with a fresh verified
+read of the unchanged producer. Dispatch rechecks source identities/version,
+target bytes/identity/defects, exact prepared prompt and authorized output request.
+The combined prompt uses the existing 90,000-byte saved-input bound, without
+truncation. The repair grants no sibling-target authority.
+
+Repaired consumption records the repair packet and new input/output digests;
+ordinary consumption evidence cannot certify that replacement. The logical
+consumer contract remains authoritative, and changed output needs a current
+consumer content review before Closure can complete. Recovery preserves this
+evidence through the existing canonical frame and artifact owners.
+
+Terminal link applicability is consumer-specific. The existing
+`local_visual_asset_binding` and `shared_css_binding` contracts identify owed
+producer links through the consumer's branch/phase and declared source identities.
+A required link stays open when omitted entirely, or when its saved producer is
+missing, foreign, unpublished or ambiguously bound. A response-wide rebind candidate
+pool, a file extension, an ordering edge or shared preparation does not create a
+link duty. In particular, `saved_file_read_required` proves consumption of saved
+data; it does not require a backlink to that data file.
+
+Actual saved local references retain their existence and binding checks. Owed
+links resolve from the bound consumer through its saved linked dependencies;
+disconnected sibling content cannot satisfy them. A stylesheet carrying the
+page's visual cohort may use that same page's links only when the page actually
+links the stylesheet and owes the same producers. A JSON image-path manifest
+remains its own consumer. Terminal validation uses the private current accepted
+output projection also used by rebinding; normal finalization still owns public
+handles and frozen frame lineage. These are derived checks over existing records,
+with no persisted-format change or reconstruction of missing historical authority.
 
 Ambiguous deictic requests such as "make this HTML" need a selected source, current payload, or explicit reference before persistence.
 

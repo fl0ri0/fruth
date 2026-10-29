@@ -96,6 +96,11 @@ preview-opening command. Noninteractive startup never opens previews or waits.
 claim: oversized requests fail instead of being truncated. The low-level CLI
 defaults to `PCC_SHORTCUT_TIMEOUT_SEC=120`; ordinary Fruth requests pass their
 existing chat timeout as the single budget shared by both tier attempts.
+An opaque Pro error can require a native diagnostic lookup: its
+`PCC_DIAGNOSTIC_TIMEOUT_SEC=5` limit consumes that same request budget, and
+`PCC_DIAGNOSTIC_MAX_BYTES=1048576` bounds accepted diagnostic output. Only an
+execution-time/PID-bound XPC runner's explicit iCloud+ eligibility failure can
+qualify; unavailable or ambiguous diagnostics never authorize fallback.
 
 PCC has no native sampling/output-token controls in Shortcuts. A single direct
 user text message passes through unchanged; system instructions, history and
@@ -426,6 +431,13 @@ Save/read/transform preparation stays text-only until the declared source-file p
 
 Linked artifact sets close only when concrete saved files point to the concrete saved dependency artifacts they expose. If a surviving generated output path does not resolve to a saved local artifact, or if duplicate substitution reuses one saved path before all owed saved artifacts are bound, closure remains repair-needed/non-complete unless Closure records a waiver or supersession.
 
+Link duties come from the accepted consumer's link contract, not the presence of
+other artifacts in the response. Independent JSON and image outputs, shared
+preparation and saved-data computation do not owe cross-links. Required links
+remain owed even when absent from the generated content; actual local references
+still receive applicable existence and binding checks. Rebinding candidates are
+not an obligation list. See [Text Artifact Payloads](RESPONSES_CONTRACT.md#text-artifact-payloads).
+
 Local image asset requirements are graph adequacy, not late presentation polish. A page/site prompt that asks for local generated or embedded images, local image assets, or non-external image paths must promote image-generation branches even without an exact image count. Structural hints such as "two image sections" set the minimum count, and subpage/image-asset language can raise that minimum. HTML/CSS artifact branches that must reference those images should depend on the generated image phases and carry `dependency_contract=local_visual_asset_binding`.
 
 Counted image cohorts require an exact branch-local prompt cohort before any image backend may run. When `batch_prompt_expected_count >= 2`, the number of non-empty `batch_prompts` must match exactly and the selected branch must retain its slot binding. An explicitly present malformed, Boolean, non-positive, fractional, or out-of-range count is contract corruption, not an absent single-image count, and fails closed as `candidate_extraction_issue=invalid_image_prompt_batch_count`. A shared preparation answer, complete website source, root prompt, selected text/JSON input, or heuristically focused fragment cannot stand in for a missing slot. A missing, mismatched, or invalid count contract removes every executable prompt carrier and exposes `branch_contract_error=incomplete_image_prompt_batch`, `materialization_blocked=true`, and `repair_action=repair_branch_contract`. A genuinely absent count and valid count `1` retain existing single-image behavior; complete counted cohorts are unchanged. A JSON array of exactly one `prompt_1`, `prompt_2`, … string field per ordered slot is also accepted as unambiguous prompt preparation. Missing, repeated, extra, non-string, duplicate-key or out-of-order fields are rejected; arbitrary JSON data is not mined for prompts.
@@ -514,6 +526,13 @@ commitment. The branch-local `semantic_review_lens`, execution contract, runtime
 evidence, and Closure truth always take precedence over that advisory orientation.
 
 Branch-level semantic review is available everywhere but demand-gated. A fulfilled-looking branch with explicit `semantic_review_criteria` or non-deterministic qualitative criteria may promote a `branch_semantic_review` check and a schedulable `semantic_review` branch. Plain deterministic `review_criteria` do not trigger that by themselves. The reviewer receives only the branch contract, branch output/evidence, dependencies, criteria, and current intent as bounded context. A passed `semantic_review_verdict` clears the branch's semantic gate; failed, uncertain, or unparseable verdicts keep that exact branch pending/blocked with repair/manual-review guidance. Branch review checks the local note; global semantic closure still checks the whole phrase afterward.
+
+`accepted_branch_scope` presents the reviewed branch's accepted duties and every
+required criterion first, with sibling duties explicitly attributed as context.
+Scope follows accepted branch/phase contracts. Shared constraints, strict
+references, evidence-generation bindings and negative-review accounting retain
+their existing authority. This does not add a review retry loop or certify model
+reliability from deterministic fixtures.
 
 `decision_contract.recursive_cycle_review` is the depth-n knob. It reports every workload task through the same prepare -> gather evidence -> execute -> verify -> repair/freeze cycle without imposing a fixed depth cap. If a subtask skips evidence gathering, restarts the root prompt, or freezes before verification, inspect this review and the matching workload task contract.
 
@@ -604,6 +623,14 @@ The semantic execution gate is the branch-start relevance knob. Before a pending
 Reserved materialization candidates are diagnostic possibilities, not executable branches. A prompt such as "sketch a poster idea, but do not generate an image yet" or "keep this image only as a reserved option" may record an image candidate in `candidate_graph`, but it must not appear in executable `downstream_capabilities`, `downstream_phase_ids`, `continuation_required`, or Closure Repair output until a later promotion explicitly asks for it. If the same turn contains other promoted work, such as "do not generate an image yet, but read the idea as audio", only the promoted audio branch is executable. This is not a ban on planning input: reserved candidates can still be considered when forming or repairing the graph.
 
 Artifact-fulfillment negation is different from materialization defer. Wording such as "a prompt is not the image artifact", "a script is not the audio artifact", or "placeholder prose does not count as the HTML file" strengthens the open artifact obligation; it must not reserve or suppress the requested materialization branch. Use reserved candidates only for explicit stop/defer language such as "do not generate it yet", "hold audio for later", or "keep this output as a reserved option".
+
+Relative file exclusions retain only recognized explicit caller outputs. “Generate
+exactly two images; do not create other files” permits those two image duties,
+with their accepted prompts, while excluding additional deliverables. The intent
+owner records bounded `materialization_defer_scope.file_exceptions` alongside the
+conservative `files=true` flag. This adds no control knob or repair permission;
+blanket/category bans and reservations remain authoritative. See the
+[response contract](RESPONSES_CONTRACT.md#response-frame) for compatibility.
 
 Late-fill retry semantics must distinguish backend retries from graph/dependency repair. If a branch fails because its required artifact is missing, such as STT without an audio artifact or vision analysis without an image artifact, recovery is `repair_dependency_chain`; retrying the same branch is expected to repeat the failure. If the dependency artifact or evidence already exists but is not bound to the blocked branch, recovery may be `rebind_dependency_evidence`.
 

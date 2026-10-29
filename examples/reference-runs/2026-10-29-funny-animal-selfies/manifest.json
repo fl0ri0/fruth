@@ -1,0 +1,81 @@
+{
+  "files": [
+    {
+      "mime_type": "application/octet-stream",
+      "path": "README.md",
+      "role": "documentation",
+      "sha256": "ac99b1d7efe55bc88f6975b8de7bffaa876b580d4c3f1335a19427b3a9bdefc6",
+      "size_bytes": 3128
+    },
+    {
+      "mime_type": "image/png",
+      "path": "artifacts/images/image-01.png",
+      "role": "canonical_artifact_copy",
+      "sha256": "0cfe563005c3ca13aa8a6476d8e7418b6909cb140498dd09b4fc7b07642123de",
+      "size_bytes": 1219562
+    },
+    {
+      "mime_type": "image/png",
+      "path": "artifacts/images/image-02.png",
+      "role": "canonical_artifact_copy",
+      "sha256": "5833ee484094f73529da26c3aff398af3ee5851eb2d5d3046784d467f8c9d1dd",
+      "size_bytes": 1239593
+    },
+    {
+      "mime_type": "image/png",
+      "path": "artifacts/images/image-03.png",
+      "role": "canonical_artifact_copy",
+      "sha256": "c63108a596a60947602223164cecbefc5cdba17c501d58e307229ecad835d79b",
+      "size_bytes": 431529
+    },
+    {
+      "mime_type": "application/json",
+      "path": "monitor-report.json",
+      "role": "observer_evidence",
+      "sha256": "f0844f0696e58eb5ef6ee074d764e9f18afc551d2bd90db2672a88d2b00b9d72",
+      "size_bytes": 1687
+    },
+    {
+      "mime_type": "text/plain",
+      "path": "prompt.txt",
+      "role": "request",
+      "sha256": "9db87c5dacbc6191504af3df38e9916528cda0364efaaf957bbdbbe557c3930a",
+      "size_bytes": 333
+    },
+    {
+      "mime_type": "application/json",
+      "path": "response.json",
+      "role": "response_truth",
+      "sha256": "77ab93bbcd97920f6d559af76e8630e22f858e4914ce0387308bc2a3ab48896e",
+      "size_bytes": 7660
+    }
+  ],
+  "frame_id": "resp_1793251644875_e2762fdd6e05d:frame-2",
+  "frame_sequence": 2,
+  "provenance": {
+    "original_response_frame_authoritative": true,
+    "original_runtime_artifacts_authoritative": true,
+    "publication_copy_is_runtime_authority": false,
+    "raw_frame_published": false,
+    "raw_monitor_record_published": false
+  },
+  "response_id": "resp_1793251644875_e2762fdd6e05d",
+  "schema": "fruth.reference_run_manifest.v1",
+  "source_frame_record_sha256": "b5f1f71088e8a782ed99643f11479ae2f9f23d17c74ded4790be79d4797ee2a1",
+  "source_frame_record_size_bytes": 813830,
+  "summary": {
+    "artifact_count": 3,
+    "bundle_included": false,
+    "file_count": 7,
+    "total_bytes": 2903492
+  },
+  "validation": {
+    "artifact_checksums_verified": true,
+    "indexed_frame_verified": true,
+    "local_absolute_paths_absent": true,
+    "monitor_verdict": "clean",
+    "prompt_identity_verified": true,
+    "terminal_runtime_truth_verified": true
+  },
+  "version": 1
+}

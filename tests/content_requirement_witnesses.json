@@ -1,0 +1,218 @@
+[
+  {
+    "evidence": "controls-01/01-regression/examples/wrong_sum/observation.json",
+    "evidence_sha256": "657fccf9808703f8a437b0e0485379c3ce5632be5a2d8a787b2c2a7bd8703362",
+    "request": {
+      "data": {
+        "subject": "alpha",
+        "version": 1,
+        "values": [
+          7,
+          11
+        ]
+      },
+      "prompt": "Save numbers.json containing {\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}. Read the actually saved file again. Create result.html from the read data with the subject, version, values and sum and embedded CSS.",
+      "css": true,
+      "outputs": [
+        "numbers.json",
+        "result.html"
+      ]
+    },
+    "oracle": {
+      "checks": {
+        "subject": true,
+        "version": true,
+        "values": true,
+        "sum": false,
+        "embedded_css": true,
+        "output_scope": true
+      },
+      "correct": false,
+      "visible_text": "Subject: alpha Version: 1 Values: 7, 11 Sum: 19"
+    },
+    "source_text": "{\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}\n",
+    "output_text": "<!doctype html><html><head><title>Result</title><style>body { color: navy; }</style></head><body><p>Subject: alpha</p><p>Version: 1</p><p>Values: 7, 11</p><p>Sum: 19</p></body></html>\n",
+    "source_sha256": "afb2f01e3be3dbe1820b537dcca64f4dafcc85576f62712c009a1765aef5317f",
+    "output_sha256": "44b5d4509d46ae360f21517cdae74ec75d8afeb9ff66ce6f5396224e0c8dc325"
+  },
+  {
+    "evidence": "controls-01/01-regression/examples/false-positive-review/observation.json",
+    "evidence_sha256": "2df176ca6472a2254e6000a91d29ea80b39121c3de3b6865847b063371cb071b",
+    "request": {
+      "data": {
+        "subject": "alpha",
+        "version": 1,
+        "values": [
+          7,
+          11
+        ]
+      },
+      "prompt": "Save numbers.json containing {\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}. Read the actually saved file again. Create result.html from the read data with the subject, version, values and sum and embedded CSS.",
+      "css": true,
+      "outputs": [
+        "numbers.json",
+        "result.html"
+      ]
+    },
+    "oracle": {
+      "checks": {
+        "subject": true,
+        "version": true,
+        "values": true,
+        "sum": false,
+        "embedded_css": true,
+        "output_scope": true
+      },
+      "correct": false,
+      "visible_text": "Subject: alpha Version: 1 Values: 7, 11 Sum: 19"
+    },
+    "source_text": "{\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}\n",
+    "output_text": "<!doctype html><html><head><title>Result</title><style>body { color: navy; }</style></head><body><p>Subject: alpha</p><p>Version: 1</p><p>Values: 7, 11</p><p>Sum: 19</p></body></html>\n",
+    "source_sha256": "afb2f01e3be3dbe1820b537dcca64f4dafcc85576f62712c009a1765aef5317f",
+    "output_sha256": "44b5d4509d46ae360f21517cdae74ec75d8afeb9ff66ce6f5396224e0c8dc325"
+  },
+  {
+    "evidence": "controls-01/01-regression/examples/review-wrong_binding/observation.json",
+    "evidence_sha256": "81f3c3d7c989dc543b8b2e03f94bde55b5aa938fb9605ee46955354fed5be17d",
+    "request": {
+      "data": {
+        "subject": "alpha",
+        "version": 1,
+        "values": [
+          7,
+          11
+        ]
+      },
+      "prompt": "Save numbers.json containing {\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}. Read the actually saved file again. Create result.html from the read data with the subject, version, values and sum and embedded CSS.",
+      "css": true,
+      "outputs": [
+        "numbers.json",
+        "result.html"
+      ]
+    },
+    "oracle": {
+      "checks": {
+        "subject": true,
+        "version": true,
+        "values": true,
+        "sum": true,
+        "embedded_css": true,
+        "output_scope": true
+      },
+      "correct": true,
+      "visible_text": "Subject: alpha Version: 1 Values: 7, 11 Sum: 18"
+    },
+    "source_text": "{\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}\n",
+    "output_text": "<!doctype html><html><head><title>Result</title><style>body { color: navy; }</style></head><body><p>Subject: alpha</p><p>Version: 1</p><p>Values: 7, 11</p><p>Sum: 18</p></body></html>\n",
+    "source_sha256": "afb2f01e3be3dbe1820b537dcca64f4dafcc85576f62712c009a1765aef5317f",
+    "output_sha256": "2e9511992c906e0533c1517e68785267bfa23e5f780fd75265cec8f233363bdf"
+  },
+  {
+    "evidence": "controls-01/01-regression/examples/review-wrong_refs/observation.json",
+    "evidence_sha256": "0db29dcd89c247fa0d684cfe9f13efb27dc2eb00c894b639dd544d66b03cd3d0",
+    "request": {
+      "data": {
+        "subject": "alpha",
+        "version": 1,
+        "values": [
+          7,
+          11
+        ]
+      },
+      "prompt": "Save numbers.json containing {\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}. Read the actually saved file again. Create result.html from the read data with the subject, version, values and sum and embedded CSS.",
+      "css": true,
+      "outputs": [
+        "numbers.json",
+        "result.html"
+      ]
+    },
+    "oracle": {
+      "checks": {
+        "subject": true,
+        "version": true,
+        "values": true,
+        "sum": true,
+        "embedded_css": true,
+        "output_scope": true
+      },
+      "correct": true,
+      "visible_text": "Subject: alpha Version: 1 Values: 7, 11 Sum: 18"
+    },
+    "source_text": "{\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}\n",
+    "output_text": "<!doctype html><html><head><title>Result</title><style>body { color: navy; }</style></head><body><p>Subject: alpha</p><p>Version: 1</p><p>Values: 7, 11</p><p>Sum: 18</p></body></html>\n",
+    "source_sha256": "afb2f01e3be3dbe1820b537dcca64f4dafcc85576f62712c009a1765aef5317f",
+    "output_sha256": "2e9511992c906e0533c1517e68785267bfa23e5f780fd75265cec8f233363bdf"
+  },
+  {
+    "evidence": "identity-worker-01/01-regression/examples/worker-wrong_sum/observation.json",
+    "evidence_sha256": "d11bc75b01f913b359be6f7fc785e06fb4e34582fbb07bf543b17cffdcdf7292",
+    "request": {
+      "data": {
+        "subject": "alpha",
+        "version": 1,
+        "values": [
+          7,
+          11
+        ]
+      },
+      "prompt": "Save numbers.json containing {\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}. Read the actually saved file again. Create result.html from the read data with the subject, version, values and sum and embedded CSS.",
+      "css": true,
+      "outputs": [
+        "numbers.json",
+        "result.html"
+      ]
+    },
+    "oracle": {
+      "checks": {
+        "subject": true,
+        "version": true,
+        "values": true,
+        "sum": false,
+        "embedded_css": true,
+        "output_scope": true
+      },
+      "correct": false,
+      "visible_text": "Subject: alpha Version: 1 Values: 7, 11 Sum: 19"
+    },
+    "source_text": "{\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}\n",
+    "output_text": "<!doctype html><html><head><title>Result</title><style>body { color: navy; }</style></head><body><p>Subject: alpha</p><p>Version: 1</p><p>Values: 7, 11</p><p>Sum: 19</p></body></html>\n",
+    "source_sha256": "afb2f01e3be3dbe1820b537dcca64f4dafcc85576f62712c009a1765aef5317f",
+    "output_sha256": "44b5d4509d46ae360f21517cdae74ec75d8afeb9ff66ce6f5396224e0c8dc325"
+  },
+  {
+    "evidence": "identity-worker-01/01-regression/examples/worker-omit_css/observation.json",
+    "evidence_sha256": "76e4735e855f64eb3c7b01d5d356904c98ce1c8f4b37a0ea11accd782d3000bd",
+    "request": {
+      "data": {
+        "subject": "alpha",
+        "version": 1,
+        "values": [
+          7,
+          11
+        ]
+      },
+      "prompt": "Save numbers.json containing {\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}. Read the actually saved file again. Create result.html from the read data with the subject, version, values and sum and embedded CSS.",
+      "css": true,
+      "outputs": [
+        "numbers.json",
+        "result.html"
+      ]
+    },
+    "oracle": {
+      "checks": {
+        "subject": true,
+        "version": true,
+        "values": true,
+        "sum": true,
+        "embedded_css": false,
+        "output_scope": true
+      },
+      "correct": false,
+      "visible_text": "Subject: alpha Version: 1 Values: 7, 11 Sum: 18"
+    },
+    "source_text": "{\"subject\":\"alpha\",\"values\":[7,11],\"version\":1}\n",
+    "output_text": "<!doctype html><html><head><title>Result</title></head><body><p>Subject: alpha</p><p>Version: 1</p><p>Values: 7, 11</p><p>Sum: 18</p></body></html>\n",
+    "source_sha256": "afb2f01e3be3dbe1820b537dcca64f4dafcc85576f62712c009a1765aef5317f",
+    "output_sha256": "f841e46bf53f2fce966d0645068fa6bb7642f0f549e12b4431d25166b1ea43fd"
+  }
+]

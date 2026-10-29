@@ -51,6 +51,23 @@ def _diagnostic(binary, *args):
     return result.returncode, re.sub(r'\x1b\[[0-9;]*m', '', result.stdout + result.stderr).strip()
 
 
+def _system_available(code, message):
+    """Accept the legacy scalar or the updated, system-filtered CLI listing.
+
+    Keep the filtered compatibility command: the unfiltered `fm models` exit
+    status can reflect unrelated PCC eligibility, not local model readiness.
+    """
+    if code != 0:
+        return False
+    if message.lower() == 'system model available':
+        return True
+    warning = "warning: 'fm available' has been renamed to 'fm models'; 'available' still works but is deprecated."
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    rows = [line for line in lines if line not in ('Apple Foundation Models', warning)]
+    return (len(rows) == 1 and
+            re.fullmatch(r'✓\s+system\s+\([^\r\n]*\)', rows[0]) is not None)
+
+
 @lru_cache(maxsize=1)
 def system_model_metadata():
     """Optional host-default observation, cached until this Fruth process exits.
@@ -123,7 +140,7 @@ def describe_apple_fm_runtime_probe():
             else:
                 code, message = _diagnostic(binary, 'available', '--model', 'system')
                 detection['availability_status'] = message
-                detection['model_available'] = code == 0 and message.lower() == 'system model available'
+                detection['model_available'] = _system_available(code, message)
                 if detection['model_available']:
                     state = 'runnable'
                 else:

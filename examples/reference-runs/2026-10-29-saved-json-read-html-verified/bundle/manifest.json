@@ -1,0 +1,31 @@
+{
+  "entrypoint": "index.html",
+  "files": [
+    {
+      "artifact_ref": "artifact:text_49178063683a14d57b079c82",
+      "relative_path": "assets/files/file-01.json",
+      "sha256": "af64764250cf0caff759ece54b153cfb1dc57690577375c3016714381122b067",
+      "size_bytes": 10,
+      "source_sha256": "af64764250cf0caff759ece54b153cfb1dc57690577375c3016714381122b067",
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:text_53eb3928deedae26263accb8",
+      "relative_path": "index.html",
+      "sha256": "4b70d738d8d2a9369c93c2d5d057fd2053cdd5723422b5010167f7925bf07fd1",
+      "size_bytes": 1871,
+      "source_sha256": "4b70d738d8d2a9369c93c2d5d057fd2053cdd5723422b5010167f7925bf07fd1",
+      "type": "text"
+    }
+  ],
+  "link_check": {
+    "status": "passed"
+  },
+  "raw_runtime_manifest_published": false,
+  "resolved_links": [],
+  "schema": "fruth.public_bundle_manifest.v1",
+  "source_bundle_id": "bundle:9f62604f6daca7c2dbe1cb6c",
+  "source_response_id": "resp_1793252268413_53d21e0320fb7",
+  "status": "bundled",
+  "version": 1
+}

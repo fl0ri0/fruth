@@ -1762,6 +1762,11 @@ class ResponsesRequestRuntimeOwner:
         runtime = dict(updated.get('runtime') or {}) if isinstance(updated.get('runtime'), dict) else {}
         review = dict(graph_closure_review)
         runtime['graph_closure_review'] = review
+        if review.get('content_requirement_policy') == 'named_saved_text_v1':
+            # The canonical Closure owns this summary; indexed status/UI reads
+            # must retain it without hydrating full evidence sidecars.
+            updated['surface_state'] = dict(review.get('surface_state') or {})
+            runtime['surface_state'] = dict(updated['surface_state'])
         developer_diagnostics = (
             dict(runtime.get('developer_diagnostics') or {})
             if isinstance(runtime.get('developer_diagnostics'), dict)
@@ -5361,9 +5366,47 @@ class ResponsesRequestRuntimeOwner:
                 existing_phase_ids.add(phase_id)
             obligation_id = str(branch.get('obligation_id') or '').strip() or f'obligation-{phase_id}'
             if obligation_id and obligation_id not in existing_obligation_ids and output_type:
+                # Graph acceptance alone does not promote a repair. Preserve the
+                # runtime contract's existing authority only at its exact sink.
+                contract = branch.get('repair_contract')
+                contract = contract if isinstance(contract, Mapping) else {}
+                binding = contract.get('execution_binding')
+                binding = binding if isinstance(binding, Mapping) else {}
+                accepted_phases = (graph_repair_review.get('accepted_patch') or {}).get('add_phases') or []
+                matching_phases = [
+                    item for item in accepted_phases if isinstance(item, Mapping)
+                    and (item.get('branch_id') == branch_id
+                         or item.get('phase_id') == phase_id
+                         or item.get('obligation_id') == obligation_id)
+                ]
+                promotion = {}
+                if (branch.get('contract_state') == contract.get('status') == 'promoted'
+                        and contract.get('authority') == 'closure_review_runtime_truth'
+                        and branch.get('promotion_source') == contract.get('promotion_source')
+                        and contract.get('promotion_source')
+                        and branch.get('repair_contract_id') == contract.get('contract_id')
+                        and contract.get('contract_id')
+                        and binding.get('contract_id') == contract.get('contract_id')
+                        and binding.get('branch_id') == branch_id
+                        and binding.get('phase_id') == phase_id
+                        and contract.get('obligation_id') == obligation_id
+                        and contract.get('capability') == capability
+                        and contract.get('output_type') == output_type
+                        and len(matching_phases) == 1
+                        and all(matching_phases[0].get(key) == value for key, value in (
+                            ('branch_id', branch_id), ('phase_id', phase_id),
+                            ('obligation_id', obligation_id),
+                            ('repair_contract_id', contract.get('contract_id'))))):
+                    promotion = {
+                        'contract_state': branch['contract_state'],
+                        'promotion_source': branch['promotion_source'],
+                        'graph_repair_proposal_id': graph_repair_review['proposal_id'],
+                        'graph_repair_review_id': graph_repair_review['review_id'],
+                    }
                 output_obligations.append(
                     _compact_payload(
                         {
+                            **promotion,
                             'obligation_id': obligation_id,
                             'phase_id': phase_id,
                             'branch_id': branch_id,

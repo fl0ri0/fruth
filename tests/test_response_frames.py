@@ -35,6 +35,39 @@ from fruth_services.responses import (
 
 
 class ResponseFrameTests(unittest.TestCase):
+    def test_request_reference_policy_persists_without_historical_backfill(self):
+        from fruth_services.responses import capture_request_intent, request_intent_payload, restore_request_intent
+
+        historical = {'prompt': 'Reply briefly.', 'intent_source': 'runtime_caller_capture_v1',
+                      'content_requirement_policy': 'named_saved_text_v1'}
+        cases = (
+            ('captured', capture_request_intent({'prompt': 'Reply briefly.'}), 'packet_exact_v1'),
+            ('historical', restore_request_intent(historical), None),
+            ('explicit_version', restore_request_intent({**historical,
+                'content_review_reference_policy': 'future_packet_policy'}), 'future_packet_policy'),
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            frames_dir = Path(tmpdir)
+            for name, request, expected in cases:
+                with self.subTest(name=name):
+                    response_id = 'request-policy-' + name
+                    frame = build_response_frame({
+                        'id': response_id, 'status': 'completed', 'output_text': 'Ready.',
+                        # A downstream projection cannot backfill caller policy.
+                        'runtime': {'request_phase_graph': {
+                            'content_review_reference_policy': 'packet_exact_v1'}},
+                    }, request_payload=request)
+                    persist_response_frame(frame, frames_dir=frames_dir)
+                    recovered = load_latest_response_state(response_id, frames_dir=frames_dir)
+                    self.assertTrue(recovered['ok'])
+                    canonical = recovered['response_frame']['request']
+                    restored = request_intent_payload(restore_request_intent(canonical))
+                    self.assertEqual(canonical.get('content_review_reference_policy'), expected)
+                    self.assertEqual(restored.get('content_review_reference_policy'), expected)
+                    if expected is None:
+                        self.assertNotIn('content_review_reference_policy', canonical)
+                        self.assertNotIn('content_review_reference_policy', restored)
+
     def test_terminal_error_identity_and_recovery_survive_wire_persistence(self):
         response_id = "resp_external_failure_truth"
         source_payload = {

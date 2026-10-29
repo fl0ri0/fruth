@@ -181,8 +181,14 @@ is the access check for that particular request. On the test Mac, Cloud Pro's
 native error specifically required signing in with an **iCloud+ account**; auto
 selection recorded that reason and successfully used Cloud without user input.
 Shortcuts provides localized stderr rather than structured eligibility codes.
-Known English/German errors are recognized; unknown errors, refusals/guardrails,
-invalid output and uncertain timeouts remain failures instead of triggering a
+Known English/German errors are recognized. For the opaque English “Your request
+can’t be completed” error, the bridge can additionally read the native execution
+diagnostics. A Cloud fallback requires the owned CLI PID's XPC runner, within
+that invocation's exact time interval, to report both `iCloudPlusRequired` and
+`WFAskLLMActionErrorDomain` code `1511`. The response retains this attribution in
+`access_diagnostic`; no account eligibility is cached. Missing, inaccessible,
+ambiguous or conflicting diagnostics leave the error unresolved. Unknown errors,
+refusals/guardrails, invalid output and uncertain timeouts never authorize a
 second-model request. If both tiers fail, both failures remain visible.
 
 The native CLI offers no per-call option to suppress error notifications. A Pro
@@ -204,7 +210,12 @@ result = run_pcc_text(task_text, images=[image_data_url], timeout_sec=120)
 ```
 
 `PCC_SHORTCUT_TIMEOUT_SEC` defaults to 120 seconds and `--timeout`/`timeout_sec`
-sets the budget shared by listing and both tier attempts. The subprocess is killed/reaped
+sets the budget shared by listing, optional diagnostics and both tier attempts.
+The diagnostic query takes at most `PCC_DIAGNOSTIC_TIMEOUT_SEC=5` seconds from
+that same budget and accepts at most `PCC_DIAGNOSTIC_MAX_BYTES=1048576` bytes;
+oversized evidence is rejected, not partially classified. It uses ordinary
+process permissions and never enables private logging or requests elevated access.
+The subprocess is killed/reaped
 on timeout; cancellation of Apple's system-side work is unverified. The bridge
 removes its private temporary text, image and output files when the call ends. It rejects
 blank task text before starting Shortcuts, never reuses an old output path, and
@@ -282,7 +293,7 @@ On macOS 27.0 on 2026-09-21:
 
 Detailed local probe records are retained in the development checkout and are
 not included in the source distribution. The public
-[current conformance report](../../docs/SELF_ATTACK_STATUS_2026-10-21.md)
+[current conformance report](../../docs/SELF_ATTACK_STATUS_2026-10-29.md)
 records complete October PCC Cloud coverage, exact source/evidence identities
 and historical incomplete campaigns. Cloud Pro remains separately untested.
 
@@ -313,7 +324,7 @@ single-instance Fruth chat. Starting a new chat did not restore access.
 The available error did not specify a reset time. Fruth must preserve this
 provider failure rather than claim completion. Cloud Pro access fallback does
 not bypass the final Cloud tier's quota. See the
-[historical conformance results](../../docs/SELF_ATTACK_STATUS_2026-10-21.md#historical-results)
+[historical conformance results](../../docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results)
 for that campaign's successful scope and gaps. The October 19–21 campaign later
 completed 170/170 Cloud cells through two bounded allocations and an audio retry,
 without a recorded quota stop. This does not establish a quota size or reset time.

@@ -1,0 +1,282 @@
+{
+  "artifacts": [
+    {
+      "artifact_ref": "artifact:text_48512b3f888606a73be1a9ed",
+      "branch_id": "branch-text_artifact-1",
+      "bundle_path": "bundle/index.html",
+      "mime_type": "text/html",
+      "phase_id": "phase-5",
+      "published_path": "artifacts/documents/index.html",
+      "sha256": "c755a58ea1e89a053222a52d61bd89be83ac1a5055d90324dc43c0f5d2bfb271",
+      "size_bytes": 2306,
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:text_b36114db2db043bce7726b46",
+      "branch_id": "branch-text_artifact-2",
+      "bundle_path": "bundle/assets/css/styles.css",
+      "mime_type": "text/css",
+      "phase_id": "phase-6",
+      "published_path": "artifacts/documents/styles.css",
+      "sha256": "acf137fe60a7624c4e6b957f79ba49dc3450cd9291e73c44fc867c2638ed2343",
+      "size_bytes": 2831,
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:image_8df8fe2b9d2590f14e9347f2",
+      "branch_id": "branch-image_generation-1",
+      "bundle_path": "bundle/assets/images/image-01.png",
+      "height": 720,
+      "mime_type": "image/png",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/images/image-01.png",
+      "sha256": "7124dee24619e9c8d5a852a8b64a9c709012ebf5d6dd91c179b4dbf524751c2e",
+      "size_bytes": 1290053,
+      "type": "image",
+      "width": 1280
+    },
+    {
+      "artifact_ref": "artifact:image_8e7686abcf2884dbb4ad151a",
+      "branch_id": "branch-image_generation-2",
+      "bundle_path": "bundle/assets/images/image-02.png",
+      "height": 720,
+      "mime_type": "image/png",
+      "phase_id": "phase-3",
+      "published_path": "artifacts/images/image-02.png",
+      "sha256": "9725af837bb1aaf50eabb2cc0d2362b853933da3dcf130ff4921b983c391d0e9",
+      "size_bytes": 1537079,
+      "type": "image",
+      "width": 1280
+    },
+    {
+      "artifact_ref": "artifact:audio_a797fa2e056c9c6d2162b62d",
+      "branch_id": "branch-text_to_speech-1",
+      "bundle_path": "bundle/assets/audio/narration.wav",
+      "channels": 1,
+      "duration_seconds": 4.72,
+      "mime_type": "audio/wav",
+      "phase_id": "phase-4",
+      "published_path": "artifacts/audio/narration.wav",
+      "sample_rate_hz": 24000,
+      "sample_width_bits": 16,
+      "sha256": "fae412398687a6b1795f0d97455ddce370f29fcc9ff8a62f4076f122cec689cb",
+      "size_bytes": 226604,
+      "type": "audio"
+    }
+  ],
+  "bundle": {
+    "entrypoint": "index.html",
+    "files": [
+      {
+        "artifact_ref": "artifact:audio_a797fa2e056c9c6d2162b62d",
+        "relative_path": "assets/audio/narration.wav",
+        "sha256": "fae412398687a6b1795f0d97455ddce370f29fcc9ff8a62f4076f122cec689cb",
+        "size_bytes": 226604,
+        "source_sha256": "fae412398687a6b1795f0d97455ddce370f29fcc9ff8a62f4076f122cec689cb",
+        "type": "audio"
+      },
+      {
+        "artifact_ref": "artifact:text_b36114db2db043bce7726b46",
+        "relative_path": "assets/css/styles.css",
+        "sha256": "acf137fe60a7624c4e6b957f79ba49dc3450cd9291e73c44fc867c2638ed2343",
+        "size_bytes": 2831,
+        "source_sha256": "acf137fe60a7624c4e6b957f79ba49dc3450cd9291e73c44fc867c2638ed2343",
+        "type": "text"
+      },
+      {
+        "artifact_ref": "artifact:image_8df8fe2b9d2590f14e9347f2",
+        "relative_path": "assets/images/image-01.png",
+        "sha256": "7124dee24619e9c8d5a852a8b64a9c709012ebf5d6dd91c179b4dbf524751c2e",
+        "size_bytes": 1290053,
+        "source_sha256": "7124dee24619e9c8d5a852a8b64a9c709012ebf5d6dd91c179b4dbf524751c2e",
+        "type": "image"
+      },
+      {
+        "artifact_ref": "artifact:image_8e7686abcf2884dbb4ad151a",
+        "relative_path": "assets/images/image-02.png",
+        "sha256": "9725af837bb1aaf50eabb2cc0d2362b853933da3dcf130ff4921b983c391d0e9",
+        "size_bytes": 1537079,
+        "source_sha256": "9725af837bb1aaf50eabb2cc0d2362b853933da3dcf130ff4921b983c391d0e9",
+        "type": "image"
+      },
+      {
+        "artifact_ref": "artifact:text_48512b3f888606a73be1a9ed",
+        "relative_path": "index.html",
+        "sha256": "d2c022bbc8b6981c18a3a26dba3ac662218542a61f9400895357bca81ab5cf7a",
+        "size_bytes": 2107,
+        "source_sha256": "2449df5f941438ac1c4fef613ad6e9aca71c660510e415ace635e6dde556dc64",
+        "type": "text"
+      }
+    ],
+    "link_check": {
+      "status": "passed"
+    },
+    "raw_runtime_manifest_published": false,
+    "resolved_links": [
+      {
+        "kind": "html_href",
+        "target": "assets/css/styles.css"
+      },
+      {
+        "kind": "html_src",
+        "target": "assets/images/image-01.png"
+      },
+      {
+        "kind": "html_src",
+        "target": "assets/images/image-02.png"
+      },
+      {
+        "kind": "html_src",
+        "target": "assets/audio/narration.wav"
+      }
+    ],
+    "schema": "fruth.public_bundle_manifest.v1",
+    "source_bundle_id": "bundle:fe05e3e0e65e64745a9ae4fa",
+    "source_response_id": "resp_1793127533748_366b6db67f373",
+    "status": "bundled",
+    "version": 1
+  },
+  "integrity": {
+    "frame_identity_verified": true,
+    "index_only_wire_lookup": true,
+    "ledger_fallback_used": false,
+    "observation_snapshot_digests_verified": true,
+    "source_frame_record_sha256": "3bc4197446cb718c4ee49faae0631443a6fa920d4b7700d07ecd58d91c9451a5",
+    "source_frame_record_size_bytes": 842489,
+    "verified_response_map": true
+  },
+  "outputs": [
+    {
+      "artifact_ref": "artifact:image_8df8fe2b9d2590f14e9347f2",
+      "branch_id": "branch-image_generation-1",
+      "bundle_path": "bundle/assets/images/image-01.png",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/images/image-01.png",
+      "slot_id": "output-phase-2",
+      "status": "fulfilled",
+      "type": "image"
+    },
+    {
+      "artifact_ref": "artifact:image_8e7686abcf2884dbb4ad151a",
+      "branch_id": "branch-image_generation-2",
+      "bundle_path": "bundle/assets/images/image-02.png",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-3",
+      "published_path": "artifacts/images/image-02.png",
+      "slot_id": "output-phase-3",
+      "status": "fulfilled",
+      "type": "image"
+    },
+    {
+      "artifact_ref": "artifact:audio_a797fa2e056c9c6d2162b62d",
+      "branch_id": "branch-text_to_speech-1",
+      "bundle_path": "bundle/assets/audio/narration.wav",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-4",
+      "published_path": "artifacts/audio/narration.wav",
+      "slot_id": "output-phase-4",
+      "status": "fulfilled",
+      "type": "audio"
+    },
+    {
+      "artifact_ref": "artifact:text_48512b3f888606a73be1a9ed",
+      "branch_id": "branch-text_artifact-1",
+      "bundle_path": "bundle/index.html",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-5",
+      "published_path": "artifacts/documents/index.html",
+      "slot_id": "output-phase-5",
+      "status": "fulfilled",
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:text_b36114db2db043bce7726b46",
+      "branch_id": "branch-text_artifact-2",
+      "bundle_path": "bundle/assets/css/styles.css",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-6",
+      "published_path": "artifacts/documents/styles.css",
+      "slot_id": "output-phase-6",
+      "status": "fulfilled",
+      "type": "text"
+    }
+  ],
+  "provenance": {
+    "original_runtime_truth_remains_authoritative": true,
+    "raw_frame_published": false,
+    "runtime_effect": "none",
+    "source": "indexed final response frame and canonical artifact bytes"
+  },
+  "request": {
+    "prompt_path": "prompt.txt",
+    "prompt_sha256": "d82cd044e5421b5be6735b4fe97e6d5c6ca575a4fd01a5b282cae19b3de6b285",
+    "runtime_request_sha256": "939b20b2c46404e72358983173129051a55ee5a1b5d1cb8358d75e21b56ca36e",
+    "verified": true
+  },
+  "response": {
+    "frame_id": "resp_1793127533748_366b6db67f373:frame-3",
+    "frame_sequence": 3,
+    "frame_version": 9,
+    "id": "resp_1793127533748_366b6db67f373",
+    "lifecycle_state": "completed",
+    "status": "completed",
+    "status_semantics": {
+      "has_actionable_repair": false,
+      "has_open_continuation": false,
+      "is_terminal": true,
+      "terminal": true
+    }
+  },
+  "runtime_truth": {
+    "closure": {
+      "continuation_required": false,
+      "counts": {
+        "blocked": 0,
+        "deferred": 0,
+        "fulfilled": 6,
+        "pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "obligation_count": 6,
+      "pending_branch_count": 0,
+      "status": "fulfilled"
+    },
+    "late_fill": {
+      "counts": {
+        "cancelled": 0,
+        "completed": 5,
+        "failed": 0,
+        "pending": 0
+      },
+      "final_materialization_contract_status": "fulfilled",
+      "status": "completed"
+    },
+    "surface": {
+      "active_categories": [
+        "completed",
+        "reconsiderable",
+        "controlled_attention_advisory",
+        "aspiration_advisory",
+        "commitment_advisory"
+      ],
+      "category_counts": {
+        "aspiration_advisory": 12,
+        "blocked": 0,
+        "commitment_advisory": 24,
+        "completed": 6,
+        "controlled_attention_advisory": 142,
+        "open": 0,
+        "reconsiderable": 6,
+        "repair_pending": 0,
+        "semantic_review_pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "status": "fulfilled"
+    }
+  },
+  "schema": "fruth.public_reference_run.v1",
+  "version": 1
+}

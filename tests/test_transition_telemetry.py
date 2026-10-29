@@ -1,5 +1,6 @@
 """Bounded handoff witnesses; fake execution and temporary persistence only."""
 from copy import deepcopy
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from unittest.mock import patch
@@ -265,8 +266,24 @@ def test_worker_submission_context_reaches_existing_target_without_extra_start()
     @events.observe_transition('late_fill.worker', target=lambda a: {'response_id': a['response_payload']['id']})
     def worker(response_payload, **kwargs):
         calls.append(response_payload)
+    lifecycle = []
     class Scheduler:
-        claim_response_late_fill = staticmethod(lambda rid: True)
+        def claim_response_late_fill(self, response_id):
+            lifecycle.append(('claim', response_id))
+            return True
+        @contextmanager
+        def response_mutation(self, response_id):
+            lifecycle.append(('mutation_enter', response_id))
+            try:
+                yield
+            finally:
+                lifecycle.append(('mutation_exit', response_id))
+        def get_response_lookup_record(self, response_id):
+            assert lifecycle[-1] == ('mutation_enter', response_id)
+            lifecycle.append(('lookup', response_id))
+            return {}  # Initial submission; no stored continuation to adopt.
+        def release_response_late_fill(self, response_id):
+            lifecycle.append(('release', response_id))
         schedule = LateFillRuntimeOwner.schedule_response_late_fill
     class FakeThread:
         def __init__(self, *, target, kwargs, daemon):
@@ -279,6 +296,8 @@ def test_worker_submission_context_reaches_existing_target_without_extra_start()
                                     assistant_message='', artifact_gap={}, source_route_payload=None,
                                     complete_response_late_fill=worker)
     assert calls == [{'id': 'r'}]
+    assert lifecycle == [('claim', 'r'), ('mutation_enter', 'r'),
+                         ('lookup', 'r'), ('mutation_exit', 'r')]
     assert_pairs(records)
     assert len({r['handoff_attempt_id'] for r in boundaries(records)
                 if r['owner'] in {'late_fill.worker_submission', 'late_fill.worker'}}) == 1

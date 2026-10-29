@@ -5620,9 +5620,22 @@ def _control_response_late_fill_branch(response_id: str, body: Optional[dict[str
                     for branch_id in controlled_ids)
                     or latest_late.get('fill_results') != current_late_fill.get('fill_results')):
                 raise ResponseMutationConflict('response_mutation_conflict: control target changed')
+            control_request = _request_payload_for_late_fill_retry(latest)
+            updated_payload = _attach_late_fill_state(current_payload, next_late_fill)
+            # A winning control can outlive the worker's next assessment. Derive
+            # the whole review from accepted evidence and the applied disposition
+            # before freezing, without entering terminal repair or scheduling.
+            review = _build_graph_closure_review(
+                str(updated_payload.get('output_text') or ''),
+                request_payload=control_request,
+                artifact_payload=updated_payload,
+            )
+            updated_payload = _RESPONSES_REQUEST_RUNTIME._attach_graph_closure_review_diagnostics(
+                updated_payload, review,
+            )
             updated_payload = _finalize_response_frame_payload(
-                _attach_late_fill_state(current_payload, next_late_fill),
-                request_payload=current_payload.get('request') if isinstance(current_payload.get('request'), dict) else {},
+                updated_payload,
+                request_payload=control_request,
                 persist=True,
             )
             _touch_response_lookup(

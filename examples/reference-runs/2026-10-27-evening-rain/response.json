@@ -1,0 +1,126 @@
+{
+  "artifacts": [
+    {
+      "artifact_ref": "artifact:audio_751ac075477b094ca8404ca1",
+      "branch_id": "branch-text_to_speech-1",
+      "channels": 1,
+      "duration_seconds": 17.68,
+      "mime_type": "audio/wav",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/audio/narration.wav",
+      "sample_rate_hz": 24000,
+      "sample_width_bits": 16,
+      "sha256": "fc0760d82a52896777a71ec0f6e78cc5c8eed1b632f2c18d9cf4bce5ed83f52d",
+      "size_bytes": 848684,
+      "type": "audio"
+    }
+  ],
+  "bundle": null,
+  "integrity": {
+    "frame_identity_verified": true,
+    "index_only_wire_lookup": true,
+    "ledger_fallback_used": false,
+    "observation_snapshot_digests_verified": true,
+    "source_frame_record_sha256": "6a424bfc6637c9e22337086d1ad0565bb930d68258a87c5c736058674990cfbb",
+    "source_frame_record_size_bytes": 749368,
+    "verified_response_map": true
+  },
+  "outputs": [
+    {
+      "branch_id": "phase-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-1",
+      "slot_id": "output-phase-1",
+      "status": "fulfilled",
+      "text": "The gentle rhythm of evening rain settles the world into a quiet slumber. Soft droplets tap against the windowpane, whispering secrets of the passing day. In this damp stillness, a profound sense of peace begins to take root.",
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:audio_751ac075477b094ca8404ca1",
+      "branch_id": "branch-text_to_speech-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/audio/narration.wav",
+      "slot_id": "output-phase-2",
+      "status": "fulfilled",
+      "type": "audio"
+    }
+  ],
+  "provenance": {
+    "original_runtime_truth_remains_authoritative": true,
+    "raw_frame_published": false,
+    "runtime_effect": "none",
+    "source": "indexed final response frame and canonical artifact bytes"
+  },
+  "request": {
+    "prompt_path": "prompt.txt",
+    "prompt_sha256": "b52d91c9bfef110029b29ca7c8698069a9a61253c59b9bdc01d4742253e40379",
+    "runtime_request_sha256": "5c643c0a59aaddd09939addcf274c0ee056cf6bdc18bee68e7ad28a6ca99e1a4",
+    "verified": true
+  },
+  "response": {
+    "frame_id": "resp_1793127245156_efa149ac7b1a:frame-2",
+    "frame_sequence": 2,
+    "frame_version": 9,
+    "id": "resp_1793127245156_efa149ac7b1a",
+    "lifecycle_state": "completed",
+    "status": "completed",
+    "status_semantics": {
+      "has_actionable_repair": false,
+      "has_open_continuation": false,
+      "is_terminal": true,
+      "terminal": true
+    }
+  },
+  "runtime_truth": {
+    "closure": {
+      "continuation_required": false,
+      "counts": {
+        "blocked": 0,
+        "deferred": 0,
+        "fulfilled": 2,
+        "pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "obligation_count": 2,
+      "pending_branch_count": 0,
+      "status": "fulfilled"
+    },
+    "late_fill": {
+      "counts": {
+        "cancelled": 0,
+        "completed": 1,
+        "failed": 0,
+        "pending": 0
+      },
+      "final_materialization_contract_status": "fulfilled",
+      "status": "completed"
+    },
+    "surface": {
+      "active_categories": [
+        "completed",
+        "reconsiderable",
+        "controlled_attention_advisory",
+        "aspiration_advisory",
+        "commitment_advisory"
+      ],
+      "category_counts": {
+        "aspiration_advisory": 4,
+        "blocked": 0,
+        "commitment_advisory": 8,
+        "completed": 2,
+        "controlled_attention_advisory": 60,
+        "open": 0,
+        "reconsiderable": 2,
+        "repair_pending": 0,
+        "semantic_review_pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "status": "fulfilled"
+    }
+  },
+  "schema": "fruth.public_reference_run.v1",
+  "version": 1
+}

@@ -13,6 +13,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import threading
+import time
 from unittest.mock import patch
 
 import pytest
@@ -716,7 +718,39 @@ def test_structured_producer_cannot_rewrite_saved_file_dependencies(tmp_path):
         'source_response_id': 'wrong-response', 'file_sha256': '0' * 64}],
         'workload_task_proposals': [{'phase_id': 'phase-3', 'depends_on': [],
                                     'output_contract': {'required': False}}]})
+    reviews = {}
     def reply(call, index):
+        for message in call['request'].get('messages', []):
+            prompt = str(message.get('content') or '')
+            if 'Branch runtime evidence:\n' not in prompt:
+                continue
+            packet = json.JSONDecoder().raw_decode(prompt.split('Branch runtime evidence:\n', 1)[1])[0]
+            coverage = packet['content_coverage']
+            assert coverage['complete'] and coverage['requirements']
+            role = coverage['requirements'][0]['role']
+            expected = {
+                'producer': b'{"values":[7,11]}\n',
+                'consumer': b'<html><style>td{padding:1px}</style><table><tr><td>7</td></tr><tr><td>11</td></tr><tr><td>18</td></tr></table></html>\n',
+            }[role]
+            artifact, = packet['artifact_refs']
+            assert artifact['content_excerpt_mode'] == 'full'
+            assert artifact['content_excerpt'].encode() == Path(artifact['path']).read_bytes() == expected
+            assert artifact['current_file_sha256'] == hashlib.sha256(expected).hexdigest()
+            if role == 'consumer':
+                assert coverage['source']['content_excerpt'].encode() == b'{"values":[7,11]}\n'
+                assert coverage['source']['sha256'] == hashlib.sha256(b'{"values":[7,11]}\n').hexdigest()
+            ref = artifact['ref']
+            assert ref in packet['evidence_reference_catalog']['allowed_refs']
+            criteria = packet['branch_check']['semantic_review_criteria']
+            assert criteria == [coverage['requirements'][0]['criterion']]
+            verdict = {'kind': 'fruth.semantic_review_verdict', 'verdict': 'passed',
+                       'overall_status': 'fulfilled', 'whole_intent_fit': 'Controlled exact-byte offline review.',
+                       'criterion_results': [{'criterion': c, 'status': 'passed', 'evidence_refs': [ref]} for c in criteria],
+                       'evidence_refs': [ref], 'defects': [], 'recommended_transition': 'truthful_freeze'}
+            assert packet['source_branch_id'] not in reviews
+            reviews[packet['source_branch_id']] = {'packet': packet, 'verdict': verdict,
+                                                   'instruction_sha256': hashlib.sha256(prompt.encode()).hexdigest()}
+            return json.dumps(verdict)
         text = '\n'.join(str(m.get('content') or '') for m in call['request'].get('messages', []))
         if '--- SAVED FILE START ---\n' in text:
             raw = text.split('--- SAVED FILE START ---\n', 1)[1].split('\n--- SAVED FILE END ---', 1)[0]
@@ -724,12 +758,43 @@ def test_structured_producer_cannot_rewrite_saved_file_dependencies(tmp_path):
             return '```html\n<html><style>td{padding:1px}</style><table>' + ''.join(
                 f'<tr><td>{n}</td></tr>' for n in [*values, sum(values)]) + '</table></html>\n```'
         return controlled if index > 1 else 'Preparation complete.'
-    with real_owners(tmp_path, reply) as harness:
+    # This positive owes semantic completion. Restore native scheduling instead
+    # of the A1 one-shot/TESTING settle shortcut; only HTTP replies remain fake.
+    schedule = web._schedule_response_late_fill
+    runtime = web._LATE_FILL_RUNTIME
+    complete = runtime.complete_response_late_fill
+    workers = []
+    def worker(**kwargs):
+        workers.append(threading.current_thread())
+        with web.app.app_context():
+            return complete(**kwargs)
+    with real_owners(tmp_path, reply) as harness, \
+            patch.object(web, '_schedule_response_late_fill', schedule), \
+            patch.object(runtime, 'complete_response_late_fill', worker):
         payload = request('Save numbers.json with values [7,11]. Read the actually saved file again. Create result.html from the read data with the sum and embedded CSS.', [])
         with trace_materialization(harness):
             result, status = harness.post_response(payload)
             assert status == 200, result
-            final = settle(harness, result, payload)
+            # Observe only POST's worker and its automatically scheduled child.
+            # Three existing 60s worker windows bound the complete chain.
+            deadline = time.monotonic() + 180
+            while time.monotonic() < deadline:
+                current = list(workers)
+                for thread in current:
+                    thread.join(min(.1, max(0, deadline - time.monotonic())))
+                if current and not any(t.is_alive() for t in workers) and not web._RESPONSE_LATE_FILL_IN_FLIGHT:
+                    break
+                time.sleep(.01)
+            assert workers and not any(t.is_alive() for t in workers), 'automatic worker chain exceeded 180s'
+            assert not web._RESPONSE_LATE_FILL_IN_FLIGHT
+            assert not harness.scheduled
+            result = runtime.get_response_lookup_record(result['id'])['response_payload']
+            harness.before_frame_recovery = deepcopy(result)
+            harness.clear_response_lookup()
+            recovered = harness.response_state(result['id'])
+            assert recovered['ok']
+            final = recovered['response_payload']
+            assert final['late_fill']['fill_results'] == result['late_fill']['fill_results']
         record('structured-saved-producer-dependency', harness, payload, final,
                expected={'files': ['numbers.json', 'result.html'], 'values': [7, 11], 'sum': 18,
                          'order': 'save numbers; read exact saved bytes; author HTML from read'},
@@ -743,3 +808,27 @@ def test_structured_producer_cannot_rewrite_saved_file_dependencies(tmp_path):
         assert read['artifact_ref'] == artifacts['numbers']['artifact_ref']
         assert read['sha256'] == hashlib.sha256(b'{"values":[7,11]}\n').hexdigest()
         assert final['runtime']['graph_closure_review']['status'] == 'fulfilled'
+        assert len(harness.provider_calls) == 5  # Preparation, JSON, HTML, two reviews.
+        assert len(reviews) == 2
+        review_results = {r['semantic_review_evidence_binding']['source_branch_id']: r
+                          for r in final['late_fill']['fill_results'] if r.get('semantic_review_evidence_binding')}
+        assert set(review_results) == set(reviews)
+        for projection in (result, final):
+            assert projection['lifecycle_state'] == 'completed'
+            assert projection['late_fill']['final_materialization_contract_status'] == 'fulfilled'
+            closure = projection['runtime']['graph_closure_review']
+            assert closure['status'] == 'fulfilled'
+            assert closure['content_requirement_count'] == 2
+            assert closure['unresolved_content_requirement_count'] == 0
+            assert closure['completion_basis'] == 'bound_semantic_review'
+            checks = [c for c in closure['checks'] if c.get('content_requirements')]
+            assert {c['content_requirements'][0]['role'] for c in checks} == {'producer', 'consumer'}
+            for check in checks:
+                assert check['content_coverage_status'] == 'accepted_review'
+                assert check['semantic_review_freeze_acceptance']['accepted'] is True
+                assert check['semantic_review_freeze_acceptance']['evidence_reference_policy'] == 'packet_exact_v1'
+                dispatched = review_results[check['branch_id']]
+                binding = dispatched['semantic_review_evidence_binding']
+                assert binding == check['branch_semantic_review_evidence_binding']
+                assert binding['instruction_sha256'] == reviews[check['branch_id']]['instruction_sha256']
+                assert json.loads(dispatched['result_text']) == reviews[check['branch_id']]['verdict']

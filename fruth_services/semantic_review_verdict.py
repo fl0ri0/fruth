@@ -6,12 +6,14 @@ from fruth_services.events import observe_call, select_fields, judgment_summary
 
 import json
 import re
+from copy import deepcopy
 from collections.abc import Mapping
 from typing import Any
 
 
 SEMANTIC_REVIEW_VERDICT_KIND = 'fruth.semantic_review_verdict'
 SEMANTIC_REVIEW_VERDICT_VERSION = 1
+CONTENT_REVIEW_REFERENCE_POLICY = 'packet_exact_v1'
 
 VERDICT_PASSED = 'passed'
 VERDICT_FAILED = 'failed'
@@ -263,6 +265,101 @@ def _criterion_identity(value: Any) -> str:
     return re.sub(r'[^a-z0-9_]+', '_', _clean_text(value).lower()).strip('_')
 
 
+def _packet_reference_targets(packet: Any) -> dict[str, set[str]]:
+    """Enumerate only exact aliases of complete evidence in this branch packet.
+
+    No registry lookup, content-text mining, path normalization or inferred IDs.
+    Colliding aliases of different evidence are deliberately not permitted.
+    """
+    packet = packet if isinstance(packet, Mapping) else {}
+    coverage = packet.get('content_coverage') or {}
+    targets: dict[str, set[str]] = {}
+
+    def add(value: Any, target: str) -> None:
+        if isinstance(value, str) and value.strip():
+            targets.setdefault(value.strip(), set()).add(target)
+
+    if isinstance(coverage, Mapping) and coverage.get('complete') is True:
+        for key in ('source_branch_id', 'source_phase_id'):
+            add(packet.get(key), 'branch')
+        artifacts = packet.get('artifact_refs')
+        for record in artifacts if isinstance(artifacts, list) else []:
+            if not isinstance(record, Mapping):
+                continue
+            if record.get('content_excerpt_mode') != 'full' or record.get('content_excerpt_truncated'):
+                continue
+            target = json.dumps([record.get('path'), record.get('current_content_sha256')], sort_keys=True)
+            for key in ('ref', 'path', 'name'):
+                add(record.get(key), target)
+        source = coverage.get('source') or {}
+        if isinstance(source, Mapping) and source.get('content_excerpt_mode') == 'full' and not source.get('content_excerpt_truncated'):
+            target = json.dumps([source.get('path'), source.get('current_content_sha256')], sort_keys=True)
+            for key in ('artifact_ref', 'artifact_id', 'path'):
+                add(source.get(key), target)
+            for key in ('branch_id', 'phase_id', 'producer_branch_id'):
+                if source.get(key) not in (packet.get('source_branch_id'), packet.get('source_phase_id')):
+                    add(source.get(key), 'source_branch')
+        requirements = coverage.get('requirements')
+        for requirement in requirements if isinstance(requirements, list) else []:
+            if isinstance(requirement, Mapping):
+                add(requirement.get('requirement_id'), 'requirement:' + str(requirement.get('sha256')))
+    return targets
+
+
+def semantic_review_evidence_reference_catalog(packet: Any) -> dict[str, Any]:
+    """Describe the exact unambiguous references supplied to the reviewer."""
+    targets = _packet_reference_targets(packet)
+    return {
+        'policy': CONTENT_REVIEW_REFERENCE_POLICY,
+        'allowed_refs': sorted(ref for ref, identities in targets.items() if len(identities) == 1),
+        'ambiguous_refs': sorted(ref for ref, identities in targets.items() if len(identities) != 1),
+    }
+
+
+def _reference_rejections(declarations: Any, packet: Any, required: set[str]) -> list[dict[str, Any]]:
+    catalog = semantic_review_evidence_reference_catalog(packet)
+    allowed = set(catalog['allowed_refs'])
+    ambiguous = set(catalog['ambiguous_refs'])
+    targets = _packet_reference_targets(packet)
+    issues: list[dict[str, Any]] = []
+
+    def check(value: Any, location: str, *, criterion: bool = False) -> None:
+        # Single criterion refs and ref/id/name envelopes were already supported
+        # by normalization. Inspect every original entry before deduplication.
+        values = [value] if criterion and isinstance(value, str) else value
+        if not isinstance(values, list) or not values:
+            issues.append({'location': location, 'reason': 'missing_or_malformed_evidence_refs', 'value': value})
+            return
+        for index, original in enumerate(values):
+            ref = original
+            reason = ''
+            if isinstance(ref, Mapping):
+                fields = [ref[k] for k in ('ref', 'id', 'name') if k in ref]
+                if not fields or any(not isinstance(v, str) or not v.strip() for v in fields):
+                    reason = 'malformed_evidence_ref'
+                elif any(v.strip() not in allowed for v in fields):
+                    reason = 'ambiguous_evidence_ref' if any(v.strip() in ambiguous for v in fields) else 'unsupported_evidence_ref'
+                elif len(set().union(*(targets[v.strip()] for v in fields))) != 1:
+                    reason = 'ambiguous_evidence_ref'
+                ref = fields[0] if fields else None
+            reason = reason or ('malformed_evidence_ref' if not isinstance(ref, str) or not ref.strip()
+                      else 'ambiguous_evidence_ref' if ref.strip() in ambiguous
+                      else 'unsupported_evidence_ref' if ref.strip() not in allowed else '')
+            if reason:
+                issues.append({'location': f'{location}[{index}]', 'reason': reason, 'value': original})
+
+    if not isinstance(declarations, Mapping):
+        return [{'location': 'verdict', 'reason': 'missing_original_reference_declarations'}]
+    check(declarations.get('evidence_refs'), 'evidence_refs')
+    criteria = declarations.get('criterion_results')
+    for index, item in enumerate(criteria if isinstance(criteria, list) else []):
+        if (isinstance(item, Mapping) and _criterion_identity(item.get('criterion') or item.get('name')) in required
+                and _normalize_criterion_status(item.get('status') or item.get('verdict')) == VERDICT_PASSED):
+            check(item.get('evidence_refs') if 'evidence_refs' in item else item.get('evidence'),
+                  f'criterion_results[{index}].evidence_refs', criterion=True)
+    return issues
+
+
 def _freeze_causal_inputs(arguments):
     verdict = arguments['verdict'] if isinstance(arguments['verdict'], Mapping) else {}
     selected = select_fields(verdict, ('parse_status', 'verdict', 'recommended_transition', 'defects', 'evidence_refs'))
@@ -273,20 +370,31 @@ def _freeze_causal_inputs(arguments):
     selected['criterion_results'] = [select_fields(item, ('criterion', 'status'))
                                      for item in verdict.get('criterion_results') or []
                                      if isinstance(item, Mapping)]
-    return {'verdict': selected, 'required_criteria': arguments['required_criteria']}
+    selected['reference_declarations'] = verdict.get('reference_declarations')
+    return {'verdict': selected, 'required_criteria': arguments['required_criteria'],
+            'evidence_reference_policy': arguments['evidence_reference_policy'],
+            'declared_evidence_reference_catalog': (
+                arguments['evidence_packet'].get('evidence_reference_catalog')
+                if isinstance(arguments['evidence_packet'], Mapping) else None),
+            'evidence_reference_targets': {
+                ref: sorted(targets) for ref, targets in _packet_reference_targets(arguments['evidence_packet']).items()}
+                if arguments['evidence_reference_policy'] else None}
 
 
 @observe_call('semantic_review_verdict.freeze_acceptance',
               inputs=_freeze_causal_inputs,
               evidence=lambda a: select_fields(_freeze_causal_inputs(a)['verdict'], ('evidence_refs', 'criterion_results')),
               authority=lambda a: {'rule': 'semantic_review_truthful_freeze_v1',
-                                   'required_criteria': a['required_criteria']},
+                                   'required_criteria': a['required_criteria'],
+                                   'evidence_reference_policy': a['evidence_reference_policy']},
               required_rule='semantic_review_truthful_freeze_v1', complete=True,
               result=judgment_summary)
 def semantic_review_verdict_freeze_acceptance(
     verdict: Any,
     *,
     required_criteria: Any = (),
+    evidence_reference_policy: str = '',
+    evidence_packet: Any = None,
 ) -> dict[str, Any]:
     """Validate the exact structured contract required for a truthful freeze.
 
@@ -356,6 +464,19 @@ def semantic_review_verdict_freeze_acceptance(
     if nonpassed_criteria:
         rejection_reasons.append('required_criteria_not_passed')
 
+    reference_rejections = []
+    if evidence_reference_policy:
+        if evidence_reference_policy != CONTENT_REVIEW_REFERENCE_POLICY:
+            rejection_reasons.append('unsupported_evidence_reference_policy')
+        elif (not isinstance(evidence_packet, Mapping)
+              or evidence_packet.get('evidence_reference_catalog') != semantic_review_evidence_reference_catalog(evidence_packet)):
+            rejection_reasons.append('missing_or_invalid_evidence_reference_catalog')
+        else:
+            reference_rejections = _reference_rejections(
+                payload.get('reference_declarations'), evidence_packet, set(required_by_identity))
+            if reference_rejections:
+                rejection_reasons.append('invalid_evidence_references')
+
     accepted = not rejection_reasons
     return _compact_mapping(
         {
@@ -366,6 +487,8 @@ def semantic_review_verdict_freeze_acceptance(
             'missing_criteria': missing_criteria,
             'nonpassed_criteria': nonpassed_criteria,
             'rejection_reasons': rejection_reasons,
+            'evidence_reference_policy': evidence_reference_policy,
+            'reference_rejections': reference_rejections,
             'reason': (
                 'semantic review verdict satisfies the truthful-freeze contract'
                 if accepted
@@ -457,6 +580,12 @@ def normalize_semantic_review_verdict(
         'evidence_refs': evidence_refs,
         'defects': defects,
         'declared_schema': declared_schema,
+        # Keep original entries (including malformed values and duplicates).
+        # Never trust a model-supplied reference_declarations field.
+        'reference_declarations': deepcopy({
+            'evidence_refs': raw.get('evidence_refs'),
+            'criterion_results': raw.get('criterion_results') or raw.get('criteria_results') or raw.get('criteria'),
+        }),
         'authority_boundary': (
             _clean_text(raw.get('authority_boundary')) if raw else ''
         ) or 'advisory_review_only_runtime_contracts_closure_decide_truth',

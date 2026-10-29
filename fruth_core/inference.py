@@ -80,7 +80,7 @@ _TEXT_ARTIFACT_FILE_CUE_RE = re.compile(
 _TEXT_ARTIFACT_ACTION_CUE_RE = re.compile(
     r'\b('
     r'create|generate|make|write|produce|return|provide|build|emit|design|draft|'
-    r'change|modify|update|edit|revise|alter|save|materialize|materialise|'
+    r'change|modify|update|edit|revise|alter|save|store|materialize|materialise|'
     r'erzeuge|erstelle|generiere|schreibe|gib|liefere|bau(?:e|en)?|'
     r'entwirf|entwerfe|entwerfen|gestalte|gestalten|'
     r'aendere|ändere|veraendere|verändere|anpassen|passe|speichere|'
@@ -1474,6 +1474,22 @@ def _text_artifact_prompt_has_positive_request_outside_negation(
     return bool(
         _TEXT_ARTIFACT_FILE_CUE_RE.search(remainder)
         and _TEXT_ARTIFACT_ACTION_CUE_RE.search(remainder)
+    ) or any(
+        # A named creation command is affirmative file intent even without
+        # the noun "file". Keep recognition separate from execution deferral;
+        # the scope owner still enforces blanket/category/relative exclusions.
+        # Reuse local polarity and literal boundaries, so an unrelated action
+        # or a quoted example cannot supply the missing affirmative request.
+        not _text_artifact_format_match_is_negated(remainder, filename)
+        and not _json_text_artifact_span_is_inside_quoted_instruction(
+            remainder, filename.start(), filename.end(),
+        )
+        and not negated
+        and has_action
+        for filename in _TEXT_ARTIFACT_EXTENSION_RE.finditer(remainder)
+        for negated, has_action in [_json_text_artifact_candidate_state(
+            remainder, filename.start(), filename.end(),
+        )]
     )
 
 

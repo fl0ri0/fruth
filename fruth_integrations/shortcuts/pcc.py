@@ -17,16 +17,41 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from fruth_runtime.child_process_env import sanitized_child_process_env
+from fruth_integrations.shortcuts.diagnostics import pro_access_diagnostic
 
 
 SHORTCUTS_BINARY = '/usr/bin/shortcuts'
 PCC_SHORTCUTS = {'cloud': 'Fruth PCC', 'cloud-pro': 'Fruth PCC Pro'}
 PCC_SHORTCUT_TIMEOUT_SEC = 120.0
 PCC_MAX_REQUEST_BYTES = 8 * 1024 * 1024  # Transport-memory bound; never truncate.
+
+
+def _execute_command(args: list[str], **kwargs):
+    """subprocess.run semantics, retaining the owned CLI PID for attribution."""
+    timeout = kwargs.pop('timeout')
+    kwargs.pop('capture_output')
+    started = datetime.now(timezone.utc)
+    with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs) as child:
+        try:
+            stdout, stderr = child.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.communicate()
+            raise
+        except BaseException:
+            child.kill()
+            child.wait()
+            raise
+        result = subprocess.CompletedProcess(args, child.returncode, stdout, stderr)
+        result.pid = child.pid
+        result.started_at = started.isoformat()
+        result.finished_at = datetime.now(timezone.utc).isoformat()
+        return result
 
 
 def decode_image_input(value: str) -> tuple[bytes, str]:
@@ -45,7 +70,7 @@ def _command(args: list[str], timeout_sec: float) -> dict[str, Any]:
     if sys.platform != 'darwin':
         return {'status': 'unsupported_platform', 'error': 'macOS Shortcuts is required.'}
     try:
-        process = subprocess.run(
+        process = _execute_command(
             [SHORTCUTS_BINARY, *args], stdin=subprocess.DEVNULL,
             capture_output=True, text=True, encoding='utf-8', errors='replace',
             timeout=timeout_sec, env=sanitized_child_process_env(),
@@ -62,6 +87,9 @@ def _command(args: list[str], timeout_sec: float) -> dict[str, Any]:
         'status': 'completed' if process.returncode == 0 else 'shortcut_error',
         'exit_code': process.returncode, 'stdout': process.stdout,
         'stderr': process.stderr, 'elapsed_seconds': time.monotonic() - started,
+        **({key: getattr(process, attr) for key, attr in (
+            ('process_id', 'pid'), ('started_at', 'started_at'), ('finished_at', 'finished_at'))}
+           if hasattr(process, 'pid') else {}),
     }
 
 
@@ -120,6 +148,10 @@ def _run_selected(text: str, selected: dict[str, Any], *, deadline: float,
             result['image_inputs'] = image_inputs
         # stdout and a partial/stale output file are never a success fallback.
         result.pop('stdout', None)
+        if (model == 'cloud-pro' and result['status'] == 'shortcut_error'
+                and _pro_unavailable_reason(result) is None
+                and _opaque_shortcut_error(result.get('stderr', ''))):
+            result['access_diagnostic'] = pro_access_diagnostic(result, deadline=deadline)
         if result['status'] != 'completed':
             return result
         try:
@@ -133,17 +165,34 @@ def _run_selected(text: str, selected: dict[str, Any], *, deadline: float,
         return {**result, 'output': output}
 
 
+def _opaque_shortcut_error(stderr: str) -> bool:
+    # Never use model prose or a generic failure alone to authorize another tier.
+    return stderr.strip().removeprefix('Error: ').casefold() in {
+        'your request can’t be completed.', "your request can't be completed.",
+        'your request could not be completed.',
+    }
+
+
 def _pro_unavailable_reason(result: dict[str, Any]) -> str | None:
     """Recognize native access/availability errors, never model refusal prose.
 
-Shortcuts exposes localized stderr, not a structured eligibility API. Unknown
-errors stay failures; do not turn guardrails or an uncertain timeout into a
-second-model attempt.
+    Shortcuts exposes localized stderr, not a structured eligibility API. An
+    opaque error additionally needs native eligibility evidence attributed to
+    this CLI execution. Unknown errors stay failures; guardrails and uncertain
+    timeouts never authorize a second-model attempt.
     """
     if result['status'] in {'shortcut_missing', 'shortcut_ambiguous'}:
         return 'pro_' + result['status']
     if result['status'] != 'shortcut_error' or result.get('stage') != 'execution':
         return None
+    native = result.get('access_diagnostic', {})
+    if (_opaque_shortcut_error(result.get('stderr', ''))
+            and native.get('status') == 'confirmed'
+            and native.get('source') == 'macos_unified_log_xpc_peer'
+            and native.get('cli_pid') == result.get('process_id')
+            and native.get('error_domain') == 'WFAskLLMActionErrorDomain'
+            and native.get('error_code') == 1511):
+        return 'pro_access_required'
     diagnostic = ' '.join(result.get('stderr', '').casefold().split())
     if re.search(r'\b(guardrails?|safety|refusal|refused|sicherheitsrichtlinie)\b', diagnostic):
         return None

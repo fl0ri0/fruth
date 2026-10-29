@@ -50,3 +50,32 @@ def test_positive_binary_producer_survives_constraints_on_other_outputs(prompt):
 ])
 def test_negative_reference_and_svg_requests_do_not_invent_binary_work(prompt):
     assert analyze_prompt_intent(prompt)['requests_visual_output'] is False
+
+
+@pytest.mark.parametrize('field', ['version', 'versions', 'variant', 'variants', 'Versionen', 'Varianten'])
+def test_page_data_version_fields_do_not_request_visual_assets(field):
+    prompt = ('Save numbers.json containing {"subject":"alpha","values":[7,11],"version":1}. '
+              'Read the actually saved file again. '
+              f'Create result.html from the read data with the subject, {field}, values and sum.')
+    analysis = analyze_prompt_intent(prompt)
+    assert analysis['local_visual_asset_requirement'] is False
+    assert analysis['requests_visual_output'] is False
+
+
+@pytest.mark.parametrize('prompt', [
+    'Create result.html with two image variants of a mountain.',
+    'Create result.html with pictures and version labels.',
+    'Erstelle eine HTML-Seite mit Bildern und Versionen.',
+    'Create result.html with the subject, version, values and sum. Generate one image of a mountain.',
+])
+def test_explicit_page_images_survive_generic_version_disambiguation(prompt):
+    assert analyze_prompt_intent(prompt)['requests_visual_output'] is True
+
+
+@pytest.mark.parametrize('literal', ['image', 'picture', 'image assets'])
+def test_json_subject_value_is_not_page_asset_authority(literal):
+    prompt = ('Save numbers.json containing {"subject":"'+literal+'","values":[7,11],"version":1}. '
+              'Read the actually saved file again. '
+              'Create result.html from the read data with the subject, version, values and sum.')
+    assert analyze_prompt_intent(prompt)['requests_visual_output'] is False
+    assert analyze_prompt_intent(prompt+' Generate one image of a mountain.')['requests_visual_output'] is True

@@ -436,6 +436,10 @@ def _review_criteria_for_phase(
     if role == 'post_artifact_text_follow_up' or stage_direction == 'write_text_after_artifact_generation':
         criteria.append('uses_dependency_evidence')
         criteria.append('does_not_restart_root_request')
+    artifact_request = phase.get('artifact_request') if isinstance(phase.get('artifact_request'), Mapping) else {}
+    if artifact_request.get('content_requirement_policy') == 'named_saved_text_v1':
+        criteria.extend(item['criterion'] for item in artifact_request.get('content_requirements', [])
+                        if isinstance(item, Mapping) and item.get('criterion'))
     return criteria
 
 

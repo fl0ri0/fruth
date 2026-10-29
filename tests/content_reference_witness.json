@@ -1,0 +1,451 @@
+{
+  "response_id": "resp_1792921934322_4e3c04c928fb58",
+  "frame_id": "resp_1792921934322_4e3c04c928fb58:frame-3",
+  "reviews": [
+    {
+      "role": "consumer",
+      "result_text": "```json\n{\n  \"kind\": \"fruth.semantic_review_verdict\",\n  \"verdict\": \"passed\",\n  \"overall_status\": \"fulfilled\",\n  \"whole_intent_fit\": \"The branch successfully transformed the data from the dependency (numbers.json) into the requested HTML format, including all required elements (subject, version, values, and sum) and embedded CSS.\",\n  \"criterion_results\": [\n    {\n      \"criterion\": \"accepted_consumer_content\",\n      \"status\": \"passed\",\n      \"reason\": \"The artifact 'result' contains the subject 'alpha', version 'v1', values '7' and '11', their sum '18', and includes embedded CSS.\",\n      \"evidence_refs\": [\n        \"artifact:text_3129239d16e415f2782acc93\"\n      ]\n    }\n  ],\n  \"evidence_refs\": [\n    \"artifact:text_3129239d16e415f2782acc93\"\n  ],\n  \"defects\": [],\n  \"confidence\": 1.0,\n  \"recommended_transition\": \"truthful_freeze\",\n  \"authority_boundary\": \"advisory_branch_review_only_runtime_contracts_closure_decide_truth\"\n}\n```",
+      "verdict": {
+        "kind": "fruth.semantic_review_verdict",
+        "verdict": "passed",
+        "overall_status": "fulfilled",
+        "whole_intent_fit": "The branch successfully transformed the data from the dependency (numbers.json) into the requested HTML format, including all required elements (subject, version, values, and sum) and embedded CSS.",
+        "criterion_results": [
+          {
+            "criterion": "accepted_consumer_content",
+            "status": "passed",
+            "reason": "The artifact 'result' contains the subject 'alpha', version 'v1', values '7' and '11', their sum '18', and includes embedded CSS.",
+            "evidence_refs": [
+              "artifact:text_3129239d16e415f2782acc93"
+            ]
+          }
+        ],
+        "evidence_refs": [
+          "artifact:text_3129239d16e415f2782acc93"
+        ],
+        "defects": [],
+        "confidence": 1.0,
+        "recommended_transition": "truthful_freeze",
+        "authority_boundary": "advisory_branch_review_only_runtime_contracts_closure_decide_truth"
+      },
+      "packet": {
+        "artifact_manifest_policy": "branch_artifact_ordered_length_prefixed_sha256_v2",
+        "artifact_manifest_sha256": "4a4e8e31b761dd713ba4a2db10d9c7d1b9ae4693d373aaab80988c53247dd2ca",
+        "artifact_ref_count": 1,
+        "artifact_refs": [
+          {
+            "branch_id": "branch-text_artifact-1",
+            "content_excerpt": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Result - alpha</title>\n    <style>\n        body {\n            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;\n            background-color: #f0f2f5;\n            display: flex;\n            justify-content: center;\n            align-items: center;\n            height: 100vh;\n            margin: 0;\n        }\n        .card {\n            background-color: #ffffff;\n            padding: 2rem;\n            border-radius: 12px;\n            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);\n            width: 300px;\n            text-align: center;\n        }\n        h1 {\n            color: #1a73e8;\n            margin-top: 0;\n            text-transform: capitalize;\n        }\n        .version-badge {\n            display: inline-block;\n            background-color: #e8f0fe;\n            color: #1967d2;\n            padding: 4px 12px;\n            border-radius: 16px;\n            font-size: 0.85rem;\n            font-weight: bold;\n            margin-bottom: 1.5rem;\n        }\n        .data-list {\n            list-style: none;\n            padding: 0;\n            margin: 0;\n            text-align: left;\n        }\n        .data-item {\n            padding: 10px 0;\n            border-bottom: 1px solid #eee;\n            display: flex;\n            justify-content: space-between;\n        }\n        .data-item:last-child {\n            border-bottom: none;\n        }\n        .label {\n            color: #5f6368;\n            font-weight: 500;\n        }\n        .value {\n            color: #202124;\n            font-weight: bold;\n        }\n        .sum-highlight {\n            margin-top: 1.5rem;\n            padding-top: 1rem;\n            border-top: 2px solid #1a73e8;\n            font-size: 1.2rem;\n            color: #1a73e8;\n        }\n    </style>\n</head>\n<body>\n    <div class=\"card\">\n        <h1>alpha</h1>\n        <div class=\"version-badge\">v1</div>\n        \n        <div class=\"data-list\">\n            <div class=\"data-item\">\n                <span class=\"label\">Value 1</span>\n                <span class=\"value\">7</span>\n            </div>\n            <div class=\"data-item\">\n                <span class=\"label\">Value 2</span>\n                <span class=\"value\">11</span>\n            </div>\n        </div>\n\n        <div class=\"sum-highlight\">\n            Sum: 18\n        </div>\n    </div>\n</body>\n</html>\n",
+            "content_excerpt_mode": "full",
+            "content_excerpt_truncated": false,
+            "content_source_size_bytes": 2462,
+            "current_content_sha256": "212f13e6cc4254645bb8ba5ca97b95d6a70e015969207a68033b300e37e669ce",
+            "current_file_sha256": "212f13e6cc4254645bb8ba5ca97b95d6a70e015969207a68033b300e37e669ce",
+            "current_file_size_bytes": 2462,
+            "current_file_status": "available",
+            "name": "result",
+            "path": "/fruth-fixture/artifacts/documents/20261025T095417Z_chat_text_artifact_gemma4_26b_result.html",
+            "phase_id": "phase-2",
+            "ref": "artifact:text_3129239d16e415f2782acc93",
+            "type": "text"
+          }
+        ],
+        "artifact_refs_truncated": false,
+        "branch_check": {
+          "branch_id": "branch-text_artifact-1",
+          "capability": "chat",
+          "content_payload_source": "saved_file_read_required",
+          "depends_on": [
+            "phase-3"
+          ],
+          "evidence": "saved_file_consumption_verified",
+          "evidence_requirements": [
+            "review_criteria",
+            "runtime_evidence",
+            "closure_review",
+            "surface_state",
+            "artifact_registry",
+            "requested_artifact_kinds",
+            "artifact_bindings",
+            "artifact_or_transcript",
+            "user_intent",
+            "branch_output",
+            "runtime_evidence_for_review_criteria",
+            "semantic_review_verdict_when_promoted"
+          ],
+          "failure_modes": [
+            "artifact_exists_but_criterion_unproven",
+            "semantic_verdict_missing_or_unparseable",
+            "review_uses_wrong_evidence_scope",
+            "existence_only_review",
+            "quality_gap",
+            "language_or_tone_mismatch",
+            "wrong_modality_review",
+            "missing_requested_artifact_kind",
+            "prompt_counted_as_artifact",
+            "linked_artifact_placeholder_left_open",
+            "syntax_or_structure_breaks_artifact_use",
+            "blind_retry",
+            "duplicate_root_request",
+            "missing_dependency_repair",
+            "wrong_dependency_order_left_unrepaired",
+            "blocked_truth_hidden",
+            "wrong_repair_level",
+            "skipped_redraw_scope_ladder",
+            "ignored_resolving_runtime_evidence",
+            "regenerated_when_rebind_was_available",
+            "graph_patch_without_validation",
+            "graph_patch_without_enforced_policy_review",
+            "graph_rebase_without_preservation_proof",
+            "terminal_parent_frame_mutated",
+            "duplicate_successor_reopen_work",
+            "duplicate_successor_rebase_work"
+          ],
+          "input_refs": [
+            {
+              "kind": "phase_output",
+              "phase_id": "phase-3",
+              "role": "dependency"
+            }
+          ],
+          "obligation_id": "obligation-phase-2",
+          "output_type": "text",
+          "phase_id": "phase-2",
+          "review_criteria": [
+            "output_contract_matches_capability",
+            "runtime_status_reaches_fulfilled_blocked_failed_waived_superseded_or_pending",
+            "runtime_text_artifact_exists_when_fulfilled",
+            "consumes_declared_input_refs",
+            "accepted_consumer_content"
+          ],
+          "review_criteria_status": "semantic_review_required",
+          "role": "text_artifact_output",
+          "semantic_lens_evidence_requirements": [
+            "review_criteria",
+            "runtime_evidence",
+            "closure_review",
+            "surface_state",
+            "artifact_registry",
+            "requested_artifact_kinds",
+            "artifact_bindings",
+            "artifact_or_transcript",
+            "user_intent",
+            "branch_output",
+            "runtime_evidence_for_review_criteria",
+            "semantic_review_verdict_when_promoted",
+            "block_reason",
+            "intent_obligations",
+            "intent_graph_adequacy",
+            "dependency_state",
+            "repair_options",
+            "runtime_truth",
+            "monitor_evidence",
+            "redraw_scope_ladder_review",
+            "enforced_policy_review",
+            "graph_repair_review",
+            "graph_patch_lifecycle",
+            "graph_rebase_review",
+            "graph_rebase_preservation_proof",
+            "successor_reopen_request",
+            "successor_rebase_request",
+            "resolving_runtime_evidence",
+            "existing_artifact_bindings",
+            "blocked_check",
+            "dependency_or_branch_contract_evidence",
+            "repair_candidate"
+          ],
+          "semantic_review_criteria": [
+            "accepted_consumer_content"
+          ],
+          "semantic_review_lens": "quality_reviewer",
+          "semantic_review_required": true,
+          "status": "fulfilled",
+          "success_definition": "Closure is based on artifact-kind coverage and quality against intent, not only on output existence."
+        },
+        "branch_check_sha256": "dd42162eb622299dc797c0eafaae60602028819be1493d66e639961f904fc16f",
+        "branch_late_fill_status": "fulfilled",
+        "branch_output_size_chars": 0,
+        "branch_record": {
+          "branch_id": "branch-text_artifact-1",
+          "capability": "chat",
+          "content_payload_source": "saved_file_read_required",
+          "output_type": "text",
+          "phase_id": "phase-2",
+          "status": "fulfilled"
+        },
+        "content_coverage": {
+          "byte_limit": 16000,
+          "complete": true,
+          "policy": "named_saved_text_v1",
+          "reason": "complete_actual_content",
+          "requirements": [
+            {
+              "branch_id": "branch-text_artifact-1",
+              "criterion": "accepted_consumer_content",
+              "phase_id": "phase-2",
+              "requirement_id": "branch-text_artifact-1:accepted_consumer_content",
+              "role": "consumer",
+              "sha256": "abf4d8adb1ea51a376364d352fa0b6049ed02d3564bf56b00c25e3a0bd8f1ecc",
+              "text": "Create result.html from the read data with the subject, version, both values and their sum, and embedded CSS."
+            }
+          ],
+          "requirements_sha256": "3e95b520b69741393d2c4b90dfa9d70f539c71004b72ad4ea11d2d399f687c60",
+          "source": {
+            "artifact_id": "text_6d866b3a1ec701d15abae8f5",
+            "artifact_ref": "artifact:text_6d866b3a1ec701d15abae8f5",
+            "branch_id": "branch-text_artifact-2",
+            "consumer_branch_id": "branch-text_artifact-1",
+            "content_excerpt": "{\"subject\":\"alpha\",\"version\":1,\"values\":[7,11]}\n",
+            "content_excerpt_mode": "full",
+            "content_excerpt_truncated": false,
+            "content_source_size_bytes": 48,
+            "current_content_sha256": "1514e76cdce1dfe6d38c4920ffd12f606ad004a345f7093aeedbf375c66fe81c",
+            "path": "/fruth-fixture/artifacts/documents/20261025T095341Z_chat_text_artifact_gemma4_26b_numbers.json",
+            "phase_id": "phase-3",
+            "producer_branch_id": "branch-text_artifact-2",
+            "response_id": "resp_1792921934322_4e3c04c928fb58",
+            "sha256": "1514e76cdce1dfe6d38c4920ffd12f606ad004a345f7093aeedbf375c66fe81c",
+            "size_bytes": 48,
+            "source_response_id": "resp_1792921934322_4e3c04c928fb58"
+          }
+        },
+        "review_scope": "branch_only",
+        "source_branch_id": "branch-text_artifact-1",
+        "source_phase_id": "phase-2"
+      },
+      "binding": {
+        "branch_id": "branch-branch-semantic-review-branch-text_artifact-1-76433bfc240f5edfe13f31474dcf86451265028467d6336a0f3c74c34fc1b8ed",
+        "content_requirement_policy": "named_saved_text_v1",
+        "generation_id": "branch-semantic-review-branch-text_artifact-1-76433bfc240f5edfe13f31474dcf86451265028467d6336a0f3c74c34fc1b8ed",
+        "instruction_sha256": "e47f226f5426aaea7aa8a18d171e329896f0cd8aa9735e487288b54cda015bb2",
+        "kind": "fruth.semantic_review_evidence_binding",
+        "logical_review_id": "branch-semantic-review:branch-text_artifact-1",
+        "obligation_id": "obligation-branch-semantic-review-branch-text_artifact-1-76433bfc240f5edfe13f31474dcf86451265028467d6336a0f3c74c34fc1b8ed",
+        "phase_id": "phase-branch-semantic-review-branch-text_artifact-1-76433bfc240f5edfe13f31474dcf86451265028467d6336a0f3c74c34fc1b8ed",
+        "policy": "branch_semantic_review_instruction_sha256_v1",
+        "sha256": "76433bfc240f5edfe13f31474dcf86451265028467d6336a0f3c74c34fc1b8ed",
+        "source_branch_id": "branch-text_artifact-1",
+        "source_phase_id": "phase-2",
+        "task_id": "task-branch-semantic-review-branch-text_artifact-1-76433bfc240f5edfe13f31474dcf86451265028467d6336a0f3c74c34fc1b8ed"
+      }
+    },
+    {
+      "role": "producer",
+      "result_text": "{\n  \"kind\": \"fruth.semantic_review_verdict\",\n  \"verdict\": \"passed\",\n  \"overall_status\": \"fulfilled\",\n  \"whole_intent_fit\": \"The branch successfully produced the required text artifact 'numbers.json' with the exact content specified in the user intent.\",\n  \"criterion_results\": [\n    {\n      \"criterion\": \"accepted_producer_content\",\n      \"status\": \"passed\",\n      \"reason\": \"The artifact 'numbers.json' contains the exact JSON string required by the intent.\",\n      \"evidence_refs\": [\n        \"artifact:text_6d86b3a1ec701d15abae8f5\"\n      ]\n    },\n    {\n      \"criterion\": \"runtime_text_artifact_exists_when_fulfilled\",\n      \"status\": \"passed\",\n      \"reason\": \"The artifact manifest confirms the existence of 'numbers.json'.\",\n      \"evidence_refs\": [\n        \"artifact:text_6d86b3a1ec701d15abae8f5\"\n      ]\n    }\n  ],\n  \"evidence_refs\": [\n    \"artifact:text_6d86b3a1ec701d15abae8f5\"\n  ],\n  \"defects\": [],\n  \"confidence\": 1.0,\n  \"recommended_transition\": \"truthful_freeze\",\n  \"authority_boundary\": \"advisory_branch_review_only_runtime_contracts_closure_decide_truth\"\n}",
+      "verdict": {
+        "kind": "fruth.semantic_review_verdict",
+        "verdict": "passed",
+        "overall_status": "fulfilled",
+        "whole_intent_fit": "The branch successfully produced the required text artifact 'numbers.json' with the exact content specified in the user intent.",
+        "criterion_results": [
+          {
+            "criterion": "accepted_producer_content",
+            "status": "passed",
+            "reason": "The artifact 'numbers.json' contains the exact JSON string required by the intent.",
+            "evidence_refs": [
+              "artifact:text_6d86b3a1ec701d15abae8f5"
+            ]
+          },
+          {
+            "criterion": "runtime_text_artifact_exists_when_fulfilled",
+            "status": "passed",
+            "reason": "The artifact manifest confirms the existence of 'numbers.json'.",
+            "evidence_refs": [
+              "artifact:text_6d86b3a1ec701d15abae8f5"
+            ]
+          }
+        ],
+        "evidence_refs": [
+          "artifact:text_6d86b3a1ec701d15abae8f5"
+        ],
+        "defects": [],
+        "confidence": 1.0,
+        "recommended_transition": "truthful_freeze",
+        "authority_boundary": "advisory_branch_review_only_runtime_contracts_closure_decide_truth"
+      },
+      "packet": {
+        "artifact_manifest_policy": "branch_artifact_ordered_length_prefixed_sha256_v2",
+        "artifact_manifest_sha256": "da7698daaac39a42cc751d5fa11fe2196a9fd62f9e62a340bd61414d1cc984e9",
+        "artifact_ref_count": 1,
+        "artifact_refs": [
+          {
+            "branch_id": "branch-text_artifact-2",
+            "content_excerpt": "{\"subject\":\"alpha\",\"version\":1,\"values\":[7,11]}\n",
+            "content_excerpt_mode": "full",
+            "content_excerpt_truncated": false,
+            "content_source_size_bytes": 48,
+            "current_content_sha256": "1514e76cdce1dfe6d38c4920ffd12f606ad004a345f7093aeedbf375c66fe81c",
+            "current_file_sha256": "1514e76cdce1dfe6d38c4920ffd12f606ad004a345f7093aeedbf375c66fe81c",
+            "current_file_size_bytes": 48,
+            "current_file_status": "available",
+            "name": "numbers",
+            "path": "/fruth-fixture/artifacts/documents/20261025T095341Z_chat_text_artifact_gemma4_26b_numbers.json",
+            "phase_id": "phase-3",
+            "ref": "artifact:text_6d866b3a1ec701d15abae8f5",
+            "type": "text"
+          }
+        ],
+        "artifact_refs_truncated": false,
+        "branch_check": {
+          "branch_id": "branch-text_artifact-2",
+          "capability": "chat",
+          "content_payload_source": "current_phase_output",
+          "depends_on": [
+            "phase-1"
+          ],
+          "evidence": "output_artifact_type:text",
+          "evidence_requirements": [
+            "review_criteria",
+            "runtime_evidence",
+            "closure_review",
+            "surface_state",
+            "artifact_registry",
+            "requested_artifact_kinds",
+            "artifact_bindings",
+            "artifact_or_transcript",
+            "user_intent",
+            "branch_output",
+            "runtime_evidence_for_review_criteria",
+            "semantic_review_verdict_when_promoted"
+          ],
+          "failure_modes": [
+            "artifact_exists_but_criterion_unproven",
+            "semantic_verdict_missing_or_unparseable",
+            "review_uses_wrong_evidence_scope",
+            "existence_only_review",
+            "quality_gap",
+            "language_or_tone_mismatch",
+            "wrong_modality_review",
+            "missing_requested_artifact_kind",
+            "prompt_counted_as_artifact",
+            "linked_artifact_placeholder_left_open",
+            "syntax_or_structure_breaks_artifact_use",
+            "blind_retry",
+            "duplicate_root_request",
+            "missing_dependency_repair",
+            "wrong_dependency_order_left_unrepaired",
+            "blocked_truth_hidden",
+            "wrong_repair_level",
+            "skipped_redraw_scope_ladder",
+            "ignored_resolving_runtime_evidence",
+            "regenerated_when_rebind_was_available",
+            "graph_patch_without_validation",
+            "graph_patch_without_enforced_policy_review",
+            "graph_rebase_without_preservation_proof",
+            "terminal_parent_frame_mutated",
+            "duplicate_successor_reopen_work",
+            "duplicate_successor_rebase_work"
+          ],
+          "input_refs": [
+            {
+              "kind": "phase_output",
+              "phase_id": "phase-1",
+              "role": "dependency"
+            }
+          ],
+          "obligation_id": "obligation-phase-3",
+          "output_type": "text",
+          "phase_id": "phase-3",
+          "review_criteria": [
+            "output_contract_matches_capability",
+            "runtime_status_reaches_fulfilled_blocked_failed_waived_superseded_or_pending",
+            "runtime_text_artifact_exists_when_fulfilled",
+            "consumes_declared_input_refs",
+            "accepted_producer_content"
+          ],
+          "review_criteria_status": "semantic_review_required",
+          "role": "text_artifact_output",
+          "semantic_lens_evidence_requirements": [
+            "review_criteria",
+            "runtime_evidence",
+            "closure_review",
+            "surface_state",
+            "artifact_registry",
+            "requested_artifact_kinds",
+            "artifact_bindings",
+            "artifact_or_transcript",
+            "user_intent",
+            "branch_output",
+            "runtime_evidence_for_review_criteria",
+            "semantic_review_verdict_when_promoted",
+            "block_reason",
+            "intent_obligations",
+            "intent_graph_adequacy",
+            "dependency_state",
+            "repair_options",
+            "runtime_truth",
+            "monitor_evidence",
+            "redraw_scope_ladder_review",
+            "enforced_policy_review",
+            "graph_repair_review",
+            "graph_patch_lifecycle",
+            "graph_rebase_review",
+            "graph_rebase_preservation_proof",
+            "successor_reopen_request",
+            "successor_rebase_request",
+            "resolving_runtime_evidence",
+            "existing_artifact_bindings",
+            "blocked_check",
+            "dependency_or_branch_contract_evidence",
+            "repair_candidate"
+          ],
+          "semantic_review_criteria": [
+            "accepted_producer_content"
+          ],
+          "semantic_review_lens": "quality_reviewer",
+          "semantic_review_required": true,
+          "status": "fulfilled",
+          "success_definition": "Closure is based on artifact-kind coverage and quality against intent, not only on output existence."
+        },
+        "branch_check_sha256": "5c094b632ad7c4bb3d0dd1d372f4ed6fad23d05cfcfbfcf221bcefc519c183bf",
+        "branch_late_fill_status": "fulfilled",
+        "branch_output_size_chars": 0,
+        "branch_record": {
+          "branch_id": "branch-text_artifact-2",
+          "capability": "chat",
+          "content_payload_source": "current_phase_output",
+          "output_type": "text",
+          "phase_id": "phase-3",
+          "status": "fulfilled"
+        },
+        "content_coverage": {
+          "byte_limit": 16000,
+          "complete": true,
+          "policy": "named_saved_text_v1",
+          "reason": "complete_actual_content",
+          "requirements": [
+            {
+              "branch_id": "branch-text_artifact-2",
+              "criterion": "accepted_producer_content",
+              "phase_id": "phase-3",
+              "requirement_id": "branch-text_artifact-2:accepted_producer_content",
+              "role": "producer",
+              "sha256": "e1ec4faf25d508cf53d5fb52f4245878ee2c5e72e3c6ffb48ee74e6dfee7a9b2",
+              "text": "Save numbers.json containing exactly: {\"subject\":\"alpha\",\"version\":1,\"values\":[7,11]}"
+            }
+          ],
+          "requirements_sha256": "cbe726fa1664ed6d8ea8eade19752e29ef9a1f599cc269fe11b7182c3b0bfe54",
+          "source": {}
+        },
+        "review_scope": "branch_only",
+        "source_branch_id": "branch-text_artifact-2",
+        "source_phase_id": "phase-3"
+      },
+      "binding": {
+        "branch_id": "branch-branch-semantic-review-branch-text_artifact-2-1982a1742b1b9c494e04a408e7fa27df40aae2c4242e855e4bbc439bad6aa4aa",
+        "content_requirement_policy": "named_saved_text_v1",
+        "generation_id": "branch-semantic-review-branch-text_artifact-2-1982a1742b1b9c494e04a408e7fa27df40aae2c4242e855e4bbc439bad6aa4aa",
+        "instruction_sha256": "8ff4131113ea35fd88c5c50a6812933a524ed62d5b4bb5a4b40713031690fdbf",
+        "kind": "fruth.semantic_review_evidence_binding",
+        "logical_review_id": "branch-semantic-review:branch-text_artifact-2",
+        "obligation_id": "obligation-branch-semantic-review-branch-text_artifact-2-1982a1742b1b9c494e04a408e7fa27df40aae2c4242e855e4bbc439bad6aa4aa",
+        "phase_id": "phase-branch-semantic-review-branch-text_artifact-2-1982a1742b1b9c494e04a408e7fa27df40aae2c4242e855e4bbc439bad6aa4aa",
+        "policy": "branch_semantic_review_instruction_sha256_v1",
+        "sha256": "1982a1742b1b9c494e04a408e7fa27df40aae2c4242e855e4bbc439bad6aa4aa",
+        "source_branch_id": "branch-text_artifact-2",
+        "source_phase_id": "phase-3",
+        "task_id": "task-branch-semantic-review-branch-text_artifact-2-1982a1742b1b9c494e04a408e7fa27df40aae2c4242e855e4bbc439bad6aa4aa"
+      }
+    }
+  ]
+}

@@ -71,6 +71,30 @@ def test_state_builder_does_not_invent_execution_authority():
         'terminal_closure_repair_reopen', 'partial_rebase_execution', 'successor_reopen_execution'))
 
 
+@pytest.mark.parametrize('terminal_key', ['completed_branches', 'failed_branches', 'cancelled_branches'])
+@pytest.mark.parametrize('pending_kind', ['admitted', 'same_terminal_id', 'foreign_execution', 'unbound', 'unadmitted', 'malformed_admission'])
+def test_terminal_member_does_not_suppress_exact_pending_sibling(terminal_key, pending_kind):
+    execution_key = REOPEN['execution_key']
+    terminal = {'branch_id': 'settled', 'terminal_closure_repair_execution_key': execution_key}
+    pending = {'branch_id': 'pending', 'terminal_closure_repair_execution_key': execution_key}
+    if pending_kind == 'same_terminal_id':
+        pending['branch_id'] = 'settled'
+    elif pending_kind == 'foreign_execution':
+        pending['terminal_closure_repair_execution_key'] = 'foreign'
+    elif pending_kind == 'unbound':
+        pending.pop('terminal_closure_repair_execution_key')
+    elif pending_kind == 'unadmitted':
+        pending['branch_id'] = 'foreign-duty'
+    payload = {'late_fill': {
+        'terminal_closure_repair_reopen': {**REOPEN, 'branch_ids': ['settled', 'pending']},
+        terminal_key: [terminal], 'pending_branches': [pending],
+    }}
+    if pending_kind == 'malformed_admission':
+        payload['late_fill']['terminal_closure_repair_reopen']['branch_ids'] = ['settled', {'branch_id': 'pending'}]
+    assert web._LATE_FILL_RUNTIME._payload_has_terminal_closure_repair_execution(
+        payload, execution_key) is (pending_kind != 'admitted')
+
+
 @pytest.mark.parametrize('terminal_repair', [False, True])
 def test_real_scheduled_worker_preserves_repair_identity(terminal_repair, monkeypatch):
     """Exercise publication, dispatch, persistence and replay, not TESTING's shortcut.

@@ -174,6 +174,11 @@ Catalog discovery remains broader than startup eligibility. A backend can have v
 
 For `llama.cpp` pull/download behavior, Fruth now expects a non-interactive Hugging Face download path rather than abusing `llama-cli` as a downloader. When the system `hf` binary is not on `PATH`, Fruth also checks the MLX virtualenv sibling `hf` binary so the existing local MLX toolchain can satisfy `llama.cpp` catalog pulls.
 
+Local readiness accepts both the legacy `system model available` response and
+the updated CLI's successful `✓ system (...)` listing. The system-filtered
+compatibility command keeps unrelated PCC account availability out of local AFM
+readiness; the CLI's rename warning alone does not make AFM unavailable.
+
 Apple AI exposes local text chat, image analysis and streaming, with missing CLI/license/model
 prerequisites represented explicitly. It does not offer pull/remove or variant
 selection. Its instance metadata preserves source/time and raw `/v1/models`

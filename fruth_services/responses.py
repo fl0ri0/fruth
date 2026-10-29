@@ -49,6 +49,7 @@ class _CapturedRequestIntent(dict):
 
     request: dict
     available: bool = True
+    content_review_reference_policy: str = ''
 
     def __post_init__(self) -> None:
         # Diagnostic JSON may describe the capture, but decoding produces an
@@ -72,7 +73,12 @@ def capture_request_intent(payload: Mapping) -> dict:
         original = deepcopy({key: value for key, value in captured.items()
                              if key not in {'_request_intent', '_current_turn_prompt',
                                             '_prompt_hint', 'intent_source', 'execution_prompt'}})
-        captured['_request_intent'] = _CapturedRequestIntent(original)
+        # Admission policy belongs to this new caller capture. Restoration of
+        # frozen requests deliberately does not add it to historical frames.
+        original['content_requirement_policy'] = 'named_saved_text_v1'
+        original['content_review_reference_policy'] = 'packet_exact_v1'
+        captured['_request_intent'] = _CapturedRequestIntent(
+            original, content_review_reference_policy='packet_exact_v1')
     return captured
 
 
@@ -80,7 +86,12 @@ def request_intent_payload(payload: Mapping) -> dict:
     """Return caller scope for admission, separately from execution payload."""
     intent = payload.get('_request_intent')
     if isinstance(intent, _CapturedRequestIntent):
-        return deepcopy(intent.request) if intent.available else {}
+        if not intent.available:
+            return {}
+        source = deepcopy(intent.request)
+        if intent.content_review_reference_policy:
+            source['content_review_reference_policy'] = intent.content_review_reference_policy
+        return source
     return dict(payload)
 
 
@@ -90,7 +101,7 @@ def request_intent_frame_source(payload: Mapping) -> dict:
     if not isinstance(intent, _CapturedRequestIntent):
         return {key: value for key, value in payload.items()
                 if key not in {'_request_intent', 'intent_source', 'execution_prompt'}}
-    source = deepcopy(intent.request)
+    source = request_intent_payload(payload) if intent.available else deepcopy(intent.request)
     # Preserve the existing final request-control/route audit projections.
     # They do not replace captured prompt, references or native output scope.
     for key in ('request_meta', 'inference_preview'):
@@ -115,7 +126,9 @@ def restore_request_intent(frame_request: Mapping) -> dict:
     available = restored.get('intent_source') == 'runtime_caller_capture_v1'
     original = deepcopy({key: value for key, value in restored.items()
                          if key not in {'_request_intent', 'intent_source', 'execution_prompt'}})
-    restored['_request_intent'] = _CapturedRequestIntent(original, available=available)
+    restored['_request_intent'] = _CapturedRequestIntent(
+        original, available=available,
+        content_review_reference_policy=original.get('content_review_reference_policy', ''))
     if available and isinstance(restored.get('execution_prompt'), str):
         restored['prompt'] = restored['execution_prompt']
     return restored

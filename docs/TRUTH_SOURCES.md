@@ -106,14 +106,28 @@ results and saved files from a rejected stale writer remain diagnostics, not
 accepted-result evidence. Passive recovery continues to read the committed frame;
 it neither retries the rejected work nor repairs historical cancellation loss.
 
+Before committing a control successor, the existing Closure owner reassesses
+accepted bound evidence with the applied control state and restored canonical
+request inside that mutation boundary. The saved checks, aggregate assessment,
+developer diagnostics and named-content surface projections therefore include
+already accepted sibling reviews even when the worker's later publication loses.
+Review-task disposition remains distinct from content fulfillment. This is
+publication-time accounting; passive recovery neither recomputes the assessment
+nor supplies missing historical authority, and no repair or scheduling follows
+from the assessment alone.
+
 A live-worker C9 handoff separates admitted obligation authority, current branch
 eligibility and a single-use operational scheduling permission. The permission is
 private invocation context created by the existing scheduler after claiming the
 worker; frames, output files and diagnostic events cannot recreate it. Recovery
 remains passive even when the committed frame retains pending work. The child
 uses the same execution identity and ordinary append-only frame owner. Existing
-control checkpoints may omit the request carrier; the immutable invocation request
-supplies controls/context, never replacement branch instructions. Explicit current
+historical control checkpoints may omit the request carrier; the immutable invocation
+request supplies controls/context, never replacement branch instructions. New
+control checkpoints reuse the canonical request-restoration owner on the exact
+current frame under the existing mutation lock. They preserve available caller
+scope/provenance/policies without recovering absent historical evidence from
+projections or borrowing private worker scheduling permission. Explicit current
 request metadata/carriers must match. Accepted result comparison permits only
 existing transport-byte/timestamp/empty-field compaction, preserving other evidence
 and unknown fields. See [Late Fill](RESPONSES_CONTRACT.md#late-fill).
@@ -167,9 +181,21 @@ the two ownership systems do not share capabilities or restart rules.
 
 ## Closure Repair Payload Truth
 
+Separate image-report delivery uses the accepted analysis/image identity join and
+`report_delivery_evidence`. Canonical outputs must contain the complete rendered
+reports, and Closure verifies each current source contribution. Declared input
+refs or a completed synthesis marker alone do not prove delivery. Existing vision
+receipts bind the input image; this coverage check does not re-establish visual
+truth or modify historical frozen frames.
+
 Closure-promoted text artifact repairs are evidence packets, not generic retry prompts. A repair branch should receive the target artifact identity/path, the concrete defect class, and the current saved bytes needed to patch or replace only that target.
 
 - Syntax repair carries deterministic syntax issues plus the current saved target file content.
+- Saved-read syntax repair also retains the unchanged logical dependency/content
+  contract and a fresh producer read. Its separate physical target snapshot and
+  file identity authorize exactly one target, revalidated at dispatch. New
+  consumption/output bindings and a current consumer review govern completion;
+  the producer's passed review does not certify the repaired consumer.
 - Link rebind carries unresolved placeholders or guessed links, concrete runtime artifact paths, and the current saved target file content.
 - HTML/CSS selector-binding repair carries the CSS target, linked HTML artifact, HTML classes not targeted by CSS, CSS class selectors not present in HTML, and the current saved HTML and CSS content.
 

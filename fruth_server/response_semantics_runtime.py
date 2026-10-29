@@ -6,6 +6,7 @@ from fruth_services.state_flow import observe_state, note as state_flow_note
 
 from fruth_services.artifact_contracts import (
     saved_file_dependency_contract, saved_file_consumption_artifact_issue,
+    separate_image_report_contract, separate_image_report_delivery_issue,
 )
 from fruth_services.events import observe_call, exact_target, judgment_summary
 
@@ -76,12 +77,15 @@ from fruth_server.repair_gate_runtime import (
     repair_item_has_concrete_input_evidence,
 )
 from fruth_services.responses import (
+    request_intent_payload,
     extract_canonical_predecessor_image_prompts,
     extract_responses_current_turn_prompt,
     project_truth_guard_text,
     truth_guard_text_projection,
 )
 from fruth_services.semantic_review_verdict import (
+    CONTENT_REVIEW_REFERENCE_POLICY,
+    semantic_review_evidence_reference_catalog,
     semantic_review_verdict_freeze_acceptance,
     semantic_review_verdict_from_text,
 )
@@ -7060,16 +7064,35 @@ class ResponseSemanticsRuntimeOwner:
         *,
         review_id: str = 'global-semantic-closure-review',
         expected_evidence_sha256: str = '',
+        require_content_review_result: bool = False,
+        evidence_reference_policy: str = '',
     ) -> dict[str, Any]:
         record, status = cls._late_fill_branch_record(artifact_payload, branch_id)
         if not record or status != 'fulfilled':
             return {}
+        contract = record.get('execution_contract') if isinstance(record.get('execution_contract'), Mapping) else {}
+        binding = record.get('semantic_review_evidence_binding') or contract.get('semantic_review_evidence_binding') or {}
+        if require_content_review_result:
+            if not isinstance(binding, Mapping) or binding.get('content_requirement_policy') != 'named_saved_text_v1':
+                return {}
+            if evidence_reference_policy and binding.get('evidence_reference_policy') != evidence_reference_policy:
+                return {}
+            # Branch summaries prove settlement; accepted fill results carry
+            # the actual dispatched verdict. Neither substitutes for the other.
+            results = [item for item in (artifact_payload.get('late_fill') or {}).get('fill_results', [])
+                       if isinstance(item, Mapping) and item.get('branch_id') == branch_id
+                       and item.get('phase_id') == record.get('phase_id')]
+            if (len(results) != 1 or results[0].get('semantic_review_evidence_binding') != binding):
+                return {}
+            record = {**record, **results[0]}
         expected_digest = str(expected_evidence_sha256 or '').strip().lower()
         if expected_digest:
             completed_digest = cls._semantic_review_evidence_sha256_from_record(record)
             if completed_digest != expected_digest:
                 return {}
-        raw_verdict = record.get('semantic_review_verdict')
+        # Governed reviews inspect the actual returned declarations, before any
+        # normalization can drop malformed references or duplicate entries.
+        raw_verdict = None if evidence_reference_policy else record.get('semantic_review_verdict')
         if isinstance(raw_verdict, Mapping):
             if (
                 str(raw_verdict.get('kind') or '').strip()
@@ -7899,6 +7922,48 @@ class ResponseSemanticsRuntimeOwner:
             return False
         return bool(source_branch_id) and review_branch_id != source_branch_id
 
+    @classmethod
+    def _branch_semantic_accepted_scope(cls, payload: Mapping[str, Any], check: Mapping[str, Any]) -> dict[str, Any]:
+        """Present accepted duties by branch identity, independent of saved filenames.
+
+        Only stable contract fields participate: review admission/completion must
+        not itself change this evidence generation by adding reviewer siblings.
+        """
+        graph = (payload.get('runtime') or {}).get('request_phase_graph') or {}
+        records = [b for b in graph.get('downstream_branches') or [] if isinstance(b, Mapping)]
+        branch_id = check.get('branch_id') or check.get('phase_id')
+        phase_id = check.get('phase_id') or branch_id
+        matches = [b for b in records if b.get('branch_id') == branch_id and b.get('phase_id') == phase_id]
+        accepted = matches[0] if len(matches) == 1 else check
+
+        def duties(record):
+            request = record.get('artifact_request') or {}
+            dependency = saved_file_dependency_contract(record)
+            logical_request = dependency.get('consumer_request') or request
+            return cls._compact_mapping({
+                'branch_id': record.get('branch_id'), 'phase_id': record.get('phase_id'),
+                'capability': record.get('capability'), 'output_type': record.get('output_type'),
+                'required_output': {key: logical_request[key] for key in ('extension', 'source_name', 'target_path') if logical_request.get(key)},
+                'content_requirements': copy.deepcopy(request.get('content_requirements') or record.get('content_requirements') or []),
+                'depends_on': list(record.get('depends_on') or []),
+            })
+
+        reviewed = duties(accepted)
+        reviewed['required_semantic_criteria'] = list(check.get('semantic_review_criteria') or check.get('review_criteria') or [])
+        reviewed['applicable_review_criteria'] = list(check.get('review_criteria') or [])
+        if not reviewed.get('content_requirements'):
+            reviewed['content_requirements'] = copy.deepcopy(check.get('content_requirements') or [])
+        siblings = []
+        for record in records:
+            if (record.get('branch_id') == branch_id or record.get('phase_id') == phase_id
+                    or record.get('stage_direction') == 'run_branch_semantic_review'
+                    or record.get('visibility') == 'internal' or record.get('surface_role') == 'closure_evidence'):
+                continue
+            siblings.append(duties(record))
+        return {'source': 'accepted_branch_contracts', 'reviewed_branch': reviewed,
+                'sibling_duties_context_only': siblings,
+                'shared_constraints_policy': 'retain_every_constraint_applicable_to_the_reviewed_branch'}
+
     def _branch_semantic_evidence_payload(
         self,
         *,
@@ -7997,8 +8062,49 @@ class ResponseSemanticsRuntimeOwner:
             )
             if isinstance(branch_record, Mapping) and branch_record.get(key) not in (None, '', [], {})
         }
+        content_coverage = {}
+        requirements = check.get('content_requirements')
+        if requirements:
+            # Reuse the existing bounded artifact packet. A hash of bytes the
+            # reviewer never saw is binding evidence, not semantic coverage.
+            complete = bool(artifact_refs) and artifact_manifest_count == len(artifact_refs)
+            complete = complete and all(
+                ref.get('content_excerpt_mode') == 'full'
+                and not ref.get('content_excerpt_truncated')
+                and ref.get('content_excerpt')
+                for ref in artifact_refs
+            )
+            source = {}
+            dependency = saved_file_dependency_contract(check)
+            if dependency:
+                results = [item for item in (payload.get('late_fill') or {}).get('fill_results', [])
+                           if isinstance(item, Mapping) and item.get('branch_id') == source_branch_id]
+                read = ((results[0].get('saved_file_consumption_evidence') or {}).get('read') or {}) if len(results) == 1 else {}
+                source = {key: read.get(key) for key in (
+                    'path', 'sha256', 'size_bytes', 'artifact_ref', 'artifact_id',
+                    'response_id', 'source_response_id', 'branch_id', 'phase_id',
+                    'producer_branch_id', 'consumer_branch_id',
+                )}
+                source.update(self._global_semantic_text_artifact_excerpt(
+                    read.get('path'), byte_limit=artifact_excerpt_bytes_remaining))
+                complete = bool(complete and source.get('content_excerpt_mode') == 'full'
+                    and source.get('current_content_sha256') == read.get('sha256'))
+            requirement_bytes = len(json.dumps(requirements, ensure_ascii=False).encode('utf-8'))
+            content_bytes = sum(len(str(ref.get('content_excerpt') or '').encode('utf-8')) for ref in artifact_refs)
+            content_bytes += len(str(source.get('content_excerpt') or '').encode('utf-8'))
+            complete = bool(complete and requirement_bytes + content_bytes <= _GLOBAL_SEMANTIC_ARTIFACT_EXCERPT_LIMIT)
+            content_coverage = {
+                'policy': 'named_saved_text_v1',
+                'requirements': requirements if complete else None,
+                'requirements_sha256': self._semantic_manifest_sha256(requirements),
+                'source': source,
+                'complete': complete,
+                'reason': 'complete_actual_content' if complete else 'content_review_packet_insufficient',
+                'byte_limit': _GLOBAL_SEMANTIC_ARTIFACT_EXCERPT_LIMIT,
+            }
         return self._compact_mapping(
             {
+                'accepted_branch_scope': self._branch_semantic_accepted_scope(payload, check),
                 'review_scope': 'branch_only',
                 'source_branch_id': source_branch_id,
                 'source_phase_id': source_phase_id,
@@ -8024,6 +8130,7 @@ class ResponseSemanticsRuntimeOwner:
                 # in this generation invalidates a verdict if the source/file
                 # evidence changes, even when the answer text stays the same.
                 'saved_artifact_state': check.get('saved_artifact_state'),
+                'content_coverage': content_coverage,
             }
         )
 
@@ -8036,8 +8143,31 @@ class ResponseSemanticsRuntimeOwner:
     ) -> str:
         bounded_prompt = self._bounded_global_semantic_text(prompt)
         bounded_check = self._branch_semantic_check_projection(check)
+        accepted_scope = evidence_payload.get('accepted_branch_scope') or {}
+        reviewed_duties = accepted_scope.get('reviewed_branch') or bounded_check
+        reference_instruction = ''
+        if check.get('content_review_reference_policy'):
+            reference_instruction = (
+                'Evidence reference policy packet_exact_v1:\n'
+                '- Copy exact values from evidence_reference_catalog.allowed_refs in this packet only.\n'
+                '- These name the supplied branch/phase, saved artifact ref/path/name, bound source identity, '
+                'or accepted requirement; no other response, registry entry, guessed alias or identifier is allowed.\n'
+                '- Include nonempty evidence_refs on the verdict and every passed required criterion. '
+                'Use arrays of exact strings; ref/id/name envelopes are also supported when all fields resolve to the same evidence. '
+                'A criterion may also use one exact string.\n'
+                '- Ordering and duplicate references are allowed. Any invalid entry rejects the whole review for completion.\n'
+                '- Reference validity does not establish that a semantic judgment is correct.\n\n'
+            )
         return (
             'Run a branch-local semantic review for the current Fruth response graph.\n'
+            '\n'
+            'Accepted duties and required criteria for this reviewed branch:\n'
+            f'{self._json_for_semantic_review_prompt(reviewed_duties)}\n\n'
+            'Evaluate every required semantic criterion for this exact branch. '
+            'Keep every shared constraint that applies to it.\n'
+            'Sibling duties in accepted_branch_scope.sibling_duties_context_only are attributed context: '
+            'their outputs belong to their own branch identities. '
+            'A missing sibling output is not a defect of this branch unless its accepted contract requires it.\n'
             '\n'
             'Authority boundary:\n'
             '- You are a semantic reviewer for one branch, not runtime truth.\n'
@@ -8072,6 +8202,7 @@ class ResponseSemanticsRuntimeOwner:
             'Use the provided semantic_review_lens and success_definition as the review posture for this branch. '
             'They are advisory only, but they define what kind of success should be checked and which failure modes matter.\n'
             '\n'
+            f'{reference_instruction}'
             f'Current user intent for context only:\n{bounded_prompt}\n\n'
             'Branch under review:\n'
             f'{self._json_for_semantic_review_prompt(bounded_check)}\n\n'
@@ -8092,6 +8223,8 @@ class ResponseSemanticsRuntimeOwner:
             check=check,
             output_text=output_text,
         )
+        if check.get('content_review_reference_policy'):
+            evidence_payload['evidence_reference_catalog'] = semantic_review_evidence_reference_catalog(evidence_payload)
         content_payload = self._branch_semantic_review_instruction(
             prompt=prompt,
             check=check,
@@ -8101,6 +8234,11 @@ class ResponseSemanticsRuntimeOwner:
             check,
             content_payload,
         )
+        if evidence_payload.get('content_coverage'):
+            evidence_binding['content_requirement_policy'] = 'named_saved_text_v1'
+            evidence_binding['instruction_sha256'] = hashlib.sha256(content_payload.encode('utf-8')).hexdigest()
+            if check.get('content_review_reference_policy'):
+                evidence_binding['evidence_reference_policy'] = check['content_review_reference_policy']
         return evidence_payload, content_payload, evidence_binding
 
     def _apply_branch_semantic_verdict_to_check(
@@ -8114,12 +8252,29 @@ class ResponseSemanticsRuntimeOwner:
         updated = dict(check)
         if not self._check_is_branch_semantic_review_target(updated):
             return updated
-        _, _, evidence_binding = self._branch_semantic_review_contract(
+        if (updated.get('content_review_reference_policy')
+                and updated['content_review_reference_policy'] != CONTENT_REVIEW_REFERENCE_POLICY):
+            updated.update(status='blocked', content_coverage_status='unverified',
+                           completion_basis='technical_evidence_only', semantic_review_required=False,
+                           repair_action=RECOVERY_ACTION_MANUAL_REVIEW,
+                           recovery_action=RECOVERY_ACTION_MANUAL_REVIEW,
+                           reason='content_review_reference_policy_invalid')
+            return updated
+        evidence_payload, _, evidence_binding = self._branch_semantic_review_contract(
             artifact_payload=artifact_payload,
             check=updated,
             prompt=prompt,
             output_text=output_text,
         )
+        coverage = evidence_payload.get('content_coverage') or {}
+        if coverage and not coverage.get('complete'):
+            updated.update(status='blocked', content_coverage_status='unverified',
+                           completion_basis='technical_evidence_only',
+                           semantic_review_required=False,
+                           repair_action=RECOVERY_ACTION_MANUAL_REVIEW,
+                           recovery_action=RECOVERY_ACTION_MANUAL_REVIEW,
+                           reason='content_review_packet_insufficient')
+            return updated
         review_branch_id = str(evidence_binding.get('branch_id') or '').strip()
         review_phase_id = str(evidence_binding.get('phase_id') or '').strip()
         evidence_sha256 = str(evidence_binding.get('sha256') or '').strip().lower()
@@ -8129,6 +8284,8 @@ class ResponseSemanticsRuntimeOwner:
             review_branch_id,
             review_id=logical_review_id,
             expected_evidence_sha256=evidence_sha256,
+            require_content_review_result=bool(updated.get('content_requirements')),
+            evidence_reference_policy=updated.get('content_review_reference_policy', ''),
         )
         previous_evidence_binding = (
             dict(updated.get('branch_semantic_review_evidence_binding'))
@@ -8179,6 +8336,8 @@ class ResponseSemanticsRuntimeOwner:
         freeze_acceptance = semantic_review_verdict_freeze_acceptance(
             verdict,
             required_criteria=required_criteria,
+            evidence_reference_policy=updated.get('content_review_reference_policy', ''),
+            evidence_packet=evidence_payload,
         )
         verdict = dict(verdict)
         verdict['freeze_acceptance'] = freeze_acceptance
@@ -8219,6 +8378,9 @@ class ResponseSemanticsRuntimeOwner:
             )
         )
         if accepted:
+            if updated.get('content_requirements'):
+                updated['content_coverage_status'] = 'accepted_review'
+                updated['completion_basis'] = 'bound_semantic_review'
             updated['semantic_review_required'] = False
             updated['review_criteria_status'] = 'passed_semantic_review'
             updated['semantic_review_action'] = None
@@ -8281,6 +8443,18 @@ class ResponseSemanticsRuntimeOwner:
                     output_text=output_text,
                 )
             )
+            if source_check.get('content_requirements') and self.runtime_capability_availability(CAPABILITY_CHAT).get('available') is not True:
+                review_checks.append({
+                    'check_kind': 'branch_semantic_review', 'status': 'blocked',
+                    'branch_id': evidence_binding.get('branch_id'),
+                    'source_branch_id': source_check.get('branch_id'),
+                    'reason': 'content_review_capacity_unavailable',
+                    'content_coverage_status': 'unverified',
+                    'completion_basis': 'technical_evidence_only',
+                    'repair_action': RECOVERY_ACTION_MANUAL_REVIEW,
+                    'recovery_action': RECOVERY_ACTION_MANUAL_REVIEW,
+                })
+                continue
             review_branch_id = str(evidence_binding.get('branch_id') or '').strip()
             review_phase_id = str(evidence_binding.get('phase_id') or '').strip()
             review_obligation_id = str(evidence_binding.get('obligation_id') or '').strip()
@@ -8532,6 +8706,22 @@ class ResponseSemanticsRuntimeOwner:
             if isinstance(semantic_quality_review.get('contracts'), list)
             else []
         )
+        # This admission policy asks one review per accepted branch group.
+        # Its advisory IR quality projection must not manufacture a second,
+        # whole-turn review after those same exact criteria were discharged.
+        covered_content = {
+            (check.get('branch_id'), requirement.get('criterion'))
+            for check in checks if isinstance(check, Mapping)
+            and check.get('content_coverage_status') in {'accepted_review', 'authorized_disposition'}
+            for requirement in check.get('content_requirements', [])
+        }
+        if covered_content:
+            semantic_quality_contracts = [
+                {**contract, 'review_criteria': [criterion for criterion in self._string_list(contract.get('review_criteria'))
+                    if (contract.get('branch_id'), criterion) not in covered_content]}
+                if isinstance(contract, Mapping) else contract
+                for contract in semantic_quality_contracts
+            ]
         required_semantic_criteria = self._global_semantic_required_criteria(
             checks,
             semantic_quality_contracts,
@@ -16675,6 +16865,40 @@ class ResponseSemanticsRuntimeOwner:
         if not isinstance(request_phase_graph, Mapping) or not request_phase_graph:
             return payload
 
+        raw_content = request_phase_graph.get('content_requirements')
+        accepted_content = raw_content if isinstance(raw_content, list) else []
+        named_saved_path = any(saved_file_dependency_contract(branch)
+            for branch in request_phase_graph.get('downstream_branches', [])
+            if isinstance(branch, Mapping))
+        content_policy = (
+            request_phase_graph.get('content_requirement_policy') == 'named_saved_text_v1'
+            or (named_saved_path and request_intent_payload(request_payload or {}).get(
+                'content_requirement_policy') == 'named_saved_text_v1')
+        )
+        # The accepted request is independent of graph/result metadata. Losing a
+        # downstream policy label cannot downgrade a newly captured request.
+        reference_sources = [request_intent_payload(request_payload or {}), request_phase_graph]
+        reference_sources.extend(branch.get('artifact_request') or {}
+            for branch in request_phase_graph.get('downstream_branches', []) if isinstance(branch, Mapping))
+        reference_policies = [source.get('content_review_reference_policy') for source in reference_sources
+            if isinstance(source, Mapping) and 'content_review_reference_policy' in source]
+        content_reference_policy = (
+            CONTENT_REVIEW_REFERENCE_POLICY if reference_policies
+            and all(policy == CONTENT_REVIEW_REFERENCE_POLICY for policy in reference_policies)
+            else 'invalid' if reference_policies else '')
+        try:
+            content_metadata_valid = isinstance(raw_content, list) and len(accepted_content) == 2 and all(
+                isinstance(item, Mapping) and all(isinstance(item.get(key), str) and item[key].strip()
+                    for key in ('branch_id', 'phase_id', 'requirement_id', 'role', 'text'))
+                and item.get('criterion') == f"accepted_{item.get('role')}_content"
+                and item.get('sha256') == hashlib.sha256(item['text'].encode('utf-8')).hexdigest()
+                for item in accepted_content
+            )
+            content_metadata_valid = content_metadata_valid and len({item['branch_id'] for item in accepted_content}) == 2
+            content_metadata_valid = content_metadata_valid and {item['role'] for item in accepted_content} == {'producer', 'consumer'}
+        except (TypeError, ValueError, UnicodeError):
+            content_metadata_valid = False
+
         decision_contract = self._decision_contract_from_graph(request_phase_graph)
         decision_contract_review = self._decision_contract_review_payload(decision_contract)
         workload_tasks_by_phase, workload_tasks_by_branch = self._workload_task_indexes(request_phase_graph)
@@ -17202,6 +17426,32 @@ class ResponseSemanticsRuntimeOwner:
             ]
             if exclude_instance_ids:
                 check['exclude_instance_ids'] = exclude_instance_ids
+            if content_policy:
+                requirements = [item for item in accepted_content if isinstance(item, Mapping)
+                                and item.get('branch_id') == branch_id]
+                request_contract = raw_source.get('artifact_request') or {}
+                governed_branch = bool(requirements or request_contract.get('saved_file_producer')
+                                       or saved_file_dependency_contract(raw_source))
+                if governed_branch:
+                    check['content_requirement_policy'] = 'named_saved_text_v1'
+                    if content_reference_policy:
+                        check['content_review_reference_policy'] = content_reference_policy
+                    check['content_requirements'] = requirements
+                    check['content_coverage_status'] = 'unverified'
+                    check['completion_basis'] = 'technical_evidence_only' if check.get('status') == 'fulfilled' else 'technical_evidence_unresolved'
+                    if check.get('status') in {'waived', 'superseded'}:
+                        check['content_coverage_status'] = 'authorized_disposition'
+                        check['completion_basis'] = 'existing_authorized_disposition'
+                    elif (not content_metadata_valid or len(requirements) != 1
+                          or requirements[0].get('phase_id') != phase_id
+                          or request_contract.get('content_requirement_policy') != 'named_saved_text_v1'
+                          or request_contract.get('content_requirements') != requirements):
+                        check.update(status='blocked', reason='content_requirement_accounting_missing_or_invalid',
+                                     repair_action=RECOVERY_ACTION_MANUAL_REVIEW,
+                                     recovery_action=RECOVERY_ACTION_MANUAL_REVIEW)
+                    else:
+                        check['review_criteria'] = self._merge_string_list(
+                            check.get('review_criteria'), [item['criterion'] for item in requirements])
             check = self._apply_review_criteria_to_check(check)
             if (phase_id == current_phase_id
                     and any(p.get('phase_id') == phase_id
@@ -17306,6 +17556,17 @@ class ResponseSemanticsRuntimeOwner:
                         }
                     )
 
+        if content_policy and (not content_metadata_valid or any(
+                not any(check.get('branch_id') == item.get('branch_id') and check.get('content_requirement_policy')
+                        for check in checks)
+                for item in accepted_content if isinstance(item, Mapping))):
+            checks.append({
+                'check_kind': 'content_requirement_accounting', 'status': 'blocked',
+                'reason': 'content_requirement_accounting_missing_or_invalid',
+                'content_coverage_status': 'unverified',
+                'repair_action': RECOVERY_ACTION_MANUAL_REVIEW,
+                'recovery_action': RECOVERY_ACTION_MANUAL_REVIEW,
+            })
         checks.extend(
             self._branch_semantic_review_checks(
                 checks=checks,
@@ -17339,6 +17600,25 @@ class ResponseSemanticsRuntimeOwner:
                 request_phase_graph=request_phase_graph,
             )
         )
+        # A completed synthesis marker cannot certify delivery of separate
+        # accepted reports. Check every exact contribution and the rendered text.
+        for branch in request_phase_graph.get('downstream_branches') or []:
+            if not isinstance(branch, Mapping) or not separate_image_report_contract(branch):
+                continue
+            results = [r for r in ((artifact_payload or {}).get('late_fill') or {}).get('fill_results', [])
+                       if isinstance(r, Mapping) and (r.get('branch_id') == branch.get('branch_id')
+                                                     or r.get('phase_id') == branch.get('phase_id'))]
+            issue = 'separate_image_reports_terminal_missing_or_ambiguous'
+            if len(results) == 1:
+                issue = separate_image_report_delivery_issue(branch, results[0], artifact_payload or {},
+                    self._resolved_semantic_review_artifact_path)
+            checks.append({'check_kind': 'structured_dependency_join', 'branch_id': branch.get('branch_id'),
+                'phase_id': branch.get('phase_id'), 'capability': CAPABILITY_CHAT, 'output_type': 'text',
+                'status': 'blocked' if issue else 'fulfilled',
+                'evidence': 'structured_dependency_join_contract_unmet' if issue else 'separate_image_reports_delivered',
+                'reason': issue or 'Every accepted source report is delivered exactly once.',
+                'structured_output_contract': separate_image_report_contract(branch),
+                'depends_on': branch.get('depends_on') or []})
 
         global_semantic_closure_review = self.build_global_semantic_closure_review(
             output_text=output_text,
@@ -17442,6 +17722,25 @@ class ResponseSemanticsRuntimeOwner:
                 'surface_state': surface_state,
             }
         )
+        if content_policy:
+            covered = sum(len(check.get('content_requirements') or []) for check in checks
+                          if check.get('content_coverage_status') in {'accepted_review', 'authorized_disposition'})
+            reviewed = sum(len(check.get('content_requirements') or []) for check in checks
+                           if check.get('content_coverage_status') == 'accepted_review')
+            summary = {
+                'content_requirement_policy': 'named_saved_text_v1',
+                'content_requirement_count': 2,
+                'unresolved_content_requirement_count': max(0, 2 - covered) if content_metadata_valid else 2,
+                'content_coverage_status': 'covered' if covered == 2 and content_metadata_valid else 'unverified',
+                'completion_basis': (
+                    ('bound_semantic_review' if reviewed == 2 else
+                     'bound_review_and_authorized_disposition' if reviewed else 'existing_authorized_disposition')
+                    if covered == 2 and content_metadata_valid else 'content_coverage_unresolved'),
+                'correctness_basis': ('not_established_by_disposition' if covered == 2 and not reviewed
+                                      else 'reviewer_soundness_assumption'),
+            }
+            payload.update(summary)
+            payload['surface_state'].update(summary)
         if decision_contract_review:
             payload['decision_contract_review'] = decision_contract_review
         if global_semantic_closure_review:

@@ -11,6 +11,10 @@ import pytest
 
 
 CAMPAIGNS = {
+    'test_conditional_progress_a6.py': {'test_one_sealed_campaign'},
+    'test_consumer_evidence_a2.py': {'test_one_sealed_campaign'},
+    'test_intake_coverage_a1.py': {'test_one_sealed_intake_campaign'},
+    'test_runtime_preservation_composition.py': {'test_one_sealed_composition_campaign'},
     'test_text_file_binding_hypothesis.py': {
         'test_provider_wrappers_preserve_accepted_bindings',
         'test_saved_identity_and_conflicting_evidence_fail_closed',
@@ -34,6 +38,8 @@ CAMPAIGNS = {
 # lock. Maintained equivalents use current_scheduling in the C9 correction suite.
 # Do not exclude the module's fixtures from import by those maintained controls.
 HISTORICAL = {
+    'test_consumer_evidence_a2.py': {'test_pilot'},
+    'test_intake_coverage_a1.py': {'test_original_observation', 'test_boundary_observation'},
     'test_late_cancel_lineage_hypothesis.py': {
         'test_retained_cancellation_failure_blob', 'test_bounded_original_prefix_reduction',
     },

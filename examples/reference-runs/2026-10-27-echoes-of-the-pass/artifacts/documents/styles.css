@@ -1,0 +1,158 @@
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #0f0f0f;
+    color: #d4d4d4;
+    font-family: "Times New Roman", serif;
+    line-height: 1.8;
+    overflow-x: hidden;
+}
+
+/* Hero Section */
+.hero {
+    height: 70vh;
+    background: url('../images/20261027T190250Z_image_mlx-community_Z-Image-Turbo-bf16.png') no-repeat center/cover;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    position: relative;
+}
+
+.hero-overlay {
+    background: rgba(0, 0, 0, 0.5);
+    padding: 3rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(4px);
+}
+
+h1 {
+    font-size: 3rem;
+    font-weight: normal;
+    letter-spacing: 0.3rem;
+    text-transform: uppercase;
+    color: #f0f0f0;
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    font-style: italic;
+    font-size: 1.2rem;
+    color: #a0a0a0;
+}
+
+/* Main Content */
+main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 5rem 2rem;
+}
+
+.about {
+    text-align: center;
+    margin-bottom: 6rem;
+}
+
+.about h2 {
+    font-size: 2rem;
+    font-weight: normal;
+    margin-bottom: 1.5rem;
+    letter-spacing: 0.1rem;
+}
+
+.about p {
+    font-size: 1.1rem;
+    color: #888;
+}
+
+/* Listening Section */
+.listening {
+    background: #1a1a1ac9;
+    padding: 3rem;
+    border-radius: 2px;
+    border: 1px solid #222;
+}
+
+.listening-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    align-items: center;
+}
+
+.image-container {
+    width: 100%;
+    /* Ensuring the container respects sizing for the image */
+}
+
+.image-container img {
+    width: 100%;
+    height: auto;
+    display: block;
+    filter: grayscale(40%) contrast(110%);
+    transition: filter 0.5s ease;
+    /* Added sizing and layout constraints for better bounding */
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1; /* Maintain square aspect ratio for visual balance */
+    object-fit: cover;
+}
+
+.image-container img:hover {
+    filter: grayscale(10%) contrast(100%);
+}
+
+.audio-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.audio-container h3 {
+    font-size: 1.4rem;
+    font-weight: normal;
+    margin-bottom: 0.5rem;
+}
+
+.description {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1rem;
+}
+
+audio {
+    width: 100%;
+    height: 40px;
+    filter: invert(90%) hue-rotate(180deg) brightness(1.5);
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 4rem 0;
+    font-size: 0.75rem;
+    color: #444;
+    letter-spacing: 0.1rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .listening-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .hero {
+        height: 50vh;
+    }
+
+    h1 {
+        font-size: 2rem;
+    }
+}

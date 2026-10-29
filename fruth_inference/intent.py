@@ -4,22 +4,70 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from helpers.model_capabilities import (
     CAPABILITY_IMAGE_GENERATION,
     CAPABILITY_SPEECH_TO_TEXT,
     CAPABILITY_TEXT_TO_SPEECH,
     CAPABILITY_VISION_ANALYSIS,
+    normalize_capability,
 )
 from fruth_core.inference import (
     _TEXT_ARTIFACT_FORMAT_SCOPE_BOUNDARY_RE,
     _TEXT_ARTIFACT_FORMAT_RE,
     normalize_text_artifact_extension,
     explicit_svg_artifact_request_spans,
+    detect_text_artifact_requests,
 )
 from fruth_inference.text_artifact_revision_intent import classify_named_text_revision_intent
 from fruth_services.tts_source import resolve_explicit_tts_source
+
+_RESERVED_IMAGE_MATERIALIZATION_RE = re.compile(
+    r'\b(?:image|images|picture|pictures|posterbild(?:er)?|bildidee(?:n)?|bildkandidat(?:en)?|bild|bilder)\b'
+    r'[^.;!?]{0,120}\b(?:reserved|reserve|option|optional|reserviert(?:e|en|er|es)?|'
+    r'vormerk(?:e|en)?|merk(?:e|en)?|halte(?:n)?|festhalten)\b|'
+    r'\b(?:reserved|reserve|option|optional|reserviert(?:e|en|er|es)?|'
+    r'vormerk(?:e|en)?|merk(?:e|en)?|halte(?:n)?|festhalten)\b'
+    r'[^.;!?]{0,120}\b(?:image|images|picture|pictures|posterbild(?:er)?|bildidee(?:n)?|bildkandidat(?:en)?|bild|bilder)\b',
+    re.IGNORECASE,
+)
+
+_RESERVED_OPTION_ONLY_RE = re.compile(
+    r'\b(?:reserved|reserve|keep|note|remember|option|optional|reserviert(?:e|en|er|es)?|'
+    r'vormerk(?:e|en)?|merk(?:e|en)?|halte(?:n)?|festhalten)\b'
+    r'[^.;!?]{0,120}\b(?:reserved|option|optional|candidate|kandidat(?:en)?|reserviert(?:e|en|er|es)?|option(?:en)?)\b',
+    re.IGNORECASE,
+)
+
+_SELECTED_IMAGE_CANDIDATE_INDEX_RE = re.compile(
+    r'\b(?:generat(?:e|es|ed|ing)|create|render|show|make|generier(?:e|en)?|erzeuge|erstelle|zeige)\b'
+    r'[^.;!?]{0,80}\b(?:only\s+the\s+|nur\s+(?:die|den|das)\s+)?'
+    r'(?P<ordinal>first|second|third|fourth|fifth|sixth|erste|zweite|dritte|vierte|fuenfte|fünfte|sechste)\b',
+    re.IGNORECASE,
+)
+
+_IMAGE_CANDIDATE_CONTEXT_RE = re.compile(
+    r'\b(?:image\s+ideas?|image\s+candidates?|bildidee(?:n)?|bildkandidat(?:en)?|bildoption(?:en)?|bilder?)\b',
+    re.IGNORECASE,
+)
+
+_ORDINAL_INDEXES = {
+    'first': 1,
+    'erste': 1,
+    'second': 2,
+    'zweite': 2,
+    'third': 3,
+    'dritte': 3,
+    'fourth': 4,
+    'vierte': 4,
+    'fifth': 5,
+    'fuenfte': 5,
+    'fünfte': 5,
+    'sixth': 6,
+    'sechste': 6,
+}
+
 
 _INTENT_PROMPT_NORMALIZATIONS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r'\bimgae\b', re.IGNORECASE), 'image'),
@@ -774,10 +822,16 @@ _VISUAL_ASSET_NOUN_RE = re.compile(
     r'photo[\s-]?assets?|bild[\s-]?datei(?:en)?|image[\s-]?file(?:s)?)\b',
     re.IGNORECASE,
 )
+# Counted variants/versions can refer to already established visual work, but
+# those generic nouns alone do not request a page image (for example a JSON
+# version field rendered in HTML). Local asset co-delivery needs a visual noun.
+_VISUAL_ASSET_OUTPUT_NOUN_PATTERN = (
+    rf'(?:bildern|(?!(?:variants?|versions?|varianten?|versionen?)\b){_VISUAL_OUTPUT_NOUN_PATTERN})'
+)
 _LOCAL_VISUAL_ASSET_CO_DELIVERY_RE = re.compile(
     rf'\b(?:all[\s-]?inclusive|alles\s+inklusive|inklusive|including|with|mit|samt|nebst|'
-    rf'd\s*\.\s*h\s*\.)\b[\s\S]{{0,140}}\b{_VISUAL_OUTPUT_NOUN_PATTERN}\b|'
-    rf'\b{_VISUAL_OUTPUT_NOUN_PATTERN}\b[\s\S]{{0,96}}\b(?:html|css|landing[\s-]?page|'
+    rf'd\s*\.\s*h\s*\.)\b[\s\S]{{0,140}}\b{_VISUAL_ASSET_OUTPUT_NOUN_PATTERN}\b|'
+    rf'\b{_VISUAL_ASSET_OUTPUT_NOUN_PATTERN}\b[\s\S]{{0,96}}\b(?:html|css|landing[\s-]?page|'
     rf'landingpage|website|webseite)\b',
     re.IGNORECASE,
 )
@@ -1786,15 +1840,19 @@ def _local_visual_asset_requirement_cues(normalized_prompt: str) -> list[str]:
         return []
     if not _LOCAL_VISUAL_ASSET_PAGE_CONTEXT_RE.search(prompt):
         return []
+    # Quoted JSON field values and other literal payloads are data. Retain the
+    # original page context (which may name a quoted file), but require asset
+    # cues outside those literals before creating image work.
+    asset_prompt = _mask_literal_payloads(prompt)
     cues: list[str] = []
-    if _LOCAL_VISUAL_ASSET_BINDING_RE.search(prompt):
+    if _LOCAL_VISUAL_ASSET_BINDING_RE.search(asset_prompt):
         cues.append('local_visual_asset_binding_requirement')
     if (
-        _VISUAL_ASSET_NOUN_RE.search(prompt)
-        or _LOCAL_VISUAL_ASSET_CO_DELIVERY_RE.search(prompt)
+        _VISUAL_ASSET_NOUN_RE.search(asset_prompt)
+        or _LOCAL_VISUAL_ASSET_CO_DELIVERY_RE.search(asset_prompt)
     ):
         cues.append('visual_asset_page_requirement')
-    if _NO_EXTERNAL_VISUAL_ASSET_RE.search(prompt):
+    if _NO_EXTERNAL_VISUAL_ASSET_RE.search(asset_prompt):
         cues.append('no_external_visual_asset_requirement')
     return cues
 
@@ -1844,6 +1902,86 @@ def _is_meta_execution_explanation_request(prompt: str, normalized_prompt: str) 
     return has_example_hint or has_quoted_example
 
 
+def _prompt_reserves_materialization_capability(
+    prompt_analysis: Mapping[str, Any],
+    capability: Any,
+) -> bool:
+    normalized = normalize_capability(capability)
+    prompt_text = str(prompt_analysis.get('normalized_prompt') or '').strip()
+    if not prompt_text:
+        return False
+    if normalized == CAPABILITY_IMAGE_GENERATION:
+        # Reservation belongs to its named object, not a neighboring image
+        # request. Keep pronoun continuations ("keep it reserved") together.
+        clauses = re.split(
+            r'[.,;!?\n]|(?=\b(?:keep|leave|hold|reserve)\s+(?!(?:it|them|this|that)\b))',
+            prompt_text, flags=re.IGNORECASE,
+        )
+        if any(
+            _RESERVED_IMAGE_MATERIALIZATION_RE.search(clause)
+            or (_IMAGE_CANDIDATE_CONTEXT_RE.search(clause)
+                and _RESERVED_OPTION_ONLY_RE.search(clause))
+            for clause in clauses
+        ):
+            return True
+        # A comma or sentence break must not erase an explicit "keep it" or
+        # "keep the first and third" reservation. Resolve only an anaphoric
+        # object, against the nearest sentence's last named artifact category.
+        ordinal = '|'.join(_ORDINAL_INDEXES)
+        anaphoric_reservation = re.compile(
+            r'^\s*(?:keep|leave|hold|reserve|note|remember|halte|behalte|merke|reserviere)\s+'
+            r'(?:it|them|this|that|es|sie|dieses|diese|'
+            rf'(?:the|die|den|das)\s+(?:{ordinal})'
+            rf'(?:\s+(?:and|und)\s+(?:(?:the|die|den|das)\s+)?(?:{ordinal}))*)'
+            r'\s+(?:(?:only|just|nur|as|als|a|an|eine|reserved|reservierte)\s+)*'
+            r'(?:options?|optionen|candidates?|kandidaten)(?:\s+fest)?\s*$',
+            re.IGNORECASE,
+        )
+        artifact_category = re.compile(
+            r'\b(?:images?|pictures?|bild(?:er)?|bildideen?|bildkandidaten?|'
+            r'audio|speech|transcripts?|svg|html|css|json|javascript|text|files?|dateien?)\b',
+            re.IGNORECASE,
+        )
+        previous_sentence = ''
+        for sentence in re.split(r'[.;!?\n]', prompt_text):
+            parts = sentence.split(',')
+            for index, clause in enumerate(parts):
+                if not anaphoric_reservation.fullmatch(clause):
+                    continue
+                antecedent = ','.join(parts[:index]).strip() or previous_sentence
+                categories = list(artifact_category.finditer(antecedent))
+                if categories and re.fullmatch(
+                    r'images?|pictures?|bild(?:er)?|bildideen?|bildkandidaten?',
+                    categories[-1].group(), re.IGNORECASE,
+                ):
+                    return True
+            if sentence.strip():
+                previous_sentence = sentence
+        return False
+    return False
+
+
+def _selected_image_candidate_index(prompt_analysis: Mapping[str, Any]) -> int:
+    prompt_text = str(prompt_analysis.get('normalized_prompt') or '').strip()
+    if not prompt_text or not _IMAGE_CANDIDATE_CONTEXT_RE.search(prompt_text):
+        return 0
+    match = _SELECTED_IMAGE_CANDIDATE_INDEX_RE.search(prompt_text)
+    if not match:
+        return 0
+    return _ORDINAL_INDEXES.get(str(match.group('ordinal') or '').strip().lower(), 0)
+
+
+def _prompt_reserves_entire_materialization_capability(
+    prompt_analysis: Mapping[str, Any],
+    capability: Any,
+) -> bool:
+    if not _prompt_reserves_materialization_capability(prompt_analysis, capability):
+        return False
+    if normalize_capability(capability) == CAPABILITY_IMAGE_GENERATION:
+        return _selected_image_candidate_index(prompt_analysis) <= 0
+    return True
+
+
 def _materialization_defer_scope(
     prompt: str,
     normalized_prompt: str,
@@ -1853,6 +1991,8 @@ def _materialization_defer_scope(
     raw_prompt = str(prompt or '').strip()
     normalized = str(normalized_prompt or '').strip()
     scope: dict[str, Any] = {'global': False, 'files': False, 'text_extensions': []}
+    relative_files = False
+    blanket_files = False
     if not raw_prompt or not normalized:
         return scope
     clause_safe_normalized = normalize_intent_text(
@@ -1919,6 +2059,13 @@ def _materialization_defer_scope(
                 typed = bool(extensions or visual or audio)
                 if not typed and re.search(r'\b(?:files?|datei(?:en)?)\b', target):
                     scope['files'] = True
+                    if re.fullmatch(
+                        r'\s*(?:any\s+)?(?:other|additional|extra)\s+files?\s*',
+                        target[local_end:], re.IGNORECASE,
+                    ):
+                        relative_files = True
+                    else:
+                        blanket_files = True
                 if not typed and (
                     re.search(r'\b(?:downstream|artifacts?|artefacts?|artefakte?)\b', target)
                     or re.search(r'\bmateriali[sz]e\b', target)
@@ -1932,7 +2079,43 @@ def _materialization_defer_scope(
     if re.search(r"\b(?:do\s+not|don't|dont)\s+(?:continue|execute|run)\s+downstream\b", normalized):
         scope['global'] = True
         scope['matched'] = True
+    if relative_files and not blanket_files:
+        # Keep files=True for conservative older readers. Only new caller
+        # analysis may populate the bounded exceptions; missing historical
+        # evidence must never be recovered from a planner or execution prompt.
+        scope['file_exceptions'] = {'version': 1}
     return scope
+
+
+def _matches_explicit_file_exception(scope: dict[str, Any], branch: dict[str, Any]) -> bool:
+    exceptions = scope.get('file_exceptions')
+    if not isinstance(exceptions, dict) or type(exceptions.get('version')) is not int or exceptions['version'] != 1:
+        return False
+    request = branch.get('artifact_request') or {}
+    extension = normalize_text_artifact_extension(
+        branch.get('text_artifact_extension') or request.get('extension') or ''
+    )
+    if extension:
+        name = branch.get('text_artifact_source_name') or request.get('source_name')
+        target = branch.get('text_artifact_target_path') or branch.get('target_path') or request.get('target_path')
+        text_artifacts = exceptions.get('text_artifacts')
+        if not isinstance(text_artifacts, list):
+            return False
+        return any(
+            item.get('extension') == extension and item.get('source_name') == name
+            and (not item.get('target_path') or item['target_path'] == target)
+            for item in text_artifacts if isinstance(item, dict)
+        )
+    count = exceptions.get(branch.get('capability'))
+    if type(count) is not int or count <= 0:
+        return False
+    # Category-only callers ask eligibility, not admission. Concrete branches
+    # retain the existing exact slot/payload/dependency validation downstream.
+    for key in ('queue_index', 'batch_prompt_expected_count'):
+        value = branch.get(key)
+        if value is not None and (type(value) is not int or not 0 < value <= count):
+            return False
+    return True
 
 
 def materialization_is_deferred(analysis: dict[str, Any], branch: Optional[dict[str, Any]] = None) -> bool:
@@ -1951,18 +2134,19 @@ def materialization_is_deferred(analysis: dict[str, Any], branch: Optional[dict[
         return True
     if branch is None:
         return False
+    files_deferred = bool(scope.get('files') and not _matches_explicit_file_exception(scope, branch))
     request = branch.get('artifact_request') or {}
     extension = normalize_text_artifact_extension(
         branch.get('text_artifact_extension') or request.get('extension') or ''
     )
     if extension:
-        return bool(scope.get('files') or extension in scope.get('text_extensions', []))
+        return bool(files_deferred or extension in scope.get('text_extensions', []))
     capability = branch.get('capability')
     if capability == CAPABILITY_IMAGE_GENERATION:
-        return bool(scope.get('files') or analysis.get('explicit_visual_defer_materialization'))
+        return bool(files_deferred or analysis.get('explicit_visual_defer_materialization'))
     if capability == CAPABILITY_TEXT_TO_SPEECH:
-        return bool(scope.get('files') or analysis.get('explicit_audio_defer_materialization'))
-    return bool(scope.get('files') and branch.get('requires_artifact'))
+        return bool(files_deferred or analysis.get('explicit_audio_defer_materialization'))
+    return bool(files_deferred and branch.get('requires_artifact'))
 
 
 def _materialization_defer_match_local_prompt(
@@ -2417,6 +2601,11 @@ def analyze_prompt_intent(prompt: str) -> dict[str, Any]:
             visual_command_text,
         )
     )
+    if 'file_exceptions' in materialization_defer_scope and _prompt_reserves_entire_materialization_capability(
+        {'normalized_prompt': normalized}, CAPABILITY_IMAGE_GENERATION,
+    ):
+        # Use the same reservation decision as graph candidate disposition.
+        explicit_visual_defer_materialization = True
     target_scoped_visual_preservation = bool(
         visual_artifact_preservation_without_regeneration
         and separate_visual_generation_request
@@ -2622,6 +2811,22 @@ def analyze_prompt_intent(prompt: str) -> dict[str, Any]:
             )
         ]
     
+    if 'file_exceptions' in materialization_defer_scope:
+        # Resolve the relative exclusion against affirmative caller scope only.
+        # This is a ceiling for eligibility, never a new output duty or permit.
+        materialization_defer_scope['file_exceptions'].update({
+            CAPABILITY_IMAGE_GENERATION: (
+                max(requested_visual_output_count, 1)
+                if requests_visual_output and latest_affirmative_visual_action_start >= 0 else 0
+            ),
+            CAPABILITY_TEXT_TO_SPEECH: (
+                max(requested_audio_output_count, 1)
+                if requests_audio_output and (
+                    direct_audio_materialization_request or affirmative_audio_materialization_action
+                ) else 0
+            ),
+            'text_artifacts': detect_text_artifact_requests(raw_command_text),
+        })
     temperament_hint, temperament_cues = infer_temperament_hint(prompt)
     return {
         'artifact_state_readback_request': bool(

@@ -377,6 +377,17 @@ For terminal link-rebind write evidence and branch settlement, run:
     .venv/bin/python -m pytest tests/test_terminal_output_reconciliation.py -q
     .venv/bin/python -m pytest tests/test_responses_api.py -q -k "terminal_link_rebind or terminal_linked_artifact or terminal_materialization_contract"
 
+For terminal link applicability also run `tests/test_terminal_link_applicability.py`,
+`tests/test_web_artifact_binding_guard.py`, `tests/test_saved_file_consumer_path.py`
+and `tests/test_saved_file_graph_rebuild.py`. Preserve independent mixed outputs,
+ordering/shared-preparation and saved-data consumption without invented backlinks.
+Exercise explicit HTML and JSON image-link consumers, entirely omitted links,
+foreign/wrong producer identities, exact paths, disconnected siblings and real
+saved references. Include actual native completion and cleared-lookup recovery;
+helper assertions alone do not prove closure. A composed HTML positive must also
+satisfy the existing image-layout guard. Retain the stylesheet/page cohort rule,
+current accepted output projection and frozen-parent/publication checks below.
+
 Run these in the disposable checkout described below. Reproduce a lightweight
 checkpoint whose public audio output is still pending after the producer settles.
 Final linking must use the current accepted output, preserve exact bindings and
@@ -499,6 +510,27 @@ Keep JSON answer-format/source/negation boundaries, exact counts and identities,
 extra-derived-file behavior, explicit release states and saved-file dependencies.
 Plain-text semantic correctness remains separate from file-contract preservation.
 
+For relative generic-file exclusions, start with
+`tests/test_bare_filename_intake.py`, `tests/test_bare_filename_native.py`,
+`tests/test_relative_file_exclusion.py`, `tests/test_downstream_deferral_scope.py`
+and `tests/test_visual_materialization_intent.py`, then the affected request-graph,
+explicit-file and generated-image routes above. Check exact caller counts and
+targets, category/format bans, reservations, missing historical exception evidence,
+provider-only extra outputs and canonical saved-output bindings. Synthetic PNGs
+prove dispatch/materialization and binding, not visual correctness. The unchanged
+native4 and scope regressions and their isolated replay instructions are retained
+under `plans/scoped-file-exclusion-2026-10-25/`; their original audit evidence is
+immutable. No broad admission campaign or complete fake gate is implicit.
+The bare-filename route retains the exact mixed image/file caller wording,
+independently specified provider file bodies, saved-byte and identity checks,
+same-extension provider extras and cleared-lookup closure. Recognition is
+separate from execution restriction and saved-result acceptance; do not replace
+the bare commands with an explicit file-list header to make a control pass.
+The file-only native positives are maintained tests. The separate mixed-output
+terminal-link failure and raw HTTP structured-target probe retain their failing
+assertions under `plans/bare-filename-intake-2026-10-25/`; they are not passing
+end-to-end claims or permission to weaken downstream checks.
+
 For root saved-result and canonical reuse evidence, include
 `tests/test_result_evidence_preservation.py` and the deterministic regressions in
 `tests/test_text_file_binding_hypothesis.py`. Cover individual returned identities,
@@ -520,12 +552,32 @@ regression must still execute producer → saved read → consumer and close wit
 verified evidence; ordinary file reuse and deterministic syntax repair must
 remain supported.
 
+For saved-read consumer syntax repair include
+`tests/test_saved_read_syntax_repair.py`. A saved-read consumer must reach actual repair
+dispatch with both verified source data and complete defective target bytes.
+Check exact logical/physical authority, changed source/target/file identity,
+wrong consumer/phase, modified prompt/output request and stale consumption
+rejections. The native scheduled control must repair the physical HTML, preserve
+the source values and their sum, obtain a current consumer review and complete through cleared
+lookup recovery. Include terminal repair/result continuity, named-content review,
+canonical artifact, frame and Responses suites for affected shared behavior.
+
 Include separate streamed draft paths with the same logical filenames as the
 later branch outputs. A proven producer must close against its exact saved
 identity, preserving the drafts and publishing only the final file set. A valid
 draft must not conceal missing, changed, misbound or syntactically invalid
 producer output, a conflicting explicit target, or duplicate producer results.
 Keep the ordinary unbound multiple-file case ambiguous.
+
+For separate image-report delivery, start with
+`tests/test_separate_image_report_delivery.py`. Source-bound fixtures must deliver
+each accepted image report through public outputs and cleared-lookup recovery.
+An incomplete synthesis must fail
+the newly admitted coverage contract. Include omission/duplicate/substitution,
+changed prepared/source evidence, marker-bearing reports and genuine comparison/
+transformation controls. Use the request-graph, semantics, frame, canonical
+Responses and fake-backend routes for affected shared behavior. These controls
+measure coverage and binding, not live model reliability or visual truth.
 
 For the broader adequacy and runtime wiring boundary, also run:
 
@@ -702,6 +754,37 @@ Only after prerequisites pass run one fresh matching native offline fake gate
 and source checker. Finite availability controls establish conditional progress,
 not crash recovery or a total waiting lifetime.
 
+For terminal-review C9 projection, start with the exact functions in
+`tests/test_terminal_repair_promotion_projection.py` and
+`tests/test_c9_canonical_request.py`, then
+`tests/test_c9_terminal_review_continuation.py::test_native_terminal_review_continuation`.
+The automatic case must use full POST admission and real saved JSON/read/HTML,
+return the cancelled consumer's passing provider verdict, reject it, and observe
+exactly three scheduler worker entries and five provider calls. One real private
+C9 child accepts only the surviving producer review; consumer content remains
+unresolved. Count actual returns and fail on caught provider instrumentation errors.
+Retain the no-cancellation positive, explicit-activation contrast and accepted
+sibling control. Check exact generation/instruction/reference binding, complete
+canonical request equality, frozen objects, Ledger prefix and passive readback.
+Promotion negatives, persisted request mutations (including unknown fields),
+existing claim/cancellation/duplicate/stale/budget controls must remain denied.
+Include `tests/test_c9_review_context_boundaries.py` for exact completed dependency
+alias proof and unchanged ordinary ordering. The automatic native regression also
+runs read-only mutations of its genuinely admitted review: retain the original
+guard rejection of the exact instruction without provenance proof, allow the
+verified instruction unchanged, and reject changed generation, reference policy,
+caller policy, promotion/patch identities, local work, extra root carriers,
+relabelled/rehashed root execution and widened scope. Keep the shared graph-patch
+and partial-rebase root-replay protections passing.
+Include graph repair/dependency and request phase graph owners,
+request-preview/frame persistence, lookup, saved consumers,
+eligibility/progress/telemetry, retry, multi-materialization and deterministic C8/C9
+routes. Select exact functions/classes to avoid collecting imported test classes;
+native adapter scenarios run serially with isolated stable source. Historical
+failing characterizations remain unchanged. A later matching complete offline
+fake gate/source checker is still required for changed runtime; focused checks
+do not certify that gate or authorize it automatically.
+
 For the bounded initial Late Fill eligibility extraction, start with
 `tests/test_late_fill_initial_eligibility.py`, progress/telemetry, dependency,
 terminal-state and saved-file-consumer checks. The characterization uses the
@@ -759,6 +842,176 @@ fields. Receiptless readable history does not attest the writer's fsync outcome.
 The original stateful persistence campaign failed in budget accounting; its
 passing trace assertions do not make that campaign green. The corrected adapter
 must retain its independent execution cap and stop-on-first-failure behavior.
+
+For saved-file preservation **before** downstream consumption, use
+`tests/test_runtime_preservation_composition.py::test_composition_controls`
+through the portable runner. The fixture composes actual producer/file identity,
+frame persistence, public projection, cleared-lookup canonical readback and the
+saved-file consumer owners. Its independent oracle checks submitted bytes,
+subject/version, exact bindings, output scope and consumption receipts. Bounded
+views may explicitly lack a prerequisite; valid full/canonical routes must
+execute. Readback itself must not claim or schedule work.
+
+The separate opt-in research node
+`tests/test_runtime_preservation_composition.py::test_one_sealed_composition_campaign`
+seals ten labeled seeds and 22 Hypothesis examples before runtime construction.
+It retains the 32-scenario/32-transition/600-second limits and stops on failure.
+Use serial jobs under one aggregate evidence root; actual starts across controls,
+failed attempts and campaigns are journaled and capped at 128, with at most two
+campaign jobs. An optional task `budget.json` can impose an earlier UTC deadline
+and lower storage/start limits; it cannot raise these caps. The fixture checks a
+4 GiB aggregate storage stop before each scenario. This does not establish
+fresh-process continuation, automatic orphan resume, semantic model accuracy or
+general liveness. Existing saved-file and persistence tests remain separate
+regressions; no full campaign is implicit in this route.
+
+For the bounded named JSON → saved-read → HTML intake family, run
+`tests/test_intake_coverage_a1.py::test_intake_controls` through the guarded runner.
+It preserves caller capture separately from controlled preparation text and
+checks actual graph admission, native readiness, saved-source binding and Late
+Fill preparation against independently declared data/file/content requirements.
+`tests/test_visual_materialization_intent.py` and
+`tests/test_saved_file_graph_rebuild.py` retain the focused version/variant,
+quoted-data, explicit-image and `store` controls. Recorded observation entrypoints
+are diagnostics selected with `--mode historical`; their completed receipts are
+not successful intake verdicts.
+
+The opt-in `test_one_sealed_intake_campaign` uses a sealed 32-case corpus (six
+explicit seeds plus 26 Hypothesis draws), at most 32 boundary steps per case,
+independent aggregate start reservations, and no runtime shrinking. A study
+`budget.json` can impose a task deadline; the fixture always retains its 128-start,
+two-campaign and 4 GiB early-stop limits. Synthetic inventory, no-op planner
+preparation and controlled saved producer output are explicit interventions.
+This tests the selected intake/prepare boundary, not live model understanding,
+HTTP admission, fulfillment, verifier soundness or liveness. An explicit extra
+image is admitted but can leave this bounded saved-file join unsupported; a
+visible unresolved dependency must not be counted as successful recognition.
+
+For the bounded A2 named saved-file consumer evidence study, use
+`tests/test_consumer_evidence_a2.py::test_oracle_controls` and `::test_controls`
+through the guarded runner. The independent HTML oracle separates subject,
+version, values, arithmetic, requested embedded CSS and output scope from native
+source/output integrity, review acceptance and Closure. Equivalent table,
+paragraph and definition-list forms remain valid. `::test_fixed_identity_content_matrix`
+holds one producer/source/response/consumer identity fixed across content variants;
+`::test_complete_worker_confirmation` reaches the complete Late Fill worker and
+canonical persistence with controlled providers. Explicit review criteria and
+completed reviewer records are declared fixture interventions, not live accuracy
+or proof of planner admission. The pilot entrypoint is retained under the
+historical route; the ordinary module route uses 31 actual starts.
+
+After the named saved-text completion-policy milestone, the retained A2 module
+explicitly restores the pre-policy caller-capture format for compatibility
+characterization. Its original source/observations remain in the study snapshots.
+It does not characterize newly admitted requests under the stronger policy.
+
+For new native named saved-text content accounting, use
+`tests/test_content_requirement_completion.py` through the guarded runner, in
+bounded sequential selections. The native positive exercises caller capture,
+separate producer/consumer admission, actual saved writes/read, sufficient review
+packets, existing terminal Closure promotion and scheduled review execution with
+controlled offline transport, strict acceptance, terminal reconciliation, CAS
+persistence and cleared-lookup full/status/UI/debug views. No criteria or completed
+review records are injected into this ordinary path. Synthetic availability and
+transport are declared interventions; review accuracy is not measured.
+Include the HTTP saved-read continuation slice in
+`tests/test_instruction_admission_contract.py`: its exact-byte/source checks still
+pass, while absent reviews now leave both new-policy groups explicitly unresolved.
+
+Include equivalent outputs, separately wrong producer content, omitted/incorrect
+consumer content, absent capacity/verdicts, negative/incomplete/misbound reviews,
+missing result/accounting, changed requirements/source/output, insufficient packet
+coverage, and unchanged ordinary responses/restored historical policy. Retained A2
+witness bytes and hashes are copied into `tests/content_requirement_witnesses.json`
+for offline replay; the original evidence is untouched. Deliberately false positive
+reviews may close on `bound_semantic_review` while the independent oracle fails.
+This preserves the reviewer-soundness assumption. Do not add a campaign to this
+first milestone; use the existing 128-start aggregate and 32-start job bounds.
+
+For `packet_exact_v1` reference validation, use
+`tests/test_content_evidence_references.py` and the affected strict verdict tests,
+then the named-content accounting/generation controls above, in sequential bounded
+runner selections. The original live typo and a portable path-normalized packet are retained in
+`tests/content_reference_witness.json`; the historical acceptance test deliberately
+keeps its pre-policy expectation. Current-policy replay of the A2 wrong-reference
+witness now expects unresolved content. Keep the original A2 reports and witnesses
+unchanged. Cover both citation levels, malformed/missing and mixed references,
+branch/packet scope, legitimate aliases/order/duplicates, metadata loss, native
+transport and persistence/readback, negative/uncertain meaning and a valid-ref
+false positive. These checks establish reference membership, not semantic truth.
+Changed runtime source still needs a fresh matching complete offline fake gate
+before later live conformance; focused validation does not substitute for it.
+
+Public replay fixtures use synthetic fixture roots instead of operator paths.
+Path-dependent review instruction/generation bindings are recomputed together;
+artifact bytes, content digests and negative verdicts are preserved. These are
+portable derivatives, not byte-identical original live packets. Original witnesses
+and their source identities remain in private study evidence.
+
+For branch-scoped review packets include `tests/test_branch_review_scope.py` and
+`tests/test_semantic_review_verdict.py`. Check prominent accepted local duties,
+contextual sibling ownership, shared constraints, complete criteria, unchanged
+reference catalogs and stable generation across reviewer bookkeeping. Retained
+negative/positive packets and genuinely wrong content must use native scheduling,
+negative-result accounting and durable recovery. A controlled incorrect negative
+must still block completion while correct files remain unchanged. Use bounded
+sequential content/reference selections under their existing audit/start guards.
+Packet presentation controls do not measure live reviewer reliability.
+
+For canonical request reference-policy preservation, include
+`test_frozen_request_reference_policy_roundtrip` and
+`test_restored_request_policy_governs_without_downstream_labels` in that module,
+plus the request-policy persistence control in `tests/test_response_frames.py`.
+Restore the actual persisted frame after clearing fixture lookup, not only
+`request_intent_frame_source` in memory. Keep historical absence, exact explicit
+versions, valid current reviews and ordinary responses as positives. Missing graph
+labels and altered result/reference metadata are isolated negative owner controls,
+not claims about reachable public edits. Preserve every prior snapshot, Ledger
+prefix and artifact; compare canonical and compact accounting after reconciliation.
+
+For Late Fill control request carriage, run
+`tests/test_content_requirement_completion.py::test_supported_control_preserves_canonical_request`
+and its historical-policy/unavailable-intent controls. Live and cleared-lookup
+recovery paths use actual admission, saved-file execution, native review promotion,
+HTTP cancel/waive/supersede, control persistence and canonical restoration.
+Preserve caller/prepared-text distinction, accepted siblings, frozen parents and
+artifact bytes across before-dispatch, transport and returned-result cuts.
+Plain-mapping, conflicting projection and historical serialization interventions
+are explicitly owner fixtures, not public-edit reachability claims. Include
+`tests/test_instruction_admission_contract.py::test_control_uses_canonical_request_not_claimed_projection`
+and `tests/test_content_evidence_references.py::test_restored_control_request_governs_surviving_review`,
+then the existing canonical retry, persistence and deterministic C8/C9 race suites.
+Keep stale-control/completed-target rejection and missing-intent root-fallback
+guards. Automatic C9 progress remains a separate contract; these selections do
+not authorize a campaign or full offline gate.
+
+For Closure accounting at control publication, start with
+`tests/test_content_requirement_completion.py::test_control_refreshes_accepted_content_accounting`,
+`::test_control_assessment_failure_does_not_publish` and the existing
+`::test_native_review_completion` positive. Native events hold the producer review
+inside its provider call while a real control commits. Cover an already accepted
+consumer and a consumer review cancelled before execution: one and two unresolved
+content requirements respectively. Cancel, waive and supersede keep their exact
+task dispositions without satisfying the underlying unreviewed content. Verify
+the delayed passing producer result is rejected, full/compact durable readback
+agrees before and after return, GETs do not append, and request/graph identities,
+accepted results, artifact bytes, frozen parents and lineage remain intact.
+An assessment exception must leave the prior frame and Ledger unchanged. Include
+the request/reference-policy regressions above, deterministic C8/C9 winning and
+stale-control orderings, and affected persistence/lookup checks. Preserve original
+W1 witnesses and failed receipts; the automatic terminal-review handoff limitation
+is not repaired by fresh accounting.
+
+The separate opt-in `::test_one_sealed_campaign` seals eight labeled seeds and
+24 Hypothesis draws before runtime construction, with no runtime shrinking.
+Use a new job path per invocation under one aggregate root. Optional `budget.json`
+fields `deadline_utc`, `actual_scenario_starts`, `max_campaigns`, and `stop_bytes`
+can impose stricter task limits; this study supplies them explicitly.
+The fixture enforces at most 128 starts, two campaigns, 32 starts per job,
+32 recorded owner-boundary transitions per scenario and a 4 GiB early stop.
+Terminal reconciliation precedes native freeze; a frame-finalizer call alone
+does not establish whole-request completion. Technical consumption success and
+strictly accepted model-review evidence do not establish general A2 soundness.
 
 ### Portable selection and isolation
 
@@ -1345,7 +1598,13 @@ production cleanup, provider inference or Full Conformance to validate retention
 
 For the PCC Shortcuts bridge and its normal instance integration, run:
 
-    .venv/bin/python -m pytest tests/test_pcc_shortcut_bridge.py tests/test_pcc_vision.py tests/test_apple_pcc_backend.py tests/test_frontend_apple_pcc.py tests/test_inference_policy_scope.py -q
+    .venv/bin/python -m pytest tests/test_pcc_shortcut_bridge.py tests/test_pcc_access_diagnostics.py tests/test_pcc_vision.py tests/test_apple_pcc_backend.py tests/test_frontend_apple_pcc.py tests/test_inference_policy_scope.py -q
+
+The access-diagnostic suite replays captured native XPC/eligibility evidence
+without querying system logs. It rejects stale, foreign, ambiguous, conflicting
+and inaccessible evidence and checks exact payload handoff, explicit-tier
+selection and the shared deadline. Native diagnostic readback, when separately
+performed, is observation only and does not prove a new cloud request succeeds.
 
 The focused `tests/test_responses_api.py -k pcc_responses` slice checks canonical
 stream/nonstream execution evidence, rejection of unsupported public controls,

@@ -272,7 +272,7 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
     assert 'class="proof-cadence"' not in html
     assert (
         'https://github.com/fl0ri0/fruth/blob/HEAD/examples/reference-runs/'
-        '2026-10-18-echoes-of-the-pass/README.md'
+        '2026-10-27-echoes-of-the-pass/README.md'
     ) in html
     assert 'Arena sends one text prompt to two running local chat models' not in html
     assert 'compatible link-checked bundles' in html

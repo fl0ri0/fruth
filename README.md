@@ -18,7 +18,7 @@ Mutable work, frozen frames and append-only successors remain distinct. Durable
 means supported persistence and continuation of recorded state; it does not mean
 infallible conclusions or guaranteed survival of every in-flight operation.
 
-**Status:** Fruth `0.1.7` —
+**Status:** Fruth `0.1.8` —
 experimental, usable, and still evolving within the `0.x` series.
 
 **Conceived, designed, created, built, and developed by
@@ -51,17 +51,17 @@ and runtime control profiles. It writes a human-readable report and JSON results
 see [self-attack conformance](docs/SELF_ATTACK.md) for coverage, live execution,
 budgets and regression replay.
 
-The [October 21 validation status](docs/SELF_ATTACK_STATUS_2026-10-21.md) records
-complete **170/170 live coverage for local models, AFM and PCC Cloud**, supported
-by matching 380-case offline gates and source checks. PCC coverage combines two
-bounded windows and a successful audio retry; Cloud Pro remains untested.
-Five October 18 [reference workflows](examples/README.md) preserve their exact
-prompts, completed frames, monitor records and verified saved artifacts.
+The [October 29 validation status](docs/SELF_ATTACK_STATUS_2026-10-29.md) records
+bounded property-based studies, the matching **380-case offline gate and 198
+owner checks**, and the source/evidence checker. Local, AFM and PCC live results
+retain their original source identities and targeted recovery history; the latest
+reference corrections have separate offline and targeted live validation.
 
-The local campaign preceded the image idle-residency fix; AFM and PCC tested the
-corrected source. The report records these source distinctions and
-[historical verdicts](docs/SELF_ATTACK_STATUS_2026-10-21.md#historical-results).
-These are checkout validation results, not a newly published release.
+Five [reference workflows](examples/README.md) preserve exact prompts, completed
+frames, monitor records and verified saved artifacts. The image-review and
+saved-file examples are from October 29; the other three are from October 27.
+See the report for [historical results](docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results)
+and the distinction between checked runtime contracts and model-answer accuracy.
 
 ## Project, Citation, and Collaboration
 
@@ -104,11 +104,11 @@ Useful public context:
 The primary tested environment is a recent macOS release on Apple Silicon with
 Python 3.11 or newer. Local capabilities require their corresponding Ollama,
 MLX, llama.cpp, or Apple Foundation Models backend and model. Windows, Linux, Intel Mac, remote hosting,
-and multi-user operation are outside the 0.1.7 support promise.
+and multi-user operation are outside the 0.1.8 support promise.
 
 ## Install and Start
 
-Extract the source archive, enter its directory (`fruth-0.1.7` for the release,
+Extract the source archive, enter its directory (`fruth-0.1.8` for the release,
 or `fruth-main` for the current repository ZIP), and run:
 
 ```bash
@@ -302,7 +302,7 @@ Stop, Pull, or Delete actions. Direct tab turns are ephemeral and independent;
 Fruth can promote bounded relevant context for a referential turn, but does not
 create a persistent provider session. Model selection is automatic,
 and the exact GPT variant is not exposed to Fruth; model self-descriptions are
-not runtime proof. Direct API-key management is outside this route's 0.1.7
+not runtime proof. Direct API-key management is outside this route's 0.1.8
 contract. Apple PCC is a separate optional integration described above.
 
 ## Release and Safety Notes

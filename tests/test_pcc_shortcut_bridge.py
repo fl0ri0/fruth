@@ -13,7 +13,7 @@ from fruth_integrations.shortcuts import pcc
 def runner(monkeypatch):
     monkeypatch.setattr(pcc.sys, 'platform', 'darwin')
     fake = Mock()
-    monkeypatch.setattr(pcc.subprocess, 'run', fake)
+    monkeypatch.setattr(pcc, '_execute_command', fake)
     return fake
 
 

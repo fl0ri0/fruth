@@ -1,0 +1,178 @@
+{
+  "artifacts": [
+    {
+      "artifact_ref": "artifact:text_49178063683a14d57b079c82",
+      "branch_id": "branch-text_artifact-2",
+      "bundle_path": "bundle/assets/files/file-01.json",
+      "mime_type": "application/json",
+      "phase_id": "phase-3",
+      "published_path": "artifacts/documents/document-01.json",
+      "sha256": "af64764250cf0caff759ece54b153cfb1dc57690577375c3016714381122b067",
+      "size_bytes": 10,
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:text_53eb3928deedae26263accb8",
+      "branch_id": "branch-text_artifact-1",
+      "bundle_path": "bundle/index.html",
+      "mime_type": "text/html",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/documents/index.html",
+      "sha256": "4b70d738d8d2a9369c93c2d5d057fd2053cdd5723422b5010167f7925bf07fd1",
+      "size_bytes": 1871,
+      "type": "text"
+    }
+  ],
+  "bundle": {
+    "entrypoint": "index.html",
+    "files": [
+      {
+        "artifact_ref": "artifact:text_49178063683a14d57b079c82",
+        "relative_path": "assets/files/file-01.json",
+        "sha256": "af64764250cf0caff759ece54b153cfb1dc57690577375c3016714381122b067",
+        "size_bytes": 10,
+        "source_sha256": "af64764250cf0caff759ece54b153cfb1dc57690577375c3016714381122b067",
+        "type": "text"
+      },
+      {
+        "artifact_ref": "artifact:text_53eb3928deedae26263accb8",
+        "relative_path": "index.html",
+        "sha256": "4b70d738d8d2a9369c93c2d5d057fd2053cdd5723422b5010167f7925bf07fd1",
+        "size_bytes": 1871,
+        "source_sha256": "4b70d738d8d2a9369c93c2d5d057fd2053cdd5723422b5010167f7925bf07fd1",
+        "type": "text"
+      }
+    ],
+    "link_check": {
+      "status": "passed"
+    },
+    "raw_runtime_manifest_published": false,
+    "resolved_links": [],
+    "schema": "fruth.public_bundle_manifest.v1",
+    "source_bundle_id": "bundle:9f62604f6daca7c2dbe1cb6c",
+    "source_response_id": "resp_1793252268413_53d21e0320fb7",
+    "status": "bundled",
+    "version": 1
+  },
+  "integrity": {
+    "frame_identity_verified": true,
+    "index_only_wire_lookup": true,
+    "ledger_fallback_used": false,
+    "observation_snapshot_digests_verified": true,
+    "source_frame_record_sha256": "238c8ab970c7d31e636d966920078a94a12d3ca265d962e7abc1d0995f2c644d",
+    "source_frame_record_size_bytes": 801924,
+    "verified_response_map": true
+  },
+  "outputs": [
+    {
+      "branch_id": "phase-1",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-1",
+      "slot_id": "output-phase-1",
+      "status": "fulfilled",
+      "text": "read-check.json\n```json\n[17, 142]\n```\n\nread-check.html\n```html\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Read Check Results</title>\n    <style>\n        body {\n            font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif;\n            display: flex;\n            justify\n            justify-content: center;\n            align-items: center;\n            height: 100vh;\n            margin: 0;\n            background-color: #f4f4f9;\n        }\n        table {\n            border-collapse: collapse;\n            width: 300px;\n            background: white;\n            box-shadow: 0 4px 8px rgba(0,0,0,0.1);\n            border-radius: 8px;\n            overflow: hidden;\n        }\n        th, td {\n            padding: 15px;\n            text-align: center;\n            border-bottom: 1px solid #eee;\n        }\n        th {\n            background-color: #4A90E2;\n            color: white;\n            text-transform: uppercase;\n            font-size: 0.9em;\n            letter-spacing: 1px;\n        }\n        tr:last-child td {\n            border-bottom: none;\n            font-weight: bold;\n            background-color: #f9f9f9;\n            color: #333;\n        }\n        .label {\n            color: #777;\n            font-size: 0.8em;\n            display: block;\n        }\n    </style>\n</head>\n<body>\n    <table>\n        <thead>\n            <tr>\n                <th>Data Values</th>\n            </tr>\n        </thead>\n        <tbody>\n            <tr><td>17</td></tr>\n            <tr><td>142</td></tr>\n            <tr>\n                <td>\n                    <span class=\"label\">Sum</span>\n                    159\n                </td>\n            </tr>\n        </tbody>\n    </table>\n</body>\n</html>\n```",
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:text_53eb3928deedae26263accb8",
+      "branch_id": "branch-text_artifact-1",
+      "bundle_path": "bundle/index.html",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-2",
+      "published_path": "artifacts/documents/index.html",
+      "slot_id": "output-phase-2",
+      "status": "fulfilled",
+      "type": "text"
+    },
+    {
+      "artifact_ref": "artifact:text_49178063683a14d57b079c82",
+      "branch_id": "branch-text_artifact-2",
+      "bundle_path": "bundle/assets/files/file-01.json",
+      "lifecycle": "materialized_output",
+      "phase_id": "phase-3",
+      "published_path": "artifacts/documents/document-01.json",
+      "slot_id": "output-phase-3",
+      "status": "fulfilled",
+      "type": "text"
+    }
+  ],
+  "provenance": {
+    "original_runtime_truth_remains_authoritative": true,
+    "raw_frame_published": false,
+    "runtime_effect": "none",
+    "source": "indexed final response frame and canonical artifact bytes"
+  },
+  "request": {
+    "prompt_path": "prompt.txt",
+    "prompt_sha256": "47b9436ab54ed6ff8ebfcf466b6b53b6e912f0c5e62ec13413c67c539ff9ebb5",
+    "runtime_request_sha256": "4d530572bffb7cb328fbc827e2c2dc0eafaf43977b1f05c9bc359cf0ea1abee2",
+    "verified": true
+  },
+  "response": {
+    "frame_id": "resp_1793252268413_53d21e0320fb7:frame-3",
+    "frame_sequence": 3,
+    "frame_version": 9,
+    "id": "resp_1793252268413_53d21e0320fb7",
+    "lifecycle_state": "completed",
+    "status": "completed",
+    "status_semantics": {
+      "has_actionable_repair": false,
+      "has_open_continuation": false,
+      "is_terminal": true,
+      "terminal": true
+    }
+  },
+  "runtime_truth": {
+    "closure": {
+      "continuation_required": false,
+      "counts": {
+        "blocked": 0,
+        "deferred": 0,
+        "fulfilled": 3,
+        "pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "obligation_count": 3,
+      "pending_branch_count": 0,
+      "status": "fulfilled"
+    },
+    "late_fill": {
+      "counts": {
+        "cancelled": 0,
+        "completed": 4,
+        "failed": 0,
+        "pending": 0
+      },
+      "final_materialization_contract_status": "fulfilled",
+      "status": "completed"
+    },
+    "surface": {
+      "active_categories": [
+        "completed",
+        "reconsiderable",
+        "semantic_review_advisory",
+        "controlled_attention_advisory",
+        "aspiration_advisory",
+        "commitment_advisory"
+      ],
+      "category_counts": {
+        "aspiration_advisory": 8,
+        "blocked": 0,
+        "commitment_advisory": 15,
+        "completed": 3,
+        "controlled_attention_advisory": 96,
+        "open": 0,
+        "reconsiderable": 3,
+        "repair_pending": 0,
+        "semantic_review_advisory": 1,
+        "semantic_review_pending": 0,
+        "superseded": 0,
+        "waived": 0
+      },
+      "status": "fulfilled"
+    }
+  },
+  "schema": "fruth.public_reference_run.v1",
+  "version": 1
+}

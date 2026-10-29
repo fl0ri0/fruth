@@ -473,6 +473,8 @@ _CURRENT_STATE_FRAME_KEYS = (
 )
 
 _REQUEST_FRAME_KEYS = (
+    'content_requirement_policy',
+    'content_review_reference_policy',
     'request_id',
     'conversation_id',
     'instance_id',
@@ -816,6 +818,17 @@ def _compact_request_inference_preview(value: Any) -> Optional[dict[str, Any]]:
         diagnostics['route_graph_consistency'] = route_graph_consistency
     if diagnostics:
         payload['runtime'] = {'developer_diagnostics': diagnostics}
+
+    prior_compaction = preview.get('compaction')
+    if (isinstance(prior_compaction, Mapping)
+            and prior_compaction.get('kind') == 'fruth.inference_preview_response_frame_projection'
+            and prior_compaction.get('policy') == 'route_identity_and_bounded_routing_audit_only'
+            and payload == {key: item for key, item in preview.items() if key != 'compaction'}):
+        # An already projected canonical request has no new omissions. Retain
+        # its original audit provenance across control/successor freezes instead
+        # of replacing it with diagnostics about this second compaction pass.
+        payload['compaction'] = dict(prior_compaction)
+        return _json_safe(payload)
 
     retained_preview_keys = set(payload)
     retained_preview_keys.add('compaction')
@@ -1656,6 +1669,12 @@ def _build_current_state_frame(
     public_output_text: Optional[str] = None,
 ) -> dict[str, Any]:
     payload = _select_frame_keys(response_payload, _CURRENT_STATE_FRAME_KEYS)
+    surface = response_payload.get('surface_state')
+    if isinstance(surface, Mapping) and surface.get('content_requirement_policy') == 'named_saved_text_v1':
+        from fruth_services.response_wire import surface_handle
+        # Keep the scalar accounting beside the indexed state. Full Clause/
+        # verdict evidence remains in the canonical runtime/CAS owner.
+        payload['surface_state'] = surface_handle(surface)
     payload['id'] = str(response_payload.get('id') or response_payload.get('response_id') or '').strip() or None
     payload['status'] = str(response_payload.get('status') or '').strip() or None
     projected_output_items = _project_output_items_text(
@@ -8126,6 +8145,12 @@ _GRAPH_REBASE_OBSERVATION_DIAGNOSTIC_KEYS = {
     'surface_repair_actionability',
 }
 _GRAPH_CLOSURE_OBSERVATION_SCALAR_KEYS = (
+    'content_requirement_policy',
+    'content_requirement_count',
+    'unresolved_content_requirement_count',
+    'content_coverage_status',
+    'completion_basis',
+    'correctness_basis',
     'action',
     'closure_status',
     'closure_gap_code',
@@ -8156,6 +8181,9 @@ _GRAPH_CLOSURE_OBSERVATION_SCALAR_KEYS = (
     'transition',
 )
 _GRAPH_CLOSURE_OBSERVATION_CHECK_KEYS = (
+    'content_requirement_policy',
+    'content_coverage_status',
+    'completion_basis',
     'action',
     'branch_id',
     'capability',
@@ -9041,6 +9069,12 @@ def _project_graph_closure_observation(
         compact_surface = {
             key: bounded
             for key in (
+                'content_requirement_policy',
+                'content_requirement_count',
+                'unresolved_content_requirement_count',
+                'content_coverage_status',
+                'completion_basis',
+                'correctness_basis',
                 'authority',
                 'kind',
                 'late_fill_status',
@@ -10126,6 +10160,7 @@ def load_latest_response_wire_state(
         'seed',
         'status_compatibility',
         'status_semantics',
+        'surface_state',
         'text_artifact_requests',
         'tts_audio_integrity_evidence',
         'text_artifact_binding_errors',

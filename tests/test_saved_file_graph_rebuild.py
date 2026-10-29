@@ -64,3 +64,26 @@ def test_missing_artifact_request_never_creates_a_dependency_or_crashes(missing)
     (producer if missing == 'producer' else consumer).pop('artifact_request')
     _guard_unbound_saved_file_consumers(branches, prompt)
     assert consumer['branch_contract_error'] == 'saved_file_dependency_unbound'
+
+
+def test_store_named_json_is_an_affirmative_saved_read_producer():
+    prompt='Store numbers.json containing {"values":[7,11]}. Re-read the stored JSON file. Create result.html from the read data with the sum.'
+    graph=build_request_phase_graph(prompt)
+    consumer=next(b for b in graph['downstream_branches'] if b.get('artifact_request',{}).get('source_name')=='result')
+    dependency=consumer['artifact_request']['saved_file_dependency']
+    producer=next(b for b in graph['downstream_branches'] if b['branch_id']==dependency['producer_branch_id'])
+    assert producer['artifact_request']['source_name']=='numbers'
+    assert producer['phase_id'] in consumer['depends_on']
+
+
+def test_negated_store_does_not_create_a_file_request():
+    from fruth_core.inference import detect_text_artifact_requests
+    assert not detect_text_artifact_requests('Do not store numbers.json containing {"values":[7,11]}.')
+
+
+@pytest.mark.parametrize('prefix',['Do not store','Maybe store'])
+def test_store_qualifiers_do_not_bind_a_saved_file_dependency(prefix):
+    graph=build_request_phase_graph(prefix+' numbers.json containing {"values":[7,11]}. '
+        'Read the actually saved file again. Create result.html from the read data.')
+    assert not any(b.get('artifact_request',{}).get('saved_file_dependency')
+                   for b in graph['downstream_branches'])

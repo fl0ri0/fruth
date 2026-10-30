@@ -36,6 +36,37 @@ links. All five packages and their 13 saved artifact files were verified during
 this refresh. Original runtime evidence remains authoritative; model-authored
 visual descriptions remain interpretations.
 
+The Echoes portable export was corrected on October 30 after a CSS image reference
+retained its old filename during export. Its canonical artifacts and execution
+evidence are unchanged. The exporter now rewrites supported references in all
+bundle files and checks the actual exported dependencies before recording success;
+a prior manifest's link status alone is insufficient. This is a static check of
+the existing bundle owner's supported HTML, CSS, JavaScript and JSON references,
+not browser execution or validation of dynamically constructed URLs.
+
+The October 29 saved-file and image-report packages now also include
+`evidence_bindings` in `response.json` (projection refreshed October 30):
+
+- `semantic_reviews` identifies the saved review generation and instruction
+  digest, its source artifact version, and the recorded Closure acceptance.
+- `saved_file_reads` links producer bytes to the consumer artifact. At export,
+  the recorded read bytes are compared with the published source. The consumer
+  input digest is retained as recorded, without claiming to recompute that input.
+- `image_reports` links each image digest to its individual saved report and its
+  exact contribution in the delivered text.
+
+This is a small allowlisted projection of saved evidence, with package-relative
+paths. It excludes raw frames, model instructions and internal derivations.
+`availability: not_recorded` means the selected family has no record in the
+exported source; it does not establish whether that activity was required or
+performed. Older packages without this optional section remain valid.
+
+The portable verifier checks artifact versions, report digests and report placement.
+It cannot authenticate the omitted runtime records or independently establish
+that a model's interpretation is correct. Recorded review acceptance and physical
+file checks remain distinct. Use `python scripts/export_reference_run.py
+--verify-only examples/reference-runs/<package>` to check a package locally.
+
 These are selected successful outcomes, not a first-attempt success-rate estimate
 or a controlled performance comparison. The three audio/site examples retain
 October 27 executions. The image-report and saved-file examples were refreshed

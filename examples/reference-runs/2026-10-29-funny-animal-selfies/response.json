@@ -38,6 +38,78 @@
     }
   ],
   "bundle": null,
+  "evidence_bindings": {
+    "availability": {
+      "image_reports": "recorded",
+      "saved_file_reads": "not_recorded",
+      "semantic_reviews": "not_recorded"
+    },
+    "image_reports": [
+      {
+        "delivery_branch_id": "branch-chat-1",
+        "delivery_phase_id": "phase-8",
+        "image": {
+          "artifact_ref": "artifact:image_79adf96fd05ae3ebaf731586",
+          "branch_id": "branch-image_generation-1",
+          "phase_id": "phase-2",
+          "published_path": "artifacts/images/image-01.png",
+          "sha256": "0cfe563005c3ca13aa8a6476d8e7418b6909cb140498dd09b4fc7b07642123de",
+          "size_bytes": 1219562
+        },
+        "individual_report_equals_published_contribution": true,
+        "output_slot_id": "output-phase-8",
+        "recorded_dispatch_status": "supplied",
+        "report_sha256": "64fde5058e2d5d3824479691bc098824ec63843c6f9cbfe30f640801a3dd68c3",
+        "report_text": "A brown beaver with wet fur is swimming in a circular pool of greenish water. Several bright orange objects, resembling fruit, are floating along the edge of the pool, which is bordered by rocks.",
+        "source_branch_id": "branch-vision_analysis-1",
+        "source_phase_id": "phase-5"
+      },
+      {
+        "delivery_branch_id": "branch-chat-1",
+        "delivery_phase_id": "phase-8",
+        "image": {
+          "artifact_ref": "artifact:image_3562544adc487887134f8289",
+          "branch_id": "branch-image_generation-2",
+          "phase_id": "phase-3",
+          "published_path": "artifacts/images/image-02.png",
+          "sha256": "5833ee484094f73529da26c3aff398af3ee5851eb2d5d3046784d467f8c9d1dd",
+          "size_bytes": 1239593
+        },
+        "individual_report_equals_published_contribution": true,
+        "output_slot_id": "output-phase-8",
+        "recorded_dispatch_status": "supplied",
+        "report_sha256": "a41db8e38c18f535b868b0f218057b8801dcfd35ee22fcadaf33145c97f96fee",
+        "report_text": "The image features a close-up, centered shot of a raccoon looking directly at the camera. The raccoon has thick, textured black and white fur, a dark facial mask, and dark eyes and nose. Its dark, clawed paws are visible at the bottom of the frame, resting on a kitchen countertop.\n\nThe setting is a dark kitchen at night, characterized by low lighting and heavy vignetting around the edges. In the background, dark wooden cabinets are visible, along with various kitchen items on the counters, including bottles, a toaster, and small white containers. There are some light-colored crumbs on the counter in the lower-left foreground. No readable text is present.",
+        "source_branch_id": "branch-vision_analysis-2",
+        "source_phase_id": "phase-6"
+      },
+      {
+        "delivery_branch_id": "branch-chat-1",
+        "delivery_phase_id": "phase-8",
+        "image": {
+          "artifact_ref": "artifact:image_1715abd3ad25465ec006629f",
+          "branch_id": "branch-image_generation-3",
+          "phase_id": "phase-4",
+          "published_path": "artifacts/images/image-03.png",
+          "sha256": "c63108a596a60947602223164cecbefc5cdba17c501d58e307229ecad835d79b",
+          "size_bytes": 431529
+        },
+        "individual_report_equals_published_contribution": true,
+        "output_slot_id": "output-phase-8",
+        "recorded_dispatch_status": "supplied",
+        "report_sha256": "803d02bc49ed2f2513f62a5abc29d20d0023e64a365cb347ce539377e18db674",
+        "report_text": "A close-up of a sloth wearing large, star-shaped sunglasses with a glittering, textured border. The sloth also wears a sparkly collar adorned with a small yellow bead and a heart-shaped charm. The background depicts a disco setting, featuring a large, reflective disco ball, blurry blue and pink lights, and a pink neon light strip.",
+        "source_branch_id": "branch-vision_analysis-3",
+        "source_phase_id": "phase-7"
+      }
+    ],
+    "model_judgments_independently_proven": false,
+    "saved_file_reads": [],
+    "schema": "fruth.public_reference_evidence.v1",
+    "scope": "selected_saved_bindings",
+    "semantic_reviews": [],
+    "version": 1
+  },
   "integrity": {
     "frame_identity_verified": true,
     "index_only_wire_lookup": true,

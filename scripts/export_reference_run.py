@@ -27,6 +27,9 @@ from fruth_services.response_frames import (  # noqa: E402
     load_latest_response_wire_state,
     load_response_frame_index,
 )
+from fruth_services import response_artifact_bundles as bundle_owner  # noqa: E402
+from fruth_services import response_frames as frame_owner  # noqa: E402
+from scripts import reference_run_evidence as evidence_owner  # noqa: E402
 
 
 DEFAULT_FRAMES_DIR = REPO_ROOT / 'state' / 'response_frames'
@@ -263,7 +266,77 @@ def _read_exact_indexed_record(
         'frame_sequence': expected_sequence,
         'record_sha256': _sha256_bytes(row),
         'record_size_bytes': len(row),
+        '_source_record': payload,
     }
+
+
+def _reference_evidence_sources(record: Mapping[str, Any], *, frames_dir: Path) -> tuple[list, list]:
+    """Read only the selected saved evidence containers, with verified sidecars.
+
+    Do not hydrate a full frame, recursively follow arbitrary references or use
+    truncated observation previews for evidence. Missing containers stay empty.
+    """
+    def selected(parent: Mapping, key: str, empty: Any) -> Any:
+        ref = parent.get(key + '_snapshot_ref')
+        inline = parent.get(key)
+        if ref is not None:
+            if not isinstance(ref, Mapping) or not re.fullmatch('[0-9a-f]{64}', str(ref.get('sha256') or '')):
+                raise ReferenceExportError('Reference evidence snapshot has no valid digest.')
+            relative = _safe_relative_path(str(ref.get('path') or ''))
+            _assert_regular_source(frames_dir / relative, root=frames_dir, label='Reference evidence snapshot')
+            value, error = frame_owner._read_observation_snapshot_payload(ref, frames_dir=frames_dir)
+            if error:
+                raise ReferenceExportError('Reference evidence snapshot verification failed: ' + str(error.get('code')))
+            # Inline runtime/late-fill objects may be compact previews. The
+            # verified sidecar is the saved content, as in the frame owner.
+        else:
+            value = inline if inline is not None else empty
+        if not isinstance(value, type(empty)):
+            raise ReferenceExportError('Malformed reference evidence container: ' + key)
+        return value
+
+    runtime = selected(record, 'runtime', {})
+    late_fill = selected(runtime, 'late_fill', {}) if 'late_fill' in runtime or 'late_fill_snapshot_ref' in runtime else selected(record, 'late_fill', {})
+    closure = selected(runtime, 'graph_closure_review', {})
+    results = selected(late_fill, 'fill_results', [])
+    checks = selected(closure, 'checks', [])
+    for result in results:
+        if not isinstance(result, dict):
+            raise ReferenceExportError('Malformed saved result evidence.')
+        for key in ('semantic_review_evidence_binding', 'saved_file_output_snapshot',
+                    'saved_file_consumption_evidence', 'vision_input_evidence', 'report_delivery_evidence'):
+            if key + '_snapshot_ref' in result:
+                result[key] = selected(result, key, {})
+        read_evidence = result.get('saved_file_consumption_evidence') or {}
+        for key in ('contract', 'read', 'output'):
+            if key + '_snapshot_ref' in read_evidence:
+                read_evidence[key] = selected(read_evidence, key, {})
+        delivery = result.get('report_delivery_evidence') or {}
+        if 'contributions_snapshot_ref' in delivery:
+            delivery['contributions'] = selected(delivery, 'contributions', [])
+    for check in checks:
+        if not isinstance(check, dict):
+            raise ReferenceExportError('Malformed saved Closure evidence.')
+        for key in ('branch_semantic_review_evidence_binding', 'semantic_review_freeze_acceptance'):
+            if key + '_snapshot_ref' in check:
+                check[key] = selected(check, key, {})
+    return results, checks
+
+
+def _add_reference_evidence(response: dict[str, Any], *, record: Mapping[str, Any],
+                            frames_dir: Path, package_dir: Path) -> None:
+    results, checks = _reference_evidence_sources(record, frames_dir=frames_dir)
+    try:
+        response['evidence_bindings'] = evidence_owner.project_evidence(
+            results, checks, response_id=response['response']['id'],
+            artifacts=response['artifacts'], outputs=response['outputs'],
+            read_public=lambda name: _assert_regular_source(
+                package_dir / _safe_relative_path(name), root=package_dir,
+                label='Evidence artifact',
+            ).read_bytes(),
+        )
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ReferenceExportError(str(exc)) from exc
 
 
 def _load_monitor_report(
@@ -521,6 +594,26 @@ def _copy_artifacts(
     return exported, source_to_public, ref_to_public
 
 
+def _verified_bundle_links(bundle_root: Path, files: Sequence[Path]) -> list[dict[str, str]]:
+    """Check current bytes with the existing bundle owner, not a prior link index."""
+    check = bundle_owner._link_check(bundle_root, list(files))
+    if check.get('status') != 'passed':
+        raise ReferenceExportError('Bundle reference check failed on actual file bytes.')
+    approved = {path.resolve() for path in files}
+    links: list[dict[str, str]] = []
+    for path in files:
+        for kind, value in bundle_owner._iter_local_refs(path):
+            if bundle_owner._is_ignored_reference(value):
+                continue
+            path_part, _suffix = bundle_owner._split_ref(value)
+            target = (path.parent / path_part).resolve()
+            if target not in approved:
+                raise ReferenceExportError('Bundle reference has no approved file target.')
+            links.append({'file': path.relative_to(bundle_root).as_posix(),
+                          'kind': kind, 'target': target.relative_to(bundle_root.resolve()).as_posix()})
+    return links
+
+
 def _copy_bundle(
     bundle_dir: Path,
     *,
@@ -604,32 +697,27 @@ def _copy_bundle(
                 'source_sha256': str(record.get('sha256') or ''),
             }
         )
-    link_replacements: dict[str, str] = {}
-    public_links: list[dict[str, Any]] = []
-    for item in manifest.get('rewritten_links') or []:
-        old_target = _safe_relative_path(str(item.get('rewritten') or ''))
-        new_target = old_to_new.get(old_target)
-        if new_target is None:
-            raise ReferenceExportError('A verified bundle link has no public target.')
-        link_replacements[old_target.as_posix()] = new_target.as_posix()
-        public_links.append(
-            {
-                'kind': str(item.get('kind') or ''),
-                'target': new_target.as_posix(),
-            }
-        )
+    _verified_bundle_links(bundle_root, [entry['source'] for entry in source_entries])
+    source_destinations = {
+        entry['source']: staging_root / entry['published'] for entry in source_entries
+    }
     for entry in source_entries:
         source = entry['source']
         destination = staging_root / entry['published']
-        if entry['source_relative'] == entrypoint:
-            content = source.read_text(encoding='utf-8')
-            for old_target, new_target in link_replacements.items():
-                content = content.replace(old_target, new_target)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(content, encoding='utf-8')
-            destination.chmod(0o644)
-        else:
-            _copy_file(source, destination)
+        _copy_file(source, destination)
+        # Only exact, source-relative references enter this per-file alias map.
+        # Never recover an absent target by a matching basename elsewhere.
+        aliases: dict[str, Path] = {}
+        for _kind, value in bundle_owner._iter_local_refs(source):
+            if bundle_owner._is_ignored_reference(value):
+                continue
+            path_part, _suffix = bundle_owner._split_ref(value)
+            target = source_destinations[(source.parent / path_part).resolve()]
+            key = bundle_owner._normalize_ref_key(value)
+            if key in aliases and aliases[key] != target:
+                raise ReferenceExportError('Ambiguous bundle reference normalization.')
+            aliases[key] = target
+        bundle_owner._rewrite_text_file(destination, aliases)
         public_records.append(
             {
                 'artifact_ref': entry['artifact_ref'],
@@ -652,6 +740,9 @@ def _copy_bundle(
         _safe_relative_path(item['relative_path']) for item in public_records
     }:
         raise ReferenceExportError('The bundle entrypoint is not a copied artifact.')
+    public_links = _verified_bundle_links(
+        staging_root / 'bundle', [staging_root / entry['published'] for entry in source_entries]
+    )
     public_manifest = {
         'schema': BUNDLE_SCHEMA,
         'version': 1,
@@ -911,6 +1002,7 @@ def _verify_public_bundle(package_dir: Path) -> None:
             raise ReferenceExportError(
                 f'Public bundle link target is missing: {target.as_posix()}'
             )
+    _verified_bundle_links(bundle_root, [bundle_root / path for path in sorted(expected)])
 
 
 def _build_package_manifest(
@@ -1137,6 +1229,8 @@ def export_reference_run(
                 'original_runtime_truth_remains_authoritative': True,
             },
         }
+        _add_reference_evidence(response_export, record=indexed_record['_source_record'],
+                                frames_dir=frames_dir, package_dir=staging)
         _write_json(staging / 'response.json', response_export)
         _write_json(
             staging / 'monitor-report.json',
@@ -1213,6 +1307,22 @@ def verify_reference_package(package_dir: Path) -> dict[str, Any]:
         raise ReferenceExportError('Reference package lacks required public records.')
     _verify_markdown_links(package_dir, package_dir / 'README.md')
     _verify_public_bundle(package_dir)
+    response = json.loads((package_dir / 'response.json').read_text(encoding='utf-8'))
+    if 'evidence_bindings' in response:
+        try:
+            if (response['response']['id'] != manifest.get('response_id')
+                    or any(response['response'].get(key) != manifest.get(key) for key in ('frame_id', 'frame_sequence'))
+                    or response['integrity'].get('source_frame_record_sha256') != manifest.get('source_frame_record_sha256')):
+                raise ReferenceExportError('Reference evidence frame provenance conflict.')
+            evidence_owner.verify_projection(
+                response['evidence_bindings'], artifacts=response['artifacts'], outputs=response['outputs'],
+                read_public=lambda name: _assert_regular_source(
+                    package_dir / _safe_relative_path(name), root=package_dir,
+                    label='Evidence artifact',
+                ).read_bytes(),
+            )
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ReferenceExportError(str(exc)) from exc
     return manifest
 
 

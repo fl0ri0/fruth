@@ -12,8 +12,8 @@
     {
       "artifact_ref": "artifact:text_b36114db2db043bce7726b46",
       "relative_path": "assets/css/styles.css",
-      "sha256": "acf137fe60a7624c4e6b957f79ba49dc3450cd9291e73c44fc867c2638ed2343",
-      "size_bytes": 2831,
+      "sha256": "a62215e2bccc912e22c7cf8d3c056f61f31dfcf286e5127cdc42aabb9adaba95",
+      "size_bytes": 2784,
       "source_sha256": "acf137fe60a7624c4e6b957f79ba49dc3450cd9291e73c44fc867c2638ed2343",
       "type": "text"
     },
@@ -48,20 +48,29 @@
   "raw_runtime_manifest_published": false,
   "resolved_links": [
     {
+      "file": "index.html",
       "kind": "html_href",
       "target": "assets/css/styles.css"
     },
     {
+      "file": "index.html",
       "kind": "html_src",
       "target": "assets/images/image-01.png"
     },
     {
+      "file": "index.html",
       "kind": "html_src",
       "target": "assets/images/image-02.png"
     },
     {
+      "file": "index.html",
       "kind": "html_src",
       "target": "assets/audio/narration.wav"
+    },
+    {
+      "file": "assets/css/styles.css",
+      "kind": "css_url",
+      "target": "assets/images/image-01.png"
     }
   ],
   "schema": "fruth.public_bundle_manifest.v1",

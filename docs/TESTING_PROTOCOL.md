@@ -1487,6 +1487,28 @@ The harness also covers the current learning/healing truth boundary: fake `/api/
 
 ## Documentation and release static validation
 
+For public reference-export changes, use the isolated runner with
+`tests/test_reference_run_export.py`, `tests/test_reference_run_evidence.py`,
+`tests/test_response_artifact_bundles.py`
+and `tests/test_release_archive.py`. Verify supported local references from the
+actual exported bytes after renaming, including CSS companions; hashes and a
+prior manifest's link list do not establish dependency closure. Preserve exact
+source-relative target identity, query/fragment suffixes, and ignored external
+references. A missing target must not be recovered by a matching basename.
+Retain original execution artifacts and release packages when refreshing a
+portable export, regenerate its provenance/checksums, and report visual/browser
+checks separately from static reference verification.
+
+For the optional `evidence_bindings` projection, preserve absent evidence and
+legacy package compatibility. Exercise exact saved-read bytes, producer/consumer
+identity, review-generation agreement between saved results and Closure, and
+per-image report delivery. Include foreign responses, changed digests, unrelated
+Closure obligations sharing a branch, the distinction between execution and
+logical review phases, selected sidecar integrity, and removal of unknown/private
+fields. Verify package bindings even when its file manifest has been rehashed.
+The export checks portable consistency; it does not rerun reviews or prove the
+truth of model judgments. Current execution artifacts must remain unchanged.
+
 For prose-only work, check local Markdown links and fragments, repository owner
 paths, command flags and referenced config files against the current checkout.
 Distinguish generated runtime paths and illustrative placeholders from shipped

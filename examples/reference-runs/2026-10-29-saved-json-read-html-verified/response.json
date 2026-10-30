@@ -54,6 +54,123 @@
     "status": "bundled",
     "version": 1
   },
+  "evidence_bindings": {
+    "availability": {
+      "image_reports": "not_recorded",
+      "saved_file_reads": "recorded",
+      "semantic_reviews": "recorded"
+    },
+    "image_reports": [],
+    "model_judgments_independently_proven": false,
+    "saved_file_reads": [
+      {
+        "consumer": {
+          "artifact_ref": "artifact:text_53eb3928deedae26263accb8",
+          "branch_id": "branch-text_artifact-1",
+          "phase_id": "phase-2",
+          "published_path": "artifacts/documents/index.html",
+          "sha256": "4b70d738d8d2a9369c93c2d5d057fd2053cdd5723422b5010167f7925bf07fd1",
+          "size_bytes": 1871
+        },
+        "consumer_input_digest_recomputed": false,
+        "decoded_read_equals_published_source": true,
+        "encoding": "utf-8",
+        "producer": {
+          "artifact_ref": "artifact:text_49178063683a14d57b079c82",
+          "branch_id": "branch-text_artifact-2",
+          "phase_id": "phase-3",
+          "published_path": "artifacts/documents/document-01.json",
+          "sha256": "af64764250cf0caff759ece54b153cfb1dc57690577375c3016714381122b067",
+          "size_bytes": 10
+        },
+        "recorded_consumer_input_sha256": "8c62ae52ee8be9b39843adf5a6ae872ff848512dfa1fa72fe4f7e078ddd3d3b5",
+        "recorded_status": "consumed"
+      }
+    ],
+    "schema": "fruth.public_reference_evidence.v1",
+    "scope": "selected_saved_bindings",
+    "semantic_reviews": [
+      {
+        "binding": {
+          "branch_id": "branch-branch-semantic-review-branch-text_artifact-1-c878c8324aca664b8619dd7b449e0c45f9a8e268fa3783e7057b6420aadba6f6",
+          "content_requirement_policy": "named_saved_text_v1",
+          "evidence_reference_policy": "packet_exact_v1",
+          "generation_id": "branch-semantic-review-branch-text_artifact-1-c878c8324aca664b8619dd7b449e0c45f9a8e268fa3783e7057b6420aadba6f6",
+          "instruction_sha256": "7617fc58753d88c35cbe91ea46846e28687d7698885cbaecff3b544aff16cb23",
+          "kind": "fruth.semantic_review_evidence_binding",
+          "logical_review_id": "branch-semantic-review:branch-text_artifact-1",
+          "obligation_id": "obligation-branch-semantic-review-branch-text_artifact-1-c878c8324aca664b8619dd7b449e0c45f9a8e268fa3783e7057b6420aadba6f6",
+          "phase_id": "phase-branch-semantic-review-branch-text_artifact-1-c878c8324aca664b8619dd7b449e0c45f9a8e268fa3783e7057b6420aadba6f6",
+          "policy": "branch_semantic_review_instruction_sha256_v1",
+          "sha256": "c878c8324aca664b8619dd7b449e0c45f9a8e268fa3783e7057b6420aadba6f6",
+          "source_branch_id": "branch-text_artifact-1",
+          "source_phase_id": "phase-2",
+          "task_id": "task-branch-semantic-review-branch-text_artifact-1-c878c8324aca664b8619dd7b449e0c45f9a8e268fa3783e7057b6420aadba6f6"
+        },
+        "completion_basis": "bound_semantic_review",
+        "content_coverage_status": "accepted_review",
+        "recorded_acceptance": {
+          "accepted": true,
+          "evidence_reference_policy": "packet_exact_v1",
+          "kind": "fruth.semantic_review_freeze_acceptance",
+          "required_criteria": [
+            "accepted_consumer_content"
+          ],
+          "status": "accepted"
+        },
+        "recorded_result_phase_id": "branch-branch-semantic-review-branch-text_artifact-1-c878c8324aca664b8619dd7b449e0c45f9a8e268fa3783e7057b6420aadba6f6",
+        "result_and_closure_binding_equal": true,
+        "source_artifact": {
+          "artifact_ref": "artifact:text_53eb3928deedae26263accb8",
+          "branch_id": "branch-text_artifact-1",
+          "phase_id": "phase-2",
+          "published_path": "artifacts/documents/index.html",
+          "sha256": "4b70d738d8d2a9369c93c2d5d057fd2053cdd5723422b5010167f7925bf07fd1",
+          "size_bytes": 1871
+        }
+      },
+      {
+        "binding": {
+          "branch_id": "branch-branch-semantic-review-branch-text_artifact-2-52342126e524c5d1d0e4ae12edf1378238d46869b036678e23444e78f0046814",
+          "content_requirement_policy": "named_saved_text_v1",
+          "evidence_reference_policy": "packet_exact_v1",
+          "generation_id": "branch-semantic-review-branch-text_artifact-2-52342126e524c5d1d0e4ae12edf1378238d46869b036678e23444e78f0046814",
+          "instruction_sha256": "7289a2e7c45be450a09b5b735460cbc8d6881be0439cbfa127ee1a7583d79e0c",
+          "kind": "fruth.semantic_review_evidence_binding",
+          "logical_review_id": "branch-semantic-review:branch-text_artifact-2",
+          "obligation_id": "obligation-branch-semantic-review-branch-text_artifact-2-52342126e524c5d1d0e4ae12edf1378238d46869b036678e23444e78f0046814",
+          "phase_id": "phase-branch-semantic-review-branch-text_artifact-2-52342126e524c5d1d0e4ae12edf1378238d46869b036678e23444e78f0046814",
+          "policy": "branch_semantic_review_instruction_sha256_v1",
+          "sha256": "52342126e524c5d1d0e4ae12edf1378238d46869b036678e23444e78f0046814",
+          "source_branch_id": "branch-text_artifact-2",
+          "source_phase_id": "phase-3",
+          "task_id": "task-branch-semantic-review-branch-text_artifact-2-52342126e524c5d1d0e4ae12edf1378238d46869b036678e23444e78f0046814"
+        },
+        "completion_basis": "bound_semantic_review",
+        "content_coverage_status": "accepted_review",
+        "recorded_acceptance": {
+          "accepted": true,
+          "evidence_reference_policy": "packet_exact_v1",
+          "kind": "fruth.semantic_review_freeze_acceptance",
+          "required_criteria": [
+            "accepted_producer_content"
+          ],
+          "status": "accepted"
+        },
+        "recorded_result_phase_id": "branch-branch-semantic-review-branch-text_artifact-2-52342126e524c5d1d0e4ae12edf1378238d46869b036678e23444e78f0046814",
+        "result_and_closure_binding_equal": true,
+        "source_artifact": {
+          "artifact_ref": "artifact:text_49178063683a14d57b079c82",
+          "branch_id": "branch-text_artifact-2",
+          "phase_id": "phase-3",
+          "published_path": "artifacts/documents/document-01.json",
+          "sha256": "af64764250cf0caff759ece54b153cfb1dc57690577375c3016714381122b067",
+          "size_bytes": 10
+        }
+      }
+    ],
+    "version": 1
+  },
   "integrity": {
     "frame_identity_verified": true,
     "index_only_wire_lookup": true,

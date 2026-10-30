@@ -254,12 +254,52 @@ def test_export_reference_run_is_self_contained_and_verifiable(
         destination / 'README.md'
     ).read_text(encoding='utf-8')
     response = json.loads((destination / 'response.json').read_text(encoding='utf-8'))
+    assert set(response['evidence_bindings']['availability'].values()) == {'not_recorded'}
     assert response['outputs'][0]['text'] == 'A small blue square.'
     assert response['outputs'][1]['published_path'] == 'artifacts/images/image-01.png'
     assert response['integrity']['ledger_fallback_used'] is False
     for path in destination.rglob('*'):
         if path.is_file() and path.suffix in {'.json', '.md', '.txt'}:
             assert '/Users/' not in path.read_text(encoding='utf-8')
+
+
+def test_export_includes_saved_image_report_and_checks_its_public_binding(tmp_path, monkeypatch):
+    fixture = _fixture_truth(tmp_path)
+    _patch_truth(monkeypatch, fixture)
+    entry = fixture['index']['responses'][RESPONSE_ID]
+    ledger = Path(entry['ledger_path'])
+    record = json.loads(ledger.read_text())
+    report = fixture['wire']['response_payload']['outputs'][0]['value']
+    image_sha = _sha256(fixture['artifact'])
+    record['runtime'] = {'late_fill': {'fill_results': [
+        {'branch_id': 'vision', 'phase_id': 'phase-vision', 'result_text': report,
+         'vision_input_evidence': {'branch_id': 'vision', 'phase_id': 'phase-vision',
+             'response_id': RESPONSE_ID, 'status': 'supplied', 'image_sha256': image_sha,
+             'size_bytes': fixture['artifact'].stat().st_size}},
+        {'branch_id': 'phase-1', 'phase_id': 'phase-1', 'result_text': report,
+         'report_delivery_evidence': {'kind': 'fruth.separate_image_report_delivery',
+             'branch_id': 'phase-1', 'phase_id': 'phase-1', 'response_id': RESPONSE_ID,
+             'contributions': [{'artifact_ref': 'artifact:image_fixture', 'image_sha256': image_sha,
+                 'producer_branch_id': 'branch-image_generation-1', 'producer_phase_id': 'phase-2',
+                 'source_branch_id': 'vision', 'source_phase_id': 'phase-vision',
+                 'report_text': report, 'report_sha256': hashlib.sha256(report.encode()).hexdigest()}]}},
+    ]}}
+    entry['line_length'] = len(_write_jsonl(ledger, record))
+    destination = tmp_path / 'published'
+    exporter.export_reference_run(response_id=RESPONSE_ID, source_readme=fixture['readme'],
+        output_dir=destination, frames_dir=fixture['frames_dir'], monitor_reports=fixture['monitor'],
+        artifact_root=fixture['artifact_root'])
+    response = json.loads((destination / 'response.json').read_text())
+    assert len(response['evidence_bindings']['image_reports']) == 1
+    response['evidence_bindings']['image_reports'][0]['image']['sha256'] = 'f' * 64
+    exporter._write_json(destination / 'response.json', response)
+    manifest = json.loads((destination / 'manifest.json').read_text())
+    for item in manifest['files']:
+        if item['path'] == 'response.json':
+            item.update(sha256=_sha256(destination / 'response.json'), size_bytes=(destination / 'response.json').stat().st_size)
+    exporter._write_json(destination / 'manifest.json', manifest)
+    with pytest.raises(exporter.ReferenceExportError, match='artifact binding conflict'):
+        exporter.verify_reference_package(destination)
 
 
 def test_verify_detects_changed_artifact(
@@ -638,3 +678,126 @@ def test_bundle_copy_renames_assets_and_removes_local_paths(tmp_path: Path) -> N
     encoded = json.dumps(public_manifest)
     assert '/Users/' not in encoded
     assert 'model-output.png' not in encoded
+
+
+def _linked_bundle(tmp_path: Path, css_target: str = '../images/model-output.png') -> tuple[Path, Path]:
+    root = tmp_path / 'artifacts'
+    bundle = root / 'bundles' / 'source'
+    contents = {
+        'page.html': '<!doctype html><link rel="stylesheet" href="style/main.css">'
+                     '<img src="images/model-output.png">',
+        'style/main.css': f'.hero {{ background: url("{css_target}"); }}',
+        'images/model-output.png': b'image',
+    }
+    records = []
+    for name, content in contents.items():
+        path = bundle / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content if isinstance(content, bytes) else content.encode())
+        records.append({'relative_path': name, 'type': 'image' if name.endswith('.png') else 'text',
+                        'size_bytes': path.stat().st_size, 'sha256': _sha256(path)})
+    (bundle / 'manifest.json').write_text(json.dumps({
+        'source_response_id': RESPONSE_ID, 'bundle_id': 'bundle:linked',
+        'status': 'bundled', 'link_check': {'status': 'passed'},
+        'entrypoint_relative_path': 'page.html', 'copied_artifacts': records,
+        # Deliberately incomplete old index: the bytes must govern the new check.
+        'rewritten_links': [],
+    }))
+    return root, bundle
+
+
+def test_bundle_export_rewrites_css_and_html_from_actual_bytes(tmp_path: Path) -> None:
+    root, bundle = _linked_bundle(tmp_path, '../images/model-output.png?v=1#hero')
+    before = {p.relative_to(bundle): p.read_bytes() for p in bundle.rglob('*') if p.is_file()}
+    stage = tmp_path / 'stage'
+    manifest, _, _ = exporter._copy_bundle(
+        bundle, response_id=RESPONSE_ID, artifact_root=root, staging_root=stage,
+    )
+    assert (stage / 'bundle/assets/css/styles.css').read_text() == (
+        '.hero { background: url("../images/image-01.png?v=1#hero"); }'
+    )
+    assert 'href="assets/css/styles.css"' in (stage / 'bundle/index.html').read_text()
+    assert {'kind': 'css_url', 'file': 'assets/css/styles.css',
+            'target': 'assets/images/image-01.png'} in manifest['resolved_links']
+    exporter._verify_public_bundle(stage)
+    assert before == {p.relative_to(bundle): p.read_bytes() for p in bundle.rglob('*') if p.is_file()}
+
+
+@pytest.mark.parametrize('target', ['../images/missing.png', '../other/model-output.png', '../../../outside.png'])
+def test_bundle_export_rejects_false_passed_source_links(tmp_path: Path, target: str) -> None:
+    root, bundle = _linked_bundle(tmp_path, target)
+    (tmp_path / 'outside.png').write_bytes(b'outside')
+    with pytest.raises(exporter.ReferenceExportError, match='reference'):
+        exporter._copy_bundle(bundle, response_id=RESPONSE_ID, artifact_root=root,
+                              staging_root=tmp_path / 'stage')
+
+
+def test_bundle_verifier_rejects_unlisted_css_reference_even_with_fresh_hash(tmp_path: Path) -> None:
+    root, bundle = _linked_bundle(tmp_path)
+    stage = tmp_path / 'stage'
+    manifest, _, _ = exporter._copy_bundle(
+        bundle, response_id=RESPONSE_ID, artifact_root=root, staging_root=stage,
+    )
+    css = stage / 'bundle/assets/css/styles.css'
+    css.write_text('.hero { background: url("../images/missing.png"); }')
+    for record in manifest['files']:
+        if record['relative_path'] == 'assets/css/styles.css':
+            record.update(size_bytes=css.stat().st_size, sha256=_sha256(css))
+    (stage / 'bundle/manifest.json').write_text(json.dumps(manifest))
+    with pytest.raises(exporter.ReferenceExportError, match='reference'):
+        exporter._verify_public_bundle(stage)
+
+
+@pytest.mark.parametrize('target', ['https://example.org/picture.png', 'data:image/png;base64,AAAA', '#mask'])
+def test_bundle_export_preserves_nonlocal_and_fragment_references(tmp_path: Path, target: str) -> None:
+    root, bundle = _linked_bundle(tmp_path, target)
+    stage = tmp_path / 'stage'
+    exporter._copy_bundle(bundle, response_id=RESPONSE_ID, artifact_root=root, staging_root=stage)
+    assert f'url("{target}")' in (stage / 'bundle/assets/css/styles.css').read_text()
+    exporter._verify_public_bundle(stage)
+
+
+def test_bundle_export_keeps_exact_target_when_basenames_collide(tmp_path: Path) -> None:
+    root, bundle = _linked_bundle(tmp_path)
+    other = bundle / 'other/model-output.png'
+    other.parent.mkdir()
+    other.write_bytes(b'other-image')
+    page = bundle / 'page.html'
+    page.write_text(page.read_text() + '<img src="other/model-output.png#second">')
+    manifest = json.loads((bundle / 'manifest.json').read_text())
+    manifest['copied_artifacts'][0].update(size_bytes=page.stat().st_size, sha256=_sha256(page))
+    manifest['copied_artifacts'].append({'relative_path': 'other/model-output.png', 'type': 'image',
+                                       'size_bytes': other.stat().st_size, 'sha256': _sha256(other)})
+    (bundle / 'manifest.json').write_text(json.dumps(manifest))
+    stage = tmp_path / 'stage'
+    exporter._copy_bundle(bundle, response_id=RESPONSE_ID, artifact_root=root, staging_root=stage)
+    assert 'src="assets/images/image-01.png"' in (stage / 'bundle/index.html').read_text()
+    assert 'src="assets/images/image-02.png#second"' in (stage / 'bundle/index.html').read_text()
+    assert (stage / 'bundle/assets/images/image-01.png').read_bytes() == b'image'
+    assert (stage / 'bundle/assets/images/image-02.png').read_bytes() == b'other-image'
+    assert '../images/image-01.png' in (stage / 'bundle/assets/css/styles.css').read_text()
+    exporter._verify_public_bundle(stage)
+
+
+@pytest.mark.parametrize('name,content,expected', [
+    ('script.js', 'fetch("../images/model-output.png?v=2")', '../images/image-01.png?v=2'),
+    ('data.json', '{"image_path":"../images/model-output.png"}', '../images/image-01.png'),
+    ('second.html', '<img style="background: url(../images/model-output.png)" srcset="../images/model-output.png 1x">',
+     '../images/image-01.png'),
+])
+def test_bundle_export_rewrites_supported_companion_files(tmp_path: Path, name: str, content: str, expected: str) -> None:
+    root, bundle = _linked_bundle(tmp_path)
+    companion = bundle / 'extra' / name
+    companion.parent.mkdir()
+    companion.write_text(content)
+    manifest = json.loads((bundle / 'manifest.json').read_text())
+    manifest['copied_artifacts'].append({'relative_path': 'extra/' + name, 'type': 'text',
+                                       'size_bytes': companion.stat().st_size, 'sha256': _sha256(companion)})
+    (bundle / 'manifest.json').write_text(json.dumps(manifest))
+    stage = tmp_path / 'stage'
+    result, _, _ = exporter._copy_bundle(bundle, response_id=RESPONSE_ID, artifact_root=root, staging_root=stage)
+    record = next(x for x in result['files'] if x['relative_path'].startswith('assets/files/'))
+    published = stage / 'bundle' / record['relative_path']
+    assert expected in published.read_text()
+    assert record['sha256'] == _sha256(published)
+    exporter._verify_public_bundle(stage)

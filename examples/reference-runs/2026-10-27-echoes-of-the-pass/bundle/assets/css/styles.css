@@ -16,7 +16,7 @@ body {
 /* Hero Section */
 .hero {
     height: 70vh;
-    background: url('../images/20261027T190250Z_image_mlx-community_Z-Image-Turbo-bf16.png') no-repeat center/cover;
+    background: url('../images/image-01.png') no-repeat center/cover;
     display: flex;
     align-items: center;
     justify-content: center;

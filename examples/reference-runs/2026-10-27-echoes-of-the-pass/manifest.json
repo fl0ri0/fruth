@@ -4,8 +4,8 @@
       "mime_type": "application/octet-stream",
       "path": "README.md",
       "role": "documentation",
-      "sha256": "426df517bdb70b56fd579fd435888dbab7f2ac366a0272dfcc780794331875be",
-      "size_bytes": 2382
+      "sha256": "d21af9e7912d01c06ee95fa975e0ca7ed081bf85d46f8c795d570da845d02c0b",
+      "size_bytes": 2681
     },
     {
       "mime_type": "audio/x-wav",
@@ -53,8 +53,8 @@
       "mime_type": "text/css",
       "path": "bundle/assets/css/styles.css",
       "role": "openable_bundle",
-      "sha256": "acf137fe60a7624c4e6b957f79ba49dc3450cd9291e73c44fc867c2638ed2343",
-      "size_bytes": 2831
+      "sha256": "a62215e2bccc912e22c7cf8d3c056f61f31dfcf286e5127cdc42aabb9adaba95",
+      "size_bytes": 2784
     },
     {
       "mime_type": "image/png",
@@ -81,8 +81,8 @@
       "mime_type": "application/json",
       "path": "bundle/manifest.json",
       "role": "openable_bundle",
-      "sha256": "4c2bbd1c474f793088f75fd56ffc8af91cf1fd9192b3ed11872ced2db284ac43",
-      "size_bytes": 2453
+      "sha256": "1f51975fc0e492535d6427ecafef76ee6abf9d325f90a6b46a75573d28e53534",
+      "size_bytes": 2687
     },
     {
       "mime_type": "application/json",
@@ -102,8 +102,8 @@
       "mime_type": "application/json",
       "path": "response.json",
       "role": "response_truth",
-      "sha256": "c7e1d07d08d66b398bcde846d53588dd8009ef9ac310e6f99fdff0fc8bcbbe45",
-      "size_bytes": 9424
+      "sha256": "c21a6ef8c401db9b1fda1b1dc327b32654a0137e7161dbf9fc3496c768f312d5",
+      "size_bytes": 9676
     }
   ],
   "frame_id": "resp_1793127533748_366b6db67f373:frame-3",
@@ -123,7 +123,7 @@
     "artifact_count": 5,
     "bundle_included": true,
     "file_count": 15,
-    "total_bytes": 6134060
+    "total_bytes": 6134798
   },
   "validation": {
     "artifact_checksums_verified": true,

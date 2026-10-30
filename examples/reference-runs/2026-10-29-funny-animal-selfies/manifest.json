@@ -4,8 +4,8 @@
       "mime_type": "application/octet-stream",
       "path": "README.md",
       "role": "documentation",
-      "sha256": "ac99b1d7efe55bc88f6975b8de7bffaa876b580d4c3f1335a19427b3a9bdefc6",
-      "size_bytes": 3128
+      "sha256": "ae1b2b6ffc0ff106ac391207500bdcff499b19baabefd47dc0456ea7ee7ed76c",
+      "size_bytes": 3617
     },
     {
       "mime_type": "image/png",
@@ -46,8 +46,8 @@
       "mime_type": "application/json",
       "path": "response.json",
       "role": "response_truth",
-      "sha256": "77ab93bbcd97920f6d559af76e8630e22f858e4914ce0387308bc2a3ab48896e",
-      "size_bytes": 7660
+      "sha256": "1c8dee7c31aac88b92093f66db729f835477279efdac211c0ee3ece8f4d7b7d1",
+      "size_bytes": 11789
     }
   ],
   "frame_id": "resp_1793251644875_e2762fdd6e05d:frame-2",
@@ -67,7 +67,7 @@
     "artifact_count": 3,
     "bundle_included": false,
     "file_count": 7,
-    "total_bytes": 2903492
+    "total_bytes": 2908110
   },
   "validation": {
     "artifact_checksums_verified": true,

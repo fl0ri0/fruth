@@ -1,6 +1,6 @@
 # Echoes of the Pass
 
-**Run date:** 2026-10-27; export checked 2026-10-27  
+**Run date:** 2026-10-27; portable export corrected and checked 2026-10-30  
 **Response:** `resp_1793127533748_366b6db67f373`  
 **Final frame:** `resp_1793127533748_366b6db67f373:frame-3`
 
@@ -45,3 +45,7 @@ This directory is a sanitized, immutable publication copy of the reviewed run. I
 - [Sanitized final response truth](response.json)
 - [Sanitized independent monitor snapshot](monitor-report.json)
 - [Package checksums and provenance](manifest.json)
+
+## Portable export correction
+
+The October 30 export corrects a CSS image path after portable filename normalization and rechecks the actual HTML/CSS dependencies. Canonical artifacts and execution evidence are unchanged; bundle hashes describe the corrected portable bytes.

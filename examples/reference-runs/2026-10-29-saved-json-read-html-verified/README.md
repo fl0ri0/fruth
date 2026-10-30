@@ -38,3 +38,7 @@ This directory is a sanitized, immutable publication copy of the reviewed run. I
 - [Sanitized final response truth](response.json)
 - [Sanitized independent monitor snapshot](monitor-report.json)
 - [Package checksums and provenance](manifest.json)
+
+## Saved evidence bindings
+
+The `evidence_bindings` section in [response.json](response.json) links the saved review/readback or image-report records to the exact exported artifacts. The portable checker verifies file digests and report-text placement. Runtime acceptance is a recorded judgment; this export does not independently prove model correctness or reconstruct omitted review instructions. Evidence projection refreshed on October 30; execution and artifact bytes are unchanged.

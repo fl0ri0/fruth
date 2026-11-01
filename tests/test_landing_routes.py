@@ -168,7 +168,7 @@ def test_landing_leads_with_runtime_truth_before_current_product_body():
 
     for term in ('Ollama', 'MLX', 'llama.cpp'):
         assert term in hero
-    for term in ('outputs exist', 'work remains open', 'artifacts', 'runtime state'):
+    for term in ('outputs exist', 'what remains open', 'Inspect the evidence', 'recorded state'):
         assert term in hero
     for overpromise in (
         'whatever you have installed',

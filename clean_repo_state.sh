@@ -56,7 +56,8 @@ Options:
                          In archive mode, reset registry/catalog, preserve protected inference state,
                          and remove local self-attack run directories without archiving them.
   --exclude-self-attack Archive only: omit the state/self_attack snapshot; preserve its live tree.
-  --dry-run             Show what would happen without deleting or moving anything.
+  --dry-run             Show what would happen without signaling, deleting or moving anything.
+                         Unresolved process ownership still returns a nonzero exit.
   --reset-registry      Reset repo-local model_ports.json to [] after optional archiving.
   --forget-inference        Remove interpretive inference preferences and compiled-memory residue after optional archiving.
   --reset-llama-catalog Remove state/llama_cpp_catalog.json after optional archiving.
@@ -247,27 +248,6 @@ ensure_artifact_base_dirs() {
     ensure_dir "artifacts/inputs/text"
 }
 
-stop_listener_on_port() {
-    local port="$1"
-    local pids
-    pids="$(lsof -nP -iTCP:${port} -sTCP:LISTEN -t 2>/dev/null | sort -u || true)"
-    if [[ -z "$pids" ]]; then
-        return 0
-    fi
-
-    log "Stopping listener(s) on port $port: $pids"
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        return 0
-    fi
-
-    kill $pids 2>/dev/null || true
-    sleep 1
-    for pid in $pids; do
-        if kill -0 "$pid" 2>/dev/null; then
-            kill -9 "$pid" 2>/dev/null || true
-        fi
-    done
-}
 
 remove_cache_dirs() {
     local pattern="$1"
@@ -799,12 +779,15 @@ if [[ "$ARCHIVE_MODE" -eq 1 ]]; then
     python3 "$ARCHIVE_HELPER" preflight "$ROOT_DIR" "$ARCHIVE_RUN_DIR" "${ARCHIVE_COPY_PATHS[@]}"
 fi
 
-log "1. Stopping repo-local listeners on standard Fruth ports..."
-stop_listener_on_port 5011
-stop_listener_on_port 11434
-for port in $(seq 11435 11550); do
-    stop_listener_on_port "$port"
-done
+log "1. Checking ownership of listeners on standard Fruth cleanup ports..."
+OWNERSHIP_ARGS=(cleanup --root "$ROOT_DIR")
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    OWNERSHIP_ARGS+=(--dry-run)
+fi
+if ! (cd "$ROOT_DIR" && python3 -B -m fruth_core.process_ownership "${OWNERSHIP_ARGS[@]}"); then
+    log "Unresolved process ownership or incomplete stop; cleanup aborted before retention, archive or removal."
+    exit 1
+fi
 
 log
 log "Preparing self-learning retained evidence..."

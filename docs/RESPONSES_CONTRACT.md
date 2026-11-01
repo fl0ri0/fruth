@@ -36,6 +36,29 @@ contract change. Client integrations must validate the subset they actually use.
 
 ## Retrieval for clients
 
+Local PDF preparation accepts only a successful worker exit and a complete,
+versioned private manifest bound to the source digest, operation, controls and
+exact ordered pages. File containment, lengths, digests, PNG scanlines/dimensions
+and aggregate budgets are checked before text/base64 is materialized. Partial or
+stale output and nonempty bytes alone are not completion evidence. Ordinary
+unreadable/textless-document outcomes retain the established text/image fallback;
+worker crash, timeout, cancellation, limit and invalid-result errors do not.
+
+Preparation errors carry `pdf_preparation: {status: "failed", code, operation}`
+through canonical Responses `error_detail` (also at the top level in full truth);
+the established bounded error handle preserves it in compact wire projections.
+`/api/infer` exposes top-level `pdf_preparation` and `error_code`.
+`PDF_PREPARATION_BUSY` is 429, `PDF_PREPARATION_LIMIT` 413,
+`PDF_PREPARATION_TIMEOUT` 504 and `PDF_PREPARATION_CANCELLED` 409. Worker failures,
+invalid results, invalid configuration and unconfirmed cleanup are 502. They do
+not mark the model unhealthy. Preparation failures retain their typed,
+non-retryable identity through direct batch and Late Fill materialization;
+Responses does not reroute them as provider/self-heal failures. Existing page
+coverage/warnings, Apple image-tool receipts and final/CAS evidence gates remain
+authoritative; preparation success
+alone is not OCR/model or artifact success. Original-PDF external handoffs and
+ordinary images bypass local PDF preparation. See the [preparation controls](CONTROL_KNOBS.md#pdf-page-preparation).
+
 `GET /api/responses/<id>` (also `/v1/responses/<id>`) returns a bounded UI view by
 default. Poll an existing response with `?view=status` for compact lifecycle and
 Late Fill observation; `compact=true` and the compact/observer view aliases also
@@ -447,7 +470,9 @@ or empty public output set. Existing dependency selection, unique public-media
 fallback and ambiguity checks still govern rebinding; saved bytes alone do not
 publish failed or cancelled work.
 
-The finalizer in `fruth_webserver.py` constructs the frame and reconciles public
+The HTTP adapter in `fruth_webserver.py` supplies explicit dependencies to
+`fruth_services/response_finalization.py`. That finalizer uses
+`fruth_services/response_frame_construction.py` to construct the frame and reconcile public
 artifact identities, then attempts Artifact Registry persistence from that
 frame's accepted output set. The frame writer in
 `fruth_services/response_frames.py` prepares and verifies CAS sidecars, appends
@@ -456,6 +481,10 @@ the derived Index. Parent compare-and-swap checks remain mandatory where the
 successor path requires them. These stores are not one atomic transaction: an
 Index failure can occur after the Ledger row is durable, and canonical recovery
 must retain its ledger fallback.
+
+`fruth_services/response_frame_commit.py` owns this ordered commit operation;
+its callbacks identify exact storage/notification operations, without passing the
+HTTP owner or a dynamic hook registry.
 
 After a confirmed Ledger commit, the finalizer may retain a relevant
 settled graph-rebase Readiness observation. This pass remains synchronous before
@@ -815,6 +844,12 @@ or `oldest_due_waits`, with `availability_deferred_branch_count` for candidates
 outside that group. These are scheduling diagnostics, not new execution authority.
 Current dispatch and next-wave `active_branches` use the same selection rule;
 waiting obligations remain pending with their exact identities and attempt counts.
+
+`fruth_server/late_fill_selection.py` owns that selection, with the worker's
+clock supplied explicitly. It receives no worker claim or publication operation.
+Result joins and TTS evidence are owned by `branch_result_contracts.py` and
+`tts_result_evidence.py` in `fruth_services`; moving these checks does not replace
+the worker's current-frame, branch-disposition or acceptance checks.
 
 Failed branch shape:
 

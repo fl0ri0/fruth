@@ -18,7 +18,7 @@ Mutable work, frozen frames and append-only successors remain distinct. Durable
 means supported persistence and continuation of recorded state; it does not mean
 infallible conclusions or guaranteed survival of every in-flight operation.
 
-**Status:** Fruth `0.1.8` —
+**Status:** Fruth `0.1.9` —
 experimental, usable, and still evolving within the `0.x` series.
 
 **Conceived, designed, created, built, and developed by
@@ -46,21 +46,27 @@ A response is a frozen truthful moment of work: what was requested, what
 became owed work, what runtime evidence exists, what remains pending or
 blocked, and which outputs or artifacts can be referenced later.
 
+Fruth uses a consistent vocabulary to connect intent, execution, evidence, and
+durable state. These terms give developers and AI coding agents shared reference
+points across code, tests, and documentation. When reviewing the architecture,
+consider whether each term captures a useful distinction and is applied
+consistently—not only whether it is immediately familiar.
+
 Run `./fruth self-attack` for adversarial conformance across discovered interpretive inference
 and runtime control profiles. It writes a human-readable report and JSON results;
 see [self-attack conformance](docs/SELF_ATTACK.md) for coverage, live execution,
 budgets and regression replay.
 
-The [October 29 validation status](docs/SELF_ATTACK_STATUS_2026-10-29.md) records
-bounded property-based studies, the matching **380-case offline gate and 198
-owner checks**, and the source/evidence checker. Local, AFM and PCC live results
-retain their original source identities and targeted recovery history; the latest
-reference corrections have separate offline and targeted live validation.
+The [October 31 validation status](docs/SELF_ATTACK_STATUS_2026-10-31.md) records
+the bounded property-based investigation, responsibility refactoring, process and
+PDF corrections, and their source-bound checks. Release validation records exact
+dependencies and source identities. Earlier local, AFM and PCC campaigns and
+reference workflows retain their original execution dates and scope.
 
 Five [reference workflows](examples/README.md) preserve exact prompts, completed
 frames, monitor records and verified saved artifacts. The image-review and
 saved-file examples are from October 29; the other three are from October 27.
-See the report for [historical results](docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results)
+See the report for [historical results](docs/SELF_ATTACK_STATUS_2026-10-31.md#historical-results)
 and the distinction between checked runtime contracts and model-answer accuracy.
 
 ## Project, Citation, and Collaboration
@@ -104,11 +110,11 @@ Useful public context:
 The primary tested environment is a recent macOS release on Apple Silicon with
 Python 3.11 or newer. Local capabilities require their corresponding Ollama,
 MLX, llama.cpp, or Apple Foundation Models backend and model. Windows, Linux, Intel Mac, remote hosting,
-and multi-user operation are outside the 0.1.8 support promise.
+and multi-user operation are outside the 0.1.9 support promise.
 
 ## Install and Start
 
-Extract the source archive, enter its directory (`fruth-0.1.8` for the release,
+Extract the source archive, enter its directory (`fruth-0.1.9` for the release,
 or `fruth-main` for the current repository ZIP), and run:
 
 ```bash
@@ -116,8 +122,12 @@ or `fruth-main` for the current repository ZIP), and run:
 ```
 
 The executable launcher creates `.venv` and installs `requirements.txt` on first
-start. Python 3.11 or newer and internet access for that initial dependency
-installation are required. Backend runtimes, model weights, Apple Intelligence
+start. The selected `python3` must be Python 3.11 or newer linked to OpenSSL
+1.1.1 or newer; Apple's older Python/LibreSSL is unsuitable. Choose a suitable
+installed interpreter on PATH before first start, for example with Homebrew
+Python 3.11: `PATH="$(brew --prefix python@3.11)/libexec/bin:$PATH" ./fruth start`.
+Internet access is normally required for the initial dependency installation.
+Backend runtimes, model weights, Apple Intelligence
 availability and installed PCC Shortcuts are separate prerequisites for their
 respective capabilities. Backend runtimes and model weights are not bundled.
 For Apple PCC, choose **Set up** on its Models card or select PCC in the startup
@@ -133,21 +143,67 @@ Gold curation and evidence retention.
 
 `./fruth start` runs model selection and can create the
 environment itself. Press Enter at model selection to continue without starting
-a model. Startup starts the Flask webserver in the background, or reuses the
-listener on port 5011, and prints the dashboard URL. Use `./fruth status` to
+a model. Startup starts the Flask webserver in the background, or reuses a
+verified webserver from this checkout on port 5011, and prints the dashboard URL.
+Verification checks the exact Python/script command, working directory, process
+birth identity and listener PID. Another service, another checkout, conflicting
+registry evidence or unavailable identity fails startup without a dashboard URL
+or a ready claim. A new launch must own the listener too; TCP occupancy alone is
+insufficient. This is process verification, not an HTTP/application health check.
+Use `./fruth status` to
 inspect the stack and `./fruth restart` to run stop followed by start.
 Refresh an open browser tab after restarting.
-Startup installs Python requirements only when it creates a new `.venv`. An
-existing environment is reused without running pip, even if `requirements.txt`
-has changed. Apply dependency changes explicitly with
-`.venv/bin/python -m pip install -r requirements.txt` when needed.
-The HTTP dependencies use urllib3 2.x and require a Python build linked against
-OpenSSL 1.1.1 or newer. Keep model-backend environments separate; updating the
-main `.venv` does not update MLX, audio or native backend executables.
-When upgrading an older checkout, run that dependency update before
-the next start/restart if the native macOS PDF binding is missing. Preserve your
+Startup installs Python requirements only when it creates a new `.venv`. Before
+model discovery it checks that environment's own Python/TLS and uses pip's offline,
+non-installing checks for active direct requirements and transitive consistency.
+An unsuitable PATH Python does not block a valid existing `.venv`. Changed
+requirements remain usable when satisfied. Missing/broken interpreters, absent
+`requirements.txt`, incomplete installations and incompatible dependencies stop
+startup with repair guidance; startup never installs into, upgrades, deletes or
+rebuilds an existing environment. Keep model-backend environments separate;
+updating the main `.venv` does not update MLX, audio or native backend executables.
+Preserve your
 existing `state/`, `artifacts/`, Research data and settings; the release contains
 empty defaults for new installations, not a replacement for your saved data.
+
+### Python environment recovery
+
+While Fruth is stopped, explicitly apply declared requirements to a valid existing
+environment (also after an interrupted first installation):
+
+```bash
+.venv/bin/python3 -m pip install -r requirements.txt
+.venv/bin/python3 -I -B scripts/bootstrap_preflight.py --venv .venv --requirements requirements.txt
+```
+
+Preflight requires pip >=22.2 for its supported `install --dry-run` CLI, paired
+with `pip check`. If pip is absent, repair it explicitly with
+`.venv/bin/python3 -m ensurepip`; if it is too old, explicitly install a supported
+pip with `.venv/bin/python3 -m pip install 'pip>=22.2'`. Startup does neither.
+Checks disable pip configuration, index access, caches and version lookups. The
+startup manifest supports one named distribution per line, optional version
+constraints and PEP 508 markers, blank lines and comments. URLs, local projects,
+archive paths, extras, includes, continuations and pip options are rejected before
+pip: dry runs of arbitrary projects can execute build hooks. These are metadata
+checks, not package import, native PDF, model or backend qualification.
+
+For a missing/broken or incompatible interpreter, first restore its original base
+Python installation if possible. If replacement is necessary, stop Fruth, retain
+the old environment at a unique backup path, and create a new `.venv` explicitly
+with a suitable installed interpreter, for example:
+
+```bash
+# Only when .venv.previous does not exist; keep it for recovery.
+mv .venv .venv.previous
+"$(brew --prefix python@3.11)/bin/python3.11" -m venv .venv
+.venv/bin/python3 -m pip install -r requirements.txt
+.venv/bin/python3 -I -B scripts/bootstrap_preflight.py --venv .venv --requirements requirements.txt
+```
+
+Omit the move when `.venv` is absent. A moved venv is a backup, not a runnable
+environment: restore it to its original path with its matching base interpreter
+to roll back. Missing source files must be restored from the matching source
+archive. Start Fruth explicitly after the checks pass; preflight does not start it.
 
 Existing JSON response histories require explicit migration before ordinary
 writes. Finish active work, stop all response writers, and verify a complete
@@ -283,16 +339,20 @@ executable. The integration reuses the login owned by that executable; Fruth
 does not read, copy, or store the credentials and does not set a fixed model.
 
 Once enabled, ChatGPT appears as a clearly marked cloud tab, as an explicit
-Fruth target, and as a primary or fallback preference. It can be turned off
-again at any time. Only the prompt, context Fruth promotes for the current
-turn, and local files or Fruth artifacts explicitly selected for that turn are
-handed to ChatGPT. That text and those selected bytes leave the machine and
-are processed by OpenAI.
+Fruth target, and as a preferred (primary or fallback) interpretive inference
+target. It can be turned off again at any time. Fruth explicitly supplies the
+current prompt, context it promotes for that turn, and selected local files or
+Fruth artifacts for OpenAI
+processing. Input staging does not confine all downstream reads: the requested
+read-only command sandbox restricts writes, while the Codex client and enabled
+tools have their own access boundaries. See the [security boundary](SECURITY.md#chatgpt-through-codex-and-cloud-processing).
 
 Recognized images use Codex's native image-input path. Other selected regular
-files are copied into a temporary working directory configured read-only for
-the Codex run. One request can include at most 5 files, no more than 100 MiB per
-file and 250 MiB in total. URLs, folders, and symbolic links are rejected.
+files are copied under neutral names into a temporary working directory, with
+byte counts and digests recorded. One request can include at most 5 files, no
+more than 100 MiB per file and 250 MiB in total. URLs, folders, and direct leaf
+symbolic links are rejected; regular files reached through symlinked parent
+directories are accepted.
 ChatGPT returns text through this route; Fruth does not guarantee that every
 regular-file format can be interpreted semantically by the selected model and
 its available tools.
@@ -302,7 +362,7 @@ Stop, Pull, or Delete actions. Direct tab turns are ephemeral and independent;
 Fruth can promote bounded relevant context for a referential turn, but does not
 create a persistent provider session. Model selection is automatic,
 and the exact GPT variant is not exposed to Fruth; model self-descriptions are
-not runtime proof. Direct API-key management is outside this route's 0.1.8
+not runtime proof. Direct API-key management is outside this route's 0.1.9
 contract. Apple PCC is a separate optional integration described above.
 
 ## Release and Safety Notes
@@ -609,6 +669,32 @@ When you want a local green-field reset without touching anything outside this r
 
 This is a repo-local maintenance helper implemented by `./clean_repo_state.sh`. It does not edit `~/.codex` or any other external config.
 
+Before maintenance, cleanup checks listeners on its existing ports (5011 and
+11434–11550). It stops only verified processes belonging to this checkout and
+rechecks identity before both SIGTERM and any SIGKILL escalation. Model processes
+need an unambiguous matching `model_ports.json` record with `process_identity`
+and `server_command`, plus the matching live working directory. Records
+without that evidence are left untouched; cleanup never fills in ownership from
+a PID or port. The webserver uses its exact script/interpreter and live checkout
+identity because it has no model registry record.
+
+New Ollama, MLX and llama.cpp launches capture birth/command evidence immediately
+from their own child process and persist it with the existing instance record
+after verifying readiness and exclusive port ownership. The Ollama default
+server also receives a service record in `model_ports.json`; it is excluded from
+model selection and retained across model-only registry updates. An existing
+default server is reused only with verified checkout-bound service evidence.
+Older or independently started processes without that evidence remain untouched
+and block ownership-dependent maintenance or default-server reuse. No records
+are backfilled from occupied ports. Cleanup's port scope remains unchanged.
+
+Unrelated, other-checkout, stale, conflicting or unverifiable listeners cause a
+nonzero exit before retention writes, archive copying or deletion. Resolve the
+reported process ownership before retrying; do not assume the port identifies
+Fruth. `--dry-run` sends no signals, describes verified candidates and reports
+unresolved ownership with the same nonzero exit. The storage and retention scope
+below is unchanged. See [process ownership limits](docs/CONTROL_KNOBS.md#cleanup-and-startup-process-ownership).
+
 Default cleanup removes repo-local generated/runtime ballast:
 
 - contents under `artifacts/*` buckets while preserving the standard empty artifact bucket directories, including `artifacts/bundles/`; missing standard directories are created only as a fallback
@@ -833,7 +919,7 @@ Supported capabilities:
 Capability-specific runtime behavior:
 - `chat` (MLX LM): starts `mlx_lm.server`; registry metadata now records `backend_package=mlx_lm`, `backend_contract=mlx_lm.server`, and the LM-specific runtime knobs surfaced by Fruth (`prefill_step_size`, `prompt_cache_size`, `prompt_cache_bytes`).
 - `image_generation` (Ollama): starts a dedicated Ollama instance without chat preload.
-- `speech_to_text` (MLX): starts the local `mlx_whisper` HTTP shim (`backend_package=mlx_whisper_shim`), not native `mlx-audio`; the shim exposes `/healthz`, `/v1/audio/transcriptions`, and `/api/transcribe`.
+- `speech_to_text` (MLX): starts the local `mlx_whisper` HTTP shim (`backend_package=mlx_whisper_shim`), not native `mlx-audio`; the shim exposes `/healthz`, `/v1/audio/transcriptions`, and `/api/transcribe`. Transcription uses JSON with a local `audio_path`, listener-bound Host/Origin checks and `X-Fruth-Action: 1`, which the Fruth client supplies. See the [Whisper caller contract](docs/HTTP_API_BOUNDARY.md#mlx-whisper-adapter); the marker is not native-process authentication.
 - `text_to_speech` (MLX): starts `mlx_audio.server` and serves OpenAI-style speech synthesis through `/v1/audio/speech`; Fruth records that the upstream package is broader than the current instance contract and also covers STT/STS upstream.
 - `vision_analysis` (MLX VLM): starts `mlx_vlm.server` and uses its OpenAI-style multimodal routes; Fruth records the richer upstream contract including `/v1/chat/completions`, `/v1/responses`, `/v1/models`, `/health`, and `/unload`, plus the one-model-at-a-time / lazy-load semantics. This is also the generic path for MLX multimodal snapshots whose metadata resolves to `image-to-text` or `image-text-to-text`.
 
@@ -885,6 +971,7 @@ Current direct UI/internal behavior:
   - UI renders `Open Folder` (local file manager) and `Download` buttons below generated images.
   - Backend persists generated images to `artifacts/images/` when needed and returns the saved path in API payload for local open actions.
 - PDF document handling:
+  - Local PDF parsing and rendering run in owned disposable processes with a separate 120-second preparation deadline, one shared preparation slot, and explicit input/output budgets. Timeouts and authoritative branch cancellation terminate and reap preparation; failures cannot count as partial success. See [PDF preparation controls](docs/CONTROL_KNOBS.md#pdf-page-preparation). This is process containment, not a filesystem/network sandbox or a hard memory ceiling.
   - PDF attachments are accepted in `/api/responses` and still supported by `/api/infer` compatibility calls.
   - File-aware external agent routes receive the original selected PDF under their existing file-sharing controls; page conversion is confined to backends that require text or images.
   - For `vision_analysis` models and chat instances advertising image input (including Apple AI single tabs), PDFs are treated image-first: each selected page is rendered and sent to the selected instance for recognition or analysis. Mixed documents retain both searchable text and text inside images through their rendered pages.

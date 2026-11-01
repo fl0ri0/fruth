@@ -64,3 +64,11 @@ def attach_persistence_failure(payload: Mapping[str, Any], receipt: Mapping[str,
         'stage': receipt.get('stage'),
     }
     return result
+
+
+def _safe_path_token(value: Any) -> str:
+    token = ''.join(
+        char if char.isalnum() or char in {'-', '_', '.'} else '_'
+        for char in str(value or '').strip()
+    ).strip('._')
+    return token or 'snapshot'

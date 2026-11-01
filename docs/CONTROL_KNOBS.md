@@ -52,10 +52,63 @@ of sufficient generation headroom. It does not shorten the inference policy.
 
 ---
 
+## Cleanup and startup process ownership
+
+`fruth_core/process_ownership.py` is the shared gate for `clean_repo_state.sh`
+and webserver startup in `start_multi_models.sh`. Ports are discovery only.
+Cleanup retains its existing 5011 and 11434–11550 scope. It requires a live
+checkout working directory and stable birth/full-command identity. Model
+listeners additionally need one matching existing registry PID/port record,
+`process_identity` and `server_command`; no missing legacy evidence is inferred
+or persisted. Webserver ownership requires this checkout's exact script and
+Python executable (including its exact macOS framework companion), without
+conflicting registry claims. No new registry or configuration knob is introduced.
+
+The gate repeats checkout, registry, listener and birth/command comparisons before
+TERM and before KILL. Unknown identity, changed identity, observation errors and
+remaining listeners are unresolved. Cleanup exits before retention, archive copy
+or removal when any targeted listener is unresolved. Dry-run performs observation
+only and returns failure for unresolved ownership. Startup distinguishes vacant,
+verified and unresolved ports, and checks the actual child PID before reporting a
+new launch. It never prints a dashboard URL for an unverified listener.
+
+These are local OS observations, not application-health or hostile same-user
+attestation. `ps lstart` has second precision; observation followed by POSIX
+signaling is not an atomic kernel process handle. Rechecks reject observed PID
+reuse/exec changes, but cannot eliminate the final observation-to-signal race.
+Model records without birth/command evidence remain unresolved; their listeners
+block maintenance. This bounded change does not revise other stop/restart
+shutdown paths or extend cleanup to additional model port ranges.
+
+Ollama, MLX (LM/VLM/audio/Whisper, including embedding/image variants) and llama.cpp
+launchers capture evidence immediately after their own `Popen`, retain the child
+handle through readiness, and verify the original identity, checkout and exclusive
+listener PID before publishing it. During initial capture only, macOS framework
+Python may transition to its exact companion executable with identical birth and
+arguments, within `FRAMEWORK_EXEC_TIMEOUT_SECONDS` (1 second). Later identity
+changes are errors, never refreshed evidence. Failed-start termination uses the
+same retained child and repeats identity checks before TERM and KILL. If capture
+or verification is unavailable, the process remains untouched and the failure is
+reported; a port occupant is never substituted for the child.
+
+The default Ollama server uses the existing registry with
+`instance_id: ollama-default` and `runtime_service: ollama_default`, plus the same
+PID, port, `process_identity` and `server_command` evidence. Service records are
+excluded from selectable model lists and downstream model projections. Model-only
+writes preserve the current service record even when their input snapshot predates
+its start. Reuse requires a matching live service record; foreign, other-checkout,
+missing, malformed, stale or conflicting evidence fails without adopting or
+signaling the existing listener. A vacant port can receive a freshly owned launch;
+a sole stale default-service row is replaced only with that new child's evidence.
+Before reverting to readers without this service marker, stop the verified owned
+service and remove its exact record through the registry owner. Existing Apple
+launch evidence and persisted identity format remain unchanged.
+
 ## Apple process ownership compatibility
 
 Local AFM and the PCC bridge share process-identity capture in
-`fruth_runtime/apple_fm_model_manager.py`. New `ps -ww` captures set `LC_ALL=C`
+`fruth_core/process_identity.py`, re-exported by the existing Apple lifecycle
+owner. New `ps -ww` captures set `LC_ALL=C`
 and `LANG=C`; persisted identities remain strings containing the full start time
 and command. Stop checks accept the two English `ps lstart` layouts
 `Wed Oct 14 21:21:30 2026` and `Wed 14 Oct 21:21:30 2026` without rewriting records.
@@ -314,6 +367,14 @@ model through the existing session settings. Fewer diffusion steps can reduce
 generation time at a quality cost; they do not bound loading or post-processing.
 Unspecified dimensions and guidance retain native defaults; guidance is not
 exposed by this integration.
+
+For the distilled Flux 3 Klein BF16 checkpoint, the MLX-VLM loader resolves
+16 steps and guidance 1 (no classifier-free guidance). Blank **Steps** preserves
+that recipe. The MLX-VLM HTTP generation endpoint defaults to 512×512 when no
+dimensions are supplied, independently of the checkpoint's 1024×1024 sampler
+example. An explicit supported size or step count takes precedence. Its native
+prompt upsampler remains enabled and requires its separate cached checkpoint;
+see [backend prerequisites](BACKEND_FABRIC.md).
 
 One supplied image selects reference editing only when the selected instance
 advertises an edit loader; otherwise the request is rejected. MLX reference bytes are held in a
@@ -832,6 +893,56 @@ That is the operational clarity to keep during testing.
 ### PDF page preparation
 
 Local PDF rendering uses PDFKit/CoreGraphics through the macOS Quartz binding.
+Local parsing (`pypdf`), text extraction and native rendering run in a fresh main
+interpreter process. The webserver owns admission and a private input snapshot;
+an independent supervisor owns a live process-group anchor and the native worker.
+The supervisor stops the owned group on deadline, cancellation or parent-lease
+EOF, escalates TERM to KILL, and reaps its children before capacity is released.
+There is no in-process fallback. Transient PDF workers are not model services.
+
+These positive environment controls are read once, at the first local PDF
+preparation in each webserver process. They are separate from request/model OCR
+timeouts and cannot be overridden in an HTTP payload:
+
+| Control | Default | Enforcement |
+| --- | --- | --- |
+| `FRUTH_PDF_TIMEOUT_SEC` | 120 seconds | Per preparation operation, from admitted input staging through complete result acceptance; supervisor independently bounds native work. |
+| `FRUTH_PDF_ADMISSION_TIMEOUT_SEC` | 5 seconds | Maximum waiting time for shared preparation capacity; busy returns 429. |
+| `FRUTH_PDF_WORKERS` | 1 | Active preparation slots per webserver process, shared by text, multi-page and exact-page retries. |
+| `FRUTH_PDF_INPUT_BYTES` | 104857600 (100 MiB) | Stat and incremental private-copy checks before parser entry. General HTTP upload/copy admission is unchanged. |
+| `FRUTH_PDF_RESULT_BYTES` | 167772160 (160 MiB) | Each raw PNG/text file; native PNG encoding has a worker-only `RLIMIT_FSIZE` ceiling before writing. |
+| `FRUTH_PDF_OUTPUT_BYTES` | 268435456 (256 MiB) | Aggregate raw outputs of one operation, accounted while producing and checked before parent materialization. |
+| `FRUTH_PDF_TEXT_BYTES` | 16777216 (16 MiB) | UTF-8 text output, checked incrementally before writing. Explicit helper character budgets also reject excess. |
+
+The private manifest has a fixed 1 MiB limit; supervisor/error diagnostics have a
+16 KiB limit. Excess is an explicit error, never silently truncated text or
+omitted pages. Blank page selection means all pages within these budgets.
+Each retry is a new bounded operation. Admission waits precede its preparation
+deadline; termination allows 0.25 seconds before KILL and up to 3 seconds per
+direct-child reap. Cleanup uncertainty retains the slot and workspace and fails
+closed; later requests can receive busy until operator recovery/restart.
+
+These are process/application bounds, not an OS sandbox, total disk quota or hard
+memory ceiling. A 6000-square RGBA bitmap alone is about 137 MiB; parser/decoder
+allocations can be larger before a page dimension is known. Base64 can expand
+accepted PNG bytes by about one third, and concurrent downstream OCR requests
+can retain prepared results after the preparation slot is released. Workers
+inherit the host's filesystem/network authority. The supervisor is independent
+of the native GIL, but its own catastrophic death, uninterruptible kernel work or
+a descendant deliberately escaping the group is outside the qualified guarantee.
+
+Only existing authoritative Late Fill branch controls interrupt preparation;
+client disconnect is not cancellation authority. Post-execution and compare-and-
+swap acceptance gates still apply. Parent disappearance cleanup uses the lease
+pipe, not a Python watchdog thread or only a parent `finally` block. Workspaces
+are removed after confirmed reaping; persistent input artifacts remain intact.
+Child cwd and `TMPDIR`/`TMP`/`TEMP` point inside the private workspace so ordinary
+library/decoder scratch files share its cleanup ownership. This does not confine
+native code or OS services that explicitly choose a different location.
+A caller crash after the supervisor has exited but before parent-side acceptance/
+deletion can leave a private temporary directory with no active writer. It is not
+accepted evidence; recovery must verify no owner remains before removing it.
+
 `pdf_max_pages` selects the leading pages (blank means all, explicit maximum 500);
 the response retains the full `pdf_total_pages` alongside `pdf_processed_pages`.
 `pdf_dpi` keeps its 96–600 request bounds and capability-specific default;

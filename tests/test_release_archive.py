@@ -19,6 +19,7 @@ def test_public_markdown_links_resolve_within_release_selection():
     source_root = Path(__file__).resolve().parents[1]
     selected = release.discover_release_files(source_root)
     names = {path.as_posix() for path in selected}
+    assert 'scripts/bootstrap_preflight.py' in names
     missing = []
     for relative, source in selected.items():
         if relative.suffix != '.md':
@@ -91,7 +92,7 @@ def _make_release_source(tmp_path: Path) -> Path:
         '# Self-Attack status\n',
     )
     _write(
-        source / 'docs' / 'SELF_ATTACK_STATUS_2026-10-29.md',
+        source / 'docs' / 'SELF_ATTACK_STATUS_2026-10-31.md',
         '# Fruth Self-Attack status\n',
     )
     _write(
@@ -410,7 +411,7 @@ def test_build_stages_only_allowlisted_clean_release_files(tmp_path: Path) -> No
     assert not (staged_root / 'plans').exists()
     assert not (staged_root / '.env').exists()
     assert (staged_root / 'docs' / 'SELF_ATTACK.md').is_file()
-    assert (staged_root / 'docs' / 'SELF_ATTACK_STATUS_2026-10-29.md').is_file()
+    assert (staged_root / 'docs' / 'SELF_ATTACK_STATUS_2026-10-31.md').is_file()
     assert not (staged_root / 'docs' / 'SELF_ATTACK_STATUS_2026-09-06.md').exists()
     assert (staged_root / 'docs' / 'CAUSAL_TELEMETRY.md').is_file()
     assert (staged_root / 'docs' / 'STATE_FLOW_DIAGNOSTICS.md').is_file()
@@ -557,7 +558,7 @@ def test_missing_required_reference_example_is_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    'document', ['VISION_ALIGNMENT.md', 'SELF_ATTACK_STATUS_2026-10-29.md']
+    'document', ['VISION_ALIGNMENT.md', 'SELF_ATTACK_STATUS_2026-10-31.md']
 )
 def test_required_public_document_is_required(tmp_path: Path, document: str) -> None:
     source = _make_release_source(tmp_path)
@@ -1078,7 +1079,7 @@ def test_current_release_metadata_and_docs_match_public_selection() -> None:
     assert f'## [{version}] - {release_date}' in changelog
     selected = release.discover_release_files(repository_root)
     assert Path('docs/RELEASE_SCOPE.md') in selected
-    assert Path('docs/SELF_ATTACK_STATUS_2026-10-29.md') in selected
+    assert Path('docs/SELF_ATTACK_STATUS_2026-10-31.md') in selected
     for name in ['FRUTH_MIGRATION.md', 'PROJECT_HISTORY.md',
                  'RELEASE_CHECK_0.1.0.md', f'RELEASE_NOTES_{version}.md',
                  'SELF_ATTACK_STATUS_2026-09-06.md', 'SELF_ATTACK_STATUS_2026-09-14.md',

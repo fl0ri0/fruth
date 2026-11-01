@@ -53,6 +53,14 @@ The current contract covers:
 
 `llama.cpp` is now part of the current contract as the `llama_cpp` backend variant.
 
+The `mlx_whisper` shim keeps its native local-audio-path JSON contract and both
+transcription aliases. Its HTTP caller boundary checks listener-derived Host,
+exact Origin when present, JSON format and the explicit Fruth action marker
+before audio-path access or provider execution. The shared Whisper transport
+declares that marker. See the [adapter contract](HTTP_API_BOUNDARY.md#mlx-whisper-adapter)
+for bind/port behavior and limitations; these headers do not authenticate native
+processes or change other providers' admission policies.
+
 Embedding helpers use the same capability-based selection across Ollama,
 llama.cpp and supported MLX encoders. MLX embeddings remain the `mlx_vlm` variant,
 but expose an embedding instance contract and preload the encoder with
@@ -73,9 +81,20 @@ Media capabilities on an encoder describe embedding inputs, not generation.
 An `mlx-community` image download likewise needs a compatible installed loader:
 MLX is a compute framework, not a universal checkpoint format. Native `config.json`
 `model` declarations are inspected as well as `model_type` and Diffusers indexes.
-For example, the Flux 3 Image Klein bf16 conversion targets a Swift/MLX port;
-installed Python MLX-VLM 0.7.8 has no loader for that checkpoint. A manual or gated
-download does not change this compatibility boundary.
+For example, Flux 3 Image Klein requires the Flux 3 loader introduced in
+[MLX-VLM 0.7.9](https://github.com/Blaizzy/mlx-vlm/releases/tag/v0.7.9).
+Discovery checks the installed loader and the selected snapshot; a manual or
+gated download does not bypass that compatibility check. Loader availability
+alone does not establish successful generation with a particular checkpoint.
+
+The native Flux 3 loader also enables its
+[prompt upsampler](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup)
+by default. That is a separate checkpoint which must already be in the local
+Hugging Face cache for Fruth's offline image worker. It runs inside the image
+backend; it does not need a second Fruth instance. Fruth preserves this native
+default. The installed Python loader supports the root BF16 package; quantized
+Swift conversions and their performance figures are a different execution path.
+The image weights retain the FLUX Kommunity License; the upsampler is Apache-2.0.
 
 These integration contracts do not certify every model's weights, tokenizer,
 pooling, quantization or task-prefix recipe. Validate a new backend/model pair

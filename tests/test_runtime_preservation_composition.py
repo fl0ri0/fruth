@@ -14,6 +14,7 @@ import time
 from unittest.mock import patch
 
 import pytest
+from scripts.run_tests import storage_snapshot
 
 from tests.runtime_composition_model import (
     Trace, assert_endpoint, canonical, controls, make_corpus, output_text, seal,
@@ -61,9 +62,9 @@ def reserve_start(label, category, trace):
         assert len(jobs) <= min(2, policy.get('max_campaigns', 2)), 'campaign cap'
     if policy.get('deadline_utc'):
         assert datetime.now(timezone.utc) < datetime.fromisoformat(policy['deadline_utc'].replace('Z', '+00:00')), 'task deadline'
-    usage = sum(max(p.stat().st_size, p.stat().st_blocks * 512)
-                for p in storage.rglob('*') if p.is_file() and not p.is_symlink())
-    assert usage < min(4 * 1024**3, policy.get('stop_bytes', 4 * 1024**3)), 'task storage stop'
+    capacity = storage_snapshot(storage, stop_bytes=policy.get('stop_bytes'))
+    assert capacity['stop_reason'] is None, capacity
+    usage = capacity['allocated_bytes']
     record = {'ordinal': len(prior) + 1, 'job': job.name, 'label': label,
               'category': category, 'trace': asdict(trace), 'storage_bytes_before': usage}
     with (evidence / 'runtime-composition-starts.jsonl').open('a', encoding='utf-8') as stream:

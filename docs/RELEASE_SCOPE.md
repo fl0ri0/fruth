@@ -1,8 +1,8 @@
 # Fruth source packaging scope
 
 This document defines the current source selection and support boundaries.
-This scope applies to Fruth `0.1.8`. The [changelog](../CHANGELOG.md) and
-[October 29 status](SELF_ATTACK_STATUS_2026-10-29.md) describe its changes and
+This scope applies to Fruth `0.1.9`. The [changelog](../CHANGELOG.md) and
+[October 31 status](SELF_ATTACK_STATUS_2026-10-31.md) describe its changes and
 source-bound validation evidence. See the [installation guide](../README.md#install-and-start)
 for setup and [known limitations](KNOWN_LIMITATIONS.md) for current constraints.
 The reference selection contains three October 27 workflows and two October 29
@@ -32,11 +32,11 @@ The source package includes:
   retained validation and recoverable publication of reviewed cases.
 
 See the [changelog](../CHANGELOG.md) and
-[October 29 validation status](SELF_ATTACK_STATUS_2026-10-29.md). The latest runtime
-has a matching complete offline gate and source/evidence check plus two targeted
-live reference checks. Earlier local, AFM and PCC campaigns retain their source
-identities and recovery history; they are not relabelled as complete live tests of
-the later reference fixes. PCC Cloud Pro remains untested.
+[October 31 validation status](SELF_ATTACK_STATUS_2026-10-31.md) for source-bound
+evidence. Responsibility extraction and process/PDF corrections have their own
+offline and targeted checks. Earlier local, AFM and PCC campaigns retain their
+source identities and recovery history. They do not become complete live tests
+of later changes. PCC Cloud Pro remains untested.
 Release preparation checks the selected source package separately; a local build
 does not publish it or alter historical verdicts.
 
@@ -95,13 +95,15 @@ previously published 0.1.5 archives. Google Fonts and Font Awesome remain remote
 dashboard dependencies; see [third-party notices](../THIRD_PARTY_NOTICES.md).
 
 `PUBLIC_DOCS` includes the normative contracts, `SELF_ATTACK.md`, the single
-current [October 29 validation status](SELF_ATTACK_STATUS_2026-10-29.md), causal
+current [October 31 validation status](SELF_ATTACK_STATUS_2026-10-31.md), causal
 telemetry and state-flow diagnostics. Earlier summaries and reference selections
 are retained privately; the current report preserves their historical verdicts.
 The dated summary records the tested
 source and scope; packaging it does not establish a new conformance result.
 `PUBLIC_CONFIG_PATHS` includes exactly `config/self_attack_corpus.json` and
-`config/graph_rebase_shadow_corpus.json` as compact reproducible inputs. Harness
+`config/graph_rebase_shadow_corpus.json` as compact reproducible inputs. The first is the default Self-Attack corpus;
+the second supports the documented opt-in graph-rebase diagnostic command.
+Their corpus identifiers are independent of the software release version. Harness
 and test code are included through the normal source-tree rules. Raw captures,
 production ledgers, local forensic corpora and generated `state/` are excluded;
 running conformance creates new local evidence.
@@ -146,12 +148,86 @@ packaging evidence, not a signed release or proof of runtime conformance. The
 builder performs no upload; publication gates and external publication remain
 separate actions.
 
+## Exact validation environment records
+
+Validation can opt into `scripts/run_tests.py --record-validation` as
+described in [the testing protocol](TESTING_PROTOCOL.md#validation-dependency-records).
+`scripts/validation_record.py` exports a pair from completed, successful runner
+jobs: `validation/constraints.txt` and `validation/receipt.json`. These are the
+only allowed public files in `validation/`. They are optional for source builds;
+a partial pair or a pair for different source is rejected. Historical archives
+without either file retain their original verification behavior. No record is
+backfilled for 0.1.8: today's audit/installations are not its validation environment.
+The 0.1.9 package includes the pair captured from its completed release-validation
+jobs; its receipt identifies the exact source and executed scope.
+
+The constraints pin the active declared dependency closure, not every installed
+package. `pytest`, `hypothesis` and `pyyaml` roots are classified as validation;
+other declared roots are runtime. Shared transitives retain both roles. This is
+recordkeeping, not a requirements split or dependency cleanup. The original
+requirements ranges and Hypothesis pin remain the installation contract.
+Original direct/metadata edge markers, their evaluation and exact versions are
+retained in the receipt. Packaging tools (`pip`, `setuptools`, `wheel`) are
+identified separately; incidental packages contribute only a count and metadata
+digest, never new constraints. This records metadata, not a byte audit of every
+installed package or its import resolution.
+
+The receipt contains Python implementation/version, executable digest, ABI/cache
+tag, marker environment (OS/architecture included), TLS identity, packaging tools,
+requirements digest, closure identity and exact selected tests/outcomes/JUnit
+counts. Source identity is SHA-256 of the sorted JSON relative-path/digest map
+using the runner's existing encoding. It covers every release-selected input
+except the generated pair, `MANIFEST.sha256` and generated empty
+`model_ports.json`. The ordinary release manifest still covers the pair. Thus
+generating a receipt does not change the source identity it describes; changing
+code, tests, public documentation or requirements does. Private plans are absent.
+
+These are three distinct evidence levels:
+
+- **Environment inventory:** a current metadata observation; no earlier test
+  result is attached by inference.
+- **Matching validated environment:** the actual test workers captured matching
+  before/after inventories, and export checked their frozen source, configuration,
+  selections, results, JUnit and completion evidence. This establishes only the
+  listed checks, including visible skips; it is not a full release verdict.
+- **Known installation-artifact provenance:** requires genuine contemporaneous
+  install/download evidence bound to that environment. The current exporter
+  explicitly records this as unavailable. It does not accept a generic pip report
+  as proof, recover original wheel hashes from installed metadata, or substitute
+  newly downloaded same-version wheels. Keep any genuine installation evidence
+  privately for review; raw reports/URLs are not public release inputs.
+
+The pair proves consistency of retained records, not authenticity or a signature.
+Before/after observations do not defeat a concurrent change-and-restore of an
+environment, native-library changes, or hostile test code. Hold the chosen
+environment stable during validation. Missing artifact provenance means neither
+byte-identical nor offline reconstruction is claimed. Version constraints alone
+do not establish wheel availability, native ABI compatibility or capability tests.
+Different Python minors, platforms and architectures require their own validation;
+the pair describes one target and pins carry that target's minor/platform markers.
+The strict environment check also compares patch/TLS/OS and incidental metadata.
+
+For a separately prepared compatible environment, apply constraints explicitly:
+
+```sh
+python -m pip install -r requirements.txt -c validation/constraints.txt
+python -B scripts/validation_record.py verify --source . --record validation --environment
+```
+
+Constraints do not install packages by themselves, and off-target markers may
+leave pins inactive. Never treat such an installation as a match without checking
+the receipt. Matching versions may still differ in metadata/tool identities;
+bootstrap tool versions are recorded, not automatically installed by constraints.
+Normal startup and installation do not consume the pair. See the primary
+[packaging marker API](https://packaging.pypa.io/en/stable/markers.html) and
+[pip repeatable-install guidance](https://pip.pypa.io/en/stable/topics/repeatable-installs/).
+
 ## Supported Environment
 
 The primary tested environment is a recent macOS release on Apple Silicon
 with Python 3.11 or newer. Individual local capabilities additionally require
 their own backend and model packages. Other operating systems and processor
-architectures are not part of the 0.1.8 support promise.
+architectures are not part of the 0.1.9 support promise.
 
 Fruth is intended for local, single-user use and binds its web control plane
 to `127.0.0.1` by default. Remote and multi-user deployment are outside this
@@ -169,14 +245,15 @@ ChatGPT is a separate optional cloud path:
 
 - it must be explicitly enabled before Fruth can route a prompt or selected
   files to it;
-- only the prompt, context promoted by Fruth for the current turn, and files or
-  Fruth artifacts explicitly selected for that turn are included; unrelated
-  files and conversation artifacts are not added automatically;
+- Fruth explicitly supplies the current prompt, promoted context, and selected
+  files or Fruth artifacts; staging bounds this handoff, not all downstream reads;
 - recognized images use Codex's native image-input path, while other selected
-  regular files are copied into a temporary working directory configured
-  read-only for that Codex run;
+  regular files are copied under neutral names into a temporary working directory
+  with byte counts and digests recorded. The requested read-only command sandbox
+  restricts writes without establishing selected-file-only read access;
 - one request accepts at most 5 files, up to 100 MiB per file and 250 MiB in
-  total; URLs, folders, and symbolic links are rejected;
+  total; URLs, folders, and direct leaf symbolic links are rejected. Regular files
+  reached through symlinked parent directories are accepted;
 - the route returns text, and acceptance of a regular file does not guarantee
   semantic interpretation of every format;
 - the ChatGPT app's bundled Codex executable is preferred, with a separately
@@ -192,8 +269,13 @@ ChatGPT is a separate optional cloud path:
   bounded relevant context for a referential turn, but no provider session is
   silently resumed.
 
+Downstream client loading and enabled tools have their own access boundaries.
+Offline synthetic checks demonstrated broader local reads, but no actual
+unselected-data disclosure to the provider was demonstrated. See
+[SECURITY.md](../SECURITY.md#chatgpt-through-codex-and-cloud-processing).
+
 Direct provider API-key management and external providers beyond the documented
-ChatGPT and Apple PCC integrations are not part of 0.1.8.
+ChatGPT and Apple PCC integrations are not part of 0.1.9.
 
 ## Compatibility
 

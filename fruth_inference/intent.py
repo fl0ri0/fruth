@@ -13,7 +13,7 @@ from helpers.model_capabilities import (
     CAPABILITY_VISION_ANALYSIS,
     normalize_capability,
 )
-from fruth_core.inference import (
+from fruth_core.text_artifacts import (
     _TEXT_ARTIFACT_FORMAT_SCOPE_BOUNDARY_RE,
     _TEXT_ARTIFACT_FORMAT_RE,
     normalize_text_artifact_extension,

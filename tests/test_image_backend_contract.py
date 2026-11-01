@@ -1,3 +1,8 @@
+import pytest
+from process_launch_test_support import mock_launch_ownership
+import fruth_runtime.mlx_model_manager as _ownership_owner_0
+
+from types import SimpleNamespace
 """Isolated image adapter contracts; no native weights, services or inference."""
 
 import base64
@@ -361,7 +366,7 @@ class ImageBackendContractTests(unittest.TestCase):
                 patch.object(mlx, 'wait_for_port', return_value=True),
                 patch.object(mlx, '_mlx_package_runtime_check', return_value=checks()),
                 patch.object(mlx, '_python_module_available', return_value=True),
-                patch.object(mlx, 'launch_vlm_server', return_value=(Path(tmp) / 'log', 123)) as launch,
+                patch.object(mlx, 'launch_vlm_server', return_value=(Path(tmp) / 'log', SimpleNamespace(pid=123))) as launch,
                 patch.object(mlx, 'register_mlx_instance') as register,
             ):
                 record = mlx.start_mlx_model(model, preferred_port=11501, register_instance=False, prune_registry=False, start_source='api_start_model')
@@ -406,7 +411,7 @@ class ImageBackendStartApiTests(unittest.TestCase):
         self.enterContext(patch.object(mlx, '_python_module_available', return_value=True))
         self.enterContext(patch.object(mlx, 'port_in_use', return_value=False))
         self.enterContext(patch.object(mlx, 'wait_for_port', return_value=True))
-        self.launch = self.enterContext(patch.object(mlx, 'launch_vlm_server', return_value=(self.root / 'image.log', 123)))
+        self.launch = self.enterContext(patch.object(mlx, 'launch_vlm_server', return_value=(self.root / 'image.log', SimpleNamespace(pid=123))))
 
     def start(self, **overrides):
         return self.client.post('/api/start_model', json={
@@ -667,3 +672,10 @@ class ImageBackendApiTests(unittest.TestCase):
         self.native.post.assert_not_called()
         self.assertFalse(self.registry.exists())
         self.assertFalse((self.root / 'images').exists())
+
+
+
+@pytest.fixture(autouse=True)
+def _mock_native_launch_evidence(monkeypatch):
+    # This module mocks native launches; test the ownership OS boundary separately.
+    mock_launch_ownership(monkeypatch, _ownership_owner_0)

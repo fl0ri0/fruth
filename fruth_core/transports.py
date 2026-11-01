@@ -21,6 +21,7 @@ from typing import Any, Callable, List, Optional
 
 from helpers.model_capabilities import CAPABILITY_IMAGE_GENERATION
 from helpers.session_controls import REASONING_EFFORT_OPTIONS
+from fruth_core.http_contract import action_headers
 
 
 class AppleFMTransportError(ValueError):
@@ -999,6 +1000,7 @@ def whisper_transcribe(port: int, audio_path: Path, requests_module, *, task: st
     response = requests_module.post(
         f'http://127.0.0.1:{port}/v1/audio/transcriptions',
         json=payload,
+        headers=action_headers(),
         timeout=600,
     )
     response.raise_for_status()

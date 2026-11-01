@@ -3,6 +3,50 @@
 Fruth changes are recorded here. The original Ollmo release history is retained
 below.
 
+## [0.1.9] - 2026-11-01
+
+Separate runtime responsibilities while preserving Fruth's accepted-work,
+evidence and durable-response contracts. Harden process lifecycle and PDF
+continuation, and carry exact validation dependencies with the source package.
+
+### Runtime ownership and continuation
+
+- Extract focused owners for request preparation, evidence, Closure,
+  materialization, continuation, frame construction, durable commit and operator
+  projections. Retain public compatibility surfaces, persisted formats and
+  existing authority and evidence gates.
+- Keep newly produced PDF/OCR text separate from selected-predecessor edit
+  authority when rebuilding work. Existing selected-file edits and accepted
+  file-output obligations remain supported.
+- Preserve an existing repair branch's phase and execution binding when its
+  terminal projection is rebuilt. Fresh or expanded work retains its own identity;
+  stale-result rejection remains enforced.
+
+### Lifecycle, input handling and installation
+
+- Make startup and cleanup act on verified owned processes, preserving unrelated
+  listeners and reused process identities.
+- Enforce Whisper request admission before transcription dispatch.
+- Isolate PDF extraction/rendering in owned, bounded processes with explicit
+  capacity, cancellation and cleanup outcomes. Resolve macOS temporary-directory
+  aliases before strict child workspace validation, preventing false cleanup
+  failures from retaining the preparation slot.
+- Correct Python bootstrap and interpreter/dependency checks. Record the actual
+  validated dependency closure, source identities and execution evidence in the
+  portable validation/ receipt and constraints pair.
+
+### Compatibility and documentation
+
+- Document the supported MLX-VLM Flux 3 loader and its native prompt-upsample
+  checkpoint, without bundling model weights or backend environments.
+- Clarify the optional Codex route's real read-access boundary, installation and
+  observable response contracts. Keep internal research and migration proposals
+  outside the public package.
+- Update release metadata, the landing page and the single current validation
+  report. Preserve the five existing reference packages and historical live
+  campaign identities. See [validation status](docs/SELF_ATTACK_STATUS_2026-10-31.md)
+  for tested scope and the distinction between durable completion and model accuracy.
+
 ## [0.1.8] - 2026-10-29
 
 Turn the completed bounded Hypothesis and semantic-core investigation round into
@@ -71,7 +115,7 @@ closing owed work. The experimental `0.x` support scope remains unchanged.
   and targeted recovery with their actual source identities and original verdicts.
 - Refresh the two affected reference packages from October 29; retain the three
   October 27 audio/site examples. Saved files, read chains, individual reviews and
-  canonical completion are verified. See the [current validation status](docs/SELF_ATTACK_STATUS_2026-10-29.md)
+  canonical completion are verified. See the [current validation status](docs/SELF_ATTACK_STATUS_2026-10-31.md)
   for coverage, source chronology and limitations.
 
 ## [0.1.7] - 2026-10-21
@@ -156,7 +200,7 @@ The experimental `0.x` support scope remains unchanged.
 - Record source-bound 170-case live coverage for local models, AFM and PCC Cloud,
   supported by matching 380-case offline gates. Refresh the five public reference
   packages from the October 18 runs. The
-  [October 21 results](docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results) records source
+  [October 21 results](docs/SELF_ATTACK_STATUS_2026-10-31.md#historical-results) records source
   identities, PCC window/retry coverage and validation limits.
 - Replace the obsolete urllib3 1.x constraint with urllib3 2.x (`>=2,<3`).
   Document the OpenSSL requirement and separate main/backend environment updates.
@@ -244,7 +288,7 @@ scope remains unchanged.
 - Refresh all five public reference packages with October 10 executions, saved
   artifacts, exact-frame monitor evidence and checksums. Their retained historical
   phase timings carry the documented attribution limitation. See the
-  [validation report](docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results) for scope and chronology.
+  [validation report](docs/SELF_ATTACK_STATUS_2026-10-31.md#historical-results) for scope and chronology.
 - Clarify collaboration guidance: the maintainer is open to contributions and
   learning the review process, with limited capacity and no guaranteed turnaround.
 
@@ -322,7 +366,7 @@ The experimental `0.x` support scope remains unchanged.
   a new response absent. The index still uses whole-file publication.
 - Record the September 25–27 AFM and PCC conformance observations, including
   correct mismatch rejections and PCC quota-limited coverage. See the
-  [dated results](docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results); neither native verdict is
+  [dated results](docs/SELF_ATTACK_STATUS_2026-10-31.md#historical-results); neither native verdict is
   restated as a full pass.
 - Replace optional PyMuPDF and the first-page `sips` fallback with native macOS
   PDFKit/CoreGraphics rendering through PyObjC. Preserve selected page order,
@@ -387,7 +431,7 @@ carried forward.
 - Replace migrated examples with five recorded Fruth reference runs, retaining
   their response, monitor, artifact and checksum evidence.
 - Record the 18–19 September full conformance pass: 380 deterministic cases and
-  170 live cases. See the [dated report](docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results)
+  170 live cases. See the [dated report](docs/SELF_ATTACK_STATUS_2026-10-31.md#historical-results)
   for tested scope and limitations.
 
 ## [0.1.1] - 2026-09-12

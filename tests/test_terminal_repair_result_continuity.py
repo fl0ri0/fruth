@@ -134,7 +134,8 @@ def test_scheduled_saved_repair_closes_with_historical_result(tmp_path, monkeypa
     """Real projection -> claimed worker -> writes -> freeze -> recovery."""
     from tests.fake_backends import FakeBackendHarness
 
-    with FakeBackendHarness() as harness:
+    original_invoke = web._invoke_internal_api_json_route
+    with FakeBackendHarness() as harness, monkeypatch.context() as overrides:
         site_root = harness.artifacts_dir / 'site'
         site_root.mkdir()
         prompt, graph, payload, html, css, repaired_html = missing_image_fixture(site_root)
@@ -153,8 +154,8 @@ def test_scheduled_saved_repair_closes_with_historical_result(tmp_path, monkeypa
         runtime = replace(web._LATE_FILL_RUNTIME, log_unified_event=lambda **e: events.append(e))
         for instance in harness.instances.values():
             instance['runtime_status'].update(process_alive=True, port_listening=True)
-        monkeypatch.setattr(runtime, 'load_running_instances', lambda: list(harness.instances.values()))
-        monkeypatch.setattr(runtime, 'merge_instances_with_runtime_status', lambda entries, **kw: entries)
+        overrides.setattr(runtime, 'load_running_instances', lambda: list(harness.instances.values()))
+        overrides.setattr(runtime, 'merge_instances_with_runtime_status', lambda entries, **kw: entries)
 
         def provider(**kwargs):
             data = kwargs['payload']
@@ -176,7 +177,7 @@ def test_scheduled_saved_repair_closes_with_historical_result(tmp_path, monkeypa
                         'saved_text_artifacts': saved}, 200
             return {'content': repaired_css if target == str(css) else repaired_html}, 200
 
-        monkeypatch.setattr(web, '_invoke_internal_api_json_route', provider)
+        overrides.setattr(web, '_invoke_internal_api_json_route', provider)
         with web.app.app_context():
             queued, status = runtime.finalize_terminal_materialization_contract(
                 payload, request_payload=request, route_payload={'route_runtime': {'request_phase_graph': graph}},
@@ -249,3 +250,4 @@ def test_scheduled_saved_repair_closes_with_historical_result(tmp_path, monkeypa
         with web.app.app_context():
             runtime.complete_response_late_fill(**handoff)
         assert len(calls) == before
+    assert web._invoke_internal_api_json_route is original_invoke

@@ -1,3 +1,7 @@
+import pytest
+from process_launch_test_support import mock_launch_ownership
+import fruth_runtime.ollama_model_manager as _ownership_owner_0
+
 import tempfile
 import unittest
 from pathlib import Path
@@ -50,8 +54,10 @@ class OllamaModelManagerTests(unittest.TestCase):
 
     @patch('fruth_runtime.ollama_model_manager.subprocess.Popen')
     @patch('fruth_runtime.ollama_model_manager.is_port_listening', return_value=True)
+    @patch('fruth_runtime.ollama_model_manager.inspect_listener', return_value=SimpleNamespace(
+        record={'backend': 'ollama', 'runtime_service': 'ollama_default'}))
     def test_existing_default_server_is_reused_without_launching(
-        self, _listening, start,
+        self, _owned, _listening, start,
     ):
         self.assertTrue(ollama_model_manager.ensure_default_server_running())
         start.assert_not_called()
@@ -66,8 +72,11 @@ class OllamaModelManagerTests(unittest.TestCase):
     @patch('fruth_runtime.ollama_model_manager.time.sleep', return_value=None)
     @patch('fruth_runtime.ollama_model_manager.subprocess.Popen')
     @patch('fruth_runtime.ollama_model_manager.is_port_listening', side_effect=[False, True])
+    @patch('fruth_runtime.ollama_model_manager.inspect_listener', return_value=SimpleNamespace(
+        pid=33333, record={'backend': 'ollama', 'runtime_service': 'ollama_default'}))
     def test_ensure_default_server_running_rotates_default_server_log(
         self,
+        _owned,
         _mock_is_port_listening,
         mock_popen,
         _mock_sleep,
@@ -80,13 +89,19 @@ class OllamaModelManagerTests(unittest.TestCase):
             stale_log = log_dir / 'ollama_default_server_11434.log'
             stale_log.write_text('old default\n', encoding='utf-8')
 
-            with patch.object(ollama_model_manager, 'LOG_DIR', log_dir):
+            with patch.object(ollama_model_manager, 'LOG_DIR', log_dir), \
+                    patch.object(ollama_model_manager, 'CONFIG_FILE', Path(tmpdir) / 'model_ports.json'):
                 ok = ollama_model_manager.ensure_default_server_running()
                 self.assertTrue(ok)
                 self.assertTrue(stale_log.exists())
                 self.assertEqual(stale_log.read_text(encoding='utf-8'), '')
                 archived_logs = list((log_dir / 'archive' / 'global').rglob('*.log'))
                 self.assertEqual(len(archived_logs), 1)
+                record, = ollama_model_manager.read_config()
+                self.assertEqual(record['pid'], 33333)
+                self.assertEqual(record['runtime_service'], 'ollama_default')
+                self.assertIn('process_identity', record)
+                self.assertIn('server_command', record)
 
     @patch('fruth_runtime.ollama_model_manager._observed_server_version', return_value='0.40.6')
     @patch('fruth_runtime.ollama_model_manager.wait_for_model_loaded', return_value=True)
@@ -134,3 +149,10 @@ class OllamaModelManagerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+@pytest.fixture(autouse=True)
+def _mock_native_launch_evidence(monkeypatch):
+    # This module mocks native launches; test the ownership OS boundary separately.
+    mock_launch_ownership(monkeypatch, _ownership_owner_0)

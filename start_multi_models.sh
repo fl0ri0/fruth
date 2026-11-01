@@ -7,8 +7,9 @@ cd "$(dirname "$0")" # Ensure we are in the fruth repo root.
 
 OLLAMA_CLI="/opt/homebrew/bin/ollama"
 MAIN_VENV_DIR=".venv"
-REPO_PYTHON="python3"
+REPO_PYTHON=""
 REQUIREMENTS_FILE="requirements.txt" # In the fruth repo root.
+BOOTSTRAP_PREFLIGHT="scripts/bootstrap_preflight.py"
 UNIFIED_STARTUP_SCRIPT="scripts/startup_model_manager.py"
 WEBSERVER_SCRIPT="fruth_webserver.py"
 WEBSERVER_PORT="5011"
@@ -34,16 +35,16 @@ export FRUTH_APPLY_ENFORCED_POLICY
 SYSTEM_COLOR="\033[90m"
 RESET_COLOR="\033[0m"
 
-quiet_lsof() {
-    lsof -w "$@"
+run_repo_python() {
+    "$REPO_PYTHON" "$@"
 }
 
-run_repo_python() {
-    if [[ -x "$REPO_PYTHON" ]]; then
-        "$REPO_PYTHON" "$@"
-        return
-    fi
-    python3 "$@"
+bootstrap_repair_message() {
+    echo "   Startup does not repair existing environments automatically."
+    echo "   See README.md (Python environment recovery). With a valid main interpreter,"
+    echo "   explicitly repair while Fruth is stopped:"
+    echo "     .venv/bin/python3 -m pip install -r requirements.txt"
+    echo "     .venv/bin/python3 -I -B scripts/bootstrap_preflight.py --venv .venv --requirements requirements.txt"
 }
 
 preflight_ollama_service_ownership() {
@@ -80,35 +81,56 @@ echo -e "${SYSTEM_COLOR}--- Full startup: models + web UI ---${RESET_COLOR}"
 
 # --- Virtual environment & dependencies ---
 echo -e "\n${SYSTEM_COLOR}--- Step 1: check/activate virtual environment ---${RESET_COLOR}"
-if [ ! -d "$MAIN_VENV_DIR" ]; then
+if [ ! -f "$REQUIREMENTS_FILE" ] || [ ! -r "$REQUIREMENTS_FILE" ]; then
+    echo "❌ Missing or unreadable $REQUIREMENTS_FILE. Restore it from the matching Fruth source before startup."
+    exit 1
+fi
+if [ ! -f "$BOOTSTRAP_PREFLIGHT" ]; then
+    echo "❌ Missing $BOOTSTRAP_PREFLIGHT. Restore the complete Fruth source before startup."
+    exit 1
+fi
+if [ ! -e "$MAIN_VENV_DIR" ] && [ ! -L "$MAIN_VENV_DIR" ]; then
+    BOOTSTRAP_PYTHON=$(type -P python3)
+    if [ -z "$BOOTSTRAP_PYTHON" ] || ! "$BOOTSTRAP_PYTHON" -I -B "$BOOTSTRAP_PREFLIGHT" --requirements "$REQUIREMENTS_FILE" --interpreter-only; then
+        echo "❌ Select a working Python 3.11+ linked to OpenSSL 1.1.1+ on PATH before creating .venv. See README.md."
+        exit 1
+    fi
     echo "🔧 Creating virtual environment ($MAIN_VENV_DIR)..."
-    python3 -m venv "$MAIN_VENV_DIR"
+    "$BOOTSTRAP_PYTHON" -I -m venv "$MAIN_VENV_DIR"
     if [ $? -ne 0 ]; then echo "❌ Failed to create the virtual environment."; exit 1; fi
     NEEDS_INSTALL=true
 else
     NEEDS_INSTALL=false
 fi
-# Always activate it.
-if [ ! -f "$MAIN_VENV_DIR/bin/activate" ]; then echo "❌ Could not find the activate script in the virtual environment."; exit 1; fi
-source "$MAIN_VENV_DIR/bin/activate"
-if [[ -x "$MAIN_VENV_DIR/bin/python3" ]]; then
-    REPO_PYTHON="$MAIN_VENV_DIR/bin/python3"
+# Never fall back to PATH Python or a backend environment for an existing venv.
+REPO_PYTHON="$PWD/$MAIN_VENV_DIR/bin/python3"
+if [ ! -x "$REPO_PYTHON" ] || [ ! -f "$MAIN_VENV_DIR/bin/activate" ]; then
+    echo "❌ Missing/broken main venv interpreter or activate script: $REPO_PYTHON"
+    bootstrap_repair_message
+    exit 1
 fi
-echo "🐍 Virtual environment activated."
+if ! "$REPO_PYTHON" -I -B "$BOOTSTRAP_PREFLIGHT" --venv "$MAIN_VENV_DIR" --requirements "$REQUIREMENTS_FILE" --interpreter-only; then
+    bootstrap_repair_message
+    exit 1
+fi
 
 # Bootstrap only a newly created environment. Existing environments are managed
 # explicitly by the user; startup/restart must not install or update packages.
 if $NEEDS_INSTALL; then
      echo "🔧 Installing dependencies from $REQUIREMENTS_FILE..."
-    if [ -f "$REQUIREMENTS_FILE" ]; then
-        "$REPO_PYTHON" -m pip --disable-pip-version-check install -r "$REQUIREMENTS_FILE"
-        if [ $? -ne 0 ]; then echo "❌ Failed to install dependencies."; deactivate; exit 1; fi
-    else
-        echo "⚠️  $REQUIREMENTS_FILE not found. Installing required packages manually..."
-        "$REPO_PYTHON" -m pip --disable-pip-version-check install requests Flask Flask-Cors
-        if [ $? -ne 0 ]; then echo "❌ Failed to install the fallback packages."; deactivate; exit 1; fi
+    "$REPO_PYTHON" -m pip --disable-pip-version-check install -r "$REQUIREMENTS_FILE"
+    if [ $? -ne 0 ]; then
+        echo "❌ Failed to install dependencies. The partial .venv is retained for explicit repair."
+        bootstrap_repair_message
+        exit 1
     fi
 fi
+if ! "$REPO_PYTHON" -I -B "$BOOTSTRAP_PREFLIGHT" --venv "$MAIN_VENV_DIR" --requirements "$REQUIREMENTS_FILE"; then
+    bootstrap_repair_message
+    exit 1
+fi
+source "$MAIN_VENV_DIR/bin/activate"
+echo "🐍 Virtual environment validated and activated."
 # --- End virtual environment & dependencies ---
 
 echo -e "\n${SYSTEM_COLOR}--- Step 1.5: check Ollama ownership ---${RESET_COLOR}"
@@ -122,7 +144,7 @@ if [ ! -f "$UNIFIED_STARTUP_SCRIPT" ]; then
      echo "❌ Could not find $UNIFIED_STARTUP_SCRIPT."
      exit 1
 fi
-python3 "$UNIFIED_STARTUP_SCRIPT"
+"$REPO_PYTHON" "$UNIFIED_STARTUP_SCRIPT"
 if [ $? -ne 0 ]; then
     echo "❌ Failed while running $UNIFIED_STARTUP_SCRIPT."
     exit 1
@@ -137,12 +159,14 @@ if [ ! -f "$WEBSERVER_SCRIPT" ]; then
      exit 1;
 fi
 
-# Check the port first.
-if quiet_lsof -iTCP:$WEBSERVER_PORT -sTCP:LISTEN -t >/dev/null ; then
-    echo "✅ The webserver is already running on port $WEBSERVER_PORT."
+# Port occupancy is discovery only. A foreign/ambiguous listener is a failure.
+run_repo_python -B -m fruth_core.process_ownership check-webserver --root "$PWD" --port "$WEBSERVER_PORT"
+WEBSERVER_CHECK=$?
+if [[ "$WEBSERVER_CHECK" -eq 0 ]]; then
+    echo "✅ This checkout's verified Fruth webserver is already running on port $WEBSERVER_PORT."
     echo "   Dashboard:       http://127.0.0.1:$WEBSERVER_PORT/"
     echo "   Dashboard alias: http://127.0.0.1:$WEBSERVER_PORT/dashboard"
-else
+elif [[ "$WEBSERVER_CHECK" -eq 3 ]]; then
     echo "🚀 Starting $WEBSERVER_SCRIPT in the background on port $WEBSERVER_PORT..."
     LOG_DIR="logs"; mkdir -p "$LOG_DIR"
     FLASK_LOG="${LOG_DIR}/flask_webserver.log"
@@ -161,15 +185,14 @@ prepare_clean_global_log(
 PY
     export FRUTH_GRAPH_REBASE_OPERATOR_TOKEN="$GRAPH_REBASE_OPERATOR_TOKEN"
     export FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY="$GRAPH_REBASE_OPERATOR_IDENTITY"
-    nohup "$REPO_PYTHON" "$WEBSERVER_SCRIPT" > "$FLASK_LOG" 2>&1 &
-    WEBSERVER_PID=$!
+    run_repo_python -B -m fruth_core.process_ownership launch-webserver --root "$PWD" --port "$WEBSERVER_PORT"
+    WEBSERVER_LAUNCH=$?
     unset FRUTH_GRAPH_REBASE_OPERATOR_TOKEN
     unset FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY
     GRAPH_REBASE_OPERATOR_TOKEN=""
     GRAPH_REBASE_OPERATOR_IDENTITY=""
-    sleep 2 # Give the server time to start.
-    if quiet_lsof -iTCP:$WEBSERVER_PORT -sTCP:LISTEN -t >/dev/null ; then
-        echo "✅ Webserver started successfully (PID: $WEBSERVER_PID)."
+    if [[ "$WEBSERVER_LAUNCH" -eq 0 ]]; then
+        echo "✅ Verified Fruth webserver started successfully."
         echo "   Dashboard:       http://127.0.0.1:$WEBSERVER_PORT/"
         echo "   Dashboard alias: http://127.0.0.1:$WEBSERVER_PORT/dashboard"
         echo "   (The server is running in the background, logs in $FLASK_LOG)"
@@ -177,6 +200,9 @@ PY
         echo "❌ Failed to start the webserver. See $FLASK_LOG."
         exit 1
     fi
+else
+    echo "❌ Webserver port $WEBSERVER_PORT has unresolved ownership; Fruth startup failed."
+    exit 1
 fi
 # --- End webserver start ---
 

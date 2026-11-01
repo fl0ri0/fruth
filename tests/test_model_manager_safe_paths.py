@@ -3,6 +3,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
+from process_launch_test_support import mock_launch_ownership
+import fruth_runtime.ollama_model_manager as ownership_owner
+
 from fruth_runtime.ollama_model_manager import (
     build_ollama_env,
     list_local_model_entries,
@@ -10,6 +14,12 @@ from fruth_runtime.ollama_model_manager import (
     start_model,
     wait_for_embedding_model_loaded,
 )
+
+
+@pytest.fixture(autouse=True)
+def mocked_launch_ownership(monkeypatch):
+    # Native launches are mocked here; real capture/rejection has separate tests.
+    mock_launch_ownership(monkeypatch, ownership_owner)
 
 
 class SafeLogFragmentTests(unittest.TestCase):

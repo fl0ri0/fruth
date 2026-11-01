@@ -280,6 +280,10 @@ def test_real_learning_and_readiness_collectors_gate_fixture_rotation(tmp_path, 
         sidecar.unlink()
     for name in ('collect_self_learning_retention_roots.py', 'sync_graph_rebase_readiness_registry.py'):
         shutil.copy2(REPO_ROOT / 'scripts' / name, root / 'scripts' / name)
+    # These real collectors need the complete staged packages through PYTHONPATH;
+    # the minimal ownership-only copies would shadow their other dependencies.
+    for package in ('fruth_core', 'fruth_runtime', 'helpers'):
+        shutil.rmtree(root / package)
     env['PYTHONPATH'] = str(REPO_ROOT)
     result = run_isolated_cleanup(root, env, '--archive')
     assert result.returncode == 0, result.stderr or result.stdout

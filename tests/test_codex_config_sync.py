@@ -7,6 +7,17 @@ from fruth_integrations.codex.config_sync import build_provider_blocks, sync_cod
 
 
 class CodexConfigSyncTests(unittest.TestCase):
+    def test_default_service_record_is_not_a_model_provider(self):
+        blocks, count = build_provider_blocks([
+            {'instance_id': 'ollama-default', 'runtime_service': 'ollama_default',
+             'backend': 'ollama', 'port': 11434, 'pid': 12345},
+            {'instance_id': 'model-1', 'model': 'fixture', 'port': 11435},
+        ])
+        self.assertEqual(count, 1)
+        self.assertNotIn('11434', blocks)
+        self.assertNotIn('ollama-default', blocks)
+        self.assertIn('local-11435', blocks)
+
     def test_build_provider_blocks_uses_control_plane_adapter_when_instance_id_exists(self):
         instances = [
             {

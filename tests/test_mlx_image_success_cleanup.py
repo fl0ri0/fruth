@@ -1,4 +1,8 @@
 """Native image residency cleanup, without models or production state."""
+import pytest
+from process_launch_test_support import mock_launch_ownership
+import fruth_runtime.mlx_model_manager as _ownership_owner_0
+
 import asyncio
 import gc
 import json
@@ -296,3 +300,10 @@ class ImageCleanupTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+@pytest.fixture(autouse=True)
+def _mock_native_launch_evidence(monkeypatch):
+    # This module mocks native launches; test the ownership OS boundary separately.
+    mock_launch_ownership(monkeypatch, _ownership_owner_0)

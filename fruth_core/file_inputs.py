@@ -53,6 +53,9 @@ def save_upload_to_temp(upload) -> Path:
     temp = tempfile.NamedTemporaryFile(prefix='fruth_upload_', suffix=suffix, delete=False)
     try:
         upload.save(temp.name)
+    except BaseException:
+        Path(temp.name).unlink(missing_ok=True)
+        raise
     finally:
         temp.close()
     return Path(temp.name)
@@ -95,7 +98,11 @@ def save_local_path_to_temp(raw_path: str) -> tuple[Path, Path]:
     temp = tempfile.NamedTemporaryFile(prefix='fruth_upload_', suffix=suffix, delete=False)
     temp_path = Path(temp.name)
     temp.close()
-    shutil.copy2(source, temp_path)
+    try:
+        shutil.copy2(source, temp_path)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
     return source, temp_path
 
 

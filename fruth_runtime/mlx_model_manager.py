@@ -23,6 +23,9 @@ from helpers.tts_model_metadata import read_snapshot_model_metadata
 from helpers.image_model_metadata import image_snapshot_fingerprint
 from fruth_core.image_generation import MLX_IMAGE_MIN_SIDE, MLX_IMAGE_MAX_SIDE, MLX_IMAGE_SIDE_STEP
 from fruth_core.start_policy import attach_start_audit, validate_start_source
+from fruth_core.process_ownership import (
+    capture_spawned_process, verify_spawned_process, terminate_spawned_process,
+)
 from fruth_core.status import remove_instance_status
 from fruth_runtime.child_process_env import sanitized_child_process_env
 from fruth_runtime.ollama_model_manager import kill_processes_on_port  # type: ignore
@@ -865,7 +868,7 @@ def load_config_entries():
 
 
 def write_config_entries(entries):
-    write_registry_entries(entries, path=CONFIG_FILE, preserve_agents=True, sync_external=False)
+    write_registry_entries(entries, path=CONFIG_FILE, preserve_agents=True, preserve_services=True, sync_external=False)
 
 
 def prune_stale_mlx_entries() -> None:
@@ -1242,45 +1245,49 @@ def start_mlx_model(
             }
         )
     if server_kind == "mlx_whisper":
-        log, pid = launch_whisper_server(selected["path"], port)
+        log, spawned = launch_whisper_server(selected["path"], port)
     elif server_kind == "mlx_audio":
-        log, pid = launch_audio_server(port)
+        log, spawned = launch_audio_server(port)
     elif server_kind == "mlx_vlm":
         if resolved_capability == CAPABILITY_EMBEDDING:
-            log, pid = launch_vlm_server(port, embedding_model=selected['path'])
+            log, spawned = launch_vlm_server(port, embedding_model=selected['path'])
         elif resolved_capability == CAPABILITY_IMAGE_GENERATION:
-            log, pid = launch_vlm_server(port, image_model=selected['path'])
+            log, spawned = launch_vlm_server(port, image_model=selected['path'])
         else:
-            log, pid = launch_vlm_server(port, launch_defaults=effective_launch_defaults)
+            log, spawned = launch_vlm_server(port, launch_defaults=effective_launch_defaults)
     elif server_kind == "mlx_lm":
-        log, pid = launch(selected["path"], port, launch_defaults=effective_launch_defaults)
+        log, spawned = launch(selected["path"], port, launch_defaults=effective_launch_defaults)
     else:
         raise RuntimeError(
             f"MLX server kind '{server_kind}' is not currently supported for '{repo_id}'."
         )
-    if not wait_for_port(port):
-        kill_processes_on_port(port)
-        raise RuntimeError(f"MLX model '{repo_id}' did not open port {port}. See {log}.")
+    try:
+        if not wait_for_port(port):
+            raise RuntimeError(f"MLX model '{repo_id}' did not open port {port}. See {log}.")
 
-    instance_record = build_instance_record(
-        selected["repo"],
-        selected["path"],
-        port,
-        log,
-        capability=capability,
-        pid=pid,
-        launch_defaults=effective_launch_defaults,
-    )
-    instance_record = attach_start_audit(
-        instance_record,
-        start_source=normalized_start_source,
-        context='mlx_start_model',
-        extra={'backend': 'mlx', 'capability': resolved_capability},
-    )
-    if register_instance:
-        register_mlx_instance(instance_record)
-        schedule_recent_mlx_instance_reconciliation(instance_record)
-    return instance_record
+        instance_record = build_instance_record(
+            selected["repo"],
+            selected["path"],
+            port,
+            log,
+            capability=capability,
+            pid=spawned.pid,
+            launch_defaults=effective_launch_defaults,
+        )
+        instance_record.update(verify_spawned_process(spawned, port=port))
+        instance_record = attach_start_audit(
+            instance_record,
+            start_source=normalized_start_source,
+            context='mlx_start_model',
+            extra={'backend': 'mlx', 'capability': resolved_capability},
+        )
+        if register_instance:
+            register_mlx_instance(instance_record)
+            schedule_recent_mlx_instance_reconciliation(instance_record)
+        return instance_record
+    except Exception:
+        terminate_spawned_process(spawned)
+        raise
 
 def resolve_mlx_python(required_module: str = "mlx_lm") -> str:
     global _RESOLVED_MLX_PYTHON
@@ -1360,7 +1367,7 @@ def launch(model_path: str, port: int, launch_defaults: Optional[dict[str, Any]]
             start_new_session=True,
             env=sanitized_child_process_env(),
         )
-    return log, proc.pid
+    return log, capture_spawned_process(proc, cmd)
 
 
 def launch_vlm_server(
@@ -1420,7 +1427,7 @@ def launch_vlm_server(
             start_new_session=True,
             env=child_env,
         )
-    return log, proc.pid
+    return log, capture_spawned_process(proc, cmd)
 
 
 def launch_audio_server(port: int):
@@ -1454,7 +1461,7 @@ def launch_audio_server(port: int):
             start_new_session=True,
             env=sanitized_child_process_env(),
         )
-    return log, proc.pid
+    return log, capture_spawned_process(proc, cmd)
 
 
 def launch_whisper_server(model_path: str, port: int):
@@ -1490,7 +1497,7 @@ def launch_whisper_server(model_path: str, port: int):
             start_new_session=True,
             env=sanitized_child_process_env(),
         )
-    return log, proc.pid
+    return log, capture_spawned_process(proc, cmd)
 
 def decode_repo(models_dir_name: str) -> str:
     # models--org--repo  ->  org/repo

@@ -1110,3 +1110,31 @@ def execution_input_artifact_ref(payload: Mapping[str, Any]) -> Optional[str]:
         and str(item.get('artifact_ref') or item.get('ref') or '').strip()
     }
     return next(iter(refs)) if len(refs) == 1 else None
+
+
+def _projection_token(value: Any) -> str:
+    return str(value or '').strip()
+
+
+def _artifact_projection_type(record: Mapping[str, Any]) -> str:
+    token = _projection_token(
+        record.get('type')
+        or record.get('kind')
+        or record.get('output_type')
+    ).lower()
+    if token == 'document':
+        return 'text'
+    return token
+
+
+def _artifact_type_aliases(value: Any) -> set[str]:
+    token = _projection_token(value).lower()
+    if not token:
+        return set()
+    if token in {'text', 'document'}:
+        return {'text', 'document'}
+    if token in {'image', 'png', 'jpg', 'jpeg', 'webp'}:
+        return {'image', 'png', 'jpg', 'jpeg', 'webp'}
+    if token in {'audio', 'wav', 'mp3', 'm4a'}:
+        return {'audio', 'wav', 'mp3', 'm4a'}
+    return {token}

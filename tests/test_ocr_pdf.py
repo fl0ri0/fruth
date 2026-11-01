@@ -114,7 +114,9 @@ def test_text_extraction_keeps_digital_text_and_exposes_mixed_coverage(tmp_path)
     assert len(warnings) == 1
     assert '1 PDF page(s)' in warnings[0]
     assert 'absent' in warnings[0]
-    assert ocr_pdf.extract_pdf_text_content(path, max_chars=4) == 'Page'
+    from fruth_core.pdf_preparation import PdfPreparationError
+    with pytest.raises(PdfPreparationError, match='character budget'):
+        ocr_pdf.extract_pdf_text_content(path, max_chars=4)
     scan = write_pdf(tmp_path / 'scan.pdf', scanned=True)
     assert ocr_pdf.extract_pdf_text_content(scan) == ''
 
@@ -183,14 +185,14 @@ def test_pdf_user_unit_preserves_physical_page_size(native, tmp_path):
 
 
 def test_missing_native_dependency_and_unsupported_platform_fail_explicitly(tmp_path):
+    # Dependency/platform checks belong to the child algorithm; parent mocks do
+    # not cross a fresh interpreter boundary.
     with patch.dict(sys.modules, {'Quartz': None}), patch.object(ocr_pdf.sys, 'platform', 'darwin'):
-        pages, total, warnings = ocr_pdf.render_pdf_pages_to_base64(tmp_path / 'unused.pdf')
-        assert pages == [] and total == 0
-        assert 'requirements.txt' in warnings[0]
+        with pytest.raises(ValueError, match='requirements.txt'):
+            ocr_pdf._open_native_pdf(tmp_path / 'unused.pdf')
     with patch.object(ocr_pdf.sys, 'platform', 'linux'):
-        pages, total, warnings = ocr_pdf.render_pdf_pages_to_base64(tmp_path / 'unused.pdf')
-        assert pages == [] and total == 0
-        assert 'requires macOS' in warnings[0]
+        with pytest.raises(ValueError, match='requires macOS'):
+            ocr_pdf._open_native_pdf(tmp_path / 'unused.pdf')
 
 
 def test_unreadable_empty_and_locked_pdfs(native, tmp_path):
@@ -210,8 +212,24 @@ def test_unreadable_empty_and_locked_pdfs(native, tmp_path):
 
 
 def test_failed_page_never_renumbers_remaining_pages(native, tmp_path):
-    path = write_pdf(tmp_path / 'failed-page.pdf', rotations=(0, 0, 0))
-    with patch.object(ocr_pdf, '_render_native_pdf_page', side_effect=[('first', False), ValueError('page 2 failed')]):
-        pages, total, warnings = ocr_pdf.render_pdf_pages_to_base64(path)
-    assert pages == [] and total == 3
-    assert 'page 2 failed' in warnings[0]
+    # Direct algorithm fault injection is distinct from the real process tests.
+    from dataclasses import asdict
+    from fruth_core.pdf_preparation import PdfLimits, PROTOCOL, VERSION, digest_bytes
+    path = write_pdf(tmp_path / 'source.pdf', rotations=(0, 0, 0))
+    request = dict(protocol=PROTOCOL, version=VERSION, invocation_id='page-failure',
+        source_sha256=digest_bytes(path.read_bytes()), source_bytes=path.stat().st_size,
+        operation='render', controls=dict(max_pages=None, dpi=72, max_image_side_px=2400),
+        limits=asdict(PdfLimits()))
+    def render(*args, page_index, output_path, **kwargs):
+        if page_index == 1:
+            raise ValueError('page 2 failed')
+        output_path.write_bytes(b'first')
+        return 1, 1, False
+    with patch.object(ocr_pdf, '_render_native_pdf_page', side_effect=render):
+        ocr_pdf._prepare_pdf_files(tmp_path, request)
+    import json
+    result = json.loads((tmp_path/'results/manifest.json').read_text())
+    assert result['status'] == 'unreadable' and result['total_pages'] == 3
+    assert result['selected_pages'] == [] and result['files'] == []
+    assert 'page 2 failed' in result['warnings'][0]
+    assert [p.name for p in (tmp_path/'results').iterdir()] == ['manifest.json']

@@ -1,13 +1,13 @@
-# Known Limitations in Fruth 0.1.8
+# Known Limitations in Fruth 0.1.9
 
-This list records limits of the current 0.1.8 source checkout. Working-source
+This list records limits of the current 0.1.9 source checkout. Working-source
 changes do not retroactively alter previously published release archives.
 It is not a roadmap or a general backlog.
 
 ## Platform and Packaging
 
 - The primary tested platform is macOS on Apple Silicon. Windows, Linux, and
-  Intel Mac behavior is not guaranteed for 0.1.8.
+  Intel Mac behavior is not guaranteed for 0.1.9.
 - Distribution is a source archive. It is not a signed or notarized macOS app,
   a container image, or a package-manager release.
 - Backend packages and model weights are not bundled. A capability can be
@@ -23,7 +23,10 @@ It is not a roadmap or a general backlog.
   warnings; password-locked or unreadable PDFs fail explicitly. Python environments
   that sandbox access to macOS application frameworks may prevent PDFKit from
   initializing; native rendering tests need access to those system services.
-- The bundled Fruth skill is Codex-specific in 0.1.8 and must be copied into
+- Per-page summaries are model judgments. A page-local answer can incorrectly
+  describe other pages as unreadable even when their summaries follow. Complete
+  page dispatch and durable completion do not certify the prose's consistency.
+- The bundled Fruth skill is Codex-specific in 0.1.9 and must be copied into
   the user's Codex skills directory manually; marketplace/plugin distribution
   and other agent integrations are outside this release.
 - The current dashboard source serves a fixed Axios 1.20.0 browser build locally,
@@ -77,9 +80,9 @@ It is not a roadmap or a general backlog.
   no authoritative remaining-quota or reset-time API.
 - The latest AFM campaign has passing recovery evidence for its three initially
   incomplete cells. PCC Cloud has passing evidence for all 170 positions across
-  two source epochs. Subsequent reference fixes have matching offline and targeted
+  two source epochs. Subsequent reference, lifecycle and PDF changes have scoped offline and targeted
   local validation; they were not rerun as a complete AFM/PCC matrix. Cloud Pro
-  remains untested. See the [current validation status](SELF_ATTACK_STATUS_2026-10-29.md)
+  remains untested. See the [current validation status](SELF_ATTACK_STATUS_2026-10-31.md)
   for original verdicts and exact source identities.
 - PDF page dispatch and model transcription quality are separate. The observed
   four-page AFM response contained reading errors despite complete page coverage.
@@ -117,7 +120,7 @@ It is not a roadmap or a general backlog.
   interpreted semantically by the selected model and its available tools.
 - The fixed request limits are 5 files, 100 MiB per file, and 250 MiB in total.
   URLs, folders, and symbolic links are not accepted.
-- Direct API-key management remains outside this optional route's 0.1.8 contract.
+- Direct API-key management remains outside this optional route's 0.1.9 contract.
   Apple PCC is a separate integration with its own availability and sharing rules.
 
 ## Compatibility
@@ -126,4 +129,4 @@ It is not a roadmap or a general backlog.
   predate 0.1.0.
 - Public `0.x` interfaces may evolve as the runtime contracts mature.
 
-See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.8 release boundary.
+See [Release Scope](RELEASE_SCOPE.md) for the supported 0.1.9 release boundary.

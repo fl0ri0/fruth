@@ -496,9 +496,20 @@ older descriptions in a helper. Provider projections are never runtime authority
 
 The downstream Codex bridge in `fruth_integrations/codex/execution.py` runs a
 bounded `codex exec` in a neutral temporary directory with `--ephemeral`,
-`--ignore-user-config`, `--ignore-rules` and a read-only sandbox. It supplies no
-model/reasoning override, so global user configuration does not select its model;
-the exposed policy remains the Codex CLI default. `external:codex`, `codex:auto`
+`--ignore-user-config`, `--ignore-rules` and `--sandbox read-only`. Fruth explicitly
+supplies the current bounded prompt, promoted context and selected files.
+Staging validates regular files, limits and copied-byte digests; it rejects leaf
+symlinks but accepts regular files through symlinked parent directories. The
+command sandbox restricts writes without establishing selected-file-only reads.
+Client-side file/image/instruction loading and enabled MCP, app, browser or
+other tools have separate access boundaries. No provider disclosure of
+unselected data was demonstrated by the offline investigation.
+
+`--ignore-user-config` omits the user `config.toml`; `--ignore-rules` omits
+user/project execpolicy `.rules` files. Neither promises to suppress all
+instructions, tools, authentication state or managed settings. The bridge
+supplies no model/reasoning override; the executable's effective defaults and
+applicable managed policy still matter. `external:codex`, `codex:auto`
 and `codex_cli` are logical integration identities, not an assertion about the
 underlying model. Model selection and full local-provider compatibility are
 separate product decisions; do not change isolation to inherit global settings.
@@ -508,6 +519,11 @@ can be detached. Its cancellation, timeout and result collection belong to the
 owning response. Ephemeral execution omits session rollout persistence; it does
 not imply no temporary files or no other execution effects. Preserve the bounded
 task, staged-input and `BLOCKED:` protocol in the skill.
+
+This bridge also serves ChatGPT selected as the preferred (primary or fallback)
+interpretive inference target and later eligible graph-owned chat phases.
+The same consent, input validation and downstream access limitations apply;
+choosing a preference does not create a separate confinement boundary.
 
 ## Current Boundary
 

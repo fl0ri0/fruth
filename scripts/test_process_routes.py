@@ -181,6 +181,23 @@ class ProcessRoutes:
             allowed.update(FRUTH_GRAPH_REBASE_OPERATOR_TOKEN='canonical-token',
                 FRUTH_GRAPH_REBASE_OPERATOR_IDENTITY='canonical-identity',
                 GRAPH_REBASE_OPERATOR_TOKEN='preexported-token', GRAPH_REBASE_OPERATOR_IDENTITY='preexported-identity')
+        if module == 'test_codex_execution.py':
+            for key in ('FAKE_CODEX_CALL_LOG', 'FAKE_CODEX_STATUS_COUNTER',
+                        'FAKE_CODEX_EXEC_CAPTURE', 'CODEX_HOME', 'FRUTH_CODEX_EXECUTABLE'):
+                if key in env:
+                    allowed[key] = str(self.temporary(env[key]))
+            choices = {
+                'FAKE_CODEX_MODE': {'success', 'auth_required', 'status_error',
+                    'exec_timeout', 'exec_fail', 'exec_loud_fail', 'exec_empty',
+                    'exec_large', 'exec_warning'},
+                'FAKE_CODEX_OUTPUT': {'safe final text'},
+                'OPENAI_API_KEY': {'preserved-auth-mechanism', 'sk-super-secret-value'},
+            }
+            for key, values in choices.items():
+                if env.get(key) in values:
+                    allowed[key] = env[key]
+            if env.get('PATH') != baseline.get('PATH'):
+                allowed['PATH'] = str(self.temporary(env['PATH']))
         if module == 'test_native_process_routes.py' and supplied is not None and env.get('LC_ALL') == env.get('LANG') == 'C':
             # Capture's production owner pins locale and strips these dummy secrets.
             allowed.update(LC_ALL='C', LANG='C')
@@ -203,7 +220,29 @@ class ProcessRoutes:
         executables = []
         fixture = None
         route = None
-        if module in NODE_MODULES and len(argv) in (3,4) and argv[:2] == ['node','-e']:
+        if module == 'test_codex_execution.py':
+            executable = self.temporary(argv[0])
+            self.codex_fixture(executable)
+            self.temporary(cwd)
+            args = list(argv[1:])
+            prefix = ['exec', '--ephemeral', '--ignore-user-config', '--ignore-rules',
+                      '--skip-git-repo-check', '--sandbox', 'read-only', '--color',
+                      'never', '--output-last-message', str(cwd / 'last-message.txt')]
+            if args not in (['--version'], ['login', 'status']):
+                if args[:len(prefix)] != prefix or args[-1:] != ['-']:
+                    raise PermissionError('Fake Codex arguments differ from the bridge contract')
+                images = args[len(prefix):-1]
+                if len(images) % 2:
+                    raise PermissionError('Fake Codex image arguments differ')
+                for flag, image in zip(images[::2], images[1::2]):
+                    import re
+                    if (flag != '--image' or not re.fullmatch(r'inputs/input-0[1-5]\.(bmp|gif|jpeg|jpg|png|tif|tiff|webp)', image)
+                            or not self.temporary(cwd / image).is_file()):
+                        raise PermissionError('Fake Codex image path is not a staged input')
+            route = 'codex-fixture'
+            executables.extend([sys.executable, self.python,
+                str(Path(sys.base_prefix).resolve() / 'Resources/Python.app/Contents/MacOS/Python')])
+        elif module in NODE_MODULES and len(argv) in (3,4) and argv[:2] == ['node','-e']:
             if cwd != self.source or argv[2] not in self.programs[module] or not self.node:
                 raise PermissionError('Unrecognized maintained Node program/cwd')
             if len(argv) == 4:
@@ -313,7 +352,7 @@ class ProcessRoutes:
                 shim.chmod(0o755)
             executables.append(str(shim))
             env['PATH'] = str(bindir) + os.pathsep + env.get('PATH','')
-        snapshot = {}
+        snapshot = {str(command[0]): digest(command[0])} if route == 'codex-fixture' else {}
         if fixture:
             # Capture all fixture bytes, reject symlink escapes, and allow exec
             # only existing executable scripts in this one disposable fixture.
@@ -325,6 +364,29 @@ class ProcessRoutes:
                         self.fixture_executable(p, module)
                         executables.append(str(p))
         return route, command, cwd, env, executables, snapshot
+
+    def codex_fixture(self, path):
+        """Only the exact disposable script from the selected, hashed test owner."""
+        source = self.source_file(self.source / 'tests/test_codex_execution.py')
+        tree = ast.parse(source.read_text())
+        body = next(n.value.value for n in tree.body if isinstance(n, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == 'FAKE_CODEX_SOURCE' for t in n.targets)
+                    and isinstance(n.value, ast.Constant))
+        if (not path.is_file() or not os.access(path, os.X_OK)
+                or path.read_text() != f'#!{sys.executable}\n{body}'):
+            raise PermissionError('Executable differs from maintained fake Codex')
+
+    def validate_launch_options(self, route, positional, kw):
+        allowed = {'stdin', 'stdout', 'stderr', 'bufsize', 'text', 'encoding', 'errors',
+                   'universal_newlines', 'cwd', 'env', 'close_fds'}
+        # The real bridge owns a session for timeout cancellation. Only this exact
+        # non-spawning, finite fake may leave the worker group; never a general opt-in.
+        if route == 'codex-fixture' and kw.get('start_new_session') is True:
+            allowed.add('start_new_session')
+        if positional or set(kw) - allowed:
+            raise PermissionError('Unsupported process launch options')
+        if route == 'codex-fixture' and kw.get('start_new_session') is not True:
+            raise PermissionError('Fake Codex requires the production new-session contract')
 
     def fixture_executable(self, path, module):
         body = path.read_text()
@@ -417,13 +479,9 @@ class ProcessRoutes:
                 if isinstance(args, list) and len(args)>2 and args[2] == str(owner.source / 'tests/cold_process_child.py'):
                     super().__init__(args, *positional, **kw)
                     return
-                allowed_options = {'stdin','stdout','stderr','bufsize','text','encoding','errors',
-                                   'universal_newlines','cwd','env','close_fds'}
-                if positional or set(kw) - allowed_options:
-                    owner.record('rejected', reason='Unsupported process launch options')
-                    raise PermissionError('Unsupported process launch options')
                 try:
                     route, command, cwd, env, executables, snapshot = owner.classify(args, kw.get('cwd'), kw.get('env'))
+                    owner.validate_launch_options(route, positional, kw)
                 except (PermissionError, ValueError, OSError, IndexError) as exc:
                     owner.record('rejected', argv=args, reason=str(exc))
                     raise PermissionError(str(exc)) from exc
@@ -464,6 +522,7 @@ class ProcessRoutes:
                 owner.record('start', pid=self.pid, route=route, argv=command, cwd=str(cwd), environment=env,
                     executable_sha256=binary_hashes, deadline_monotonic=owner.deadlines[self.pid],
                     process_group=os.getpgid(self.pid),
+                    session_id=os.getsid(self.pid),
                     fixture_sha256=snapshot, profile=None if route == 'owned-ps' else profile,
                     containment='exact read-only owned-PID observation; no OS sandbox' if route == 'owned-ps' else 'macOS Seatbelt',
                     source_file_map_sha256=hashlib.sha256(json.dumps(owner.manifest,sort_keys=True).encode()).hexdigest())

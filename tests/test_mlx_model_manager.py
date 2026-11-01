@@ -1,3 +1,8 @@
+import pytest
+from process_launch_test_support import mock_launch_ownership
+import fruth_runtime.mlx_model_manager as _ownership_owner_0
+
+from types import SimpleNamespace
 import os
 import tempfile
 import unittest
@@ -511,8 +516,10 @@ class MlxModelManagerTests(unittest.TestCase):
     @patch("fruth_runtime.mlx_model_manager.port_in_use", return_value=False)
     @patch("fruth_runtime.mlx_model_manager.find_mlx_snapshots")
     @patch("fruth_runtime.mlx_model_manager.prune_stale_mlx_entries")
+    @patch("fruth_runtime.mlx_model_manager.resolve_mlx_python", return_value="/fixture/python")
     def test_start_mlx_model_registers_and_schedules_monitor(
         self,
+        _mock_python,
         _mock_prune,
         mock_find_snapshots,
         _mock_port_in_use,
@@ -528,7 +535,7 @@ class MlxModelManagerTests(unittest.TestCase):
             }
         ]
         mock_wait_for_port.return_value = True
-        mock_launch.return_value = (Path("/tmp/mlx_11506.log"), 43210)
+        mock_launch.return_value = (Path("/tmp/mlx_11506.log"), SimpleNamespace(pid=43210))
 
         instance = mlx_model_manager.start_mlx_model(
             "mlx-community/Qwen3.5-27B-4bit",
@@ -553,8 +560,10 @@ class MlxModelManagerTests(unittest.TestCase):
     @patch("fruth_runtime.mlx_model_manager.port_in_use", return_value=False)
     @patch("fruth_runtime.mlx_model_manager.find_mlx_snapshots")
     @patch("fruth_runtime.mlx_model_manager.prune_stale_mlx_entries")
+    @patch("fruth_runtime.mlx_model_manager.resolve_mlx_python", return_value="/fixture/python")
     def test_start_mlx_model_prefers_snapshot_vision_capability_over_chat_guess(
         self,
+        _mock_python,
         _mock_prune,
         mock_find_snapshots,
         _mock_port_in_use,
@@ -584,7 +593,7 @@ class MlxModelManagerTests(unittest.TestCase):
                 }
             ]
             mock_wait_for_port.return_value = True
-            mock_launch_vlm_server.return_value = (Path("/tmp/mlx_vlm_11507.log"), 54321)
+            mock_launch_vlm_server.return_value = (Path("/tmp/mlx_vlm_11507.log"), SimpleNamespace(pid=54321))
 
             instance = mlx_model_manager.start_mlx_model(
                 "mlx-community/Qwen3.5-9B-MLX-4bit",
@@ -613,8 +622,10 @@ class MlxModelManagerTests(unittest.TestCase):
     @patch("fruth_runtime.mlx_model_manager.port_in_use", return_value=False)
     @patch("fruth_runtime.mlx_model_manager.find_mlx_snapshots")
     @patch("fruth_runtime.mlx_model_manager.prune_stale_mlx_entries")
+    @patch("fruth_runtime.mlx_model_manager.resolve_mlx_python", return_value="/fixture/python")
     def test_start_mlx_model_uses_conservative_vlm_defaults_for_gemma4(
         self,
+        _mock_python,
         _mock_prune,
         mock_find_snapshots,
         _mock_port_in_use,
@@ -636,7 +647,7 @@ class MlxModelManagerTests(unittest.TestCase):
                 }
             ]
             mock_wait_for_port.return_value = True
-            mock_launch_vlm_server.return_value = (Path("/tmp/mlx_vlm_11508.log"), 65432)
+            mock_launch_vlm_server.return_value = (Path("/tmp/mlx_vlm_11508.log"), SimpleNamespace(pid=65432))
 
             instance = mlx_model_manager.start_mlx_model(
                 "mlx-community/gemma-4-31b-it-bf16",
@@ -798,3 +809,10 @@ class MlxModelManagerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+@pytest.fixture(autouse=True)
+def _mock_native_launch_evidence(monkeypatch):
+    # This module mocks native launches; test the ownership OS boundary separately.
+    mock_launch_ownership(monkeypatch, _ownership_owner_0)

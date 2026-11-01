@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-import base64
+import hashlib
+import resource
+import shutil
 import logging
 import math
 import re
@@ -31,60 +33,20 @@ def extract_pdf_text_content(
     *,
     warnings: Optional[list[str]] = None,
 ) -> str:
-    try:
-        from pypdf import PdfReader  # type: ignore
-    except ImportError:
-        return ''
-
-    chunks: list[str] = []
-    total_len = 0
-    pages_without_text = 0
-    try:
-        reader = PdfReader(str(pdf_path))
-        for page in reader.pages:
-            text = (page.extract_text() or '').strip()
-            if not text:
-                pages_without_text += 1
-                continue
-            if max_chars is not None:
-                remaining = max_chars - total_len
-                if remaining <= 0:
-                    logging.warning(
-                        'PDF text extraction truncated for %s at %s chars.',
-                        pdf_path,
-                        max_chars,
-                    )
-                    break
-                if len(text) > remaining:
-                    chunks.append(text[:remaining])
-                    total_len += remaining
-                    logging.warning(
-                        'PDF text extraction truncated for %s at %s chars.',
-                        pdf_path,
-                        max_chars,
-                    )
-                    break
-            chunks.append(text)
-            total_len += len(text)
-    except Exception as exc:  # noqa: BLE001
-        logging.warning('PDF text extraction failed for %s: %s', pdf_path, exc)
-        return ''
-
-    if chunks and pages_without_text and warnings is not None:
-        warnings.append(
-            f'{pages_without_text} PDF page(s) had no extractable text and are absent '
-            'from the text result. Use image analysis to include scanned content.'
-        )
-    return '\n\n'.join(chunks).strip()
+    from fruth_core.pdf_preparation import prepare_pdf
+    texts, _total, messages = prepare_pdf(pdf_path, 'text', max_chars=max_chars)
+    if warnings is not None:
+        warnings.extend(messages)
+    return texts[0] if texts else ''
 
 
 def _open_native_pdf(pdf_path: Path):
     if sys.platform != 'darwin':
-        raise RuntimeError('PDF page rendering requires macOS; text-layer extraction remains available.')
+        raise ValueError('PDF page rendering requires macOS; text-layer extraction remains available.')
     try:
         import Quartz  # type: ignore
     except ImportError as exc:
-        raise RuntimeError(
+        raise ValueError(
             'macOS PDF rendering requires pyobjc-framework-Quartz. '
             'Install the updated requirements.txt in the Fruth environment.'
         ) from exc
@@ -109,10 +71,11 @@ def _render_native_pdf_page(
     dpi: int,
     max_image_side_px: int,
     crop_margin_ratio: float = 0.0,
-) -> tuple[str, bool]:
+    output_path: Path,
+) -> tuple[int, int, bool]:
     import objc  # type: ignore
 
-    # Bound native temporaries to one page even on a long-lived request thread.
+    # Bound native temporaries to one page in the disposable worker.
     with objc.autorelease_pool():
         page = document.pageAtIndex_(page_index)
         if page is None:
@@ -160,81 +123,190 @@ def _render_native_pdf_page(
         image = quartz.CGBitmapContextCreateImage(context)
         if image is None:
             raise RuntimeError('Could not create the PDF page image.')
-        data = quartz.CFDataCreateMutable(None, 0)
-        destination = quartz.CGImageDestinationCreateWithData(data, 'public.png', 1, None)
+        # Encode to a private file under the worker's current RLIMIT_FSIZE.
+        # Avoid an unbounded CFData PNG buffer before the byte-budget check.
+        path_bytes = bytes(output_path)
+        url = quartz.CFURLCreateFromFileSystemRepresentation(None, path_bytes, len(path_bytes), False)
+        destination = quartz.CGImageDestinationCreateWithURL(url, 'public.png', 1, None)
         if destination is None:
             raise RuntimeError('Could not create the PDF page PNG destination.')
         quartz.CGImageDestinationAddImage(destination, image, None)
         if not quartz.CGImageDestinationFinalize(destination):
             raise RuntimeError('Could not encode the PDF page PNG.')
-        return base64.b64encode(bytes(data)).decode('ascii'), zoom + 1e-6 < base_zoom
+        return pixel_width, pixel_height, zoom + 1e-6 < base_zoom
 
 
 def render_pdf_pages_to_base64(
-    pdf_path: Path,
-    *,
-    max_pages: Optional[int] = None,
-    dpi: int = 180,
+    pdf_path: Path, *, max_pages: Optional[int] = None, dpi: int = 180,
     max_image_side_px: int = 2400,
 ) -> tuple[list[str], int, list[str]]:
-    warnings: list[str] = []
-    encoded_pages: list[str] = []
-    page_count = 0
-    try:
-        quartz, document = _open_native_pdf(pdf_path)
-        page_count = int(document.pageCount())
-        if max_pages is not None and max_pages < 0:
-            raise ValueError('PDF page limit must not be negative.')
-        limit = page_count if max_pages is None else min(page_count, max_pages)
-        did_downscale = False
-        for page_index in range(limit):
-            encoded, downscaled = _render_native_pdf_page(
-                quartz, document, page_index=page_index, dpi=dpi,
-                max_image_side_px=max_image_side_px,
-            )
-            encoded_pages.append(encoded)
-            did_downscale = did_downscale or downscaled
-        if did_downscale:
-            warnings.append(
-                f'PDF pages were limited to a maximum edge length of {max_image_side_px}px to keep OCR stable.'
-            )
-        if page_count > limit:
-            warnings.append(f'PDF contains {page_count} pages; only the first {limit} pages were rendered.')
-    except Exception as exc:  # noqa: BLE001
-        logging.warning('PDF rendering failed for %s: %s', pdf_path, exc)
-        warnings.append(f'PDF pages could not be rendered: {exc}')
-        # Never skip a page and shift every later page/retry identity.
-        return [], page_count, warnings
-
-    return encoded_pages, page_count, warnings
+    from fruth_core.pdf_preparation import prepare_pdf
+    return prepare_pdf(pdf_path, 'render', max_pages=max_pages, dpi=dpi,
+                       max_image_side_px=max_image_side_px)
 
 
 def render_single_pdf_page_to_base64(
-    pdf_path: Path,
-    *,
-    page_index: int,
-    dpi: int,
-    max_image_side_px: int = 2400,
+    pdf_path: Path, *, page_index: int, dpi: int, max_image_side_px: int = 2400,
     crop_margin_ratio: float = 0.0,
 ) -> Optional[str]:
+    from fruth_core.pdf_preparation import prepare_pdf
+    pages, _total, _warnings = prepare_pdf(pdf_path, 'page', page_index=page_index, dpi=dpi,
+        max_image_side_px=max_image_side_px, crop_margin_ratio=crop_margin_ratio)
+    return pages[0] if pages else None
+
+
+class _PdfOutputs:
+    """Worker-only incremental output accounting; publish a manifest last."""
+    def __init__(self, directory, request):
+        from fruth_core.pdf_preparation import PdfLimits
+        self.directory, self.request = directory / 'results', request
+        self.directory.mkdir()
+        self.limits = PdfLimits(**request['limits'])
+        self.files, self.selected, self.warnings = [], [], []
+        self.total, self.used = 0, 0
+
+    def limit(self, message):
+        from fruth_core.pdf_preparation import PdfPreparationError
+        raise PdfPreparationError('PDF_PREPARATION_LIMIT', message)
+
+    def remaining(self, *, text=False):
+        ceiling = min(self.limits.result_bytes, self.limits.output_bytes - self.used)
+        return min(ceiling, self.limits.text_bytes) if text else ceiling
+
+    def add(self, path, *, page_index=None, width=None, height=None):
+        size, digest = 0, hashlib.sha256()
+        with path.open('rb') as stream:
+            while block := stream.read(1024 * 1024):
+                size += len(block)
+                if size > self.remaining(text=page_index is None):
+                    self.limit('PDF result exceeds its per-result/aggregate output byte budget.')
+                digest.update(block)
+        self.used += size
+        self.files.append(dict(name=path.name, size_bytes=size, sha256=digest.hexdigest(),
+                               page_index=page_index, width=width, height=height))
+
+    def manifest(self, status='complete'):
+        from fruth_core.pdf_preparation import digest_bytes, json_bytes, MAX_MANIFEST_BYTES
+        value = {key: self.request[key] for key in
+                 ('protocol', 'version', 'invocation_id', 'source_sha256', 'operation', 'controls')}
+        value.update(request_sha256=digest_bytes(json_bytes(self.request)), status=status,
+                     total_pages=self.total, selected_pages=self.selected,
+                     warnings=self.warnings, files=self.files)
+        raw = json_bytes(value)
+        if len(raw) > MAX_MANIFEST_BYTES:
+            self.limit('PDF result manifest exceeds its 1 MiB byte budget.')
+        return raw
+
+    def unreadable(self, message):
+        # An ordinary unavailable/invalid document is an explicit complete outcome.
+        # Earlier pages never survive a later page failure or change retry indices.
+        shutil.rmtree(self.directory)
+        self.directory.mkdir()
+        self.files, self.selected, self.used = [], [], 0
+        self.warnings = [message]
+        (self.directory / 'manifest.json').write_bytes(self.manifest('unreadable'))
+
+
+def _extract_pdf_text_file(outputs):
+    from pypdf import PdfReader
+    from pypdf.errors import LimitReachedError, PyPdfError
+    from fruth_core.pdf_preparation import PdfPreparationError
+    max_chars = outputs.request['controls']['max_chars']
     try:
-        quartz, document = _open_native_pdf(pdf_path)
-        if page_index < 0 or page_index >= document.pageCount():
-            return None
-        encoded, _downscaled = _render_native_pdf_page(
-            quartz, document, page_index=page_index, dpi=dpi,
-            max_image_side_px=max_image_side_px, crop_margin_ratio=crop_margin_ratio,
-        )
-        return encoded
-    except Exception as exc:  # noqa: BLE001
-        logging.warning(
-            'Single-page PDF rendering failed for %s (page=%s, dpi=%s): %s',
-            pdf_path,
-            page_index + 1,
-            dpi,
-            exc,
-        )
-        return None
+        reader = PdfReader(str(outputs.directory.parent / 'source.pdf'))
+        outputs.total = len(reader.pages)
+        size = chars = pages_without_text = 0
+        path = outputs.directory / 'text.txt'
+        with path.open('xb') as stream:
+            for index, page in enumerate(reader.pages):
+                text = (page.extract_text() or '').strip()
+                outputs.selected.append(index)
+                if index % 256 == 0:
+                    outputs.manifest()  # Bound selected-page metadata as it grows.
+                if not text:
+                    pages_without_text += 1
+                    continue
+                if chars:
+                    text = '\n\n' + text
+                if max_chars is not None and chars + len(text) > max_chars:
+                    outputs.limit('PDF text exceeds its explicit character budget; no partial text accepted.')
+                chars += len(text)
+                for offset in range(0, len(text), 65536):
+                    block = text[offset:offset + 65536].encode('utf-8')
+                    if size + len(block) > outputs.remaining(text=True):
+                        outputs.limit('PDF text exceeds its text/per-result/aggregate byte budget.')
+                    stream.write(block)
+                    size += len(block)
+        outputs.add(path)
+        if chars and pages_without_text:
+            outputs.warnings.append(
+                f'{pages_without_text} PDF page(s) had no extractable text and are absent '
+                'from the text result. Use image analysis to include scanned content.')
+    except LimitReachedError as exc:
+        outputs.limit(f'PDF parser resource guard reached: {exc}')
+    except (PyPdfError, ValueError) as exc:
+        # Infrastructure, memory, I/O and unexpected worker exceptions are fatal.
+        # Only ordinary document errors may use the existing OCR fallback.
+        outputs.unreadable(f'PDF text extraction failed: {exc}')
+        return
+    (outputs.directory / 'manifest.json').write_bytes(outputs.manifest())
+
+
+def _prepare_pdf_files(directory: Path, request: dict):
+    """Native algorithms are entered only by the fresh worker role."""
+    from fruth_core.pdf_preparation import PdfPreparationError, open_regular
+    source = directory / 'source.pdf'
+    digest, size = hashlib.sha256(), 0
+    with open_regular(source) as stream:
+        while block := stream.read(1024 * 1024):
+            size += len(block)
+            if size > request['limits']['input_bytes']:
+                raise PdfPreparationError('PDF_PREPARATION_LIMIT', 'PDF source exceeds input byte budget.')
+            digest.update(block)
+    if size != request['source_bytes'] or digest.hexdigest() != request['source_sha256']:
+        raise RuntimeError('PDF source identity changed before parsing.')
+    outputs = _PdfOutputs(directory, request)
+    if request['operation'] == 'text':
+        return _extract_pdf_text_file(outputs)
+    controls = request['controls']
+    try:
+        quartz, document = _open_native_pdf(source)
+        outputs.total = int(document.pageCount())
+        if request['operation'] == 'page':
+            index = controls['page_index']
+            indices = [index] if 0 <= index < outputs.total else []
+        else:
+            count = outputs.total if controls['max_pages'] is None else min(outputs.total, controls['max_pages'])
+            indices = range(count)
+        downscaled = False
+        for index in indices:
+            path = outputs.directory / f'page-{index:08d}.png'
+            ceiling = outputs.remaining()
+            if ceiling <= 0:
+                outputs.limit('PDF aggregate output byte budget exhausted.')
+            previous = resource.getrlimit(resource.RLIMIT_FSIZE)
+            soft = min(ceiling, previous[1]) if previous[1] != resource.RLIM_INFINITY else ceiling
+            try:
+                resource.setrlimit(resource.RLIMIT_FSIZE, (soft, previous[1]))
+                width, height, scaled = _render_native_pdf_page(
+                    quartz, document, page_index=index, dpi=controls['dpi'],
+                    max_image_side_px=controls['max_image_side_px'],
+                    crop_margin_ratio=controls.get('crop_margin_ratio', 0.0), output_path=path)
+            finally:
+                resource.setrlimit(resource.RLIMIT_FSIZE, previous)
+            outputs.selected.append(index)
+            outputs.add(path, page_index=index, width=width, height=height)
+            outputs.manifest()
+            downscaled |= scaled
+        if downscaled:
+            outputs.warnings.append(
+                f"PDF pages were limited to a maximum edge length of {controls['max_image_side_px']}px to keep OCR stable.")
+        if request['operation'] == 'render' and outputs.total > len(outputs.selected):
+            outputs.warnings.append(f'PDF contains {outputs.total} pages; only the first {len(outputs.selected)} pages were rendered.')
+    except ValueError as exc:
+        outputs.unreadable(f'PDF pages could not be rendered: {exc}')
+        return
+    (outputs.directory / 'manifest.json').write_bytes(outputs.manifest())
 
 
 def is_generic_ocr_instruction_prompt(prompt: str) -> bool:

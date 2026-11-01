@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from scripts.run_tests import storage_snapshot
 from tests.consumer_evidence_model import CRITERIA, FAULTS, case, controls, corpus, oracle, provider_html, requirements
 
 
@@ -40,8 +41,9 @@ def reserve(label,c,category):
     assert sum(r['job']==job.name for r in prior)<32
     if category in ('seeded','generated'):
         assert len({r['job'] for r in prior if r['category'] in ('seeded','generated')}|{job.name})<=min(2,policy.get('max_campaigns',2))
-    usage=sum(max(p.stat().st_size,p.stat().st_blocks*512) for p in storage.rglob('*') if p.is_file() and not p.is_symlink())
-    assert usage<min(4*1024**3,policy.get('stop_bytes',4*1024**3))
+    capacity=storage_snapshot(storage, stop_bytes=policy.get('stop_bytes'))
+    assert capacity['stop_reason'] is None, capacity
+    usage=capacity['allocated_bytes']
     start=dict(ordinal=len(prior)+1,job=job.name,label=label,case=c,category=category,storage_bytes_before=usage)
     with (ev/'a2-starts.jsonl').open('a') as f:
         f.write(json.dumps(start,sort_keys=True)+'\n'); f.flush(); os.fsync(f.fileno())

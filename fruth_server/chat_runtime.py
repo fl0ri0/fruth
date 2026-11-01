@@ -18,16 +18,7 @@ from helpers.session_controls import (
     normalize_reasoning_effort,
     validate_reasoning_effort_for_instance,
 )
-from fruth_server.response_semantics_runtime import (
-    attach_phase_output_acceptance,
-    classify_phase_output_text,
-    control_json_envelope_suspected,
-    phase_output_defers_saved_file_materialization,
-    phase_output_is_graph_preparation,
-    phase_output_repair_notice,
-    phase_output_repair_system_message,
-    request_explicitly_allows_control_diagnostics,
-)
+from fruth_services.phase_output import attach_phase_output_acceptance, classify_phase_output_text, control_json_envelope_suspected, phase_output_defers_saved_file_materialization, phase_output_is_graph_preparation, phase_output_repair_notice, phase_output_repair_system_message, request_explicitly_allows_control_diagnostics
 
 
 @dataclass

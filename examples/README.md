@@ -73,7 +73,7 @@ October 27 executions. The image-report and saved-file examples were refreshed
 on October 29 after their respective runtime corrections; earlier attempts remain
 retained privately. Model-authored descriptions are copied unchanged.
 
-The [October 29 validation status](../docs/SELF_ATTACK_STATUS_2026-10-29.md)
+The [current validation status](../docs/SELF_ATTACK_STATUS_2026-10-31.md)
 records the bounded property-based investigation round, matching offline gate and
 source-bound local, AFM and PCC results. Reference success supplements conformance;
 it does not replace the full matrix. See the [Self-Attack guide](../docs/SELF_ATTACK.md)

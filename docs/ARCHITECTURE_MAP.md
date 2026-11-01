@@ -98,11 +98,52 @@ Fruth is currently organized around one main composition root plus a handful of 
 
 ## Durable state, continuation and observer owners
 
+### Responsibility boundaries within the response pipeline
+
+The runtime owners compose the following narrower components. Compatibility
+imports on the older owners remain available; each behavior has one implementation.
+Constructing a payload or selecting work does not confer execution or publication
+authority.
+
+| Responsibility | Implementation | Inputs and authority boundary |
+| --- | --- | --- |
+| Text artifact declarations and payloads | `fruth_core/text_artifacts.py` | Scoped request and result text; no provider dispatch or saved-file writing |
+| Prepared image cohorts | `fruth_inference/image_prompt_preparation.py` | Text and exact count; returns candidate prompts, never promotion |
+| Phase/reference messages | `fruth_inference/phase_preparation.py`, `selected_reference_context.py` | Accepted phase contracts and exact references; instruction assembly without provider execution or promotion |
+| Accepted graph queries | `fruth_inference/phase_graph_queries.py` | Explicit graph and branch records; dependency-ready ordering without dispatch |
+| Phase result acceptance | `fruth_services/phase_output.py` | Complete phase text and request/graph context; classifies control envelopes without executing the repair |
+| Intent coverage | `fruth_services/intent_coverage.py` | Captured intent, accepted obligations, reservations and graph edges; no new obligation authority |
+| Structured dependency reviews | `fruth_services/structured_dependency_review.py` | Exact producer/consumer records and canonical artifact projection; cardinality/label/reference checks |
+| Semantic review evidence | `fruth_services/semantic_closure_review.py` | Exact branch/whole-turn evidence and verdict accounting; scoped reads via `semantic_artifact_reader.py`, no provider calls |
+| Saved reference readback | `fruth_services/saved_artifact_readback.py` | Canonical source/registry readers and a path resolver; observation does not verify anew or fulfill work |
+| Closure repair feedback | `fruth_services/closure_repair_feedback.py` | Existing checks and contracts; candidate repair classification, not application |
+| Branch result records | `fruth_services/branch_result_contracts.py` | Explicit result records, artifact identities and dependency aliases; no storage or scheduling |
+| Branch dependency evidence | `fruth_services/branch_dependency_evidence.py` | Exact accepted producer/consumer bindings, saved-file reads and branch-local result assembly; no dispatch |
+| Saved text result evidence | `fruth_services/text_artifact_result_evidence.py` | Physical saved identity, target and revision/write proof; no mutation or response closure |
+| TTS result evidence | `fruth_services/tts_result_evidence.py` | Exact producer text, physical audio evidence and dependent transcript; capability normalization supplied explicitly |
+| Wave selection | `fruth_server/late_fill_selection.py` | Dependency-ready branches, resource context and explicit clock; no worker claims or publication |
+| Pending continuation permission | `fruth_server/pending_continuation.py` | Private one-use in-memory permission plus exact current request, graph, result and execution checks; records cannot mint permission |
+| Additive patch continuation | `fruth_server/graph_patch_continuation.py` | Validated patch/parent identities and two Late Fill state constructors; caller retains mutation lock, CAS, append and scheduling |
+| Rebase continuation | `fruth_server/graph_rebase_continuation.py` | Re-derives evidence/lifecycle and exact partial successors; operator/CAS/commit gates remain with admission and worker adapters |
+| Terminal repair projection | `fruth_server/terminal_repair_projection.py` | Promoted repair contracts into an exact gap/graph projection; no inference, writes or scheduling |
+| Text syntax | `fruth_services/text_artifact_syntax.py` | Text/extension inspection and bounded transformations; no file access |
+| Exact text materialization | `fruth_services/text_artifact_materialization.py` | Accepted target/payload contract and concrete file write; result still needs runtime acceptance |
+| Saved text file operations | `fruth_services/text_artifact_files.py` | Bounded revision/syntax reads, retained aliases and syntax repair writes; output root and artifact projection are supplied explicitly |
+| Linked artifact materialization | `fruth_services/linked_artifact_materialization.py` | Canonical artifacts and exact branch identities; saved-link/composition checks and bounded writes, no frame freeze |
+| Frame construction | `fruth_services/response_frame_construction.py` | Request/runtime records and artifact services; ledger, Index, CAS and durability remain in `response_frames.py` |
+| Response finalization | `fruth_services/response_finalization.py`, `response_lifecycle.py` | Construction, status and frozen identity projection; HTTP settings enter through explicit composition |
+| Frame commit | `fruth_services/response_frame_commit.py` | Existing preflight → Artifact Registry → Ledger/Index → Readiness order, with typed uncertainty and lookup notification |
+| Observer presentation | `scripts/run_report_rendering.py`, `scripts/shadow_corpus_evidence.py`, `scripts/self_attack_reporting.py`, `helpers/fruthctl_truth.py` | Captured report/evidence values only; CLI owners retain reads, tracking writes, HTTP and process supervision |
+
+These boundaries do not replace the remaining runtime coordination owners or
+prove portability. Branch publication, control handoffs and frozen successor
+lineage still require the original currentness, ownership and persistence gates.
+
 These owners refine the broad layers above; none is a second runtime authority:
 
 | Area | Current owner | Boundary |
 | --- | --- | --- |
-| Finalization composition | `fruth_webserver.py` | Frame/output construction, Artifact Registry attempt, frame persistence, then secondary Readiness retention |
+| HTTP finalization adapter | `fruth_webserver.py` | Supplies scoped paths, storage operations, lookup notification and testing setting to the finalizer/commit owners |
 | Ledger, Index, CAS and Epoch verification | `fruth_services/response_frames.py` | Immutable frame lineage, exact recovery, private preparation reuse and fresh integrity checks |
 | Live/durable lookup arbitration | `fruth_server/response_lookup_runtime.py` | Selects current bounded truth; live registries remain in `responses_runtime.py` |
 | Public wire projection | `fruth_services/response_wire.py` | Byte-bounded handles/previews; never independent completion evidence |

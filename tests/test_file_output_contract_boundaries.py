@@ -25,10 +25,15 @@ def test_embedded_formats_are_not_additional_files(prompt):
 
 
 def projection_owner():
-    owner = object.__new__(ResponsesRequestRuntimeOwner)
-    owner.hooks = {'normalize_capability': lambda value: value}
-    owner.capability_chat = 'chat'
-    return owner
+    return ResponsesRequestRuntimeOwner(
+        hooks={'normalize_capability': lambda value: value},
+        capability_chat='chat',
+        capability_embedding='embedding',
+        capability_image_generation='image_generation',
+        capability_speech_to_text='speech_to_text',
+        request_timeout_error=TimeoutError,
+        request_exception_error=RuntimeError,
+    )
 
 
 def test_projected_repair_retains_exact_executable_binding(tmp_path):

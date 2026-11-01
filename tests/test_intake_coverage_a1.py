@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from scripts.run_tests import storage_snapshot
 
 
 def dump(path, value):
@@ -31,8 +32,9 @@ def reserve(label, case, category):
     assert sum(p['job'] == job.name for p in prior) < 32
     if category == 'generated':
         assert len({p['job'] for p in prior if p['category'] == 'generated'} | {job.name}) <= 2
-    usage = sum(max(p.stat().st_size, p.stat().st_blocks*512) for p in storage.rglob('*') if p.is_file() and not p.is_symlink())
-    assert usage < min(policy.get('stop_bytes',4*1024**3),4*1024**3)
+    capacity = storage_snapshot(storage, stop_bytes=policy.get('stop_bytes'))
+    assert capacity['stop_reason'] is None, capacity
+    usage = capacity['allocated_bytes']
     start = {'ordinal':len(prior)+1, 'job':job.name, 'label':label, 'category':category, 'case':case, 'storage_bytes_before':usage}
     with (evidence/'intake-starts.jsonl').open('a') as f:
         f.write(json.dumps(start,sort_keys=True)+'\n'); f.flush(); os.fsync(f.fileno())

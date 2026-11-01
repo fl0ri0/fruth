@@ -293,7 +293,7 @@ On macOS 27.0 on 2026-09-21:
 
 Detailed local probe records are retained in the development checkout and are
 not included in the source distribution. The public
-[current conformance report](../../docs/SELF_ATTACK_STATUS_2026-10-29.md)
+[current conformance report](../../docs/SELF_ATTACK_STATUS_2026-10-31.md)
 records complete October PCC Cloud coverage, exact source/evidence identities
 and historical incomplete campaigns. Cloud Pro remains separately untested.
 
@@ -324,7 +324,7 @@ single-instance Fruth chat. Starting a new chat did not restore access.
 The available error did not specify a reset time. Fruth must preserve this
 provider failure rather than claim completion. Cloud Pro access fallback does
 not bypass the final Cloud tier's quota. See the
-[historical conformance results](../../docs/SELF_ATTACK_STATUS_2026-10-29.md#historical-results)
+[historical conformance results](../../docs/SELF_ATTACK_STATUS_2026-10-31.md#historical-results)
 for that campaign's successful scope and gaps. The October 19–21 campaign later
 completed 170/170 Cloud cells through two bounded allocations and an audio retry,
 without a recorded quota stop. This does not establish a quota size or reset time.

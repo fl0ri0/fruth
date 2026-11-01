@@ -132,15 +132,16 @@ def test_real_scheduled_worker_preserves_repair_identity(terminal_repair, monkey
     payload = {'id': 'scheduled-repair-fixture', 'object': 'response',
                'output_text': 'Preparing the summary.', 'runtime': {'request_phase_graph': graph},
                'late_fill': late}
-    with FakeBackendHarness() as harness:
+    original_invoke = web._invoke_internal_api_json_route
+    with FakeBackendHarness() as harness, monkeypatch.context() as overrides:
         runtime = web._LATE_FILL_RUNTIME
         calls, events, errors, workers = [], [], [], []
         done = threading.Event()
         for instance in harness.instances.values():
             instance['runtime_status'].update(process_alive=True, port_listening=True)
-        monkeypatch.setattr(runtime, 'load_running_instances', lambda: list(harness.instances.values()))
-        monkeypatch.setattr(runtime, 'merge_instances_with_runtime_status', lambda entries, **kw: entries)
-        monkeypatch.setattr(web, '_invoke_internal_api_json_route',
+        overrides.setattr(runtime, 'load_running_instances', lambda: list(harness.instances.values()))
+        overrides.setattr(runtime, 'merge_instances_with_runtime_status', lambda entries, **kw: entries)
+        overrides.setattr(web, '_invoke_internal_api_json_route',
                             lambda **kw: (calls.append(deepcopy(kw['payload'])) or {'content': 'Alpine winds.'}, 200))
         runtime = replace(runtime, log_unified_event=lambda **event: events.append(event))
         with web.app.app_context():
@@ -201,3 +202,4 @@ def test_real_scheduled_worker_preserves_repair_identity(terminal_repair, monkey
                 runtime.complete_response_late_fill(response_payload=admitted, request_payload=request,
                     assistant_message=payload['output_text'], artifact_gap=late, source_route_payload=None)
             assert len(calls) == before, 'completed terminal handoff redispatched'
+    assert web._invoke_internal_api_json_route is original_invoke

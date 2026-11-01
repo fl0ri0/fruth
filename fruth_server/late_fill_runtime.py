@@ -2,6 +2,82 @@
 
 from __future__ import annotations
 
+from fruth_services.text_artifact_files import TextArtifactFiles
+from fruth_services.text_artifact_files import (
+    _TERMINAL_SYNTAX_REPAIR_EXTENSIONS,
+)
+
+from fruth_services import text_artifact_syntax
+
+from fruth_services.text_artifact_result_evidence import TextArtifactResultEvidence
+
+from fruth_services.branch_dependency_evidence import BranchDependencyEvidence
+from fruth_services.branch_dependency_evidence import (
+    _BRANCH_LOCAL_ARTIFACT_IDENTITY_FIELD_RE,
+    _BRANCH_LOCAL_STRUCTURED_JOIN_RE,
+)
+
+from fruth_server.pending_continuation import PendingContinuationAuthority
+from fruth_server.pending_continuation import (
+    C9_CONTROL_CONTINUATION_MAX_HANDOFFS,
+    _PendingContinuation,
+    _PendingContinuationChain,
+)
+
+from fruth_services.linked_artifact_materialization import LinkedArtifactMaterialization
+from fruth_services.linked_artifact_materialization import (
+    _EXTERNAL_LINK_RE,
+    _INLINE_SCRIPT_RE,
+    _JS_AWAITED_JSON_BINDING_RE,
+    _JS_COLLECTION_ITERATOR_RE,
+    _JS_FETCH_RESPONSE_ASSIGNMENT_RE,
+    _JS_INVALID_IDENTIFIER_SEPARATOR_RE,
+    _LINK_REBIND_ATTR_RE,
+    _LINK_REBIND_EXTENSION_FAMILIES,
+    _LINK_REBIND_FETCH_RE,
+    _LINK_REBIND_HTML_TARGET_EXTENSIONS,
+    _LINK_REBIND_IMAGE_EXTENSIONS,
+    _LINK_REBIND_JSON_PATH_KEY_RE,
+    _LINK_REBIND_PLACEHOLDER_RE,
+    _LINK_REBIND_TEXT_EXTENSIONS,
+    _LINK_REBIND_URL_RE,
+    _SectionImageMarkup,
+    _TERMINAL_CSS_HERO_BLOCK_RE,
+    _TERMINAL_HERO_LOCAL_IMAGE_SIGNAL_RE,
+    _TERMINAL_HTML_HERO_BLOCK_RE,
+    _TERMINAL_MATERIALIZABLE_LOCAL_DEPENDENCY_EXTENSIONS,
+    _static_fetch_url_is_local_file_dependency,
+)
+
+from fruth_services import text_artifact_materialization
+
+from fruth_server.late_fill_selection import LateFillSelection
+from fruth_server.late_fill_selection import (
+    _late_fill_instance_is_mlx_vlm,
+)
+
+from fruth_services.tts_result_evidence import TtsResultEvidence
+from fruth_services.tts_result_evidence import (
+    _TTS_STT_MIN_SEQUENCE_RATIO,
+    _TTS_STT_MIN_SOURCE_TOKENS_FOR_FULL_POLICY,
+    _TTS_STT_MIN_TOKEN_PRECISION,
+    _TTS_STT_MIN_TOKEN_RECALL,
+    _TTS_STT_NEGATION_TOKENS,
+    _TTS_STT_SEMANTIC_POLICY_ID,
+    _TTS_STT_SHORT_MIN_SEQUENCE_RATIO,
+    _TTS_STT_SHORT_MIN_TOKEN_F1,
+)
+
+from fruth_services import branch_result_contracts
+from fruth_services.branch_result_contracts import (
+    _DEPENDENCY_EVIDENCE_MISSING_CLAIM_RE,
+    _PATH_ONLY_DEPENDENCY_EVIDENCE_RE,
+    _VISION_GENERATION_REFUSAL_RE,
+)
+
+from fruth_services.text_artifact_syntax import repair_text_artifact_syntax_content
+from fruth_services.text_artifact_syntax import text_artifact_syntax_sanity_issues_for_extension
+
 from fruth_services.response_persistence import ResponsePersistenceError, response_persistence_blocked
 
 from fruth_services.state_flow import observe_state
@@ -56,7 +132,7 @@ from helpers.session_controls import (
 from fruth_inference.control_hints import infer_tts_language_from_prompt
 from fruth_inference.execution_planner import extract_atx_tts_sections
 from fruth_inference.intent_obligations import required_intent_obligations
-from fruth_core.inference import TEXT_ARTIFACT_EXTENSIONS, extract_text_artifact_payloads, text_artifact_request_is_generic
+from fruth_core.text_artifacts import TEXT_ARTIFACT_EXTENSIONS, extract_text_artifact_payloads, text_artifact_request_is_generic
 from fruth_core.runtime_liveness import (
     runtime_instance_liveness,
     runtime_instance_is_selectable,
@@ -89,22 +165,9 @@ from fruth_server.responses_runtime import (
     repair_contract_matches_completion,
     terminal_repair_loop_is_fully_satisfied,
 )
-from fruth_server.response_semantics_runtime import (
-    ResponseSemanticsRuntimeOwner,
-    _bounded_visual_evidence_from_selected_message as _extract_bounded_visual_evidence_from_selected_message,
-    _image_prompt_candidate_is_code_or_css_polluted,
-    _image_prompt_batch_looks_like_weak_social_copy,
-    _extract_filename_social_asset_image_prompt_lines,
-    _extract_inline_labeled_image_prompt_lines,
-    _extract_leading_plain_alpha_image_prompt_lines,
-    _extract_sequential_bold_alpha_image_prompt_lines,
-    _extract_html_image_card_prompt_units,
-    _extract_numbered_image_prompt_section,
-    _parse_image_batch_expected_count,
-    _extract_social_manifest_pipe_image_prompt_lines,
-    _strip_social_manifest_image_prompt_metadata,
-    control_json_envelope_suspected,
-)
+from fruth_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner, _bounded_visual_evidence_from_selected_message as _extract_bounded_visual_evidence_from_selected_message
+from fruth_inference.image_prompt_preparation import _image_prompt_candidate_is_code_or_css_polluted, _image_prompt_batch_looks_like_weak_social_copy, _extract_filename_social_asset_image_prompt_lines, _extract_inline_labeled_image_prompt_lines, _extract_leading_plain_alpha_image_prompt_lines, _extract_sequential_bold_alpha_image_prompt_lines, _extract_html_image_card_prompt_units, _extract_numbered_image_prompt_section, _parse_image_batch_expected_count, _extract_social_manifest_pipe_image_prompt_lines, _strip_social_manifest_image_prompt_metadata
+from fruth_services.phase_output import control_json_envelope_suspected
 from fruth_services.artifact_contracts import (
     artifact_authority_rank,
     artifact_is_current_authoritative,
@@ -116,7 +179,7 @@ from fruth_services.artifact_contracts import (
 )
 from fruth_services.artifact_registry import refresh_text_artifact_record_from_saved_path
 from fruth_services.response_artifact_bundles import JS_QUOTED_RE, FETCH_LITERAL_PREFIX_RE
-from fruth_services.response_frames import prepare_response_output_state
+from fruth_services.response_frame_construction import prepare_response_output_state
 from fruth_services.responses import (
     _is_public_output_artifact_record,
     capture_request_intent,
@@ -146,93 +209,6 @@ from fruth_services.tts_audio_integrity import (
 )
 
 
-
-class _SectionImageMarkup(HTMLParser):
-    """Collect image markup inside an explicitly named semantic section."""
-
-    _void_tags = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
-                  'link', 'meta', 'param', 'source', 'track', 'wbr'}
-
-    def __init__(self, role: str):
-        super().__init__()
-        self.role = role
-        self.stack: list[tuple[str, bool]] = []
-        self.markup: list[str] = []
-        self.styles: list[str] = []
-        self.elements: list[list[tuple[str, dict[str, Any]]]] = []
-        self.element_stack: list[tuple[str, dict[str, Any]]] = []
-
-    def handle_starttag(self, tag, attrs):
-        attributes = dict(attrs)
-        hooks = ' '.join(str(attributes.get(key) or '') for key in ('id', 'class'))
-        owns_role = bool(self.role) and self.role in re.split(r'[^a-z0-9]+', hooks.lower())
-        active = owns_role or bool(self.stack and self.stack[-1][1])
-        element = (tag, attributes)
-        self.elements.append([*self.element_stack, element])
-        if active and (tag in {'img', 'source'} or attributes.get('style')):
-            self.markup.append(self.get_starttag_text())
-        if tag not in self._void_tags:
-            self.stack.append((tag, active))
-            self.element_stack.append(element)
-
-    def handle_data(self, data):
-        if self.stack and self.stack[-1][0] == 'style':
-            self.styles.append(data)
-
-    def handle_endtag(self, tag):
-        for index in range(len(self.stack) - 1, -1, -1):
-            if self.stack[index][0] == tag:
-                del self.stack[index:]
-                del self.element_stack[index:]
-                break
-
-    def handle_startendtag(self, tag, attrs):
-        self.handle_starttag(tag, attrs)
-        if tag not in self._void_tags:
-            self.handle_endtag(tag)
-
-    @staticmethod
-    def selector_matches(selector: str, lineage: list[tuple[str, dict[str, Any]]]) -> bool:
-        """Prove simple tag/class/id descendant or child bindings, not a CSS cascade.
-
-        Unsupported selectors do not establish layout evidence. In particular,
-        a sibling, pseudo-class or negated selector must not style every image.
-        """
-        selector = selector.strip()
-        if not re.fullmatch(r'[\w.*#\s>\-]+', selector):
-            return False
-        parts = re.findall(r'[^\s>]+|>', selector)
-        if not parts or parts[0] == '>' or parts[-1] == '>':
-            return False
-
-        def matches(part, element):
-            tag, attrs = element
-            tokens = re.findall(r'^[\w*-]+|[.#][\w-]+', part)
-            if ''.join(tokens) != part:
-                return False
-            for token in tokens:
-                if token.startswith('.'):
-                    if token[1:] not in str(attrs.get('class') or '').split():
-                        return False
-                elif token.startswith('#'):
-                    if token[1:] != attrs.get('id'):
-                        return False
-                elif token != '*' and token.lower() != tag:
-                    return False
-            return True
-
-        def match_at(part_index, element_index):
-            if element_index < 0 or not matches(parts[part_index], lineage[element_index]):
-                return False
-            if part_index == 0:
-                return True
-            if parts[part_index - 1] == '>':
-                return part_index >= 2 and match_at(part_index - 2, element_index - 1)
-            return any(match_at(part_index - 1, i) for i in range(element_index - 1, -1, -1))
-
-        return bool(lineage) and match_at(len(parts) - 1, len(lineage) - 1)
-
-
 _DEPENDENCY_INPUT_MISSING_RE = re.compile(
     r'\b('
     r'(?:requires|expected|missing|needs?)\s+(?:an?\s+)?(?:audio|image|file)\s+file|'
@@ -242,30 +218,6 @@ _DEPENDENCY_INPUT_MISSING_RE = re.compile(
     r')\b',
     re.IGNORECASE,
 )
-_PATH_ONLY_DEPENDENCY_EVIDENCE_RE = re.compile(
-    r'^\s*(?:/[^ \t\r\n]+|[A-Za-z]:[\\/][^\r\n]+)\s*$'
-)
-_TTS_STT_SEMANTIC_POLICY_ID = TTS_SEMANTIC_SOURCE_POLICY_ID
-_TTS_STT_MIN_SOURCE_TOKENS_FOR_FULL_POLICY = 4
-_TTS_STT_MIN_TOKEN_RECALL = 0.85
-_TTS_STT_MIN_TOKEN_PRECISION = 0.65
-_TTS_STT_MIN_SEQUENCE_RATIO = 0.60
-_TTS_STT_SHORT_MIN_TOKEN_F1 = 0.80
-_TTS_STT_SHORT_MIN_SEQUENCE_RATIO = 0.86
-_TTS_STT_NEGATION_TOKENS = {
-    'kein',
-    'keine',
-    'keinem',
-    'keinen',
-    'keiner',
-    'keines',
-    'never',
-    'nicht',
-    'nie',
-    'niemals',
-    'no',
-    'not',
-}
 
 _REASONING_EFFORT_KEYS = ('reasoning_effort', 'reasoningEffort')
 
@@ -428,15 +380,6 @@ _BRANCH_LOCAL_VISION_FOCUS_PATTERNS = (
         re.IGNORECASE,
     ),
 )
-_BRANCH_LOCAL_STRUCTURED_JOIN_RE = re.compile(
-    r'\bjson\s*(?:[-_/]\s*|\s+)(?:list(?:e)?|array)\b',
-    re.IGNORECASE,
-)
-_BRANCH_LOCAL_ARTIFACT_IDENTITY_FIELD_RE = re.compile(
-    r'\b(?:artifact_ref|artifact\s+(?:ref(?:erence)?|path)|'
-    r'artefakt[_\s-]*(?:ref(?:erenz)?|pfad))\b',
-    re.IGNORECASE,
-)
 _BRANCH_LOCAL_VISION_MULTI_ARTIFACT_RE = re.compile(
     r'\b(?:two|three|four|five|six|2|3|4|5|6|zwei|drei|vier|f[uü]nf|sechs|'
     r'multiple|several|mehrere)\b[^.!?\n]{0,56}\b'
@@ -453,28 +396,6 @@ _BRANCH_LOCAL_VISION_FOR_MULTIPLE_LABELS_RE = re.compile(
 _BRANCH_LOCAL_VISION_EXPLICIT_GLOBAL_JOIN_RE = re.compile(
     r'\b(?:in\s+the\s+chat|im\s+chat|multi[-\s]?artifact|'
     r'(?:combined|global|final)\s+(?:answer|output|result|structure|join))\b',
-    re.IGNORECASE,
-)
-_DEPENDENCY_EVIDENCE_MISSING_CLAIM_RE = re.compile(
-    r'\b('
-    r'(?:i\s+)?(?:do\s+not|don[\'’]?t|cannot|can[\'’]?t)\s+(?:directly\s+)?(?:access|see|hear|inspect|analy[sz]e)|'
-    r'no\s+(?:direct\s+)?access\s+to\s+(?:the\s+)?(?:generated\s+)?(?:audio|image|file|artifact)|'
-    r'need\s+(?:a\s+)?(?:description|context|the\s+)?(?:generated\s+)?(?:audio|image|file|artifact)|'
-    r'(?:please\s+)?(?:provide|upload|attach|send)\s+(?:an?\s+|the\s+)?(?:generated\s+)?(?:audio|image|file|artifact)[^.!?\n]{0,120}(?:transcribe|compare|analy[sz]e|inspect|process|use|review)?|'
-    r'(?:audio|image|file|artifact)\s+(?:file\s+)?you\s+would\s+like\s+me\s+to\s+(?:transcribe|compare|analy[sz]e|inspect|process)|'
-    r'keinen?\s+(?:direkten\s+)?zugriff|'
-    r'kann\s+(?:ich\s+)?(?:das\s+)?(?:audio|bild|datei|artefakt|die\s+aufnahme|die\s+audiodatei|die\s+bilddatei)?[^.!?\n]{0,80}\b(?:nicht\s+)?(?:beurteilen|analysieren|sehen|hoeren|hören|verarbeiten)|'
-    r'ben[oö]tige\s+(?:eine\s+)?(?:beschreibung|kontext|audiodatei|audioaufnahme|bildbeschreibung|bilddatei|datei|artefakt)|'
-    r'kein(?:e[nsrm]?)?\s+(?:audio|audiodatei|audioaufnahme|bild|bilddatei|datei|artefakt|transkript)[^.!?\n]{0,120}(?:zur\s+verf[uü]gung\s+gestellt|bereitgestellt|vorhanden|verf[uü]gbar|hochgeladen|erhalten|erstellen)|'
-    r'(?:stellen|lade|laden)\s+sie\s+mir\s+(?:das\s+|die\s+)?(?:audio|audiodatei|audioaufnahme|bild|bilddatei|datei|artefakt)[^.!?\n]{0,80}(?:zur\s+verf[uü]gung|hoch|bereit)|'
-    r'kein(?:e[nsrm]?)?\s+(?:transkript|analyse|vergleich)[^.!?\n]{0,80}(?:erstellen|liefern|anfertigen|durchf[uü]hren)'
-    r')\b',
-    re.IGNORECASE,
-)
-_VISION_GENERATION_REFUSAL_RE = re.compile(
-    r'^(?:as\s+[^\n.!?]+,\s*)?i\s+(?:'
-    r'generate\s+(?:only\s+text|text\s+only)\b|'
-    r'(?:cannot|can[\'’]?t|am\s+unable\s+to)\s+(?:create|generate|produce)\s+(?:any\s+)?images?\b)',
     re.IGNORECASE,
 )
 _BRANCH_CONTRACT_REPAIR_RE = re.compile(
@@ -494,90 +415,14 @@ _SEMANTIC_EXECUTION_CONTROL_ACTIONS = {
     'supersede': 'superseded',
     'superseded': 'superseded',
 }
-_LINK_REBIND_TEXT_EXTENSIONS = {'html', 'htm', 'css', 'js', 'mjs', 'cjs', 'json'}
-_LINK_REBIND_HTML_TARGET_EXTENSIONS = {'html', 'htm', 'css', 'js', 'mjs', 'cjs'}
-_TERMINAL_MATERIALIZABLE_LOCAL_DEPENDENCY_EXTENSIONS = {
-    'html', 'htm', 'css', 'js', 'mjs', 'cjs', 'json'
-}
-_LINK_REBIND_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
-_LINK_REBIND_EXTENSION_FAMILIES = {
-    'image': frozenset({'png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'svg'}),
-    'audio': frozenset({'wav', 'mp3', 'm4a', 'flac', 'aac', 'ogg', 'opus', 'webm'}),
-    'video': frozenset({'mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv', 'ogv'}),
-    'font': frozenset({'woff', 'woff2', 'ttf', 'otf', 'eot'}),
-    'style': frozenset({'css', 'scss', 'sass', 'less'}),
-    'script': frozenset({'js', 'mjs', 'cjs', 'ts'}),
-}
-_LINK_REBIND_URL_RE = re.compile(
-    r'(?P<prefix>\burl\(\s*[\'"]?)(?P<url>[^\'")]+)(?P<suffix>[\'"]?\s*\))',
-    re.IGNORECASE,
-)
-_LINK_REBIND_ATTR_RE = re.compile(
-    r'(?P<prefix>\b(?:href|src)\s*=\s*)(?P<quote>[\'"])(?P<url>[^\'"]*)(?P=quote)',
-    re.IGNORECASE,
-)
-_LINK_REBIND_FETCH_RE = re.compile(
-    r'(?P<prefix>\bfetch\s*\(\s*)(?P<quote>[\'"])(?P<url>[^\'"]+)(?P=quote)(?=\s*[,\)])',
-    re.IGNORECASE,
-)
-_INLINE_SCRIPT_RE = re.compile(
-    r'<script\b[^>]*>(?P<body>[\s\S]*?)</script\s*>',
-    re.IGNORECASE,
-)
-_JS_COLLECTION_ITERATOR_RE = re.compile(
-    r'(?P<collection>(?:[A-Za-z_$][A-Za-z0-9_$]*\s*\.\s*)*[A-Za-z_$][A-Za-z0-9_$]*)'
-    r'\s*\.\s*(?:forEach|map)\s*\(\s*(?:\(\s*)?'
-    r'(?P<item>[A-Za-z_$][A-Za-z0-9_$]*)\s*(?:\)\s*)?=>\s*\{',
-    re.IGNORECASE,
-)
-_JS_FETCH_RESPONSE_ASSIGNMENT_RE = re.compile(
-    r'\b(?:const|let|var)\s+(?P<response>[A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:await\s+)?$',
-    re.IGNORECASE,
-)
-_JS_AWAITED_JSON_BINDING_RE = re.compile(
-    r'\b(?:const|let|var)\s+(?P<binding>[A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*await\s+'
-    r'(?P<response>[A-Za-z_$][A-Za-z0-9_$]*)\s*\.\s*json\s*\(\s*\)',
-    re.IGNORECASE,
-)
-_JS_INVALID_IDENTIFIER_SEPARATOR_RE = re.compile(
-    r'\b[A-Za-z_$][A-Za-z0-9_$]*(?P<separator>[^\x00-\x7f\s]+)'
-    r'[A-Za-z_$][A-Za-z0-9_$]*\b'
-)
 
 
-def _static_fetch_url_is_local_file_dependency(value: str) -> bool:
-    token = str(value or '').strip()
-    if not token or _EXTERNAL_LINK_RE.match(token) or token.startswith(('/', '\\')):
-        return False
-    path_token = token.split('?', 1)[0].split('#', 1)[0].strip()
-    extension = Path(path_token).suffix.lower().lstrip('.')
-    return extension in _TERMINAL_MATERIALIZABLE_LOCAL_DEPENDENCY_EXTENSIONS
-_LINK_REBIND_PLACEHOLDER_RE = re.compile(
-    r'\b(?:(?:temp|temporary)[_\-\s]?(?:placeholder|image|asset|media)[_\-\s]?(?:src|source|url|path|ref|href)|'
-    r'(?:placeholder|replace[_\-\s]?me|todo|tbd|dummy|sample|example)'
-    r'(?:[_\-\s]?(?:src|source|url|path|ref|href))?|'
-    r'asset[_\-\s]?placeholder|image[_\-\s]?placeholder|generated[_\-\s]?image|'
-    r'(?:img|image|asset|media)[_\-\s]?(?:path|url|ref)(?:[_\-\s]?\d+)?|'
-    r'hero[_\-\s]?image|image[_\-\s]?artifact|your[_\-\s]?(?:image|asset)|'
-    r'platzhalter|ersetzen|beispiel)\b',
-    re.IGNORECASE,
-)
-_LINK_REBIND_JSON_PATH_KEY_RE = re.compile(
-    r'^(?:'
-    r'(?:image|picture|photo|audio|sound|voice|video|movie|media|asset|artifact|font|style|stylesheet|script)'
-    r'|(?:image|picture|photo|audio|sound|voice|video|movie|media|asset|artifact|font|style|stylesheet|script)[_-](?:paths?|urls?|uris?|srcs?|hrefs?|files?)'
-    r'|(?:paths?|urls?|uris?|srcs?|hrefs?|files?)'
-    r'|.+[_-](?:paths?|urls?|uris?|srcs?|hrefs?|files?)'
-    r')$',
-    re.IGNORECASE,
-)
 _INLINE_TEXT_ARTIFACT_FENCE_RE = re.compile(
     r'```(?P<lang>[A-Za-z0-9_+.-]*)(?:[^\n`]*)?\n(?P<body>.*?)(?:\n```|```)',
     re.DOTALL,
 )
 _INLINE_COMPLETE_HTML_RE = re.compile(r'(?is)\b<!doctype\s+html\b|<html\b')
 _INLINE_HTML_CSS_EXTENSIONS = {'html', 'htm', 'css'}
-_TERMINAL_SYNTAX_REPAIR_EXTENSIONS = {'html', 'htm', 'css', 'json'}
 _TEXT_ARTIFACT_REVISION_PRESERVATION_RE = re.compile(
     r'(?:'
     r'\b(?:keep|preserve|retain|leave)\b[\s\S]{0,140}'
@@ -589,20 +434,6 @@ _TEXT_ARTIFACT_REVISION_PRESERVATION_RE = re.compile(
     r'\b(?:rest|bestehende[nmrs]?)\b[\s\S]{0,100}'
     r'\b(?:unver[aä]ndert|intakt|erhalten)\b'
     r')',
-    re.IGNORECASE,
-)
-_EXTERNAL_LINK_RE = re.compile(r'^(?:[a-z][a-z0-9+.-]*:|//|#)', re.IGNORECASE)
-_TERMINAL_HERO_LOCAL_IMAGE_SIGNAL_RE = re.compile(
-    r'\b(?:hero|hero[-_\s]?image|background|hintergrund|titelbild|title\s+image)\b',
-    re.IGNORECASE,
-)
-_TERMINAL_HTML_HERO_BLOCK_RE = re.compile(
-    r'<(?P<tag>header|section|main|div)\b(?P<attrs>[^>]*)>'
-    r'(?P<body>[\s\S]{0,12000}?)</\s*(?P=tag)\s*>',
-    re.IGNORECASE,
-)
-_TERMINAL_CSS_HERO_BLOCK_RE = re.compile(
-    r'(?P<selectors>[^{}]*(?:[.#][A-Za-z0-9_-]*hero[A-Za-z0-9_-]*|\bheader\b)[^{}]*)\{(?P<body>[^{}]*)\}',
     re.IGNORECASE,
 )
 _RAW_IMAGE_RESULT_KEYS = {'image', 'image_base64', 'image_b64', 'image_data', 'png_base64', 'image_data_url'}
@@ -705,22 +536,6 @@ def _late_fill_instance_is_usable(instance: Mapping[str, Any], *, capability: An
     return runtime_instance_is_selectable(instance, capability=capability)
 
 
-def _late_fill_instance_is_mlx_vlm(instance: Mapping[str, Any]) -> bool:
-    runtime_status = instance.get('runtime_status') if isinstance(instance.get('runtime_status'), Mapping) else {}
-    backend = str(instance.get('backend') or runtime_status.get('backend') or '').strip().lower()
-    backend_package = str(instance.get('backend_package') or runtime_status.get('backend_package') or '').strip().lower()
-    backend_contract = str(instance.get('backend_contract') or runtime_status.get('backend_contract') or '').strip().lower()
-    mlx_server = str(instance.get('mlx_server') or runtime_status.get('mlx_server') or '').strip().lower()
-    server_kind = str(instance.get('server_kind') or runtime_status.get('server_kind') or '').strip().lower()
-    return (
-        backend_package == 'mlx_vlm'
-        or backend_contract.startswith('mlx_vlm')
-        or mlx_server == 'mlx_vlm'
-        or server_kind == 'mlx_vlm'
-        or (backend == 'mlx' and 'vlm' in backend_package)
-    )
-
-
 def _late_fill_instance_unusable_summary(instance: Mapping[str, Any], *, capability: Any = None) -> str:
     return runtime_liveness_summary(instance, capability=capability)
 
@@ -821,52 +636,6 @@ def _extract_raw_image_data_url(value: Any) -> str:
     return ''
 
 
-C9_CONTROL_CONTINUATION_MAX_HANDOFFS = 1
-
-
-@dataclass(eq=False)
-class _PendingContinuationChain:
-    """Process-local execution permission; never restored from response JSON."""
-
-    admission: dict[str, Any]
-    contracts: dict[str, dict[str, Any]]
-    request: dict[str, Any]
-    submitted: set[str] = field(default_factory=set)
-    attempts: int = 0
-    lock: Any = field(default_factory=threading.Lock, repr=False)
-
-    def take_attempt(self) -> bool:
-        with self.lock:
-            if self.attempts >= C9_CONTROL_CONTINUATION_MAX_HANDOFFS:
-                return False
-            self.attempts += 1
-            return True
-
-
-@dataclass(eq=False)
-class _PendingContinuation:
-    chain: _PendingContinuationChain
-    base: dict[str, Any]
-    scope: Optional[frozenset[str]] = None
-    submitted: bool = False
-    entered: bool = False
-    wave_active: bool = False
-
-    def take_submission(self) -> bool:
-        with self.chain.lock:
-            if self.submitted or self.scope is None:
-                return False
-            self.submitted = True
-            return True
-
-    def take_entry(self) -> bool:
-        with self.chain.lock:
-            if self.entered:
-                return False
-            self.entered = True
-            return True
-
-
 @dataclass
 class LateFillRuntimeOwner:
     normalize_request_payload: Callable[[dict[str, Any]], dict[str, Any]]
@@ -938,70 +707,73 @@ class LateFillRuntimeOwner:
     execute_external_chat_phase: Optional[Callable[..., dict[str, Any]]] = None
     resolve_saved_file_input_path: Optional[Callable[[str], Optional[Path]]] = None
 
-    @staticmethod
-    def _artifact_gap_is_required_text_materialization(artifact_gap: Optional[Mapping[str, Any]]) -> bool:
-        gap = artifact_gap if isinstance(artifact_gap, Mapping) else {}
-        artifact_request = gap.get('artifact_request') if isinstance(gap.get('artifact_request'), Mapping) else {}
-        text_artifact_requests = (
-            gap.get('text_artifact_requests')
-            if isinstance(gap.get('text_artifact_requests'), list)
-            else []
-        )
-        extension = str(
-            gap.get('text_artifact_extension')
-            or artifact_request.get('extension')
-            or ''
-        ).strip().lower().lstrip('.')
-        if not extension:
-            for item in text_artifact_requests:
-                if isinstance(item, Mapping):
-                    extension = str(item.get('extension') or '').strip().lower().lstrip('.')
-                    if extension:
-                        break
-        stage_direction = str(gap.get('stage_direction') or '').strip()
-        return (
-            stage_direction == 'materialize_requested_text_artifact'
-            and (
-                gap.get('requires_artifact') is True
-                or bool(artifact_request)
-                or extension in TEXT_ARTIFACT_EXTENSIONS
-            )
-            and extension in TEXT_ARTIFACT_EXTENSIONS
+    @property
+    def text_artifact_files(self) -> TextArtifactFiles:
+        return TextArtifactFiles(
+            collect_artifact_records=lambda payload: self.linked_artifact_materialization._collect_link_rebind_artifact_records(payload),
+            artifact_outputs_documents_dir=ARTIFACT_OUTPUTS_DOCUMENTS_DIR,
         )
 
-    @staticmethod
-    def _text_artifact_revision_required(*payloads: Mapping[str, Any]) -> bool:
-        """Return whether existing text bytes are an edit input, not output proof."""
+    @property
+    def text_artifact_result_evidence(self) -> TextArtifactResultEvidence:
+        return TextArtifactResultEvidence(
+            build_canonical_response_artifacts=lambda *args, **kwargs: self.build_canonical_response_artifacts(*args, **kwargs),
+            branch_requires_text_artifact=LateFillSelection._artifact_gap_is_required_text_materialization,
+            saved_file_consumption_error=lambda *args, **kwargs: self.saved_file_consumption_error(*args, **kwargs),
+            resolve_saved_file_input_path=self.resolve_saved_file_input_path,
+            branch_capability=lambda branch: self.branch_capability(branch),
+            branch_id=lambda branch: self.branch_id(branch),
+            chat_capability=lambda: self.capability_chat,
+        )
 
-        revision_sources = {
-            'canonical_predecessor_artifact',
-            'history_source_edit',
-            'selected_source_edit',
-            'selected_text_source_edit',
-        }
-        for payload in payloads:
-            if not isinstance(payload, Mapping):
-                continue
-            sources: list[Mapping[str, Any]] = [payload]
-            for key in ('artifact_request', 'text_artifact_request', 'execution_contract'):
-                nested = payload.get(key)
-                if isinstance(nested, Mapping):
-                    sources.append(nested)
-            for source in sources:
-                if (
-                    source.get('text_artifact_revision_required') is True
-                    or source.get('text_artifact_source_is_input') is True
-                ):
-                    return True
-                provenance = str(
-                    source.get('text_artifact_revision_source')
-                    or source.get('text_artifact_source')
-                    or source.get('source')
-                    or ''
-                ).strip().lower()
-                if provenance in revision_sources:
-                    return True
-        return False
+    @property
+    def branch_dependency_evidence(self) -> BranchDependencyEvidence:
+        return BranchDependencyEvidence(
+            artifact_type_for_capability=lambda capability: self.artifact_type_for_capability(capability),
+            branch_capability=lambda branch: self.branch_capability(branch),
+            build_canonical_response_artifacts=lambda *args, **kwargs: self.build_canonical_response_artifacts(*args, **kwargs),
+            image_generation_capability=lambda: self.capability_image_generation,
+            text_to_speech_capability=lambda: self.capability_text_to_speech,
+            normalize_capability=lambda capability: self.normalize_capability(capability),
+            resolve_saved_file_input_path=self.resolve_saved_file_input_path,
+        )
+
+    @property
+    def pending_continuation_authority(self) -> PendingContinuationAuthority:
+        return PendingContinuationAuthority(
+            branch_id=self.branch_id,
+            normalize_late_fill_branches=self.normalize_late_fill_branches,
+            load_latest_response_state=self.load_latest_response_state,
+        )
+
+    @property
+    def linked_artifact_materialization(self) -> LinkedArtifactMaterialization:
+        return LinkedArtifactMaterialization(
+            branch_id=lambda branch: self.branch_id(branch),
+            build_canonical_response_artifacts=lambda *args, **kwargs: self.build_canonical_response_artifacts(*args, **kwargs),
+            normalize_capability=lambda capability: self.normalize_capability(capability),
+            image_generation_capability=lambda: self.capability_image_generation,
+        )
+
+    @property
+    def branch_selection(self) -> LateFillSelection:
+        return LateFillSelection(
+            branch_capability=lambda branch: self.branch_capability(branch),
+            image_generation_capability=lambda: self.capability_image_generation,
+            clock=time.time,
+        )
+
+    @property
+    def tts_result_evidence(self) -> TtsResultEvidence:
+        return TtsResultEvidence(
+            branch_capability=self.branch_capability,
+            normalize_capability=self.normalize_capability,
+            capability_text_to_speech=self.capability_text_to_speech,
+        )
+
+    _artifact_gap_is_required_text_materialization = staticmethod(LateFillSelection._artifact_gap_is_required_text_materialization)
+
+    _text_artifact_revision_required = staticmethod(text_artifact_materialization._text_artifact_revision_required)
 
     @staticmethod
     def _text_artifact_revision_preservation_requested(prompt: Any) -> bool:
@@ -1011,228 +783,11 @@ class LateFillRuntimeOwner:
             _TEXT_ARTIFACT_REVISION_PRESERVATION_RE.search(str(prompt or '').strip())
         )
 
-    @staticmethod
-    def _text_artifact_revision_anchor_tokens(
-        content: Any,
-        extension: str,
-    ) -> set[str]:
-        """Return stable structural anchors suitable for truncation detection."""
+    _text_artifact_revision_anchor_tokens = staticmethod(text_artifact_materialization._text_artifact_revision_anchor_tokens)
 
-        text = str(content or '')
-        normalized_extension = str(extension or '').strip().lower().lstrip('.')
-        anchors: set[str] = set()
-        if normalized_extension in {'html', 'htm'}:
-            for match in re.finditer(
-                r'\b(?P<kind>id|class)\s*=\s*(?P<quote>["\'])(?P<value>.*?)(?P=quote)',
-                text,
-                flags=re.IGNORECASE | re.DOTALL,
-            ):
-                kind = str(match.group('kind') or '').lower()
-                for token in re.split(r'\s+', str(match.group('value') or '').strip()):
-                    normalized = token.strip().lower()
-                    if normalized:
-                        anchors.add(f'{kind}:{normalized}')
-            return anchors
-        if normalized_extension == 'css':
-            without_comments = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
-            for match in re.finditer(r'(?P<selectors>[^{}]+)\{', without_comments, flags=re.DOTALL):
-                selectors = str(match.group('selectors') or '').strip()
-                if not selectors:
-                    continue
-                for token_match in re.finditer(
-                    r'(?<![\w-])(?P<token>[.#][A-Za-z_][A-Za-z0-9_-]*)',
-                    selectors,
-                ):
-                    anchors.add(f'selector:{token_match.group("token").lower()}')
-            return anchors
-        if normalized_extension == 'json':
-            try:
-                decoded = json.loads(text)
-            except (TypeError, ValueError, json.JSONDecodeError):
-                return anchors
+    _text_artifact_revision_preservation_review = staticmethod(text_artifact_materialization._text_artifact_revision_preservation_review)
 
-            def visit(value: Any, path: tuple[str, ...]) -> None:
-                if isinstance(value, Mapping):
-                    for raw_key, child in value.items():
-                        key = str(raw_key)
-                        child_path = (*path, key)
-                        anchors.add(f'json:{".".join(child_path)}')
-                        visit(child, child_path)
-                elif isinstance(value, list):
-                    for child in value:
-                        visit(child, (*path, '[]'))
-
-            visit(decoded, ())
-        return anchors
-
-    @classmethod
-    def _text_artifact_revision_preservation_review(
-        cls,
-        source_content: Any,
-        candidate_content: Any,
-        *,
-        extension: str,
-        target_path: str,
-    ) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
-        """Fail closed when a preserve-scoped revision drops unrelated structure."""
-
-        source = strip_enclosing_text_artifact_fence(
-            str(source_content or ''),
-            extension,
-        ).strip()
-        candidate = strip_enclosing_text_artifact_fence(
-            str(candidate_content or ''),
-            extension,
-        ).strip()
-        source_anchors = cls._text_artifact_revision_anchor_tokens(source, extension)
-        candidate_anchors = cls._text_artifact_revision_anchor_tokens(candidate, extension)
-        retained_anchors = source_anchors.intersection(candidate_anchors)
-        missing_anchors = sorted(source_anchors.difference(candidate_anchors))
-        anchor_retention = (
-            len(retained_anchors) / len(source_anchors)
-            if source_anchors
-            else 1.0
-        )
-        size_retention = len(candidate) / len(source) if source else 1.0
-        source_failure = not source
-        anchor_failure = len(source_anchors) >= 5 and anchor_retention < 0.78
-        size_failure = len(source) >= 800 and size_retention < 0.50
-        evidence = {
-            'kind': 'fruth.text_artifact_revision_preservation_evidence',
-            'version': 1,
-            'policy': 'structural_anchor_retention_v1',
-            'status': 'failed' if source_failure or anchor_failure or size_failure else 'passed',
-            'target_path': target_path,
-            'text_artifact_extension': str(extension or '').strip().lower().lstrip('.') or None,
-            'source_size_chars': len(source),
-            'candidate_size_chars': len(candidate),
-            'size_retention_ratio': round(size_retention, 6),
-            'source_anchor_count': len(source_anchors),
-            'retained_anchor_count': len(retained_anchors),
-            'anchor_retention_ratio': round(anchor_retention, 6),
-            'missing_anchors': missing_anchors[:24],
-            'failure_reason': (
-                'source_snapshot_unavailable'
-                if source_failure
-                else 'structural_anchor_loss'
-                if anchor_failure
-                else 'severe_size_loss'
-                if size_failure
-                else None
-            ),
-        }
-        if evidence['status'] == 'passed':
-            return evidence, None
-        return evidence, {
-            'code': 'TEXT_ARTIFACT_REVISION_PRESERVATION_FAILED',
-            'message': (
-                'Required text artifact revision removed too much pre-existing structure despite an '
-                'explicit preservation instruction. The source file remains authoritative until a '
-                'complete branch-produced revision passes structural retention.'
-            ),
-            'target_path': target_path,
-            'text_artifact_extension': evidence['text_artifact_extension'],
-            'text_artifact_revision_preservation_evidence': evidence,
-            'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-            'retryable': True,
-        }
-
-    @classmethod
-    def _text_artifact_revision_write_proven(
-        cls,
-        branch: Mapping[str, Any],
-        payload: Mapping[str, Any],
-    ) -> bool:
-        """Require branch-produced write evidence before a revision can fulfill."""
-
-        if not cls._text_artifact_revision_required(branch):
-            return False
-        branch_id = str(branch.get('branch_id') or branch.get('phase_id') or '').strip()
-        target_path = cls._text_artifact_target_path_from_mapping(branch)
-        artifact_request = (
-            branch.get('artifact_request')
-            if isinstance(branch.get('artifact_request'), Mapping)
-            else {}
-        )
-        extension = str(
-            branch.get('text_artifact_extension')
-            or artifact_request.get('extension')
-            or ''
-        ).strip().lower().lstrip('.')
-
-        # The synchronous chat path can persist a selected-source edit before
-        # Late Fill exists. Its structured request plus saved artifact record
-        # is current-response write evidence; a bare predecessor artifact is not.
-        direct_records: list[Mapping[str, Any]] = []
-        direct_request = (
-            payload.get('text_artifact_request')
-            if isinstance(payload, Mapping)
-            and isinstance(payload.get('text_artifact_request'), Mapping)
-            else {}
-        )
-        direct_saved_path = str(
-            payload.get('saved_text_path') if isinstance(payload, Mapping) else ''
-            or ''
-        ).strip()
-        if direct_request and direct_saved_path:
-            direct_records.append(
-                {
-                    'type': 'text',
-                    'path': direct_saved_path,
-                    'text_artifact_request': direct_request,
-                }
-            )
-        if isinstance(payload, Mapping):
-            direct_records.extend(
-                item
-                for item in (payload.get('saved_text_artifacts') or [])
-                if isinstance(item, Mapping)
-            )
-        for record in direct_records:
-            request = (
-                record.get('text_artifact_request')
-                if isinstance(record.get('text_artifact_request'), Mapping)
-                else record.get('artifact_request')
-                if isinstance(record.get('artifact_request'), Mapping)
-                else {}
-            )
-            source = str(request.get('source') or '').strip().lower()
-            if source not in {'selected_source_edit', 'canonical_predecessor_artifact'}:
-                continue
-            if not cls._saved_text_artifact_matches_request(record, artifact_request):
-                continue
-            saved_path = str(record.get('path') or record.get('saved_text_path') or '').strip()
-            if target_path and not cls._text_artifact_path_matches_target(saved_path, target_path):
-                continue
-            if saved_path and cls._text_artifact_saved_payload_error(
-                saved_path,
-                extension=extension,
-            ) is None:
-                return True
-
-        late_fill = payload.get('late_fill') if isinstance(payload, Mapping) and isinstance(payload.get('late_fill'), Mapping) else {}
-        for result in late_fill.get('fill_results') or []:
-            if not isinstance(result, Mapping):
-                continue
-            result_branch_id = str(result.get('branch_id') or result.get('phase_id') or '').strip()
-            if branch_id and result_branch_id != branch_id:
-                continue
-            proof = (
-                result.get('text_artifact_revision_write_proof')
-                if isinstance(result.get('text_artifact_revision_write_proof'), Mapping)
-                else {}
-            )
-            if str(proof.get('status') or '').strip().lower() != 'applied':
-                continue
-            saved_path = str(result.get('saved_text_path') or proof.get('target_path') or '').strip()
-            if target_path and not cls._text_artifact_path_matches_target(saved_path, target_path):
-                continue
-            if saved_path and cls._text_artifact_saved_payload_error(
-                saved_path,
-                extension=extension,
-            ) is None:
-                return True
-        return False
+    _text_artifact_revision_write_proven = staticmethod(TextArtifactResultEvidence._text_artifact_revision_write_proven)
 
     @classmethod
     def _artifact_gap_allows_excluded_candidate_reuse_for_text_repair(
@@ -1240,7 +795,7 @@ class LateFillRuntimeOwner:
         artifact_gap: Optional[Mapping[str, Any]],
     ) -> bool:
         gap = artifact_gap if isinstance(artifact_gap, Mapping) else {}
-        if not cls._artifact_gap_is_required_text_materialization(gap):
+        if not LateFillSelection._artifact_gap_is_required_text_materialization(gap):
             return False
         action = normalize_recovery_suggested_action(
             gap.get('repair_action') or gap.get('recovery_action') or gap.get('suggested_action'),
@@ -1255,7 +810,7 @@ class LateFillRuntimeOwner:
             gap.get('repair_execution_policy') or gap.get('execution_policy') or ''
         ).strip()
         if (
-            not cls._runtime_scheduling_flag_enabled(gap.get('auto_execute'))
+            not LateFillSelection._runtime_scheduling_flag_enabled(gap.get('auto_execute'))
             and execution_policy != 'schedule_late_fill_branch'
         ):
             return False
@@ -1658,285 +1213,33 @@ class LateFillRuntimeOwner:
             and recovery_state.get('auto_execute') is False
         )
 
-    @classmethod
-    def _artifact_gap_is_authoritative_bounded_text_artifact_repair(
-        cls,
-        artifact_gap: Optional[Mapping[str, Any]],
-    ) -> bool:
-        gap = artifact_gap if isinstance(artifact_gap, Mapping) else {}
-        artifact_request = (
-            gap.get('artifact_request')
-            if isinstance(gap.get('artifact_request'), Mapping)
-            else {}
-        )
-        target_path = str(
-            gap.get('text_artifact_target_path')
-            or artifact_request.get('target_path')
-            or ''
-        ).strip()
-        if not target_path:
-            return False
-        # Repair identity survives retry-action changes and compact projections.
-        # Execution permission is checked separately by the execution gate.
-        content_payload_source = str(gap.get('content_payload_source') or '').strip()
-        text_artifact_source = str(
-            gap.get('text_artifact_source')
-            or artifact_request.get('source')
-            or ''
-        ).strip()
-        authoritative_source = (
-            content_payload_source in {
-                'closure_html_css_selector_binding_review',
-                'closure_linked_artifact_binding_review',
-                'closure_local_dependency_link_review',
-                'closure_composed_page_image_representation',
-                'closure_composed_site_image_composition',
-                'closure_hero_image_composition',
-                'closure_text_artifact_syntax_sanity',
-                'terminal_web_runtime_binding_review',
-            }
-            or text_artifact_source in {
-                'closure_link_rebind',
-                'closure_local_dependency_link',
-                'closure_composed_page_image_representation',
-                'closure_composed_site_image_composition',
-                'closure_hero_image_composition',
-                'closure_selector_binding_repair',
-                'closure_syntax_repair',
-                'closure_web_binding_repair',
-            }
-        )
-        if not authoritative_source:
-            return False
-        if cls._artifact_gap_is_required_text_materialization(gap):
-            return True
-        # Persisted pending branches are intentionally compact and may omit
-        # stage_direction/requires_artifact.  A target-bound Closure repair
-        # remains authoritative when its artifact request preserves the file
-        # identity, extension, recovery action, and repair provenance.
-        extension = str(
-            gap.get('text_artifact_extension')
-            or artifact_request.get('extension')
-            or Path(target_path).suffix
-            or ''
-        ).strip().lower().lstrip('.')
-        return extension in TEXT_ARTIFACT_EXTENSIONS
+    _artifact_gap_is_authoritative_bounded_text_artifact_repair = staticmethod(text_artifact_materialization._artifact_gap_is_authoritative_bounded_text_artifact_repair)
 
-    @staticmethod
-    def _artifact_gap_is_required_image_materialization(artifact_gap: Optional[Mapping[str, Any]]) -> bool:
-        gap = artifact_gap if isinstance(artifact_gap, Mapping) else {}
-        capability = str(
-            gap.get('expected_capability')
-            or gap.get('capability')
-            or ''
-        ).strip().lower()
-        output_type = str(gap.get('output_type') or gap.get('artifact_type') or '').strip().lower()
-        return (
-            capability == 'image_generation'
-            or output_type == 'image'
-        ) and (
-            gap.get('requires_artifact') is True
-            or output_type == 'image'
-            or bool(str(gap.get('artifact_prompt') or '').strip())
-        )
+    _artifact_gap_is_required_image_materialization = staticmethod(LateFillSelection._artifact_gap_is_required_image_materialization)
 
-    @staticmethod
-    def _prefer_non_mlx_vlm_for_required_text_candidates(
-        candidates: list[dict[str, Any]],
-        artifact_gap: Optional[Mapping[str, Any]],
-    ) -> list[dict[str, Any]]:
-        if not LateFillRuntimeOwner._artifact_gap_is_required_text_materialization(artifact_gap):
-            return candidates
-        non_mlx_candidates = [
-            entry
-            for entry in candidates
-            if isinstance(entry, dict) and not _late_fill_instance_is_mlx_vlm(entry)
-        ]
-        return non_mlx_candidates or candidates
+    _prefer_non_mlx_vlm_for_required_text_candidates = staticmethod(LateFillSelection._prefer_non_mlx_vlm_for_required_text_candidates)
 
-    @staticmethod
-    def _runtime_scheduling_flag_enabled(value: Any) -> bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return value != 0
-        if isinstance(value, str):
-            return value.strip().lower() in {'1', 'true', 'yes', 'y', 'on', 'allow', 'allowed'}
-        return False
+    _runtime_scheduling_flag_enabled = staticmethod(LateFillSelection._runtime_scheduling_flag_enabled)
 
-    @staticmethod
-    def _instance_identity_text(instance: Optional[Mapping[str, Any]]) -> str:
-        payload = instance if isinstance(instance, Mapping) else {}
-        runtime_status = payload.get('runtime_status') if isinstance(payload.get('runtime_status'), Mapping) else {}
-        values: list[str] = []
-        for source in (payload, runtime_status):
-            for key in (
-                'instance_id',
-                'model',
-                'model_name',
-                'requested_model',
-                'selected_model',
-                'backend',
-                'backend_package',
-                'backend_contract',
-                'server_kind',
-                'capability',
-            ):
-                token = str(source.get(key) or '').strip()
-                if token:
-                    values.append(token)
-        return ' '.join(values).lower()
+    _instance_identity_text = staticmethod(LateFillSelection._instance_identity_text)
 
-    @classmethod
-    def _late_fill_instance_is_large_chat_candidate(cls, instance: Optional[Mapping[str, Any]]) -> bool:
-        payload = instance if isinstance(instance, Mapping) else {}
-        capability = str(payload.get('capability') or '').strip().lower()
-        text = cls._instance_identity_text(payload)
-        return capability == 'chat' and ('gemma4:26b' in text or '26b' in text)
+    _late_fill_instance_is_large_chat_candidate = staticmethod(LateFillSelection._late_fill_instance_is_large_chat_candidate)
 
-    @classmethod
-    def _late_fill_instance_is_lightweight_chat_candidate(cls, instance: Optional[Mapping[str, Any]]) -> bool:
-        payload = instance if isinstance(instance, Mapping) else {}
-        capability = str(payload.get('capability') or '').strip().lower()
-        if capability and capability != 'chat':
-            return False
-        if cls._late_fill_instance_is_large_chat_candidate(payload):
-            return False
-        text = cls._instance_identity_text(payload)
-        return any(
-            marker in text
-            for marker in (
-                'gemma4:e4b',
-                'e4b',
-                'granite',
-                '8b',
-                'lightweight',
-                'small',
-                'mini',
-            )
-        )
+    _late_fill_instance_is_lightweight_chat_candidate = staticmethod(LateFillSelection._late_fill_instance_is_lightweight_chat_candidate)
 
-    @classmethod
-    def _runtime_scheduling_context(
-        cls,
-        artifact_gap: Optional[Mapping[str, Any]],
-        source_route_payload: Optional[Mapping[str, Any]] = None,
-    ) -> dict[str, Any]:
-        context: dict[str, Any] = {}
-        gap_payload = artifact_gap if isinstance(artifact_gap, Mapping) else {}
-        route_payload = source_route_payload if isinstance(source_route_payload, Mapping) else {}
-        for payload in (route_payload, gap_payload):
-            nested_context = payload.get('runtime_scheduling_context') if isinstance(payload.get('runtime_scheduling_context'), Mapping) else {}
-            context.update(dict(nested_context))
-        for key in (
-            'active_image_generation',
-            'active_capabilities',
-            'selected_chat_model_class',
-            'selected_chat_model',
-            'selected_chat_instance_id',
-            'allow_gpu_heavy_concurrency',
-            'repair_scope',
-            'resource_class',
-            'dependency_policy',
-        ):
-            for payload in (route_payload, gap_payload):
-                value = payload.get(key)
-                if value not in (None, '', [], {}):
-                    context[key] = value
-        route_instance = route_payload.get('instance') if isinstance(route_payload.get('instance'), Mapping) else {}
-        if route_instance:
-            context.setdefault('selected_chat_instance_id', route_instance.get('instance_id'))
-            context.setdefault('selected_chat_model', route_instance.get('model') or route_instance.get('model_name'))
-            if cls._late_fill_instance_is_lightweight_chat_candidate(route_instance):
-                context.setdefault('selected_chat_model_class', 'lightweight')
-            elif cls._late_fill_instance_is_large_chat_candidate(route_instance):
-                context.setdefault('selected_chat_model_class', 'large')
-        return {key: value for key, value in context.items() if value not in (None, '', [], {})}
+    _runtime_scheduling_context = staticmethod(LateFillSelection._runtime_scheduling_context)
 
-    @classmethod
-    def _runtime_context_has_active_image_generation(
-        cls,
-        artifact_gap: Optional[Mapping[str, Any]],
-        source_route_payload: Optional[Mapping[str, Any]] = None,
-    ) -> bool:
-        context = cls._runtime_scheduling_context(artifact_gap, source_route_payload)
-        if cls._runtime_scheduling_flag_enabled(context.get('active_image_generation')):
-            return True
-        active_capabilities = context.get('active_capabilities')
-        if isinstance(active_capabilities, list):
-            return any(str(item or '').strip().lower() == 'image_generation' for item in active_capabilities)
-        return str(active_capabilities or '').strip().lower() == 'image_generation'
+    _runtime_context_has_active_image_generation = staticmethod(LateFillSelection._runtime_context_has_active_image_generation)
 
-    @classmethod
-    def _runtime_context_prefers_lightweight_chat(
-        cls,
-        artifact_gap: Optional[Mapping[str, Any]],
-        source_route_payload: Optional[Mapping[str, Any]] = None,
-    ) -> bool:
-        context = cls._runtime_scheduling_context(artifact_gap, source_route_payload)
-        model_class = str(context.get('selected_chat_model_class') or '').strip().lower()
-        if model_class in {'lightweight', 'small', 'mini'}:
-            return True
-        selected_model = str(context.get('selected_chat_model') or '').strip().lower()
-        if selected_model and any(marker in selected_model for marker in ('gemma4:e4b', 'e4b', 'granite', '8b')):
-            return True
-        return False
+    _runtime_context_prefers_lightweight_chat = staticmethod(LateFillSelection._runtime_context_prefers_lightweight_chat)
 
-    @classmethod
-    def _prefer_lightweight_chat_for_required_text_candidates(
-        cls,
-        candidates: list[dict[str, Any]],
-        artifact_gap: Optional[Mapping[str, Any]],
-        source_route_payload: Optional[Mapping[str, Any]] = None,
-    ) -> list[dict[str, Any]]:
-        if not cls._artifact_gap_is_required_text_materialization(artifact_gap):
-            return candidates
-        active_image_generation = cls._runtime_context_has_active_image_generation(
-            artifact_gap,
-            source_route_payload,
-        )
-        lightweight_target = cls._runtime_context_prefers_lightweight_chat(
-            artifact_gap,
-            source_route_payload,
-        )
-        if not active_image_generation and not lightweight_target:
-            return candidates
-        lightweight_candidates = [
-            entry
-            for entry in candidates
-            if isinstance(entry, dict) and cls._late_fill_instance_is_lightweight_chat_candidate(entry)
-        ]
-        if lightweight_candidates:
-            return lightweight_candidates
-        if active_image_generation:
-            non_large_candidates = [
-                entry
-                for entry in candidates
-                if isinstance(entry, dict) and not cls._late_fill_instance_is_large_chat_candidate(entry)
-            ]
-            if non_large_candidates:
-                return non_large_candidates
-        return candidates
+    _prefer_lightweight_chat_for_required_text_candidates = staticmethod(LateFillSelection._prefer_lightweight_chat_for_required_text_candidates)
 
     def _branch_is_image_generation(self, branch: Mapping[str, Any]) -> bool:
-        return (
-            self.branch_capability(branch) == self.capability_image_generation
-            or str(branch.get('output_type') or branch.get('artifact_type') or '').strip().lower() == 'image'
-        )
+        return self.branch_selection._branch_is_image_generation(branch)
 
     def _branch_is_required_image_materialization(self, branch: Mapping[str, Any]) -> bool:
-        if not isinstance(branch, Mapping) or not self._branch_is_image_generation(branch):
-            return False
-        output_contract = (
-            branch.get('output_contract')
-            if isinstance(branch.get('output_contract'), Mapping)
-            else {}
-        )
-        if branch.get('required') is False or output_contract.get('required') is False:
-            return False
-        if branch.get('optional') is True or output_contract.get('optional') is True:
-            return False
-        return self._artifact_gap_is_required_image_materialization(branch) or self._branch_is_image_generation(branch)
+        return self.branch_selection._branch_is_required_image_materialization(branch)
 
     def _branch_is_required_tts_materialization(
         self,
@@ -2049,144 +1352,41 @@ class LateFillRuntimeOwner:
         )
 
     def _branch_is_required_text_artifact(self, branch: Mapping[str, Any]) -> bool:
-        return self._artifact_gap_is_required_text_materialization(branch)
+        return self.branch_selection._branch_is_required_text_artifact(branch)
 
     def _branch_is_required_artifact(self, branch: Mapping[str, Any]) -> bool:
-        return (
-            self._branch_is_image_generation(branch)
-            or self._branch_is_required_text_artifact(branch)
-            or branch.get('requires_artifact') is True
-            or isinstance(branch.get('artifact_request'), Mapping)
-        )
+        return self.branch_selection._branch_is_required_artifact(branch)
 
     def _branch_is_optional_advisory_helper(self, branch: Mapping[str, Any]) -> bool:
-        if self._branch_is_required_artifact(branch):
-            return False
-        stage_direction = str(branch.get('stage_direction') or '').strip().lower()
-        helper_text = ' '.join(
-            str(branch.get(key) or '').strip().lower()
-            for key in (
-                'branch_id',
-                'phase_id',
-                'stage_direction',
-                'role',
-                'kind',
-                'task_kind',
-                'helper_kind',
-                'description',
-            )
-            if str(branch.get(key) or '').strip()
-        )
-        return (
-            stage_direction in {'run_global_semantic_closure_review', 'run_branch_semantic_review'}
-            or any(
-                marker in helper_text
-                for marker in (
-                    'semantic_review',
-                    'semantic review',
-                    'advisory',
-                    'helper',
-                    'image_state_enrichment',
-                    'generated_image_state',
-                )
-            )
-        )
+        return self.branch_selection._branch_is_optional_advisory_helper(branch)
 
     def _branch_scheduling_context(
         self,
         branch: Mapping[str, Any],
         artifact_gap: Optional[Mapping[str, Any]] = None,
     ) -> dict[str, Any]:
-        context: dict[str, Any] = {}
-        gap_payload = artifact_gap if isinstance(artifact_gap, Mapping) else {}
-        for payload in (gap_payload, branch):
-            nested_context = payload.get('runtime_scheduling_context') if isinstance(payload.get('runtime_scheduling_context'), Mapping) else {}
-            context.update(dict(nested_context))
-            for key in ('repair_scope', 'resource_class', 'dependency_policy'):
-                value = payload.get(key)
-                if value not in (None, '', [], {}):
-                    context[key] = value
-        return {key: value for key, value in context.items() if value not in (None, '', [], {})}
+        return self.branch_selection._branch_scheduling_context(branch, artifact_gap)
 
     def _branch_is_target_artifact_snapshot_text_repair(
         self,
         branch: Mapping[str, Any],
         artifact_gap: Optional[Mapping[str, Any]] = None,
     ) -> bool:
-        capability = str(self.branch_capability(branch) or branch.get('capability') or '').strip().lower()
-        if capability and capability != 'chat':
-            return False
-        output_type = str(branch.get('output_type') or branch.get('artifact_type') or '').strip().lower()
-        if output_type and output_type not in {'text', 'code', 'document', 'html', 'css', 'json', 'markdown'}:
-            return False
-        context = self._branch_scheduling_context(branch, None)
-        dependency_policy = str(context.get('dependency_policy') or '').strip().lower()
-        if dependency_policy == 'target_artifact_snapshot_only':
-            return True
-        repair_scope = str(context.get('repair_scope') or '').strip().lower()
-        resource_class = str(context.get('resource_class') or '').strip().lower()
-        if repair_scope in {'syntax_only', 'text_artifact_syntax'} and resource_class in {'text_io', 'local_text_io'}:
-            return True
-        artifact_request = (
-            branch.get('artifact_request')
-            if isinstance(branch.get('artifact_request'), Mapping)
-            else {}
-        )
-        target_path = str(
-            branch.get('text_artifact_target_path')
-            or artifact_request.get('target_path')
-            or ''
-        ).strip()
-        role = str(branch.get('role') or '').strip()
-        check_kind = str(branch.get('check_kind') or '').strip()
-        content_payload_source = str(branch.get('content_payload_source') or '').strip()
-        text_artifact_source = str(
-            branch.get('text_artifact_source')
-            or artifact_request.get('source')
-            or ''
-        ).strip()
-        return bool(
-            target_path
-            and (
-                check_kind == 'text_artifact_syntax_sanity'
-                or role == 'text_artifact_syntax_repair'
-                or content_payload_source == 'closure_text_artifact_syntax_sanity'
-                or text_artifact_source == 'closure_syntax_repair'
-            )
-        )
+        return self.branch_selection._branch_is_target_artifact_snapshot_text_repair(branch, artifact_gap)
 
     def _branch_conflicts_with_active_image_generation(
         self,
         branch: Mapping[str, Any],
         artifact_gap: Optional[Mapping[str, Any]] = None,
     ) -> bool:
-        if self._branch_is_target_artifact_snapshot_text_repair(branch, artifact_gap):
-            return False
-        capability = str(self.branch_capability(branch) or '').strip().lower()
-        if capability == 'chat':
-            return True
-        if capability in {'vision_analysis', 'image_analysis'}:
-            return True
-        return self._branch_is_optional_advisory_helper(branch)
+        return self.branch_selection._branch_conflicts_with_active_image_generation(branch, artifact_gap)
 
     def _branch_allows_gpu_heavy_concurrency(
         self,
         branch: Mapping[str, Any],
         artifact_gap: Optional[Mapping[str, Any]] = None,
     ) -> bool:
-        gap_payload = artifact_gap if isinstance(artifact_gap, Mapping) else {}
-        context = self._branch_scheduling_context(branch, gap_payload)
-        if self._branch_is_target_artifact_snapshot_text_repair(branch, gap_payload):
-            return True
-        for value in (
-            branch.get('allow_gpu_heavy_concurrency'),
-            gap_payload.get('allow_gpu_heavy_concurrency'),
-            context.get('allow_gpu_heavy_concurrency'),
-            context.get('explicit_allow_gpu_heavy_concurrency'),
-        ):
-            if self._runtime_scheduling_flag_enabled(value):
-                return True
-        return False
+        return self.branch_selection._branch_allows_gpu_heavy_concurrency(branch, artifact_gap)
 
     def shape_active_late_fill_branches(
         self,
@@ -2194,49 +1394,7 @@ class LateFillRuntimeOwner:
         *,
         artifact_gap: Optional[Mapping[str, Any]] = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        branches = [dict(branch) for branch in active_branches if isinstance(branch, dict)]
-        if len(branches) <= 1:
-            return branches, {}
-        if all(self._branch_allows_gpu_heavy_concurrency(branch, artifact_gap) for branch in branches):
-            return branches, {}
-        required_image_branches = [branch for branch in branches if self._branch_is_image_generation(branch)]
-        if required_image_branches:
-            non_conflicting = [
-                branch
-                for branch in branches
-                if self._branch_is_image_generation(branch)
-                or self._branch_allows_gpu_heavy_concurrency(branch, artifact_gap)
-                or not self._branch_conflicts_with_active_image_generation(branch, artifact_gap)
-            ]
-            if len(non_conflicting) < len(branches):
-                deferred = len(branches) - len(non_conflicting)
-                return non_conflicting, {
-                    'gpu_heavy_guard': 'deferred_non_image_branches',
-                    'reason': 'required_image_generation_first',
-                    'original_branch_count': len(branches),
-                    'scheduled_branch_count': len(non_conflicting),
-                    'deferred_branch_count': deferred,
-                }
-        required_artifact_branches = [
-            branch
-            for branch in branches
-            if self._branch_is_required_artifact(branch)
-        ]
-        optional_helper_branches = [
-            branch
-            for branch in branches
-            if self._branch_is_optional_advisory_helper(branch)
-        ]
-        if required_artifact_branches and optional_helper_branches and len(required_artifact_branches) < len(branches):
-            deferred = len(branches) - len(required_artifact_branches)
-            return required_artifact_branches, {
-                'gpu_heavy_guard': 'deferred_optional_helpers',
-                'reason': 'required_artifact_closure_first',
-                'original_branch_count': len(branches),
-                'scheduled_branch_count': len(required_artifact_branches),
-                'deferred_branch_count': deferred,
-                }
-        return branches, {}
+        return self.branch_selection.shape_active_late_fill_branches(active_branches, artifact_gap=artifact_gap)
 
     def select_active_late_fill_branches(
         self,
@@ -2244,50 +1402,7 @@ class LateFillRuntimeOwner:
         *,
         artifact_gap: Optional[Mapping[str, Any]] = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Select current work before applying resource priorities.
-
-        A known availability wait must not reserve a resource ahead of ready
-        siblings. When only waits remain, advancing the oldest due group
-        prevents a permanently unavailable high-priority capability from owning
-        every recheck. Existing wait deadlines supply the ordering; no new queue
-        or execution authority is introduced.
-        """
-        ready: list[dict[str, Any]] = []
-        due_waits: list[tuple[float, dict[str, Any]]] = []
-        now = time.time()
-        for branch in dependency_ready_branches:
-            wait = branch.get('availability_wait')
-            if not isinstance(wait, Mapping) or not wait:
-                ready.append(branch)
-            elif self.availability_wait_delay(branch) <= 0:
-                try:
-                    deadline = float(wait.get('next_check_epoch') or 0)
-                except (TypeError, ValueError, OverflowError):
-                    deadline = 0.0
-                # The delay helper also admits stale future timestamps after
-                # clock movement. Revalidate those instead of sorting them last.
-                if not math.isfinite(deadline) or deadline > now:
-                    deadline = 0.0
-                due_waits.append((deadline, branch))
-        policy: dict[str, Any] = {}
-        if ready:
-            selected = ready
-            if len(ready) < len(dependency_ready_branches):
-                policy['availability_selection'] = 'ready_before_wait_rechecks'
-        elif due_waits:
-            oldest_due = min(deadline for deadline, _ in due_waits)
-            selected = [branch for deadline, branch in due_waits if deadline == oldest_due]
-            policy['availability_selection'] = 'oldest_due_waits'
-        else:
-            return [], {}
-        if policy:
-            policy['availability_deferred_branch_count'] = (
-                len(dependency_ready_branches) - len(selected)
-            )
-        active, resource_policy = self.shape_active_late_fill_branches(
-            selected, artifact_gap=artifact_gap,
-        )
-        return active, {**resource_policy, **policy}
+        return self.branch_selection.select_active_late_fill_branches(dependency_ready_branches, artifact_gap=artifact_gap)
 
     @staticmethod
     def _text_artifact_request_from_branch_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
@@ -2391,7 +1506,7 @@ class LateFillRuntimeOwner:
                     recovery_key
                 ):
                     return True
-            if LateFillRuntimeOwner._text_artifact_revision_required(source):
+            if text_artifact_materialization._text_artifact_revision_required(source):
                 # Every revision owns a different complete source snapshot.
                 # Combining those branches would give one model call only the
                 # first file's edit base and would destroy branch-local truth.
@@ -2427,7 +1542,7 @@ class LateFillRuntimeOwner:
                 continue
             if self._branch_spec_disables_required_text_artifact_coalescing(spec, branch):
                 continue
-            if not self._branch_is_required_text_artifact(branch):
+            if not self.branch_selection._branch_is_required_text_artifact(branch):
                 continue
             request = self._text_artifact_request_from_branch_spec(spec)
             extension = str(request.get('extension') or '').strip().lower()
@@ -2747,151 +1862,17 @@ class LateFillRuntimeOwner:
             )
         return combined
 
-    @staticmethod
-    def _normalized_text_artifact_path_for_match(path: Any) -> str:
-        token = str(path or '').strip()
-        if not token:
-            return ''
-        try:
-            return str(Path(token).expanduser().resolve(strict=False))
-        except OSError:
-            return str(Path(token).expanduser())
+    _normalized_text_artifact_path_for_match = staticmethod(text_artifact_materialization._normalized_text_artifact_path_for_match)
 
-    @classmethod
-    def _text_artifact_path_matches_target(cls, path: Any, target_path: Any) -> bool:
-        normalized_path = cls._normalized_text_artifact_path_for_match(path)
-        normalized_target = cls._normalized_text_artifact_path_for_match(target_path)
-        return bool(normalized_path and normalized_target and normalized_path == normalized_target)
+    _text_artifact_path_matches_target = staticmethod(text_artifact_materialization._text_artifact_path_matches_target)
 
-    @classmethod
-    def _text_artifact_target_path_from_mapping(cls, payload: Any) -> str:
-        if not isinstance(payload, Mapping):
-            return ''
-        for key in ('target_path', 'text_artifact_target_path'):
-            value = str(payload.get(key) or '').strip()
-            if value:
-                return value
-        for key in ('text_artifact_request', 'artifact_request'):
-            value = cls._text_artifact_target_path_from_mapping(payload.get(key))
-            if value:
-                return value
-        execution_contract = payload.get('execution_contract')
-        if isinstance(execution_contract, Mapping):
-            value = cls._text_artifact_target_path_from_mapping(execution_contract)
-            if value:
-                return value
-        return ''
+    _text_artifact_target_path_from_mapping = staticmethod(LinkedArtifactMaterialization._text_artifact_target_path_from_mapping)
 
-    @classmethod
-    def _saved_text_artifact_matches_request(cls, artifact: Mapping[str, Any], request: Mapping[str, Any]) -> bool:
-        request_target_path = cls._text_artifact_target_path_from_mapping(request)
-        if request_target_path:
-            artifact_path = str(artifact.get('path') or artifact.get('saved_text_path') or '').strip()
-            if not cls._text_artifact_path_matches_target(artifact_path, request_target_path):
-                return False
-        artifact_request = (
-            artifact.get('text_artifact_request')
-            if isinstance(artifact.get('text_artifact_request'), Mapping)
-            else artifact.get('artifact_request')
-            if isinstance(artifact.get('artifact_request'), Mapping)
-            else {}
-        )
-        artifact_extension = str(
-            artifact.get('text_artifact_extension')
-            or artifact_request.get('extension')
-            or Path(str(artifact.get('path') or artifact.get('saved_text_path') or '')).suffix.lstrip('.')
-            or ''
-        ).strip().lower().lstrip('.')
-        request_extension = str(request.get('extension') or '').strip().lower().lstrip('.')
-        if request_extension and artifact_extension and artifact_extension != request_extension:
-            return False
-        artifact_source_name = str(
-            artifact.get('text_artifact_source_name')
-            or artifact_request.get('source_name')
-            or Path(str(artifact.get('path') or artifact.get('saved_text_path') or '')).stem
-            or ''
-        ).strip().lower()
-        request_source_name = str(request.get('source_name') or '').strip().lower()
-        return not request_source_name or not artifact_source_name or artifact_source_name == request_source_name
+    _saved_text_artifact_matches_request = staticmethod(TextArtifactResultEvidence._saved_text_artifact_matches_request)
 
-    @staticmethod
-    def _read_small_text_artifact(path: Any, *, max_bytes: int = 512_000) -> str:
-        token = str(path or '').strip()
-        if not token:
-            return ''
-        try:
-            target = Path(token).expanduser()
-            if not target.is_file() or target.stat().st_size > max_bytes:
-                return ''
-            return target.read_text(encoding='utf-8', errors='replace')
-        except OSError:
-            return ''
+    _read_small_text_artifact = staticmethod(TextArtifactResultEvidence._read_small_text_artifact)
 
-    @classmethod
-    def _text_artifact_revision_source_payload(
-        cls,
-        branch: Mapping[str, Any],
-        artifact_gap: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        """Build one bounded, complete source snapshot for an explicit edit."""
-
-        if not cls._text_artifact_revision_required(branch, artifact_gap):
-            return {}
-        target_path = (
-            cls._text_artifact_target_path_from_mapping(branch)
-            or cls._text_artifact_target_path_from_mapping(artifact_gap)
-        )
-        if not target_path:
-            return {
-                'branch_contract_error': 'text_revision_source_unavailable',
-                'materialization_blocked': True,
-                'repair_action': RECOVERY_ACTION_REPAIR_BRANCH_CONTRACT,
-                'text_artifact_revision_binding_state': 'missing_target_path',
-            }
-        try:
-            target = Path(target_path).expanduser()
-            size_bytes = target.stat().st_size if target.is_file() else -1
-            if size_bytes < 0:
-                raise OSError('revision source is not a file')
-            # A partial source packet cannot uphold "keep the rest intact".
-            # Fail closed instead of truncating large files in the model prompt.
-            if size_bytes > 90_000:
-                return {
-                    'branch_contract_error': 'text_revision_source_exceeds_prompt_bound',
-                    'materialization_blocked': True,
-                    'repair_action': RECOVERY_ACTION_REPAIR_BRANCH_CONTRACT,
-                    'text_artifact_revision_binding_state': 'source_too_large',
-                    'text_artifact_revision_source_size_bytes': size_bytes,
-                }
-            source_content = target.read_text(encoding='utf-8', errors='replace')
-        except OSError:
-            return {
-                'branch_contract_error': 'text_revision_source_unavailable',
-                'materialization_blocked': True,
-                'repair_action': RECOVERY_ACTION_REPAIR_BRANCH_CONTRACT,
-                'text_artifact_revision_binding_state': 'source_unreadable',
-            }
-        if not source_content:
-            return {
-                'branch_contract_error': 'text_revision_source_unavailable',
-                'materialization_blocked': True,
-                'repair_action': RECOVERY_ACTION_REPAIR_BRANCH_CONTRACT,
-                'text_artifact_revision_binding_state': 'source_empty',
-            }
-        return {
-            'content_payload': source_content,
-            'content_payload_source': 'canonical_predecessor_text_artifact_snapshot',
-            'text_artifact_revision_required': True,
-            'text_artifact_source_is_input': True,
-            'text_artifact_revision_binding_state': 'bound',
-            'text_artifact_revision_source_path': target_path,
-            'text_artifact_revision_source_size_bytes': size_bytes,
-            'text_artifact_revision_source_sha256': hashlib.sha256(
-                source_content.encode('utf-8')
-            ).hexdigest(),
-            'dependency_payload_policy': 'preserve_text_artifact_revision_source',
-            'suppress_reference_file_context': True,
-        }
+    _text_artifact_revision_source_payload = staticmethod(TextArtifactFiles._text_artifact_revision_source_payload)
 
     def _expand_coalesced_text_artifact_materialization(
         self,
@@ -3071,15 +2052,15 @@ class LateFillRuntimeOwner:
                     (
                         artifact
                         for artifact in saved_text_artifacts
-                        if self._saved_text_artifact_matches_request(artifact, request)
+                        if TextArtifactResultEvidence._saved_text_artifact_matches_request(artifact, request)
                     ),
                     {},
                 )
                 if matched_artifact:
                     request_extension = str(request.get('extension') or '').strip().lower().lstrip('.')
                     request_source_name = str(request.get('source_name') or '').strip()
-                    request_target_path = self._text_artifact_target_path_from_mapping(request)
-                    repaired_or_clean_artifact = self._canonical_text_artifact_saved_result(
+                    request_target_path = LinkedArtifactMaterialization._text_artifact_target_path_from_mapping(request)
+                    repaired_or_clean_artifact = self.text_artifact_result_evidence._canonical_text_artifact_saved_result(
                         {'artifacts': [dict(matched_artifact)]},
                         extension=request_extension,
                         source_name=request_source_name,
@@ -3089,8 +2070,8 @@ class LateFillRuntimeOwner:
                     if repaired_or_clean_artifact:
                         matched_artifact = repaired_or_clean_artifact
                 if not matched_artifact:
-                    request_target_path = self._text_artifact_target_path_from_mapping(request)
-                    target_binding_error = self._text_artifact_target_binding_violation(
+                    request_target_path = LinkedArtifactMaterialization._text_artifact_target_path_from_mapping(request)
+                    target_binding_error = text_artifact_materialization._text_artifact_target_binding_violation(
                         {'saved_text_artifacts': saved_text_artifacts},
                         target_path=request_target_path,
                         extension=str(request.get('extension') or '').strip().lower().lstrip('.'),
@@ -3111,7 +2092,7 @@ class LateFillRuntimeOwner:
                     }
                     continue
                 saved_path = str(matched_artifact.get('path') or matched_artifact.get('saved_text_path') or '').strip()
-                artifact_content = self._read_small_text_artifact(saved_path)
+                artifact_content = TextArtifactResultEvidence._read_small_text_artifact(saved_path)
                 branch_infer_result = dict(infer_result)
                 branch_infer_result['saved_text_path'] = saved_path
                 branch_infer_result['saved_text_artifacts'] = [dict(matched_artifact)]
@@ -3234,8 +2215,8 @@ class LateFillRuntimeOwner:
         active_capabilities = self.normalize_capability_list(
             [self.branch_capability(item) for item in active_branches if isinstance(item, Mapping) and self.branch_capability(item)]
         )
-        context = self._runtime_scheduling_context(artifact_gap, source_route_payload)
-        branch_context = self._branch_scheduling_context(branch, artifact_gap)
+        context = LateFillSelection._runtime_scheduling_context(artifact_gap, source_route_payload)
+        branch_context = self.branch_selection._branch_scheduling_context(branch, artifact_gap)
         for key in ('repair_scope', 'resource_class', 'dependency_policy'):
             value = branch_context.get(key)
             if value not in (None, '', [], {}):
@@ -3247,11 +2228,11 @@ class LateFillRuntimeOwner:
         if source_route_payload and isinstance(source_route_payload, Mapping):
             route_instance = source_route_payload.get('instance') if isinstance(source_route_payload.get('instance'), Mapping) else {}
             if route_instance:
-                if self._late_fill_instance_is_lightweight_chat_candidate(route_instance):
+                if LateFillSelection._late_fill_instance_is_lightweight_chat_candidate(route_instance):
                     context.setdefault('selected_chat_model_class', 'lightweight')
                 context.setdefault('selected_chat_model', route_instance.get('model') or route_instance.get('model_name'))
                 context.setdefault('selected_chat_instance_id', route_instance.get('instance_id'))
-        if self._branch_allows_gpu_heavy_concurrency(branch, artifact_gap):
+        if self.branch_selection._branch_allows_gpu_heavy_concurrency(branch, artifact_gap):
             context['allow_gpu_heavy_concurrency'] = True
         return {key: value for key, value in context.items() if value not in (None, '', [], {})}
 
@@ -3260,7 +2241,7 @@ class LateFillRuntimeOwner:
         for key in ('pending_branches', 'active_branches'):
             branches = late_fill_state.get(key) if isinstance(late_fill_state.get(key), list) else []
             for branch in branches:
-                if isinstance(branch, Mapping) and self._branch_is_required_artifact(branch):
+                if isinstance(branch, Mapping) and self.branch_selection._branch_is_required_artifact(branch):
                     return True
         return False
 
@@ -3632,6 +2613,7 @@ class LateFillRuntimeOwner:
         if exception_type:
             payload['exception_type'] = exception_type
         for key in (
+            'pdf_preparation', 'pdf_source', 'pdf_total_pages', 'pdf_processed_pages', 'warnings',
             'route_diagnostics',
             'reason_code',
             'defect_code',
@@ -4010,94 +2992,7 @@ class LateFillRuntimeOwner:
                 return True
         return False
 
-    @classmethod
-    def _target_bound_saved_text_syntax_repair_evidence(
-        cls,
-        recovery_context: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        if not isinstance(recovery_context, Mapping):
-            return {}
-        if str(recovery_context.get('error_code') or '').strip().upper() != (
-            'TEXT_ARTIFACT_SYNTAX_SANITY_FAILED'
-        ):
-            return {}
-        if recovery_context.get('target_bound_syntax_repair') is not True:
-            return {}
-        target_path = str(
-            recovery_context.get('saved_text_path')
-            or recovery_context.get('text_artifact_target_path')
-            or ''
-        ).strip()
-        if not target_path:
-            return {}
-        target = Path(target_path).expanduser()
-        try:
-            if not target.is_file() or target.stat().st_size > 512_000:
-                return {}
-            current_content = target.read_text(
-                encoding='utf-8',
-                errors='replace',
-            )
-        except OSError:
-            return {}
-        extension = re.sub(
-            r'[^a-zA-Z0-9]+',
-            '',
-            str(
-                recovery_context.get('text_artifact_extension')
-                or target.suffix
-                or ''
-            ).strip().lower().lstrip('.'),
-        )
-        current_issues = (
-            ResponseSemanticsRuntimeOwner.text_artifact_syntax_sanity_issues_for_extension(
-                extension,
-                strip_enclosing_text_artifact_fence(
-                    current_content,
-                    extension,
-                ),
-            )
-        )
-        if not current_issues:
-            return {}
-        reported_issues = [
-            str(issue).strip()
-            for issue in (recovery_context.get('syntax_sanity_issues') or [])
-            if str(issue).strip()
-        ] if isinstance(recovery_context.get('syntax_sanity_issues'), list) else []
-        if not reported_issues:
-            return {}
-        source_name = str(
-            recovery_context.get('text_artifact_source_name')
-            or target.stem
-            or ''
-        ).strip()
-        content_payload = '\n'.join(
-            [
-                f'Target text artifact: {target_path}',
-                'Deterministic syntax sanity issues:',
-                *[f'- {issue}' for issue in reported_issues],
-                *ResponseSemanticsRuntimeOwner._bounded_repair_content_block(
-                    'Current saved target file content',
-                    current_content,
-                ),
-                (
-                    'Update only the target text artifact. Preserve valid runtime '
-                    'artifact links, copy, and layout intent. Fix the syntax defects '
-                    'above before closure.'
-                ),
-            ]
-        ).strip()
-        if not content_payload:
-            return {}
-        return {
-            'target_path': target_path,
-            'extension': extension,
-            'source_name': source_name,
-            'syntax_sanity_issues': reported_issues,
-            'current_syntax_sanity_issues': current_issues,
-            'content_payload': content_payload,
-        }
+    _target_bound_saved_text_syntax_repair_evidence = staticmethod(TextArtifactFiles._target_bound_saved_text_syntax_repair_evidence)
 
     @staticmethod
     def _late_fill_availability_poll_seconds() -> float:
@@ -4120,7 +3015,7 @@ class LateFillRuntimeOwner:
             or evidence.get('reason') != 'live_candidates_in_cooldown'
             or not evidence.get('candidate_instance_ids')
             or branch.get('automatic_follow_up_allowed') is False
-            or cls._content_review_binding(branch)
+            or BranchDependencyEvidence._content_review_binding(branch)
             or (branch.get('recovery_attempt') or {}).get('recovery_policy_id')
             == _VISION_EVIDENCE_RECOVERY_POLICY_ID
         ):
@@ -4148,16 +3043,7 @@ class LateFillRuntimeOwner:
 
     @staticmethod
     def availability_wait_delay(branch: Mapping[str, Any]) -> float:
-        wait = branch.get('availability_wait')
-        if not isinstance(wait, Mapping):
-            return 0.0
-        try:
-            remaining = float(wait.get('next_check_epoch') or 0) - time.time()
-            # A future timestamp beyond the supported poll range is stale
-            # after clock movement; revalidate rather than hide the work.
-            return 0.0 if remaining > 60 else max(0.0, remaining)
-        except (TypeError, ValueError):
-            return 0.0
+        return LateFillSelection.availability_wait_delay(branch, clock=time.time)
 
     def auto_executable_repair_recovery_allowed(
         self,
@@ -4176,8 +3062,8 @@ class LateFillRuntimeOwner:
             # attempt returns to explicit user control instead of entering the
             # ordinary required-image auto-repair loop.
             return False
-        required_text_artifact = self._branch_is_required_text_artifact(branch)
-        required_image_materialization = self._branch_is_required_image_materialization(branch)
+        required_text_artifact = self.branch_selection._branch_is_required_text_artifact(branch)
+        required_image_materialization = self.branch_selection._branch_is_required_image_materialization(branch)
         required_tts_recovery = (
             self._required_tts_auto_recovery_allowed(
                 branch,
@@ -4196,7 +3082,7 @@ class LateFillRuntimeOwner:
             recovery_context.get('error_code') or ''
         ).strip().upper() == 'TEXT_ARTIFACT_SYNTAX_SANITY_FAILED'
         target_bound_syntax_evidence = (
-            self._target_bound_saved_text_syntax_repair_evidence(
+            TextArtifactFiles._target_bound_saved_text_syntax_repair_evidence(
                 recovery_context
             )
             if syntax_failure
@@ -4286,7 +3172,7 @@ class LateFillRuntimeOwner:
         except (TypeError, ValueError):
             retry_count = 0
         target_bound_syntax_evidence = (
-            self._target_bound_saved_text_syntax_repair_evidence(
+            TextArtifactFiles._target_bound_saved_text_syntax_repair_evidence(
                 recovery_context
             )
         )
@@ -4762,27 +3648,7 @@ class LateFillRuntimeOwner:
         self,
         branch: Mapping[str, Any],
     ) -> bool:
-        dependencies = {
-            str(item or '').strip()
-            for item in (branch.get('depends_on') or [])
-            if str(item or '').strip()
-        }
-        if dependencies != {'phase-1'}:
-            return False
-        capability = self.branch_capability(branch)
-        if capability == self.capability_text_to_speech:
-            return bool(
-                str(branch.get('content_payload') or '').strip()
-                and str(branch.get('content_payload_source') or '').strip()
-                == 'current_turn_direct_spoken_clause'
-            )
-        if capability == self.capability_image_generation:
-            return bool(
-                str(branch.get('artifact_prompt') or '').strip()
-                and str(branch.get('artifact_prompt_source') or '').strip()
-                == 'current_turn_direct_image_clause'
-            )
-        return False
+        return self.branch_dependency_evidence._branch_has_current_turn_direct_media_payload(branch)
 
     def _branch_depends_on_rejected_current_payload(
         self,
@@ -4793,7 +3659,7 @@ class LateFillRuntimeOwner:
         capability = self.branch_capability(branch)
         if capability == 'chat':
             return False
-        if self._branch_has_current_turn_direct_media_payload(branch):
+        if self.branch_dependency_evidence._branch_has_current_turn_direct_media_payload(branch):
             return False
         depends_on = {
             str(item or '').strip()
@@ -4889,7 +3755,7 @@ class LateFillRuntimeOwner:
                 'failed_dependency_ids': failed_dependency_ids,
             }
         gap_payload = artifact_gap if isinstance(artifact_gap, Mapping) else {}
-        dependency_payload = self.branch_dependency_payload(branch, current_payload=current_payload)
+        dependency_payload = self.branch_dependency_evidence.branch_dependency_payload(branch, current_payload=current_payload)
         if (saved_file_dependency_contract(branch) or separate_image_report_contract(branch)) and dependency_payload.get('branch_contract_error'):
             return {'code': 'DEPENDENCY_CHAIN_REPAIR_REQUIRED',
                     'message': dependency_payload['branch_contract_error'],
@@ -5011,7 +3877,7 @@ class LateFillRuntimeOwner:
         This is preparation evidence, never a new execution permit. The claimed
         C9 worker still owns scope, dependency, cancellation and publication gates.
         """
-        binding = self._content_review_binding(gap)
+        binding = BranchDependencyEvidence._content_review_binding(gap)
         instruction = gap.get('content_payload')
         if (not binding or not isinstance(instruction, str) or not instruction
                 or gap.get('capability') != 'chat'
@@ -5040,8 +3906,8 @@ class LateFillRuntimeOwner:
                 or repair['contract_id'] not in (reopen.get('contract_ids') or [])
                 or any(gap.get(k) != branch.get(k) for k in ('branch_id', 'phase_id', 'obligation_id'))
                 or any(instruction != item.get('content_payload') for item in (branch, repair))
-                or binding != self._content_review_binding(branch)
-                or binding != self._content_review_binding(repair)
+                or binding != BranchDependencyEvidence._content_review_binding(branch)
+                or binding != BranchDependencyEvidence._content_review_binding(repair)
                 or branch.get('execution_contract') != execution
                 or projected.get('repair_contract') != repair
                 or projected.get('execution_scope') not in (None, '', 'branch_local')
@@ -5512,10 +4378,10 @@ class LateFillRuntimeOwner:
                 artifact_ref = str(artifact.get('artifact_ref') or artifact.get('ref') or '').strip()
                 if declared_refs and artifact_ref not in declared_refs:
                     continue
-                if self._artifact_record_path(artifact) and artifact not in selected_audio_candidates:
+                if branch_result_contracts._artifact_record_path(artifact) and artifact not in selected_audio_candidates:
                     selected_audio_candidates.append(artifact)
             if len(selected_audio_candidates) == 1:
-                selected_audio_path = self._artifact_record_path(selected_audio_candidates[0])
+                selected_audio_path = branch_result_contracts._artifact_record_path(selected_audio_candidates[0])
             if selected_audio_path:
                 # Explicit file authority outranks both current input fallback
                 # and route reuse for this selected-reference branch.
@@ -6722,11 +5588,11 @@ class LateFillRuntimeOwner:
                     'cooldown_until': min(item['cooldown_until'] for _, item in temporary_candidates),
                 }
             return late_fill_payload, None, message
-        candidates = self._prefer_non_mlx_vlm_for_required_text_candidates(
+        candidates = LateFillSelection._prefer_non_mlx_vlm_for_required_text_candidates(
             usable_candidates,
             artifact_gap_payload,
         )
-        candidates = self._prefer_lightweight_chat_for_required_text_candidates(
+        candidates = LateFillSelection._prefer_lightweight_chat_for_required_text_candidates(
             candidates,
             artifact_gap_payload,
             source_route_payload,
@@ -6998,7 +5864,7 @@ class LateFillRuntimeOwner:
             for result in (late_fill.get('fill_results') or []):
                 if not isinstance(result, Mapping):
                     continue
-                if not self.late_fill_result_has_missing_dependency_evidence(result):
+                if not branch_result_contracts.late_fill_result_has_missing_dependency_evidence(result):
                     continue
                 phase_id = str(result.get('phase_id') or result.get('branch_id') or '').strip()
                 if phase_id:
@@ -7065,16 +5931,7 @@ class LateFillRuntimeOwner:
         graph_payload.update(explicit_publication)
         return graph_payload
 
-    @staticmethod
-    def _content_review_binding(payload: Mapping[str, Any]) -> dict[str, Any]:
-        """The existing review contract carries this opt-in admission policy."""
-        contract = payload.get('execution_contract') if isinstance(payload.get('execution_contract'), Mapping) else {}
-        for source in (payload, contract):
-            review = source.get('branch_semantic_review') if isinstance(source.get('branch_semantic_review'), Mapping) else {}
-            binding = source.get('semantic_review_evidence_binding') or review.get('semantic_review_evidence_binding') or {}
-            if isinstance(binding, Mapping) and binding.get('content_requirement_policy') == 'named_saved_text_v1':
-                return dict(binding)
-        return {}
+    _content_review_binding = staticmethod(BranchDependencyEvidence._content_review_binding)
 
     @staticmethod
     def _is_semantic_review_branch(*payloads: Mapping[str, Any]) -> bool:
@@ -7121,677 +5978,49 @@ class LateFillRuntimeOwner:
             projected[contract_key] = projected_contract
         return projected
 
-    @staticmethod
-    def _artifact_record_merge_key(item: Mapping[str, Any]) -> tuple[str, str, str]:
-        path = str(item.get('path') or '').strip()
-        source_path = str(item.get('source_path') or '').strip()
-        if path or source_path:
-            return ('path', path, source_path)
-        artifact_ref = str(item.get('artifact_ref') or item.get('ref') or '').strip()
-        artifact_id = str(item.get('artifact_id') or '').strip()
-        if artifact_ref or artifact_id:
-            return ('ref', artifact_ref, artifact_id)
-        return (
-            'fallback',
-            str(item.get('type') or item.get('kind') or '').strip().lower(),
-            str(item.get('name') or item.get('source_name') or '').strip(),
-        )
+    _artifact_record_merge_key = staticmethod(branch_result_contracts._artifact_record_merge_key)
 
-    @staticmethod
-    def _merge_artifact_record_fields(
-        existing: dict[str, Any],
-        incoming: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        for key, value in dict(incoming or {}).items():
-            if value in (None, '', [], {}):
-                continue
-            if existing.get(key) in (None, '', [], {}):
-                existing[key] = value
-        artifact_ref = str(existing.get('artifact_ref') or '').strip()
-        ref = str(existing.get('ref') or '').strip()
-        if artifact_ref and not ref:
-            existing['ref'] = artifact_ref
-        elif ref and not artifact_ref:
-            existing['artifact_ref'] = ref
-        return existing
+    _merge_artifact_record_fields = staticmethod(branch_result_contracts._merge_artifact_record_fields)
 
-    @classmethod
-    def _artifact_record_identity_signature(cls, item: Mapping[str, Any]) -> tuple[str, str, str, str]:
-        return (
-            str(item.get('type') or item.get('kind') or '').strip().lower(),
-            cls._artifact_record_path(item),
-            str(item.get('source_path') or '').strip(),
-            cls._artifact_record_extension(item),
-        )
+    _artifact_record_identity_signature = staticmethod(branch_result_contracts._artifact_record_identity_signature)
 
-    @staticmethod
-    def _repair_artifact_record_identity(item: Mapping[str, Any]) -> dict[str, Any]:
-        repaired = dict(item or {})
-        identity_payload = dict(repaired)
-        for key in ('artifact_id', 'artifactId', 'id', 'artifact_ref', 'artifactRef', 'ref'):
-            identity_payload.pop(key, None)
-        canonical = sanitize_artifact_record(
-            identity_payload,
-            default_kind=str(repaired.get('type') or repaired.get('kind') or '').strip().lower() or None,
-            default_origin=str(repaired.get('origin') or '').strip().lower() or None,
-        )
-        if not canonical:
-            return repaired
-        for key in ('artifact_id', 'artifact_ref', 'ref'):
-            if canonical.get(key):
-                repaired[key] = canonical[key]
-        return repaired
+    _repair_artifact_record_identity = staticmethod(branch_result_contracts._repair_artifact_record_identity)
 
-    @classmethod
-    def _repair_colliding_artifact_record_identities(
-        cls,
-        records: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        token_to_indexes: dict[tuple[str, str], list[int]] = {}
-        for index, item in enumerate(records):
-            if not isinstance(item, Mapping):
-                continue
-            if not cls._artifact_record_path(item):
-                continue
-            for field in ('artifact_id', 'artifact_ref', 'ref'):
-                token = str(item.get(field) or '').strip()
-                if token:
-                    token_to_indexes.setdefault((field, token), []).append(index)
+    _repair_colliding_artifact_record_identities = staticmethod(branch_result_contracts._repair_colliding_artifact_record_identities)
 
-        indexes_to_repair: set[int] = set()
-        for indexes in token_to_indexes.values():
-            if len(indexes) < 2:
-                continue
-            signatures = {
-                cls._artifact_record_identity_signature(records[index])
-                for index in indexes
-            }
-            if len(signatures) > 1:
-                indexes_to_repair.update(indexes)
-        if not indexes_to_repair:
-            return records
-        return [
-            cls._repair_artifact_record_identity(item)
-            if index in indexes_to_repair
-            else item
-            for index, item in enumerate(records)
-        ]
+    merge_unique_artifact_records = staticmethod(branch_result_contracts.merge_unique_artifact_records)
 
-    @staticmethod
-    def merge_unique_artifact_records(
-        existing_values: Any,
-        incoming_values: Any,
-    ) -> list[dict[str, Any]]:
-        merged: list[dict[str, Any]] = []
-        index_by_key: dict[tuple[str, str, str], int] = {}
-        for raw_item in (existing_values or []):
-            if not isinstance(raw_item, dict):
-                continue
-            item = dict(raw_item)
-            key = LateFillRuntimeOwner._artifact_record_merge_key(item)
-            if key in index_by_key:
-                LateFillRuntimeOwner._merge_artifact_record_fields(merged[index_by_key[key]], item)
-                continue
-            index_by_key[key] = len(merged)
-            merged.append(item)
-        for raw_item in (incoming_values or []):
-            if not isinstance(raw_item, dict):
-                continue
-            item = dict(raw_item)
-            key = LateFillRuntimeOwner._artifact_record_merge_key(item)
-            if key in index_by_key:
-                LateFillRuntimeOwner._merge_artifact_record_fields(merged[index_by_key[key]], item)
-                continue
-            index_by_key[key] = len(merged)
-            merged.append(item)
-        return LateFillRuntimeOwner._repair_colliding_artifact_record_identities(merged)
+    artifact_records_from_payload = staticmethod(branch_result_contracts.artifact_records_from_payload)
 
-    @staticmethod
-    def artifact_records_from_payload(
-        payload: Any,
-        key: str,
-    ) -> list[dict[str, Any]]:
-        if not isinstance(payload, Mapping):
-            return []
-        records: list[dict[str, Any]] = []
+    merge_late_fill_payload_artifacts = staticmethod(branch_result_contracts.merge_late_fill_payload_artifacts)
 
-        def add_records(raw_value: Any) -> None:
-            if not isinstance(raw_value, list):
-                return
-            for raw_item in raw_value:
-                if isinstance(raw_item, dict):
-                    records.append(dict(raw_item))
+    late_fill_text_from_result_payload = staticmethod(branch_result_contracts.late_fill_text_from_result_payload)
 
-        add_records(payload.get(key))
-        request_payload = payload.get('request') if isinstance(payload.get('request'), Mapping) else {}
-        add_records(request_payload.get(key))
-        frame_payload = payload.get('response_frame') if isinstance(payload.get('response_frame'), Mapping) else {}
-        frame_request = frame_payload.get('request') if isinstance(frame_payload.get('request'), Mapping) else {}
-        add_records(frame_request.get(key))
-        artifacts_payload = payload.get('artifacts') if isinstance(payload.get('artifacts'), Mapping) else {}
-        if key == 'input_artifacts':
-            add_records(artifacts_payload.get('input'))
-        elif key == 'reference_artifacts':
-            add_records(artifacts_payload.get('reference'))
-        return records
+    late_fill_result_has_missing_dependency_evidence = staticmethod(branch_result_contracts.late_fill_result_has_missing_dependency_evidence)
 
-    def merge_late_fill_payload_artifacts(
-        self,
-        late_fill_payload: dict[str, Any],
-        *sources: Any,
-    ) -> dict[str, Any]:
-        updated = dict(late_fill_payload or {})
-        for key in ('input_artifacts', 'reference_artifacts'):
-            merged_records = self.merge_unique_artifact_records(updated.get(key), [])
-            for source in sources:
-                merged_records = self.merge_unique_artifact_records(
-                    merged_records,
-                    self.artifact_records_from_payload(source, key),
-                )
-            if merged_records:
-                updated[key] = merged_records
-        return updated
+    late_fill_branch_dependency_ids = staticmethod(branch_result_contracts.late_fill_branch_dependency_ids)
 
-    @staticmethod
-    def late_fill_text_from_result_payload(payload: Any) -> str:
-        if not isinstance(payload, Mapping):
-            return ''
-        for key in (
-            'content_payload',
-            'content',
-            'output_text',
-            'result_text',
-            'result',
-            'text',
-            'transcript',
-        ):
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        result = payload.get('result')
-        if isinstance(result, Mapping):
-            for key in ('content', 'output_text', 'text', 'transcript'):
-                value = result.get(key)
-                if isinstance(value, str) and value.strip():
-                    return value.strip()
-        return ''
+    tts_source_evidence_from_effective_data = staticmethod(TtsResultEvidence.tts_source_evidence_from_effective_data)
 
-    @staticmethod
-    def late_fill_result_has_missing_dependency_evidence(payload: Any) -> bool:
-        if not isinstance(payload, Mapping):
-            return False
-        capability = str(payload.get('capability') or payload.get('expected_capability') or '').strip().lower()
-        text = LateFillRuntimeOwner.late_fill_text_from_result_payload(payload)
-        if capability in {'vision_analysis', 'speech_to_text'} and _PATH_ONLY_DEPENDENCY_EVIDENCE_RE.match(text):
-            return True
-        if not text:
-            return False
-        if capability == 'vision_analysis' and _VISION_GENERATION_REFUSAL_RE.search(text):
-            return True
-        if capability in {'vision_analysis', 'speech_to_text'}:
-            return bool(_DEPENDENCY_EVIDENCE_MISSING_CLAIM_RE.search(text))
-        if capability == 'chat':
-            depends_on = [
-                str(item or '').strip()
-                for item in (payload.get('depends_on') or payload.get('dependsOn') or [])
-                if str(item or '').strip()
-            ]
-            depends_on_non_root = any(item != 'phase-1' for item in depends_on)
-            return depends_on_non_root and bool(_DEPENDENCY_EVIDENCE_MISSING_CLAIM_RE.search(text))
-        return False
-
-    @staticmethod
-    def late_fill_branch_dependency_ids(
-        branch: Mapping[str, Any],
-        *,
-        current_payload: Optional[Mapping[str, Any]] = None,
-    ) -> list[str]:
-        """Collect one branch's dependency aliases from contract and graph truth."""
-
-        dependency_ids: list[str] = []
-
-        def _add(raw_values: Any) -> None:
-            values = (
-                raw_values
-                if isinstance(raw_values, (list, tuple, set))
-                else [raw_values]
-            )
-            for value in values:
-                token = str(value or '').strip()
-                if token and token not in dependency_ids:
-                    dependency_ids.append(token)
-
-        _add(branch.get('depends_on') or branch.get('dependsOn'))
-        execution_contract = (
-            branch.get('execution_contract')
-            if isinstance(branch.get('execution_contract'), Mapping)
-            else {}
-        )
-        _add(
-            execution_contract.get('depends_on')
-            or execution_contract.get('dependencies')
-        )
-        if not isinstance(current_payload, Mapping):
-            return dependency_ids
-
-        runtime = (
-            current_payload.get('runtime')
-            if isinstance(current_payload.get('runtime'), Mapping)
-            else {}
-        )
-        phase_graph = (
-            runtime.get('request_phase_graph')
-            if isinstance(runtime.get('request_phase_graph'), Mapping)
-            else {}
-        )
-        branch_tokens = {
-            str(branch.get('branch_id') or '').strip(),
-            str(branch.get('phase_id') or '').strip(),
-            str(execution_contract.get('branch_id') or '').strip(),
-            str(execution_contract.get('phase_id') or '').strip(),
-        }
-        branch_tokens.discard('')
-        if not branch_tokens:
-            return dependency_ids
-        for key in ('phases', 'downstream_branches'):
-            records = phase_graph.get(key) if isinstance(phase_graph.get(key), list) else []
-            for record in records:
-                if not isinstance(record, Mapping):
-                    continue
-                record_tokens = {
-                    str(record.get('branch_id') or '').strip(),
-                    str(record.get('phase_id') or '').strip(),
-                }
-                record_tokens.discard('')
-                if branch_tokens and not branch_tokens.intersection(record_tokens):
-                    continue
-                _add(record.get('depends_on') or record.get('dependsOn'))
-        return dependency_ids
-
-    @staticmethod
-    def tts_source_evidence_from_effective_data(
-        effective_data: Mapping[str, Any],
-        *,
-        infer_payload: Optional[Mapping[str, Any]] = None,
-        execution_contract: Optional[Mapping[str, Any]] = None,
-    ) -> dict[str, Any]:
-        """Freeze the exact branch-local text handed to the TTS backend."""
-
-        effective = effective_data if isinstance(effective_data, Mapping) else {}
-        infer = infer_payload if isinstance(infer_payload, Mapping) else {}
-        contract = execution_contract if isinstance(execution_contract, Mapping) else {}
-        infer_prompt = infer.get('prompt')
-        source_text = str(infer_prompt) if infer_prompt is not None else ''
-        source_authority = 'final_infer_prompt' if source_text.strip() else ''
-        if not source_text.strip():
-            effective_content = effective.get('content_payload')
-            source_text = (
-                str(effective_content) if effective_content is not None else ''
-            )
-            if source_text.strip():
-                source_authority = 'effective_branch_content_payload'
-        if not source_text.strip():
-            return {}
-        content_payload_source = str(
-            effective.get('content_payload_source')
-            or contract.get('content_payload_source')
-            or ''
-        ).strip()
-        return build_tts_semantic_source(
-            source_text,
-            source_authority=source_authority,
-            source_text_source=content_payload_source or source_authority,
-            branch_id=(
-                contract.get('branch_id') or effective.get('branch_id')
-            ),
-            phase_id=contract.get('phase_id') or effective.get('phase_id'),
-            lang_code=(
-                infer.get('lang_code')
-                or effective.get('lang_code')
-                or contract.get('lang_code')
-            ),
-        )
-
-    @classmethod
-    def tts_source_evidence_from_prepared_plan(
-        cls,
-        plan: Mapping[str, Any],
-        *,
-        infer_result: Optional[Mapping[str, Any]] = None,
-    ) -> dict[str, Any]:
-        payload = plan if isinstance(plan, Mapping) else {}
-        planned_source = cls.tts_source_evidence_from_effective_data(
-            payload.get('effective_data')
-            if isinstance(payload.get('effective_data'), Mapping)
-            else {},
-            infer_payload=(
-                payload.get('infer_payload')
-                if isinstance(payload.get('infer_payload'), Mapping)
-                else {}
-            ),
-            execution_contract=(
-                payload.get('execution_contract')
-                if isinstance(payload.get('execution_contract'), Mapping)
-                else {}
-            ),
-        )
-        result_payload = infer_result if isinstance(infer_result, Mapping) else {}
-        runtime_source = (
-            result_payload.get('tts_semantic_source')
-            if isinstance(result_payload.get('tts_semantic_source'), Mapping)
-            else {}
-        )
-        if not runtime_source:
-            return planned_source
-        runtime_source_text = str(
-            runtime_source.get('tts_source_text') or ''
-        )
-        runtime_source_sha256 = str(
-            runtime_source.get('tts_source_text_sha256') or ''
-        ).strip().lower()
-        runtime_source_contract_valid = bool(
-            str(runtime_source.get('kind') or '').strip()
-            == 'fruth.tts_semantic_source'
-            and runtime_source.get('version') == 1
-            and str(runtime_source.get('policy_id') or '').strip()
-            == TTS_SEMANTIC_SOURCE_POLICY_ID
-            and str(runtime_source.get('authority') or '').strip()
-            == 'runtime_exact_backend_prompt'
-            and runtime_source_text.strip()
-            and runtime_source_sha256
-            == hashlib.sha256(runtime_source_text.encode('utf-8')).hexdigest()
-        )
-        if not runtime_source_contract_valid:
-            return planned_source
-
-        # The inference owner has observed the post-extraction, post-file-merge
-        # prompt actually handed to MLX Audio. Preserve that text/digest and add
-        # only branch-local bindings that inference cannot know.
-        enriched_source = dict(runtime_source)
-        for key in ('branch_id', 'phase_id', 'lang_code'):
-            value = planned_source.get(key)
-            if (
-                enriched_source.get(key) in (None, '', [], {})
-                and value not in (None, '', [], {})
-            ):
-                enriched_source[key] = value
-        return enriched_source
+    tts_source_evidence_from_prepared_plan = staticmethod(TtsResultEvidence.tts_source_evidence_from_prepared_plan)
 
     def tts_audio_integrity_evidence_for_branch_result(
         self,
         branch: Mapping[str, Any],
         infer_result: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Return runtime-owned physical TTS evidence bound to the exact source."""
-
-        if self.branch_capability(branch) != self.capability_text_to_speech:
-            return {}
-        result_payload = infer_result if isinstance(infer_result, Mapping) else {}
-        source = (
-            result_payload.get('tts_semantic_source')
-            if isinstance(result_payload.get('tts_semantic_source'), Mapping)
-            else {}
-        )
-        source_text = str(source.get('tts_source_text') or '')
-        source_sha256 = str(source.get('tts_source_text_sha256') or '').strip()
-        path = str(result_payload.get('saved_audio_path') or '').strip()
-        existing = (
-            result_payload.get('tts_audio_integrity_evidence')
-            if isinstance(
-                result_payload.get('tts_audio_integrity_evidence'),
-                Mapping,
-            )
-            else {}
-        )
-        generation_budget = (
-            result_payload.get('tts_generation_budget')
-            if isinstance(result_payload.get('tts_generation_budget'), Mapping)
-            else {}
-        )
-        tts_model_type = str(
-            result_payload.get('tts_model_type')
-            or generation_budget.get('tts_model_type')
-            or ''
-        ).strip()
-        existing_contract_valid = bool(
-            str(existing.get('kind') or '').strip()
-            == 'fruth.tts_audio_integrity_evidence'
-            and existing.get('version') == 1
-            and str(existing.get('policy_id') or '').strip()
-            == TTS_AUDIO_INTEGRITY_POLICY_ID
-            and str(existing.get('authority') or '').strip()
-            == 'runtime_deterministic_audio_verification'
-        )
-        if existing_contract_valid:
-            evidence = dict(existing)
-            evidence_source_sha256 = str(
-                evidence.get('source_sha256') or ''
-            ).strip()
-            evidence_path = str(evidence.get('artifact_path') or '').strip()
-            if source_sha256 and evidence_source_sha256 != source_sha256:
-                defect_codes = [
-                    str(item).strip()
-                    for item in (evidence.get('defect_codes') or [])
-                    if str(item).strip()
-                ] if isinstance(evidence.get('defect_codes'), list) else []
-                if 'TTS_AUDIO_SOURCE_BINDING_MISMATCH' not in defect_codes:
-                    defect_codes.insert(0, 'TTS_AUDIO_SOURCE_BINDING_MISMATCH')
-                evidence.update(
-                    {
-                        'status': 'failed',
-                        'reason_code': 'TTS_AUDIO_SOURCE_BINDING_MISMATCH',
-                        'materialization_eligible': False,
-                        'expected_source_sha256': source_sha256,
-                        'defect_codes': defect_codes,
-                    }
-                )
-            elif path and evidence_path and Path(path).expanduser() != Path(
-                evidence_path
-            ).expanduser():
-                defect_codes = [
-                    str(item).strip()
-                    for item in (evidence.get('defect_codes') or [])
-                    if str(item).strip()
-                ] if isinstance(evidence.get('defect_codes'), list) else []
-                if 'TTS_AUDIO_ARTIFACT_BINDING_MISMATCH' not in defect_codes:
-                    defect_codes.insert(0, 'TTS_AUDIO_ARTIFACT_BINDING_MISMATCH')
-                evidence.update(
-                    {
-                        'status': 'failed',
-                        'reason_code': 'TTS_AUDIO_ARTIFACT_BINDING_MISMATCH',
-                        'materialization_eligible': False,
-                        'expected_artifact_path': path,
-                        'defect_codes': defect_codes,
-                    }
-                )
-            return evidence
-        if not source_text:
-            return {
-                'kind': 'fruth.tts_audio_integrity_evidence',
-                'version': 1,
-                'policy_id': TTS_AUDIO_INTEGRITY_POLICY_ID,
-                'authority': 'runtime_deterministic_audio_verification',
-                'status': 'unavailable',
-                'reason_code': 'TTS_AUDIO_SOURCE_EVIDENCE_UNAVAILABLE',
-                'materialization_eligible': False,
-                'artifact_path': path or None,
-                'defect_codes': ['TTS_AUDIO_SOURCE_EVIDENCE_UNAVAILABLE'],
-            }
-        return build_tts_audio_integrity_evidence(
-            path,
-            source_text,
-            source_sha256=source_sha256 or None,
-            generation_budget=generation_budget or None,
-            model_family=(generation_budget.get('model_family') or None),
-            tts_model_type=tts_model_type or None,
-        )
+        return self.tts_result_evidence.tts_audio_integrity_evidence_for_branch_result(branch, infer_result)
 
     def tts_audio_integrity_error_for_branch_result(
         self,
         branch: Mapping[str, Any],
         infer_result: Mapping[str, Any],
     ) -> Optional[dict[str, Any]]:
-        if self.branch_capability(branch) != self.capability_text_to_speech:
-            return None
-        evidence = self.tts_audio_integrity_evidence_for_branch_result(
-            branch,
-            infer_result,
-        )
-        if (
-            str(evidence.get('status') or '').strip().lower() == 'passed'
-            and evidence.get('materialization_eligible') is True
-        ):
-            return None
-        reason_code = str(
-            evidence.get('reason_code')
-            or 'TTS_AUDIO_INTEGRITY_UNAVAILABLE'
-        ).strip()
-        defect_codes = [
-            str(item).strip()
-            for item in (evidence.get('defect_codes') or [])
-            if str(item).strip()
-        ] if isinstance(evidence.get('defect_codes'), list) else []
-        if reason_code and reason_code not in defect_codes:
-            defect_codes.insert(0, reason_code)
-        saved_audio_path = str(
-            (infer_result or {}).get('saved_audio_path') or ''
-        ).strip()
-        generation_budget = (
-            (infer_result or {}).get('tts_generation_budget')
-            if isinstance((infer_result or {}).get('tts_generation_budget'), Mapping)
-            else {}
-        )
-        sampling_profile = (
-            (infer_result or {}).get('tts_sampling_profile')
-            if isinstance((infer_result or {}).get('tts_sampling_profile'), Mapping)
-            else {}
-        )
-        return {
-            'code': 'TTS_AUDIO_INTEGRITY_REPAIR_REQUIRED',
-            'reason_code': reason_code,
-            'defect_code': reason_code,
-            'defect_codes': defect_codes,
-            'message': (
-                'Generated audio failed output-side integrity verification; '
-                'the preserved file is diagnostic evidence, not fulfilled audio.'
-            ),
-            'stage': 'tts_audio_integrity_gate',
-            'retryable': True,
-            'repair_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-            'materialization_blocked': True,
-            'blocked_scope': 'current_tts_branch',
-            'repair_work_available': True,
-            'repair_work_policy': (
-                'bounded_same_response_tts_integrity_retry'
-            ),
-            'needs_external_input': False,
-            'audio_integrity_evidence': evidence,
-            'tts_generation_budget': dict(generation_budget) if generation_budget else None,
-            'tts_sampling_profile': dict(sampling_profile) if sampling_profile else None,
-            'diagnostic_artifact': (
-                {
-                    'type': 'audio',
-                    'path': saved_audio_path,
-                    'status': 'failed_integrity',
-                }
-                if saved_audio_path
-                else None
-            ),
-        }
+        return self.tts_result_evidence.tts_audio_integrity_error_for_branch_result(branch, infer_result)
 
-    @staticmethod
-    def _normalize_tts_stt_semantic_text(content: Any) -> tuple[str, list[str]]:
-        text = unicodedata.normalize('NFKC', str(content or '')).casefold()
-        normalized_chars = [
-            char
-            if char.isalnum() or char.isspace()
-            else ' '
-            for char in text
-        ]
-        normalized = re.sub(r'\s+', ' ', ''.join(normalized_chars)).strip()
-        tokens = re.findall(r'[^\W_]+', normalized, flags=re.UNICODE)
-        return ' '.join(tokens), tokens
+    _normalize_tts_stt_semantic_text = staticmethod(TtsResultEvidence._normalize_tts_stt_semantic_text)
 
-    @classmethod
-    def _tts_stt_similarity_metrics(
-        cls,
-        source_text: Any,
-        transcript_text: Any,
-    ) -> dict[str, Any]:
-        normalized_source, source_tokens = cls._normalize_tts_stt_semantic_text(
-            source_text
-        )
-        normalized_transcript, transcript_tokens = cls._normalize_tts_stt_semantic_text(
-            transcript_text
-        )
-        source_counter = Counter(source_tokens)
-        transcript_counter = Counter(transcript_tokens)
-        overlap_count = sum((source_counter & transcript_counter).values())
-        source_negation_count = sum(
-            count
-            for token, count in source_counter.items()
-            if token in _TTS_STT_NEGATION_TOKENS
-        )
-        transcript_negation_count = sum(
-            count
-            for token, count in transcript_counter.items()
-            if token in _TTS_STT_NEGATION_TOKENS
-        )
-        negation_consistent = source_negation_count == transcript_negation_count
-        token_recall = overlap_count / len(source_tokens) if source_tokens else 0.0
-        token_precision = (
-            overlap_count / len(transcript_tokens) if transcript_tokens else 0.0
-        )
-        token_f1 = (
-            (2 * token_precision * token_recall) / (token_precision + token_recall)
-            if token_precision + token_recall
-            else 0.0
-        )
-        sequence_ratio = (
-            SequenceMatcher(
-                None,
-                normalized_source,
-                normalized_transcript,
-                autojunk=False,
-            ).ratio()
-            if normalized_source and normalized_transcript
-            else 0.0
-        )
-        exact_match = bool(
-            normalized_source
-            and normalized_source == normalized_transcript
-        )
-        if exact_match:
-            semantic_match = True
-        elif len(source_tokens) < _TTS_STT_MIN_SOURCE_TOKENS_FOR_FULL_POLICY:
-            semantic_match = bool(
-                token_f1 >= _TTS_STT_SHORT_MIN_TOKEN_F1
-                and sequence_ratio >= _TTS_STT_SHORT_MIN_SEQUENCE_RATIO
-                and negation_consistent
-            )
-        else:
-            semantic_match = bool(
-                token_recall >= _TTS_STT_MIN_TOKEN_RECALL
-                and token_precision >= _TTS_STT_MIN_TOKEN_PRECISION
-                and sequence_ratio >= _TTS_STT_MIN_SEQUENCE_RATIO
-                and negation_consistent
-            )
-        return {
-            'normalized_source': normalized_source,
-            'normalized_transcript': normalized_transcript,
-            'source_token_count': len(source_tokens),
-            'transcript_token_count': len(transcript_tokens),
-            'overlap_token_count': overlap_count,
-            'token_recall': round(token_recall, 6),
-            'token_precision': round(token_precision, 6),
-            'token_f1': round(token_f1, 6),
-            'sequence_ratio': round(sequence_ratio, 6),
-            'source_negation_count': source_negation_count,
-            'transcript_negation_count': transcript_negation_count,
-            'negation_consistent': negation_consistent,
-            'exact_match': exact_match,
-            'semantic_match': semantic_match,
-        }
+    _tts_stt_similarity_metrics = staticmethod(TtsResultEvidence._tts_stt_similarity_metrics)
 
     def tts_stt_semantic_evidence_for_branch_result(
         self,
@@ -7800,263 +6029,7 @@ class LateFillRuntimeOwner:
         *,
         current_payload: Optional[Mapping[str, Any]] = None,
     ) -> dict[str, Any]:
-        if self.normalize_capability(branch.get('capability')) != 'speech_to_text':
-            return {
-                'kind': 'fruth.tts_stt_semantic_evidence',
-                'version': 1,
-                'status': 'not_applicable',
-                'policy_id': _TTS_STT_SEMANTIC_POLICY_ID,
-                'reason_code': 'CONSUMER_IS_NOT_SPEECH_TO_TEXT',
-            }
-        dependency_ids = self.late_fill_branch_dependency_ids(
-            branch,
-            current_payload=current_payload,
-        )
-        if not dependency_ids or not isinstance(current_payload, Mapping):
-            return {
-                'kind': 'fruth.tts_stt_semantic_evidence',
-                'version': 1,
-                'status': 'not_applicable',
-                'policy_id': _TTS_STT_SEMANTIC_POLICY_ID,
-                'reason_code': 'NO_RUNTIME_TTS_DEPENDENCY_CONTEXT',
-            }
-        late_fill = (
-            current_payload.get('late_fill')
-            if isinstance(current_payload.get('late_fill'), Mapping)
-            else {}
-        )
-        runtime = (
-            current_payload.get('runtime')
-            if isinstance(current_payload.get('runtime'), Mapping)
-            else {}
-        )
-        phase_graph = (
-            runtime.get('request_phase_graph')
-            if isinstance(runtime.get('request_phase_graph'), Mapping)
-            else {}
-        )
-        declared_records: list[Mapping[str, Any]] = []
-        for key in ('phases', 'downstream_branches'):
-            declared_records.extend(
-                item
-                for item in (
-                    phase_graph.get(key)
-                    if isinstance(phase_graph.get(key), list)
-                    else []
-                )
-                if isinstance(item, Mapping)
-            )
-        for key in ('completed_branches', 'pending_branches', 'failed_branches'):
-            declared_records.extend(
-                item
-                for item in (
-                    late_fill.get(key) if isinstance(late_fill.get(key), list) else []
-                )
-                if isinstance(item, Mapping)
-            )
-        declared_tts_dependency_ids: list[str] = []
-        for record in declared_records:
-            if (
-                self.normalize_capability(record.get('capability'))
-                != self.capability_text_to_speech
-            ):
-                continue
-            record_tokens = {
-                str(record.get('branch_id') or '').strip(),
-                str(record.get('phase_id') or '').strip(),
-            }
-            record_tokens.discard('')
-            for dependency_id in dependency_ids:
-                if dependency_id in record_tokens and dependency_id not in declared_tts_dependency_ids:
-                    declared_tts_dependency_ids.append(dependency_id)
-        producer_results: list[Mapping[str, Any]] = []
-        for result in late_fill.get('fill_results') or []:
-            if not isinstance(result, Mapping):
-                continue
-            if self.normalize_capability(result.get('capability')) != self.capability_text_to_speech:
-                continue
-            result_tokens = {
-                str(result.get('branch_id') or '').strip(),
-                str(result.get('phase_id') or '').strip(),
-            }
-            if not result_tokens.intersection(dependency_ids):
-                continue
-            if not any(dict(result) == dict(existing) for existing in producer_results):
-                producer_results.append(result)
-        consumer_branch_id = str(
-            branch.get('branch_id') or branch.get('phase_id') or ''
-        ).strip()
-        consumer_phase_id = str(branch.get('phase_id') or '').strip()
-        base_evidence = {
-            'kind': 'fruth.tts_stt_semantic_evidence',
-            'version': 1,
-            'policy_id': _TTS_STT_SEMANTIC_POLICY_ID,
-            'authority': 'runtime_deterministic_verification',
-            'consumer_branch_id': consumer_branch_id or None,
-            'consumer_phase_id': consumer_phase_id or None,
-        }
-        if not producer_results:
-            if declared_tts_dependency_ids:
-                return {
-                    **base_evidence,
-                    'status': 'unavailable',
-                    'reason_code': 'TTS_PRODUCER_RESULT_UNAVAILABLE',
-                    'semantic_match': False,
-                    'failed_dependency_ids': declared_tts_dependency_ids,
-                }
-            return {
-                **base_evidence,
-                'status': 'not_applicable',
-                'reason_code': 'NO_DIRECT_TTS_PRODUCER_RESULT',
-            }
-        if len(producer_results) != 1:
-            return {
-                **base_evidence,
-                'status': 'unavailable',
-                'reason_code': 'TTS_PRODUCER_EVIDENCE_AMBIGUOUS',
-                'producer_result_count': len(producer_results),
-                'semantic_match': False,
-            }
-        producer = producer_results[0]
-        source = (
-            producer.get('tts_semantic_source')
-            if isinstance(producer.get('tts_semantic_source'), Mapping)
-            else {}
-        )
-        producer_branch_id = str(
-            producer.get('branch_id') or source.get('branch_id') or ''
-        ).strip()
-        producer_phase_id = str(
-            producer.get('phase_id') or source.get('phase_id') or ''
-        ).strip()
-        evidence = {
-            **base_evidence,
-            'producer_branch_id': producer_branch_id or None,
-            'producer_phase_id': producer_phase_id or None,
-        }
-        if not source:
-            return {
-                **evidence,
-                'status': 'unavailable',
-                'reason_code': 'TTS_SOURCE_EVIDENCE_UNAVAILABLE',
-                'semantic_match': False,
-            }
-        if (
-            str(source.get('kind') or '').strip() != 'fruth.tts_semantic_source'
-            or source.get('version') != 1
-            or str(source.get('policy_id') or '').strip()
-            != _TTS_STT_SEMANTIC_POLICY_ID
-            or str(source.get('authority') or '').strip()
-            != 'runtime_exact_backend_prompt'
-            or str(source.get('source_authority') or '').strip()
-            != 'final_infer_prompt'
-        ):
-            return {
-                **evidence,
-                'status': 'unavailable',
-                'reason_code': 'TTS_SOURCE_EVIDENCE_CONTRACT_INVALID',
-                'semantic_match': False,
-            }
-        source_branch_id = str(source.get('branch_id') or '').strip()
-        source_phase_id = str(source.get('phase_id') or '').strip()
-        if (
-            (source_branch_id and producer_branch_id and source_branch_id != producer_branch_id)
-            or (source_phase_id and producer_phase_id and source_phase_id != producer_phase_id)
-        ):
-            return {
-                **evidence,
-                'status': 'unavailable',
-                'reason_code': 'TTS_SOURCE_EVIDENCE_BINDING_MISMATCH',
-                'semantic_match': False,
-            }
-        raw_source_text = source.get('tts_source_text')
-        source_text = str(raw_source_text) if raw_source_text is not None else ''
-        if not source_text.strip():
-            return {
-                **evidence,
-                'status': 'unavailable',
-                'reason_code': 'TTS_SOURCE_EVIDENCE_UNAVAILABLE',
-                'semantic_match': False,
-            }
-        source_sha256 = hashlib.sha256(source_text.encode('utf-8')).hexdigest()
-        declared_source_sha256 = str(
-            source.get('tts_source_text_sha256') or ''
-        ).strip().lower()
-        if not re.fullmatch(r'[0-9a-f]{64}', declared_source_sha256):
-            return {
-                **evidence,
-                'status': 'unavailable',
-                'reason_code': 'TTS_SOURCE_EVIDENCE_DIGEST_UNAVAILABLE',
-                'source_sha256': source_sha256,
-                'semantic_match': False,
-            }
-        if declared_source_sha256 != source_sha256:
-            return {
-                **evidence,
-                'status': 'unavailable',
-                'reason_code': 'TTS_SOURCE_EVIDENCE_DIGEST_MISMATCH',
-                'source_sha256': source_sha256,
-                'declared_source_sha256': declared_source_sha256,
-                'semantic_match': False,
-            }
-        transcript_text = self.late_fill_text_from_result_payload(infer_result)
-        if not transcript_text:
-            return {
-                **evidence,
-                'status': 'unavailable',
-                'reason_code': 'TTS_TRANSCRIPT_EVIDENCE_UNAVAILABLE',
-                'source_sha256': source_sha256,
-                'semantic_match': False,
-            }
-        transcript_sha256 = hashlib.sha256(
-            transcript_text.encode('utf-8')
-        ).hexdigest()
-        metrics = self._tts_stt_similarity_metrics(source_text, transcript_text)
-        result_payload = (
-            infer_result.get('result')
-            if isinstance(infer_result.get('result'), Mapping)
-            else {}
-        )
-        expected_lang_code = str(
-            source.get('lang_code')
-            or producer.get('lang_code')
-            or ''
-        ).strip().lower()
-        detected_lang_code = str(
-            infer_result.get('language')
-            or result_payload.get('language')
-            or ''
-        ).strip().lower()
-        return {
-            key: value
-            for key, value in {
-                **evidence,
-                'status': 'matched' if metrics['semantic_match'] else 'mismatched',
-                'reason_code': (
-                    'TTS_STT_SEMANTIC_MATCH'
-                    if metrics['semantic_match']
-                    else 'TTS_STT_SEMANTIC_MISMATCH'
-                ),
-                'semantic_match': bool(metrics['semantic_match']),
-                'source_sha256': source_sha256,
-                'transcript_sha256': transcript_sha256,
-                'transcript_text': transcript_text,
-                'expected_lang_code': expected_lang_code or None,
-                'detected_lang_code': detected_lang_code or None,
-                'metrics': metrics,
-                'thresholds': {
-                    'min_source_tokens_for_full_policy': (
-                        _TTS_STT_MIN_SOURCE_TOKENS_FOR_FULL_POLICY
-                    ),
-                    'min_token_recall': _TTS_STT_MIN_TOKEN_RECALL,
-                    'min_token_precision': _TTS_STT_MIN_TOKEN_PRECISION,
-                    'min_sequence_ratio': _TTS_STT_MIN_SEQUENCE_RATIO,
-                    'short_min_token_f1': _TTS_STT_SHORT_MIN_TOKEN_F1,
-                    'short_min_sequence_ratio': _TTS_STT_SHORT_MIN_SEQUENCE_RATIO,
-                },
-            }.items()
-            if value not in (None, '', [], {})
-        }
+        return self.tts_result_evidence.tts_stt_semantic_evidence_for_branch_result(branch, infer_result, current_payload=current_payload)
 
     @staticmethod
     def _valid_vision_input_receipt(receipt: Any) -> bool:
@@ -8090,7 +6063,7 @@ class LateFillRuntimeOwner:
         """Resolve one completed producer; never recover an input by recency."""
         if self.branch_capability(branch) != 'vision_analysis' or not payload.get('id'):
             return {}
-        dependencies = self.late_fill_branch_dependency_ids(branch, current_payload=payload)
+        dependencies = branch_result_contracts.late_fill_branch_dependency_ids(branch, current_payload=payload)
         late_fill = payload.get('late_fill') or {}
         producers = [item for item in late_fill.get('fill_results') or []
                      if isinstance(item, Mapping)
@@ -8146,13 +6119,13 @@ class LateFillRuntimeOwner:
         return {
             **binding, 'policy_id': _VISION_EVIDENCE_RECOVERY_POLICY_ID,
             'input_evidence': dict(receipt),
-            'rejected_text': self.late_fill_text_from_result_payload(result),
+            'rejected_text': branch_result_contracts.late_fill_text_from_result_payload(result),
         }
 
     def _has_generated_image_dependency(self, branch: Mapping[str, Any], payload: Mapping[str, Any]) -> bool:
         if self.branch_capability(branch) != 'vision_analysis':
             return False
-        dependencies = set(self.late_fill_branch_dependency_ids(branch, current_payload=payload))
+        dependencies = set(branch_result_contracts.late_fill_branch_dependency_ids(branch, current_payload=payload))
         late = payload.get('late_fill') or {}
         graph = (payload.get('runtime') or {}).get('request_phase_graph') or {}
         return any(isinstance(item, Mapping) and item.get('capability') == self.capability_image_generation
@@ -8203,7 +6176,7 @@ class LateFillRuntimeOwner:
                     and not conflicting and not results[0].get('error')
                     and completed[0].get('status') in {'fulfilled', 'completed'}
                     and slot.get('status') not in {'cancelled', 'waived', 'superseded', 'skipped'}
-                    and not self._branch_is_required_text_artifact(branches[0])
+                    and not self.branch_selection._branch_is_required_text_artifact(branches[0])
                     and not any(source.get('requires_artifact') or source.get('artifact_request')
                                 or source.get('text_artifact_requests') or source.get('target_extension')
                                 or source.get('fulfillment_policy') == 'runtime_text_artifact'
@@ -8211,7 +6184,7 @@ class LateFillRuntimeOwner:
                                                results[0].get('execution_contract') or {}))
                     and not any(slot.get(k) or results[0].get(k) for k in (
                         'artifact_ref', 'artifact_path', 'saved_text_path', 'saved_text_artifacts'))):
-                text = self.late_fill_text_from_result_payload(results[0])
+                text = branch_result_contracts.late_fill_text_from_result_payload(results[0])
                 if text:
                     slot.update(status='fulfilled', lifecycle='materialized_output', value=text)
                     for key in ('blocked_reason', 'error_ref', 'recovery_context', 'recovery_state', 'placeholder_ref'):
@@ -8244,7 +6217,7 @@ class LateFillRuntimeOwner:
                     continue
                 error = branch.get('error') or {}
                 failed = error.get('failed_dependency_ids') or []
-                dependencies = self.late_fill_branch_dependency_ids(branch)
+                dependencies = branch_result_contracts.late_fill_branch_dependency_ids(branch)
                 matching = [b for b in graph_branches if b.get('branch_id') == branch.get('branch_id')
                             and b.get('phase_id') == branch.get('phase_id')]
                 if (error.get('code') != 'DEPENDENCY_CHAIN_REPAIR_REQUIRED'
@@ -8252,7 +6225,7 @@ class LateFillRuntimeOwner:
                         or not failed or not set(failed).issubset(aliases)
                         or not set(failed).issubset(dependencies)
                         or len(matching) != 1
-                        or self.late_fill_branch_dependency_ids(matching[0]) != dependencies
+                        or branch_result_contracts.late_fill_branch_dependency_ids(matching[0]) != dependencies
                         or self.semantic_execution_gate_decision(branch, payload).get('action') == 'skip'):
                     continue
                 if any(source.get('optional') is True or source.get('required') is False
@@ -8327,7 +6300,7 @@ class LateFillRuntimeOwner:
             if (any(prepared.get(key) != plan.get(key) for key in ('response_id', 'branch_id', 'phase_id'))
                     or prepared.get('instance_id') != (plan.get('instance') or {}).get('instance_id')
                     or prepared.get('instance_id') != inputs.get('instance_id')
-                    or prepared.get('depends_on') != self.late_fill_branch_dependency_ids(plan.get('execution_contract') or {})
+                    or prepared.get('depends_on') != branch_result_contracts.late_fill_branch_dependency_ids(plan.get('execution_contract') or {})
                     or self._vision_image_snapshot(inputs.get('file_path')) != prepared.get('artifact')):
                 raise RuntimeError('Vision dependency binding changed before dispatch.')
         if attempt.get('recovery_policy_id') == _VISION_BACKEND_RECOVERY_POLICY_ID:
@@ -8349,7 +6322,7 @@ class LateFillRuntimeOwner:
         if (
             not snapshot or snapshot != failure.get('artifact')
             or any(plan.get(key) != receipt.get(key) for key in ('response_id', 'branch_id', 'phase_id'))
-            or self.late_fill_branch_dependency_ids(contract) != failure.get('depends_on')
+            or branch_result_contracts.late_fill_branch_dependency_ids(contract) != failure.get('depends_on')
             or not instance_id or instance_id == receipt.get('instance_id')
             or instance_id in (attempt.get('excluded_instance_ids') or [])
             or infer_payload.get('instance_id') != instance_id
@@ -8389,7 +6362,7 @@ class LateFillRuntimeOwner:
                     'message': 'Generated-image inspection has no matching exact image dispatch evidence.'}
         if (
             not semantic_review_branch
-            and self.late_fill_result_has_missing_dependency_evidence(result_payload)
+            and branch_result_contracts.late_fill_result_has_missing_dependency_evidence(result_payload)
         ):
             vision_failure = self._vision_evidence_failure(branch, result_payload, current_payload)
             if vision_failure:
@@ -8409,7 +6382,7 @@ class LateFillRuntimeOwner:
                 'stage': 'semantic_evidence_gate',
                 'retryable': False,
             }
-        audio_integrity_error = self.tts_audio_integrity_error_for_branch_result(
+        audio_integrity_error = self.tts_result_evidence.tts_audio_integrity_error_for_branch_result(
             branch,
             result_payload,
         )
@@ -8418,7 +6391,7 @@ class LateFillRuntimeOwner:
         semantic_evidence = (
             result_payload.get('tts_stt_semantic_evidence')
             if isinstance(result_payload.get('tts_stt_semantic_evidence'), Mapping)
-            else self.tts_stt_semantic_evidence_for_branch_result(
+            else self.tts_result_evidence.tts_stt_semantic_evidence_for_branch_result(
                 branch,
                 result_payload,
                 current_payload=current_payload,
@@ -9307,39 +7280,7 @@ class LateFillRuntimeOwner:
         words = re.findall(r'\w+', text)
         return len(words) >= 4 and cls._late_fill_image_prompt_score(text) >= 0
 
-    @staticmethod
-    def _request_payload_prompt_text(payload: Any) -> str:
-        if not isinstance(payload, Mapping):
-            return ''
-        if has_captured_request_intent(payload):
-            return extract_responses_current_turn_prompt(dict(payload))
-        for key in ('prompt', 'input_text'):
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        value = payload.get('input')
-        if isinstance(value, str):
-            return value.strip()
-        if isinstance(value, list):
-            parts: list[str] = []
-            for item in value:
-                if not isinstance(item, Mapping):
-                    if str(item or '').strip():
-                        parts.append(str(item).strip())
-                    continue
-                content = item.get('content')
-                if isinstance(content, str):
-                    parts.append(content.strip())
-                elif isinstance(content, list):
-                    for content_item in content:
-                        if isinstance(content_item, Mapping):
-                            text = str(content_item.get('text') or '').strip()
-                            if text:
-                                parts.append(text)
-                        elif str(content_item or '').strip():
-                            parts.append(str(content_item).strip())
-            return '\n\n'.join(part for part in parts if part).strip()
-        return ''
+    _request_payload_prompt_text = staticmethod(BranchDependencyEvidence._request_payload_prompt_text)
 
     @staticmethod
     def _late_fill_batch_has_nonsequential_alpha_prompt_residue(
@@ -9507,14 +7448,14 @@ class LateFillRuntimeOwner:
             artifact_prompt,
             assistant_message,
             content_payload,
-            cls._request_payload_prompt_text(request_payload),
+            BranchDependencyEvidence._request_payload_prompt_text(request_payload),
         ]
         sequential_recovery_sources = [
             (artifact_prompt, False),
             ('\n\n'.join(non_empty_items), True),
             (assistant_message, True),
             (content_payload, True),
-            (cls._request_payload_prompt_text(request_payload), True),
+            (BranchDependencyEvidence._request_payload_prompt_text(request_payload), True),
         ]
         if batch_has_collapsed_alpha_residue:
             for source in (artifact_prompt, assistant_message, content_payload):
@@ -9736,507 +7677,38 @@ class LateFillRuntimeOwner:
             score += 2
         return score
 
-    @staticmethod
-    def _artifact_evidence_text(result: Mapping[str, Any]) -> str:
-        artifacts = result.get('artifacts') if isinstance(result.get('artifacts'), list) else []
+    _artifact_evidence_text = staticmethod(BranchDependencyEvidence._artifact_evidence_text)
 
-        def _matching_artifact(path: str) -> Mapping[str, Any]:
-            exact = next(
-                (
-                    artifact
-                    for artifact in artifacts
-                    if isinstance(artifact, Mapping)
-                    and str(artifact.get('path') or artifact.get('source_path') or '').strip()
-                    == path
-                ),
-                None,
-            )
-            if isinstance(exact, Mapping):
-                return exact
-            return next(
-                (artifact for artifact in artifacts if isinstance(artifact, Mapping)),
-                {},
-            )
+    _artifact_records_from_late_fill_result = staticmethod(branch_result_contracts._artifact_records_from_late_fill_result)
 
-        def _evidence(label: str, path: str, artifact: Mapping[str, Any]) -> str:
-            artifact_ref = str(
-                artifact.get('artifact_ref')
-                or artifact.get('ref')
-                or result.get('artifact_ref')
-                or result.get('ref')
-                or ''
-            ).strip()
-            lines = [f'{label}: {path}']
-            if artifact_ref:
-                lines.append(f'artifact_ref: {artifact_ref}')
-            return '\n'.join(lines)
-
-        for key, label in (
-            ('saved_image_path', 'image artifact'),
-            ('saved_audio_path', 'audio artifact'),
-            ('saved_text_path', 'text artifact'),
-        ):
-            value = str(result.get(key) or '').strip()
-            if value:
-                return _evidence(label, value, _matching_artifact(value))
-        for artifact in artifacts:
-            if not isinstance(artifact, Mapping):
-                continue
-            path = str(artifact.get('path') or artifact.get('source_path') or '').strip()
-            artifact_type = str(artifact.get('type') or artifact.get('kind') or 'artifact').strip()
-            if path:
-                return _evidence(f'{artifact_type} artifact', path, artifact)
-        return ''
-
-    @staticmethod
-    def _artifact_records_from_late_fill_result(result: Mapping[str, Any]) -> list[dict[str, Any]]:
-        records: list[dict[str, Any]] = []
-        for key, artifact_type in (
-            ('saved_image_path', 'image'),
-            ('saved_audio_path', 'audio'),
-            ('saved_text_path', 'text'),
-        ):
-            path = str(result.get(key) or '').strip()
-            if path:
-                records.append({'type': artifact_type, 'kind': artifact_type, 'path': path})
-        artifacts = result.get('artifacts') if isinstance(result.get('artifacts'), list) else []
-        for artifact in artifacts:
-            if not isinstance(artifact, Mapping):
-                continue
-            path = str(artifact.get('path') or artifact.get('source_path') or '').strip()
-            if not path:
-                continue
-            artifact_type = str(artifact.get('type') or artifact.get('kind') or '').strip().lower() or 'artifact'
-            record = dict(artifact)
-            record['type'] = artifact_type
-            record.setdefault('kind', artifact_type)
-            record['path'] = path
-            records.append(record)
-        # A saved-path shortcut must not erase the producer's canonical identity.
-        canonical_paths = {record['path'] for record in records
-                           if record.get('artifact_ref') or record.get('artifact_id')}
-        deduped: list[dict[str, Any]] = []
-        seen_paths: set[str] = set()
-        for record in records:
-            path = str(record.get('path') or '').strip()
-            if record.get('artifact_ref') or record.get('artifact_id'):
-                if record not in deduped:
-                    deduped.append(record)
-                continue
-            if path in canonical_paths:
-                continue
-            if not path or path in seen_paths:
-                continue
-            seen_paths.add(path)
-            deduped.append(record)
-        return deduped
-
-    @staticmethod
-    def _artifact_record_path(record: Mapping[str, Any]) -> str:
-        return str(
-            record.get('path')
-            or record.get('source_path')
-            or record.get('saved_text_path')
-            or record.get('saved_image_path')
-            or record.get('saved_audio_path')
-            or ''
-        ).strip()
+    _artifact_record_path = staticmethod(branch_result_contracts._artifact_record_path)
 
     def _image_artifact_record_sort_key(self, record: Mapping[str, Any]) -> tuple[int, int, str]:
-        branch_id = self.branch_id(record)
-        phase_id = str(record.get('phase_id') or '').strip()
-        for priority, token in enumerate((branch_id, phase_id)):
-            match = re.search(r'-(\d+)$', token)
-            if match:
-                return priority, int(match.group(1)), token
-        return 9, 999_999, self._artifact_record_path(record)
+        return self.linked_artifact_materialization._image_artifact_record_sort_key(record)
 
-    @staticmethod
-    def _artifact_record_extension(record: Mapping[str, Any]) -> str:
-        path = LateFillRuntimeOwner._artifact_record_path(record)
-        for value in (
-            record.get('text_artifact_extension'),
-            (record.get('artifact_request') or {}).get('extension')
-            if isinstance(record.get('artifact_request'), Mapping)
-            else '',
-            record.get('extension'),
-            Path(path).suffix.lstrip('.') if path else '',
-            Path(str(record.get('name') or '')).suffix.lstrip('.'),
-        ):
-            extension = str(value or '').strip().lower().lstrip('.')
-            if extension:
-                return extension
-        return ''
+    _artifact_record_extension = staticmethod(branch_result_contracts._artifact_record_extension)
 
-    @staticmethod
-    def _artifact_record_source_name(record: Mapping[str, Any]) -> str:
-        request_payload = record.get('artifact_request') if isinstance(record.get('artifact_request'), Mapping) else {}
-        path = LateFillRuntimeOwner._artifact_record_path(record)
-        return str(
-            record.get('text_artifact_source_name')
-            or record.get('source_name')
-            or request_payload.get('source_name')
-            or record.get('name')
-            or (Path(path).stem if path else '')
-            or ''
-        ).strip()
+    _artifact_record_source_name = staticmethod(branch_result_contracts._artifact_record_source_name)
 
-    @staticmethod
-    def _normalized_text_artifact_source_name_for_match(value: Any) -> str:
-        token = str(value or '').strip()
-        if not token:
-            return ''
-        name = Path(token).name
-        if Path(name).suffix:
-            name = Path(name).stem
-        return re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+    _normalized_text_artifact_source_name_for_match = staticmethod(LinkedArtifactMaterialization._normalized_text_artifact_source_name_for_match)
 
-    @classmethod
-    def _artifact_record_matches_text_artifact_source_name(
-        cls,
-        record: Mapping[str, Any],
-        expected_source_name: str,
-    ) -> bool:
-        expected = cls._normalized_text_artifact_source_name_for_match(expected_source_name)
-        if not expected:
-            return True
-        artifact_request = (
-            record.get('artifact_request')
-            if isinstance(record.get('artifact_request'), Mapping)
-            else record.get('text_artifact_request')
-            if isinstance(record.get('text_artifact_request'), Mapping)
-            else {}
-        )
-        explicit_names = [
-            record.get('text_artifact_source_name'),
-            record.get('source_name'),
-            artifact_request.get('source_name'),
-            record.get('name'),
-        ]
-        normalized_explicit_names = {
-            cls._normalized_text_artifact_source_name_for_match(value)
-            for value in explicit_names
-            if str(value or '').strip()
-        }
-        if normalized_explicit_names:
-            if expected in normalized_explicit_names:
-                return True
-            extension = cls._artifact_record_extension(record)
-            if extension:
-                expected_identity = (extension, expected)
-                return any(
-                    artifact_logical_identities_match(
-                        expected_identity,
-                        (extension, explicit_name),
-                    )
-                    for explicit_name in normalized_explicit_names
-                )
-            return False
+    _artifact_record_matches_text_artifact_source_name = staticmethod(LinkedArtifactMaterialization._artifact_record_matches_text_artifact_source_name)
 
-        path = cls._artifact_record_path(record)
-        path_name = cls._normalized_text_artifact_source_name_for_match(path)
-        return bool(
-            path_name == expected
-            or path_name.endswith(f'-{expected}')
-        )
+    _text_artifact_candidate_content = staticmethod(text_artifact_materialization._text_artifact_candidate_content)
 
-    @staticmethod
-    def _text_artifact_candidate_content(record: Mapping[str, Any]) -> str:
-        for key in ('result_text', 'content', 'content_payload', 'output_text'):
-            value = record.get(key)
-            if isinstance(value, str) and value.strip():
-                return value
-        return ''
+    _text_artifact_nested_mapping = staticmethod(text_artifact_materialization._text_artifact_nested_mapping)
 
-    @staticmethod
-    def _text_artifact_nested_mapping(source: Mapping[str, Any], key: str) -> Mapping[str, Any]:
-        value = source.get(key) if isinstance(source, Mapping) else {}
-        return value if isinstance(value, Mapping) else {}
+    _required_text_artifact_target_path = staticmethod(text_artifact_materialization._required_text_artifact_target_path)
 
-    @classmethod
-    def _required_text_artifact_target_path(
-        cls,
-        branch: Mapping[str, Any],
-        infer_result: Mapping[str, Any],
-        effective_data: Mapping[str, Any],
-    ) -> str:
-        mappings: list[Mapping[str, Any]] = [
-            source
-            for source in (branch, effective_data, infer_result)
-            if isinstance(source, Mapping)
-        ]
+    _required_text_artifact_request = staticmethod(text_artifact_materialization._required_text_artifact_request)
 
-        def target_from_mapping(source: Mapping[str, Any]) -> str:
-            direct = str(source.get('text_artifact_target_path') or source.get('target_path') or '').strip()
-            if direct:
-                return direct
-            for request_key in ('artifact_request', 'text_artifact_request'):
-                request_payload = cls._text_artifact_nested_mapping(source, request_key)
-                request_target = str(
-                    request_payload.get('target_path')
-                    or request_payload.get('text_artifact_target_path')
-                    or ''
-                ).strip()
-                if request_target:
-                    return request_target
-            execution_contract = cls._text_artifact_nested_mapping(source, 'execution_contract')
-            if execution_contract:
-                nested_target = target_from_mapping(execution_contract)
-                if nested_target:
-                    return nested_target
-            return ''
+    _text_artifact_content_payload_error = staticmethod(text_artifact_materialization._text_artifact_content_payload_error)
 
-        for source in mappings:
-            target_path = target_from_mapping(source)
-            if target_path:
-                return target_path
-        return ''
+    _text_artifact_candidate_looks_like_payload = staticmethod(text_artifact_materialization._text_artifact_candidate_looks_like_payload)
 
-    @classmethod
-    def _required_text_artifact_request(
-        cls,
-        branch: Mapping[str, Any],
-        infer_result: Mapping[str, Any],
-        effective_data: Mapping[str, Any],
-        *,
-        extension: str,
-        source_name: str,
-        target_path: str,
-    ) -> dict[str, Any]:
-        for source in (branch, effective_data, infer_result):
-            if not isinstance(source, Mapping):
-                continue
-            for key in ('artifact_request', 'text_artifact_request'):
-                request_payload = source.get(key)
-                if isinstance(request_payload, Mapping):
-                    request = dict(request_payload)
-                    if extension and not request.get('extension'):
-                        request['extension'] = extension
-                    if source_name and not request.get('source_name'):
-                        request['source_name'] = source_name
-                    if target_path and not request.get('target_path'):
-                        request['target_path'] = target_path
-                    return request
-            execution_contract = source.get('execution_contract')
-            if isinstance(execution_contract, Mapping):
-                request = cls._required_text_artifact_request(
-                    execution_contract,
-                    {},
-                    {},
-                    extension=extension,
-                    source_name=source_name,
-                    target_path=target_path,
-                )
-                if request:
-                    return request
-        request: dict[str, Any] = {}
-        if extension:
-            request['extension'] = extension
-        if source_name:
-            request['source_name'] = source_name
-        if target_path:
-            request['target_path'] = target_path
-        return request
+    _required_text_artifact_candidate_payloads = staticmethod(text_artifact_materialization._required_text_artifact_candidate_payloads)
 
-    @classmethod
-    def _text_artifact_content_payload_error(
-        cls,
-        content: Any,
-        *,
-        extension: str = '',
-        saved_path: str = '',
-    ) -> tuple[str, Optional[dict[str, Any]]]:
-        raw_content = str(content or '').strip()
-        normalized_extension = re.sub(
-            r'[^a-zA-Z0-9]+',
-            '',
-            str(extension or Path(str(saved_path or '')).suffix).strip().lower().lstrip('.'),
-        )
-        unwrapped = strip_enclosing_text_artifact_fence(raw_content, normalized_extension).strip()
-        if not unwrapped:
-            return '', None
-        if text_artifact_content_is_materializer_instruction_echo(unwrapped):
-            return unwrapped, {
-                'code': 'TEXT_ARTIFACT_INSTRUCTION_ECHO',
-                'message': (
-                    'Required text artifact branch returned internal materializer instructions instead of a file payload. '
-                    'The branch remains repairable; instruction echoes do not fulfill local artifact obligations.'
-                ),
-                'saved_text_path': saved_path or None,
-                'text_artifact_extension': normalized_extension or None,
-                'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-                'retryable': True,
-            }
-        if not cls._text_artifact_candidate_looks_like_payload(unwrapped, normalized_extension):
-            return '', None
-        syntax_issues = ResponseSemanticsRuntimeOwner.text_artifact_syntax_sanity_issues_for_extension(
-            normalized_extension,
-            unwrapped,
-        )
-        if syntax_issues:
-            return unwrapped, {
-                'code': 'TEXT_ARTIFACT_SYNTAX_SANITY_FAILED',
-                'message': (
-                    'Required text artifact repair content still fails syntax sanity. '
-                    'The target file is not fulfilled until saved artifact bytes pass syntax checks.'
-                ),
-                'saved_text_path': saved_path or None,
-                'text_artifact_extension': normalized_extension or None,
-                'syntax_sanity_status': 'issues',
-                'syntax_sanity_issue_count': len(syntax_issues),
-                'syntax_sanity_issues': syntax_issues[:12],
-                'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-                'retryable': True,
-            }
-        return unwrapped, None
-
-    @staticmethod
-    def _text_artifact_candidate_looks_like_payload(content: str, extension: str) -> bool:
-        text = str(content or '').lstrip()
-        if not text:
-            return False
-        ext = str(extension or '').strip().lower().lstrip('.')
-        if ext in {'html', 'htm'}:
-            return bool(re.match(r'(?is)^(?:<!doctype\s+html\b|<html\b|<[A-Za-z][\w:.-]*(?:\s|>|/))', text))
-        if ext == 'css':
-            return bool(re.search(r'[{};]', text)) and not re.match(
-                r'(?is)^(?:here\s+is|this\s+is|the\s+(?:fixed|repaired)|i\s+(?:fixed|updated))\b',
-                text,
-            )
-        if ext == 'json':
-            return text.startswith(('{', '['))
-        if ext in {'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx'}:
-            return bool(re.match(r'(?m)^\s*(?:import|export|const|let|var|function|class|interface|type)\b', text))
-        return True
-
-    @classmethod
-    def _required_text_artifact_candidate_payloads(
-        cls,
-        branch: Mapping[str, Any],
-        infer_result: Mapping[str, Any],
-        effective_data: Mapping[str, Any],
-        *,
-        extension: str,
-        source_name: str,
-        target_path: str,
-        revision_required: bool = False,
-        authoritative_bounded_repair: bool = False,
-    ) -> list[str]:
-        request = cls._required_text_artifact_request(
-            branch,
-            infer_result,
-            effective_data,
-            extension=extension,
-            source_name=source_name,
-            target_path=target_path,
-        )
-        candidates: list[str] = []
-        seen: set[str] = set()
-
-        def append_candidate(value: Any) -> None:
-            if not isinstance(value, str) or not value.strip():
-                return
-            text = value.strip()
-            if text in seen:
-                return
-            seen.add(text)
-            candidates.append(text)
-
-        def append_file_candidate(path_value: Any) -> None:
-            path = str(path_value or '').strip()
-            if not path:
-                return
-            if (
-                (revision_required or authoritative_bounded_repair)
-                and cls._text_artifact_path_matches_target(path, target_path)
-            ):
-                # The target already existed before this branch. Its bytes are
-                # source evidence, not proof that the backend produced output.
-                return
-            try:
-                target = Path(path).expanduser()
-                if not target.is_file() or target.stat().st_size > 512_000:
-                    return
-                append_candidate(target.read_text(encoding='utf-8', errors='replace'))
-            except OSError:
-                return
-
-        def append_source_candidates(source: Mapping[str, Any]) -> None:
-            append_file_candidate(source.get('saved_text_path'))
-            for raw_record in source.get('saved_text_artifacts') or []:
-                if not isinstance(raw_record, Mapping):
-                    continue
-                append_file_candidate(raw_record.get('path') or raw_record.get('saved_text_path'))
-                append_candidate(cls._text_artifact_candidate_content(raw_record))
-            for key in ('content', 'content_payload', 'result_text', 'output_text'):
-                append_candidate(source.get(key))
-
-        candidate_sources = (
-            (infer_result,)
-            if revision_required or authoritative_bounded_repair
-            else (infer_result, effective_data, branch)
-        )
-        for source in candidate_sources:
-            if isinstance(source, Mapping):
-                append_source_candidates(source)
-
-        payloads: list[str] = []
-        for candidate in candidates:
-            extracted_payloads = extract_text_artifact_payloads(candidate, [request] if request else [])
-            extracted = [
-                str(item.get('content') or '').strip()
-                for item in extracted_payloads
-                if isinstance(item, Mapping) and str(item.get('content') or '').strip()
-            ]
-            if extracted:
-                payloads.extend(extracted)
-                continue
-            payloads.append(candidate)
-        return payloads
-
-    @classmethod
-    def _with_required_text_artifact_saved_result(
-        cls,
-        infer_result: Mapping[str, Any],
-        *,
-        target_path: str,
-        content: str,
-        extension: str,
-        source_name: str,
-        artifact_request: Mapping[str, Any],
-        evidence: str,
-    ) -> dict[str, Any]:
-        updated = dict(infer_result)
-        record = {
-            'type': 'text',
-            'kind': 'text',
-            'path': target_path,
-            'saved_text_path': target_path,
-            'content': content,
-            'content_payload': content,
-            'text_artifact_extension': extension or Path(target_path).suffix.lstrip('.'),
-            'text_artifact_source_name': source_name or Path(target_path).stem,
-            'text_artifact_source': evidence,
-            'artifact_request': dict(artifact_request or {}),
-            'evidence': evidence,
-        }
-        updated['saved_text_path'] = target_path
-        updated['text_artifact_target_path'] = target_path
-        updated['text_artifact_extension'] = extension or record['text_artifact_extension']
-        updated['text_artifact_source_name'] = source_name or record['text_artifact_source_name']
-        updated['text_artifact_source'] = evidence
-        updated['content'] = content
-        updated['content_payload'] = content
-        updated['result_text'] = content
-        existing_records = []
-        for item in updated.get('saved_text_artifacts') or []:
-            if not isinstance(item, dict):
-                continue
-            item_path = str(item.get('path') or item.get('saved_text_path') or '').strip()
-            if item_path and cls._text_artifact_path_matches_target(item_path, target_path):
-                existing_records.append(item)
-        updated['saved_text_artifacts'] = cls.merge_unique_artifact_records(existing_records, [record])
-        return updated
+    _with_required_text_artifact_saved_result = staticmethod(text_artifact_materialization._with_required_text_artifact_saved_result)
 
     @classmethod
     def _retained_input_alias_contract_from_plan(
@@ -10339,836 +7811,30 @@ class LateFillRuntimeOwner:
                     contract[key] = value
         return contract
 
-    @staticmethod
-    def _sha256_for_file(path: Path) -> str:
-        digest = hashlib.sha256()
-        with path.open('rb') as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b''):
-                digest.update(chunk)
-        return digest.hexdigest()
+    _sha256_for_file = staticmethod(TextArtifactFiles._sha256_for_file)
 
     def _materialize_retained_input_alias(
         self,
         plan: Mapping[str, Any],
         contract: Mapping[str, Any],
     ) -> dict[str, Any]:
-        binding_state = str(contract.get('retained_input_binding_state') or '').strip().lower()
-        source_path = str(contract.get('retained_input_source_path') or '').strip()
-        source_name = str(contract.get('retained_input_source_name') or '').strip()
-        target_name = Path(
-            str(contract.get('retained_input_target_name') or '').strip()
-        ).name
-        extension = re.sub(
-            r'[^a-zA-Z0-9]+',
-            '',
-            str(
-                contract.get('text_artifact_extension')
-                or Path(target_name).suffix
-                or ''
-            ).strip().lower().lstrip('.'),
-        )
-        logical_source_name = str(
-            contract.get('text_artifact_source_name')
-            or Path(target_name).stem
-            or 'retained-input'
-        ).strip()
-        if binding_state != 'bound' or not source_path:
-            raise RuntimeError(
-                'RETAINED_INPUT_ALIAS_UNBOUND: the requested retained input '
-                'does not resolve to exactly one current input artifact.'
-            )
-        if (
-            not target_name
-            or target_name != str(contract.get('retained_input_target_name') or '').strip()
-            or not extension
-            or Path(target_name).suffix.lower().lstrip('.') != extension
-        ):
-            raise RuntimeError(
-                'RETAINED_INPUT_ALIAS_TARGET_INVALID: retained input target '
-                'must be one safe filename whose extension matches the contract.'
-            )
-        source = Path(source_path).expanduser()
-        try:
-            source = source.resolve(strict=True)
-        except OSError as exc:
-            raise RuntimeError(
-                'RETAINED_INPUT_ALIAS_SOURCE_MISSING: retained input source is unavailable.'
-            ) from exc
-        if not source.is_file():
-            raise RuntimeError(
-                'RETAINED_INPUT_ALIAS_SOURCE_MISSING: retained input source is not a file.'
-            )
-        admitted_source_paths: set[Path] = set()
-        branch_wrapper = plan.get('branch') if isinstance(plan.get('branch'), Mapping) else {}
-        branch_payload = (
-            branch_wrapper.get('branch')
-            if isinstance(branch_wrapper.get('branch'), Mapping)
-            else branch_wrapper
-        )
-        for carrier in (plan.get('effective_data'), branch_payload):
-            if not isinstance(carrier, Mapping):
-                continue
-            for record in carrier.get('input_artifacts') or []:
-                if not isinstance(record, Mapping):
-                    continue
-                admitted_path = str(
-                    record.get('path')
-                    or record.get('source_path')
-                    or record.get('saved_text_path')
-                    or ''
-                ).strip()
-                if not admitted_path:
-                    continue
-                try:
-                    admitted_source_paths.add(
-                        Path(admitted_path).expanduser().resolve(strict=False)
-                    )
-                except (OSError, ValueError):
-                    continue
-            for key in ('file_path', 'route_artifact_path'):
-                admitted_path = str(carrier.get(key) or '').strip()
-                if not admitted_path:
-                    continue
-                try:
-                    admitted_source_paths.add(
-                        Path(admitted_path).expanduser().resolve(strict=False)
-                    )
-                except (OSError, ValueError):
-                    continue
-        if source not in admitted_source_paths:
-            raise RuntimeError(
-                'RETAINED_INPUT_ALIAS_SOURCE_NOT_ADMITTED: retained input source '
-                'must be one exact current input artifact.'
-            )
-        if source_name and Path(source_name).suffix.lower().lstrip('.') != extension:
-            raise RuntimeError(
-                'RETAINED_INPUT_ALIAS_EXTENSION_MISMATCH: retained input source '
-                'and requested target have different text-artifact extensions.'
-            )
+        return self.text_artifact_files._materialize_retained_input_alias(plan, contract)
 
-        try:
-            source_content = source.read_text(encoding='utf-8')
-        except (OSError, UnicodeDecodeError) as exc:
-            raise RuntimeError(
-                'RETAINED_INPUT_ALIAS_SOURCE_INVALID: retained input must be a readable text artifact.'
-            ) from exc
-        _canonical_content, content_error = self._text_artifact_content_payload_error(
-            source_content,
-            extension=extension,
-            saved_path=str(source),
-        )
-        if content_error:
-            raise RuntimeError(
-                f"{content_error.get('code') or 'RETAINED_INPUT_ALIAS_SOURCE_INVALID'}: "
-                f"{content_error.get('message') or 'retained input source failed validation'}"
-            )
+    _materialize_required_text_artifact_target_path = staticmethod(text_artifact_materialization._materialize_required_text_artifact_target_path)
 
-        source_sha256 = self._sha256_for_file(source)
-        allocation_digest = hashlib.sha256(
-            ('\0'.join((str(source), target_name, source_sha256))).encode('utf-8')
-        ).hexdigest()[:16]
-        target_dir = ARTIFACT_OUTPUTS_DOCUMENTS_DIR / (
-            f'retained_input_{allocation_digest}'
-        )
-        target = target_dir / target_name
-        target_dir.mkdir(parents=True, exist_ok=True)
-        if target.exists():
-            if not target.is_file() or self._sha256_for_file(target) != source_sha256:
-                raise RuntimeError(
-                    'RETAINED_INPUT_ALIAS_TARGET_COLLISION: allocated target '
-                    'already exists with different bytes.'
-                )
-        else:
-            descriptor, temporary_name = tempfile.mkstemp(
-                prefix=f'.{target_name}.',
-                suffix='.tmp',
-                dir=str(target_dir),
-            )
-            os.close(descriptor)
-            temporary = Path(temporary_name)
-            try:
-                shutil.copyfile(source, temporary)
-                if self._sha256_for_file(temporary) != source_sha256:
-                    raise RuntimeError(
-                        'RETAINED_INPUT_ALIAS_COPY_MISMATCH: copied bytes do not match the input.'
-                    )
-                os.replace(temporary, target)
-            finally:
-                try:
-                    if temporary.exists():
-                        temporary.unlink()
-                except OSError:
-                    pass
+    _text_artifact_saved_payload_error = staticmethod(text_artifact_materialization._text_artifact_saved_payload_error)
 
-        target_sha256 = self._sha256_for_file(target)
-        if target_sha256 != source_sha256:
-            raise RuntimeError(
-                'RETAINED_INPUT_ALIAS_COPY_MISMATCH: materialized target is not byte-identical.'
-            )
-        saved_error = self._text_artifact_saved_payload_error(
-            str(target),
-            extension=extension,
-        )
-        if saved_error:
-            raise RuntimeError(
-                f"{saved_error.get('code') or 'RETAINED_INPUT_ALIAS_TARGET_INVALID'}: "
-                f"{saved_error.get('message') or 'retained input target failed validation'}"
-            )
+    _saved_text_paths_from_result = staticmethod(text_artifact_materialization._saved_text_paths_from_result)
 
-        artifact_request = self._required_text_artifact_request(
-            contract,
-            {},
-            {},
-            extension=extension,
-            source_name=logical_source_name,
-            target_path=str(target),
-        )
-        artifact_request.update(
-            {
-                'source': 'retained_input_alias',
-                'target_path': str(target),
-                'retained_input_alias_required': True,
-                'retained_input_binding_state': 'bound',
-                'retained_input_source_path': str(source),
-                'retained_input_source_name': source_name or source.name,
-                'retained_input_target_name': target_name,
-            }
-        )
-        result = self._with_required_text_artifact_saved_result(
-            {},
-            target_path=str(target),
-            content=source_content,
-            extension=extension,
-            source_name=logical_source_name,
-            artifact_request=artifact_request,
-            evidence='retained_input_alias_byte_copy',
-        )
-        result.update(
-            {
-                'retained_input_alias_required': True,
-                'retained_input_binding_state': 'bound',
-                'retained_input_source_path': str(source),
-                'retained_input_source_name': source_name or source.name,
-                'retained_input_target_name': target_name,
-                'retained_input_source_sha256': source_sha256,
-                'retained_input_target_sha256': target_sha256,
-                'retained_input_byte_identical': True,
-            }
-        )
-        for record in result.get('saved_text_artifacts') or []:
-            if not isinstance(record, dict):
-                continue
-            record.update(
-                {
-                    'retained_input_source_path': str(source),
-                    'retained_input_source_name': source_name or source.name,
-                    'retained_input_target_name': target_name,
-                    'retained_input_source_sha256': source_sha256,
-                    'retained_input_target_sha256': target_sha256,
-                    'retained_input_byte_identical': True,
-                }
-            )
-        return result
+    _text_artifact_target_binding_violation = staticmethod(text_artifact_materialization._text_artifact_target_binding_violation)
 
-    def _materialize_required_text_artifact_target_path(
-        self,
-        branch: Mapping[str, Any],
-        infer_result: dict[str, Any],
-        effective_data: Mapping[str, Any],
-        *,
-        extension: str,
-        source_name: str,
-    ) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
-        target_path = self._required_text_artifact_target_path(branch, {}, effective_data)
-        if not target_path:
-            return infer_result, None
-        normalized_extension = re.sub(
-            r'[^a-zA-Z0-9]+',
-            '',
-            str(extension or Path(target_path).suffix).strip().lower().lstrip('.'),
-        )
-        artifact_request = self._required_text_artifact_request(
-            branch,
-            {},
-            effective_data,
-            extension=normalized_extension,
-            source_name=source_name,
-            target_path=target_path,
-        )
-        target_binding_error = self._text_artifact_target_binding_violation(
-            infer_result,
-            target_path=target_path,
-            extension=normalized_extension,
-            source_name=source_name,
-        )
-        revision_required = self._text_artifact_revision_required(
-            branch,
-            effective_data,
-            infer_result,
-            artifact_request,
-        )
-        authoritative_bounded_repair = any(
-            self._artifact_gap_is_authoritative_bounded_text_artifact_repair(source)
-            for source in (branch, effective_data, infer_result)
-            if isinstance(source, Mapping)
-        )
-        revision_preservation_required = bool(
-            revision_required
-            and (
-                branch.get('text_artifact_revision_preservation_required') is True
-                or effective_data.get('text_artifact_revision_preservation_required') is True
-            )
-        )
-
-        target = Path(target_path).expanduser()
-        revision_source_content = ''
-        if revision_preservation_required:
-            for source in (effective_data, branch):
-                if not isinstance(source, Mapping):
-                    continue
-                if str(source.get('content_payload_source') or '').strip() != (
-                    'canonical_predecessor_text_artifact_snapshot'
-                ):
-                    continue
-                revision_source_content = str(source.get('content_payload') or '')
-                if revision_source_content:
-                    break
-            if not revision_source_content and target.is_file():
-                try:
-                    revision_source_content = target.read_text(
-                        encoding='utf-8',
-                        errors='replace',
-                    )
-                except OSError:
-                    revision_source_content = ''
-        existing_payload_error = self._text_artifact_saved_payload_error(
-            target_path,
-            extension=normalized_extension,
-        )
-        if (
-            not revision_required
-            and not authoritative_bounded_repair
-            and existing_payload_error is None
-            and target.is_file()
-        ):
-            try:
-                content = target.read_text(encoding='utf-8', errors='replace')
-            except OSError:
-                content = ''
-            if content and not target_binding_error:
-                return self._with_required_text_artifact_saved_result(
-                    infer_result,
-                    target_path=target_path,
-                    content=strip_enclosing_text_artifact_fence(content, normalized_extension).strip(),
-                    extension=normalized_extension,
-                    source_name=source_name,
-                    artifact_request=artifact_request,
-                    evidence='target_path_saved_text_artifact_evidence',
-                ), None
-
-        syntax_repair_source = str(
-            branch.get('text_artifact_source')
-            or artifact_request.get('source')
-            or effective_data.get('text_artifact_source')
-            or ''
-        ).strip() in {'closure_syntax_repair'} or str(
-            branch.get('content_payload_source')
-            or effective_data.get('content_payload_source')
-            or ''
-        ).strip() in {'closure_text_artifact_syntax_sanity'}
-        if (
-            not revision_required
-            and (not authoritative_bounded_repair or syntax_repair_source)
-            and
-            existing_payload_error
-            and existing_payload_error.get('code') == 'TEXT_ARTIFACT_SYNTAX_SANITY_FAILED'
-            and target.is_file()
-        ):
-            try:
-                original = target.read_text(encoding='utf-8', errors='replace')
-            except OSError:
-                original = ''
-            if original:
-                repaired, repairs = ResponseSemanticsRuntimeOwner.repair_text_artifact_syntax_content(
-                    normalized_extension,
-                    original,
-                )
-                if repairs and repaired != original:
-                    repaired_content, repaired_error = self._text_artifact_content_payload_error(
-                        repaired,
-                        extension=normalized_extension,
-                        saved_path=target_path,
-                    )
-                    if not repaired_error and repaired_content:
-                        try:
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            target.write_text(repaired_content, encoding='utf-8')
-                        except OSError as exc:
-                            logging.warning(
-                                'Could not write deterministic text artifact repair to %s: %s',
-                                target_path,
-                                exc,
-                            )
-                        else:
-                            saved_error = self._text_artifact_saved_payload_error(
-                                target_path,
-                                extension=normalized_extension,
-                            )
-                            if not saved_error:
-                                updated = self._with_required_text_artifact_saved_result(
-                                    infer_result,
-                                    target_path=target_path,
-                                    content=repaired_content,
-                                    extension=normalized_extension,
-                                    source_name=source_name,
-                                    artifact_request=artifact_request,
-                                    evidence='target_path_deterministic_syntax_repair',
-                                )
-                                updated['target_path_authoritative_repair'] = {
-                                    'status': 'applied',
-                                    'target_path': target_path,
-                                    'target_extension': normalized_extension or None,
-                                    'repair_count': len(repairs),
-                                    'repairs': repairs,
-                                    'source': 'deterministic_syntax_repair',
-                                }
-                                return updated, None
-
-        first_candidate_error: Optional[dict[str, Any]] = None
-        for candidate in self._required_text_artifact_candidate_payloads(
-            branch,
-            infer_result,
-            effective_data,
-            extension=normalized_extension,
-            source_name=source_name,
-            target_path=target_path,
-            revision_required=revision_required,
-            authoritative_bounded_repair=authoritative_bounded_repair,
-        ):
-            candidate_content, candidate_error = self._text_artifact_content_payload_error(
-                candidate,
-                extension=normalized_extension,
-                saved_path=target_path,
-            )
-            if candidate_error:
-                first_candidate_error = first_candidate_error or candidate_error
-                continue
-            if not candidate_content:
-                continue
-            preservation_evidence: dict[str, Any] = {}
-            if revision_preservation_required:
-                preservation_evidence, preservation_error = (
-                    self._text_artifact_revision_preservation_review(
-                        revision_source_content,
-                        candidate_content,
-                        extension=normalized_extension,
-                        target_path=target_path,
-                    )
-                )
-                if preservation_error:
-                    first_candidate_error = first_candidate_error or preservation_error
-                    continue
-            try:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(candidate_content, encoding='utf-8')
-            except OSError as exc:
-                logging.warning('Could not write text artifact repair output to %s: %s', target_path, exc)
-                continue
-            saved_error = self._text_artifact_saved_payload_error(target_path, extension=normalized_extension)
-            if saved_error:
-                first_candidate_error = first_candidate_error or saved_error
-                continue
-            updated = self._with_required_text_artifact_saved_result(
-                infer_result,
-                target_path=target_path,
-                content=candidate_content,
-                extension=normalized_extension,
-                source_name=source_name,
-                artifact_request=artifact_request,
-                evidence=(
-                    'target_path_revision_output'
-                    if revision_required
-                    else 'target_path_authoritative_repair_output'
-                ),
-            )
-            if revision_required:
-                source_sha256 = str(
-                    branch.get('text_artifact_revision_source_sha256')
-                    or effective_data.get('text_artifact_revision_source_sha256')
-                    or ''
-                ).strip()
-                write_proof = {
-                    'kind': 'fruth.text_artifact_revision_write_proof',
-                    'version': 1,
-                    'status': 'applied',
-                    'target_path': target_path,
-                    'source_sha256': source_sha256 or None,
-                    'output_sha256': hashlib.sha256(
-                        candidate_content.encode('utf-8')
-                    ).hexdigest(),
-                    'evidence': 'current_branch_output_written_to_target',
-                }
-                updated['text_artifact_revision_required'] = True
-                updated['text_artifact_source_is_input'] = True
-                updated['text_artifact_revision_write_proof'] = {
-                    key: value
-                    for key, value in write_proof.items()
-                    if value not in (None, '')
-                }
-                if preservation_evidence:
-                    updated['text_artifact_revision_preservation_evidence'] = (
-                        preservation_evidence
-                    )
-            return updated, None
-
-        if first_candidate_error:
-            return infer_result, first_candidate_error
-        if existing_payload_error:
-            return infer_result, existing_payload_error
-        if target_binding_error:
-            return infer_result, target_binding_error
-        if revision_required:
-            return infer_result, {
-                'code': 'TEXT_ARTIFACT_REVISION_OUTPUT_MISSING',
-                'message': (
-                    'Required text artifact revision returned without a valid branch-produced file body. '
-                    'The existing source bytes are edit input only and cannot fulfill the revision.'
-                ),
-                'target_path': target_path,
-                'text_artifact_extension': normalized_extension or None,
-                'text_artifact_source_name': source_name or None,
-                'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-                'retryable': True,
-            }
-        if authoritative_bounded_repair:
-            return infer_result, {
-                'code': 'TEXT_ARTIFACT_REPAIR_OUTPUT_MISSING',
-                'message': (
-                    'Required bounded text artifact repair returned without a valid '
-                    'branch-produced file body. Existing target bytes are repair input '
-                    'only and cannot fulfill the repair obligation.'
-                ),
-                'target_path': target_path,
-                'text_artifact_extension': normalized_extension or None,
-                'text_artifact_source_name': source_name or None,
-                'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-                'retryable': True,
-            }
-        return infer_result, None
-
-    @classmethod
-    def _text_artifact_saved_payload_error(
-        cls,
-        saved_path: str,
-        *,
-        extension: str = '',
-    ) -> Optional[dict[str, Any]]:
-        path = str(saved_path or '').strip()
-        if not path:
-            return None
-        try:
-            target = Path(path).expanduser()
-            if not target.is_file() or target.stat().st_size > 512_000:
-                return None
-            content = target.read_text(encoding='utf-8', errors='replace')
-        except OSError:
-            return None
-        normalized_extension = re.sub(
-            r'[^a-zA-Z0-9]+',
-            '',
-            str(extension or target.suffix).strip().lower().lstrip('.'),
-        )
-        unwrapped = strip_enclosing_text_artifact_fence(content, normalized_extension)
-        if text_artifact_content_is_materializer_instruction_echo(unwrapped):
-            return {
-                'code': 'TEXT_ARTIFACT_INSTRUCTION_ECHO',
-                'message': (
-                    'Required text artifact branch saved internal materializer instructions instead of a file payload. '
-                    'The branch remains repairable; instruction echoes do not fulfill local artifact obligations.'
-                ),
-                'saved_text_path': path,
-                'text_artifact_extension': normalized_extension or None,
-                'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-                'retryable': True,
-            }
-        syntax_issues = ResponseSemanticsRuntimeOwner.text_artifact_syntax_sanity_issues_for_extension(
-            normalized_extension,
-            unwrapped,
-        )
-        if syntax_issues:
-            return {
-                'code': 'TEXT_ARTIFACT_SYNTAX_SANITY_FAILED',
-                'message': (
-                    'Required text artifact branch saved a local file that still fails syntax sanity. '
-                    'Existing saved paths do not fulfill repair or materialization obligations until the '
-                    'saved artifact bytes pass syntax checks.'
-                ),
-                'saved_text_path': path,
-                'text_artifact_target_path': path,
-                'text_artifact_extension': normalized_extension or None,
-                'text_artifact_source_name': target.stem or None,
-                'saved_file_syntax_failure': True,
-                'syntax_sanity_status': 'issues',
-                'syntax_sanity_issue_count': len(syntax_issues),
-                'syntax_sanity_issues': syntax_issues[:12],
-                'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-                'retryable': True,
-            }
-        return None
-
-    @staticmethod
-    def _saved_text_paths_from_result(result: Mapping[str, Any]) -> list[str]:
-        if not isinstance(result, Mapping):
-            return []
-        paths: list[str] = []
-
-        def append_path(value: Any) -> None:
-            token = str(value or '').strip()
-            if token and token not in paths:
-                paths.append(token)
-
-        append_path(result.get('saved_text_path'))
-        append_path(result.get('path') if str(result.get('type') or result.get('kind') or '').lower() == 'text' else '')
-        for key in ('saved_text_artifacts', 'artifacts'):
-            for artifact in result.get(key) or []:
-                if not isinstance(artifact, Mapping):
-                    continue
-                if key == 'artifacts' and str(artifact.get('type') or artifact.get('kind') or 'text').lower() != 'text':
-                    continue
-                append_path(artifact.get('path') or artifact.get('saved_text_path'))
-        late_fill = result.get('late_fill') if isinstance(result.get('late_fill'), Mapping) else {}
-        for fill_result in late_fill.get('fill_results') or []:
-            if not isinstance(fill_result, Mapping):
-                continue
-            append_path(fill_result.get('saved_text_path'))
-        return paths
-
-    @classmethod
-    def _text_artifact_target_binding_violation(
-        cls,
-        result: Mapping[str, Any],
-        *,
-        target_path: str,
-        extension: str,
-        source_name: str,
-    ) -> Optional[dict[str, Any]]:
-        target = str(target_path or '').strip()
-        if not target:
-            return None
-        saved_paths = cls._saved_text_paths_from_result(result)
-        if not saved_paths:
-            return None
-        if any(cls._text_artifact_path_matches_target(path, target) for path in saved_paths):
-            return None
-        return {
-            'code': 'TEXT_ARTIFACT_TARGET_BINDING_VIOLATION',
-            'message': (
-                'Required text artifact repair saved or returned a different text artifact path. '
-                'Target-bound repairs must update the requested target file; a sibling artifact does not fulfill '
-                'the repair or final materialization contract.'
-            ),
-            'target_path': target,
-            'expected_target_path': target,
-            'actual_saved_text_path': saved_paths[0],
-            'actual_saved_text_paths': saved_paths,
-            'text_artifact_extension': extension or None,
-            'text_artifact_source_name': source_name or None,
-            'evidence': 'text_artifact_target_path_mismatch',
-            'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-            'retryable': True,
-        }
-
-    @classmethod
-    def _text_artifact_saved_binding_violation(
-        cls,
-        result: Mapping[str, Any],
-        *,
-        extension: str,
-        source_name: str,
-        target_path: str = '',
-        generic: bool = False,
-    ) -> Optional[dict[str, Any]]:
-        """Verify physical identity independently of returned naming claims."""
-        paths = cls._saved_text_paths_from_result(result)
-        if not paths:
-            return None
-
-        def normalized_extension(value: Any) -> str:
-            token = str(value or '').strip().lower().lstrip('.')
-            return {'markdown': 'md', 'htm': 'html'}.get(token, token)
-
-        expected_extension = normalized_extension(extension)
-        expected_name = cls._normalized_text_artifact_source_name_for_match(source_name)
-
-        def name_matches(value: Any) -> bool:
-            name = cls._normalized_text_artifact_source_name_for_match(value)
-            if artifact_logical_identities_match((expected_extension, expected_name), (expected_extension, name)):
-                return True
-            # The existing writer adds _2, _3, ... only to generated storage
-            # names. An arbitrary sibling allowed_2.txt is not allowed.txt.
-            if re.match(r'^\d{8}(?:t\d{6}z)?-', name):
-                # Retain both timestamped writer names and older date-prefixed
-                # canonical names, including the writer's collision suffix.
-                return re.sub(r'-\d+$', '', name).endswith('-' + expected_name)
-            return False
-
-        def failure(path: str, reason: str) -> dict[str, Any]:
-            return {
-                'code': 'TEXT_ARTIFACT_BINDING_VIOLATION',
-                'message': 'Saved text artifact does not match the accepted output binding: ' + reason,
-                'actual_saved_text_path': path,
-                'text_artifact_extension': extension or None,
-                'text_artifact_source_name': source_name or None,
-                'expected_target_path': target_path or None,
-                'evidence': 'saved_text_artifact_binding_mismatch',
-                'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-                'retryable': True,
-            }
-
-        records = [result]
-        for key in ('saved_text_artifacts', 'artifacts'):
-            records.extend(item for item in result.get(key) or [] if isinstance(item, Mapping))
-        records.extend(declaration for record in list(records)
-            for declaration in record.get('text_artifact_output_declarations') or []
-            if isinstance(declaration, Mapping))
-        for path in paths:
-            physical_path = Path(path).expanduser().resolve()
-            actual_extension = normalized_extension(physical_path.suffix)
-            if not generic and expected_extension and actual_extension != expected_extension:
-                return failure(path, 'physical extension differs')
-            if target_path and not cls._text_artifact_path_matches_target(path, target_path):
-                return failure(path, 'physical target differs')
-            if not target_path and not generic and expected_name and not name_matches(physical_path.stem):
-                return failure(path, 'physical logical filename differs')
-            for record in records:
-                record_path = str(record.get('saved_text_path') or record.get('path') or '').strip()
-                if not record_path or not cls._text_artifact_path_matches_target(record_path, path):
-                    continue
-                saved_evidence = record.get('text_artifact_saved_evidence') or {}
-                if saved_evidence.get('status') == 'rejected':
-                    return dict(saved_evidence.get('error') or failure(path, 'saved result was rejected'))
-                declarations = [record]
-                for key in ('artifact_request', 'text_artifact_request'):
-                    if isinstance(record.get(key), Mapping):
-                        declarations.append(record[key])
-                for declaration in declarations:
-                    for key in ('extension', 'text_artifact_extension'):
-                        claimed = normalized_extension(declaration.get(key))
-                        if (claimed and claimed != actual_extension
-                                and not (generic and text_artifact_request_is_generic(declaration))):
-                            return failure(path, 'returned extension conflicts with physical file')
-                    for key in ('source_name', 'text_artifact_source_name', 'name'):
-                        if not generic and expected_name and declaration.get(key) and not name_matches(declaration[key]):
-                            return failure(path, 'returned logical identity conflicts')
-                    for key in ('target_path', 'text_artifact_target_path'):
-                        claimed = str(declaration.get(key) or '').strip()
-                        if claimed and not cls._text_artifact_path_matches_target(path, claimed):
-                            return failure(path, 'returned target conflicts with physical file')
-                # Top-level Infer file_sha256 describes its input attachment.
-                # Output-record digest evidence must match the saved bytes.
-                if record is not result or result.get('type') in {'text', 'document', 'file'}:
-                    claimed_digest = str(record.get('file_sha256') or '').strip()
-                    if claimed_digest:
-                        try:
-                            actual_digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
-                        except OSError:
-                            return failure(path, 'output digest cannot be verified')
-                        if claimed_digest != actual_digest:
-                            return failure(path, 'output digest differs')
-        return None
+    _text_artifact_saved_binding_violation = staticmethod(TextArtifactResultEvidence._text_artifact_saved_binding_violation)
 
     def capture_root_text_artifact_saved_evidence(
         self, result: dict[str, Any], *, accepted_requests: list[dict[str, Any]],
         response_id: str, phase_id: str = '',
     ) -> dict[str, Any]:
-        """Check the raw root handoff before canonical projection loses claims.
-
-        Requests are captured by the caller/source owners before dispatch. No
-        returned request, graph, identity or physical bytes create authority.
-        """
-        paths = self._saved_text_paths_from_result(result)
-        if not paths or not accepted_requests:
-            return result
-        updated = dict(result)
-        saved_records = []
-        errors = []
-        raw_records = [record for key in ('saved_text_artifacts', 'artifacts')
-            for record in result.get(key) or [] if isinstance(record, Mapping)
-            and (key == 'saved_text_artifacts'
-                 or str(record.get('type') or record.get('kind') or 'text').lower() in {'text', 'document', 'file'})]
-        # These are declarations returned by this execution, not a historical
-        # artifact inventory. A returned source/version claim cannot exempt a
-        # conflicting output declaration from validation. Inputs live separately.
-        current_records = raw_records
-        paths = self._saved_text_paths_from_result({
-            'saved_text_path': result.get('saved_text_path'), 'saved_text_artifacts': current_records,
-        })
-        too_many_paths = len({str(Path(path).expanduser().resolve()) for path in paths}) > len(accepted_requests)
-        for path in paths:
-            contracts = [contract for contract in accepted_requests
-                if not self._text_artifact_saved_binding_violation(
-                    {'type': 'text', 'path': path}, extension=contract.get('extension') or '',
-                    source_name=contract.get('source_name') or '',
-                    target_path=contract.get('target_path') or '',
-                    generic=text_artifact_request_is_generic(contract),
-                )]
-            contract = contracts[0] if len(contracts) == 1 else accepted_requests[0]
-            records = [record for record in current_records
-                if self._text_artifact_path_matches_target(
-                    record.get('path') or record.get('saved_text_path') or '', path)]
-            raw = {'saved_text_artifacts': records}
-            if self._text_artifact_path_matches_target(result.get('saved_text_path') or '', path):
-                raw.update(result)
-                raw['saved_text_artifacts'] = records
-                raw['artifacts'] = []
-            error = self._text_artifact_saved_binding_violation(
-                raw, extension=contract.get('extension') or '',
-                source_name=contract.get('source_name') or '',
-                target_path=contract.get('target_path') or '',
-                generic=text_artifact_request_is_generic(contract),
-            )
-            if len(contracts) != 1 and not error:
-                error = {
-                    'code': 'TEXT_ARTIFACT_BINDING_VIOLATION',
-                    'message': 'Saved text artifact has no unique accepted output binding.',
-                    'actual_saved_text_path': path,
-                    'evidence': 'saved_text_artifact_binding_mismatch',
-                }
-            if too_many_paths and not error:
-                error = {
-                    'code': 'TEXT_ARTIFACT_BINDING_VIOLATION',
-                    'message': 'Saved text artifacts exceed the accepted output count.',
-                    'actual_saved_text_path': path,
-                    'evidence': 'saved_text_artifact_binding_mismatch',
-                }
-            declarations = [text_artifact_output_declaration(record) for record in records]
-            if raw.get('saved_text_path'):
-                declarations.insert(0, text_artifact_output_declaration(
-                    result, input_attachment_digest=True,
-                ))
-            evidence = {
-                'kind': 'fruth.text_artifact_saved_evidence',
-                'status': 'rejected' if error else 'passed',
-                'source': 'root_saved_result_validation',
-                'source_response_id': response_id,
-                'phase_id': phase_id,
-                'accepted_request': dict(contract),
-                'declarations': declarations,
-            }
-            if error:
-                evidence['error'] = dict(error)
-                errors.append(dict(error))
-            for record in records or [{'type': 'text', 'path': path}]:
-                saved_records.append({
-                    **dict(record), 'source_response_id': response_id,
-                    'phase_id': phase_id or record.get('phase_id'), 'origin': 'assistant_output',
-                    'text_artifact_saved_evidence': evidence,
-                    'text_artifact_output_declarations': declarations,
-                })
-        updated['saved_text_artifacts'] = saved_records
-        if errors:
-            updated['text_artifact_binding_errors'] = errors
-        return updated
+        return self.text_artifact_result_evidence.capture_root_text_artifact_saved_evidence(result, accepted_requests=accepted_requests, response_id=response_id, phase_id=phase_id)
 
     def _matching_canonical_text_artifact_path(
         self,
@@ -11179,14 +7845,7 @@ class LateFillRuntimeOwner:
         target_path: str = '',
         generic: bool = False,
     ) -> str:
-        result = self._canonical_text_artifact_saved_result(
-            payload,
-            extension=extension,
-            source_name=source_name,
-            target_path=target_path,
-            generic=generic,
-        )
-        return str(result.get('saved_text_path') or result.get('path') or '').strip()
+        return self.text_artifact_result_evidence._matching_canonical_text_artifact_path(payload, extension=extension, source_name=source_name, target_path=target_path, generic=generic)
 
     def _canonical_text_artifact_saved_result(
         self,
@@ -11198,230 +7857,7 @@ class LateFillRuntimeOwner:
         allow_deterministic_repair: bool = False,
         generic: bool = False,
     ) -> dict[str, Any]:
-        if not isinstance(payload, Mapping):
-            return {}
-        records: list[Mapping[str, Any]] = []
-        artifacts = payload.get('artifacts') if isinstance(payload.get('artifacts'), list) else []
-        records.extend(item for item in artifacts if isinstance(item, Mapping))
-        records.extend(
-            item for item in self.build_canonical_response_artifacts(dict(payload))
-            if isinstance(item, Mapping)
-        )
-        for artifact in payload.get('saved_text_artifacts') or []:
-            if isinstance(artifact, Mapping):
-                records.append({'type': 'text', **dict(artifact)})
-        saved_text_path = str(payload.get('saved_text_path') or payload.get('savedTextPath') or '').strip()
-        if saved_text_path:
-            records.append(
-                {
-                    'type': 'text',
-                    'path': saved_text_path,
-                    'origin': 'assistant_output',
-                    'source_response_id': str(payload.get('id') or '').strip() or None,
-                    'text_artifact_extension': payload.get('text_artifact_extension'),
-                    'text_artifact_source_name': payload.get('text_artifact_source_name'),
-                    'text_artifact_target_path': payload.get('text_artifact_target_path'),
-                    'artifact_request': payload.get('text_artifact_request')
-                    if isinstance(payload.get('text_artifact_request'), Mapping)
-                    else {},
-                }
-            )
-        late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-        for result in late_fill.get('fill_results') or []:
-            if not isinstance(result, Mapping):
-                continue
-            result_saved_text_path = str(result.get('saved_text_path') or '').strip()
-            if not result_saved_text_path:
-                continue
-            execution_contract = (
-                result.get('execution_contract')
-                if isinstance(result.get('execution_contract'), Mapping)
-                else {}
-            )
-            artifact_request = (
-                result.get('artifact_request')
-                if isinstance(result.get('artifact_request'), Mapping)
-                else (
-                    execution_contract.get('artifact_request')
-                    if isinstance(execution_contract.get('artifact_request'), Mapping)
-                    else {}
-                )
-            )
-            records.append(
-                {
-                    'type': 'text',
-                    'path': result_saved_text_path,
-                    'text_artifact_extension': (
-                        result.get('text_artifact_extension')
-                        or execution_contract.get('text_artifact_extension')
-                        or artifact_request.get('extension')
-                    ),
-                    'text_artifact_source_name': (
-                        result.get('text_artifact_source_name')
-                        or execution_contract.get('text_artifact_source_name')
-                        or artifact_request.get('source_name')
-                    ),
-                    'text_artifact_target_path': (
-                        result.get('text_artifact_target_path')
-                        or execution_contract.get('text_artifact_target_path')
-                        or artifact_request.get('target_path')
-                    ),
-                    'artifact_request': artifact_request,
-                    'branch_id': result.get('branch_id'),
-                    'phase_id': result.get('phase_id'),
-                    'obligation_id': result.get('obligation_id'),
-                    'source_response_id': str(payload.get('id') or '').strip() or None,
-                    'origin': 'late_fill_result',
-                    'text_artifact_source': result.get('text_artifact_source'),
-                }
-            )
-        expected_extension = str(extension or '').strip().lower().lstrip('.')
-        expected_source_name = str(source_name or '').strip().lower()
-        expected_target_path = str(target_path or '').strip()
-        matching_records_by_path: dict[str, Mapping[str, Any]] = {}
-        for record in records:
-            if str(record.get('type') or record.get('kind') or 'text').strip().lower() != 'text':
-                continue
-            if generic and not artifact_is_current_authoritative(
-                record, response_id=str(payload.get('id') or '').strip(),
-            ):
-                # An unspecified save may reuse its one current output, never
-                # promote selected/reference-only or stale material to output.
-                continue
-            path = self._artifact_record_path(record)
-            if not path:
-                continue
-            # Reconcile raw and canonical aliases of this output *before*
-            # ranking/deduplication. A clean record cannot hide a bad sibling.
-            related = [item for item in records if text_artifact_same_output(
-                record, item, response_id=str(payload.get('id') or ''),
-            )]
-            if self._text_artifact_saved_binding_violation(
-                {'saved_text_artifacts': related}, extension=expected_extension, source_name=source_name,
-                target_path=expected_target_path, generic=generic,
-            ):
-                continue
-            if expected_target_path and not self._text_artifact_path_matches_target(path, expected_target_path):
-                continue
-            artifact_extension = self._artifact_record_extension(record)
-            if not generic and expected_extension and artifact_extension and artifact_extension != expected_extension:
-                continue
-            if not generic and expected_source_name and not self._artifact_record_matches_text_artifact_source_name(
-                record,
-                expected_source_name,
-            ):
-                continue
-            existing = matching_records_by_path.get(path)
-            if (
-                existing is None
-                or artifact_authority_rank(record, response_id=str(payload.get('id') or '').strip())
-                > artifact_authority_rank(existing, response_id=str(payload.get('id') or '').strip())
-            ):
-                matching_records_by_path[path] = record
-
-        # Filesystem proximity is not current-response authority. One current
-        # response-owned candidate may safely beat any number of stale linked
-        # siblings, while multiple current candidates remain fail-closed.
-        response_id = str(payload.get('id') or '').strip()
-        authoritative_paths = {
-            path: record
-            for path, record in matching_records_by_path.items()
-            if artifact_is_current_authoritative(record, response_id=response_id)
-        }
-        if len(authoritative_paths) > 1:
-            return {}
-        if len(authoritative_paths) == 1:
-            matching_records_by_path = authoritative_paths
-        elif len(matching_records_by_path) != 1:
-            return {}
-
-        for path, record in matching_records_by_path.items():
-            artifact_extension = self._artifact_record_extension(record)
-            artifact_source_name = self._artifact_record_source_name(record).lower()
-            payload_extension = Path(path).suffix.lstrip('.') if generic else expected_extension
-            payload_error = self._text_artifact_saved_payload_error(path, extension=payload_extension)
-            source = 'canonical_text_artifact_evidence'
-            repair_payload: dict[str, Any] = {}
-            content = ''
-            if payload_error:
-                if (
-                    not allow_deterministic_repair
-                    or payload_error.get('code') != 'TEXT_ARTIFACT_SYNTAX_SANITY_FAILED'
-                ):
-                    continue
-                try:
-                    target = Path(path).expanduser()
-                    original = target.read_text(encoding='utf-8', errors='replace') if target.is_file() else ''
-                except OSError:
-                    original = ''
-                if not original:
-                    continue
-                repaired, repairs = ResponseSemanticsRuntimeOwner.repair_text_artifact_syntax_content(
-                    payload_extension,
-                    original,
-                )
-                if not repairs or repaired == original:
-                    continue
-                repaired_content, repaired_error = self._text_artifact_content_payload_error(
-                    repaired,
-                    extension=payload_extension,
-                    saved_path=path,
-                )
-                if repaired_error or not repaired_content:
-                    continue
-                try:
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(repaired_content, encoding='utf-8')
-                except OSError as exc:
-                    logging.warning(
-                        'Could not write deterministic canonical text artifact repair to %s: %s',
-                        path,
-                        exc,
-                    )
-                    continue
-                if self._text_artifact_saved_payload_error(path, extension=payload_extension):
-                    continue
-                source = 'canonical_text_artifact_deterministic_syntax_repair'
-                content = repaired_content
-                repair_payload = {
-                    'status': 'applied',
-                    'target_path': path,
-                    'target_extension': payload_extension or None,
-                    'repair_count': len(repairs),
-                    'repairs': repairs,
-                    'source': 'deterministic_syntax_repair',
-                }
-            else:
-                content = self._read_small_text_artifact(path)
-            artifact_request = (
-                record.get('artifact_request')
-                if isinstance(record.get('artifact_request'), Mapping)
-                else (
-                    record.get('text_artifact_request')
-                    if isinstance(record.get('text_artifact_request'), Mapping)
-                    else {}
-                )
-            )
-            result = {
-                'type': 'text',
-                'kind': 'text',
-                'path': path,
-                'saved_text_path': path,
-                'text_artifact_target_path': expected_target_path or self._text_artifact_target_path_from_mapping(record),
-                'text_artifact_extension': payload_extension or artifact_extension,
-                'text_artifact_source_name': artifact_source_name if generic else expected_source_name or artifact_source_name,
-                'text_artifact_source': source,
-                'artifact_request': dict(artifact_request or {}),
-            }
-            if content:
-                result['content'] = content
-                result['content_payload'] = content
-                result['result_text'] = content
-            if repair_payload:
-                result['target_path_authoritative_repair'] = repair_payload
-                result['canonical_text_artifact_repair'] = repair_payload
-            return result
-        return {}
+        return self.text_artifact_result_evidence._canonical_text_artifact_saved_result(payload, extension=extension, source_name=source_name, target_path=target_path, allow_deterministic_repair=allow_deterministic_repair, generic=generic)
 
     def _ensure_required_text_artifact_saved_truth(
         self,
@@ -11430,181 +7866,7 @@ class LateFillRuntimeOwner:
         effective_data: Mapping[str, Any],
         current_payload: Mapping[str, Any],
     ) -> tuple[dict[str, Any], Optional[dict[str, Any]]]:
-        if not self._branch_is_required_text_artifact(branch):
-            return infer_result, None
-        artifact_request = self._required_text_artifact_request(
-            branch, {}, effective_data, extension='', source_name='', target_path='',
-        )
-        revision_required = self._text_artifact_revision_required(
-            branch,
-            effective_data,
-            infer_result,
-            artifact_request,
-        )
-        effective_request = (
-            effective_data.get('artifact_request')
-            if isinstance(effective_data.get('artifact_request'), Mapping)
-            else {}
-        )
-        target_path = self._required_text_artifact_target_path(branch, {}, effective_data)
-        if target_path:
-            extension = str(
-                branch.get('text_artifact_extension')
-                or effective_request.get('extension')
-                or artifact_request.get('extension')
-                or effective_data.get('text_artifact_extension')
-                or Path(target_path).suffix
-                or ''
-            ).strip().lower().lstrip('.')
-            source_name = str(
-                branch.get('text_artifact_source_name')
-                or effective_request.get('source_name')
-                or artifact_request.get('source_name')
-                or effective_data.get('text_artifact_source_name')
-                or Path(target_path).stem
-                or ''
-            ).strip()
-        else:
-            extension = str(
-                branch.get('text_artifact_extension')
-                or artifact_request.get('extension')
-                or effective_data.get('text_artifact_extension')
-                or effective_request.get('extension')
-                or ''
-            ).strip().lower().lstrip('.')
-            source_name = str(
-                branch.get('text_artifact_source_name')
-                or artifact_request.get('source_name')
-                or effective_data.get('text_artifact_source_name')
-                or effective_request.get('source_name')
-                or ''
-            ).strip()
-        generic = text_artifact_request_is_generic({
-            **artifact_request, 'extension': extension, 'source_name': source_name,
-            'target_path': target_path,
-        })
-        if not target_path:
-            # A new output's binding comes from the accepted branch. Returned
-            # target/name claims cannot authorize a write or repair a mismatch.
-            returned_files = {
-                **infer_result,
-                'saved_text_path': infer_result.get('saved_text_path') or effective_data.get('saved_text_path'),
-                'saved_text_artifacts': infer_result.get('saved_text_artifacts') or effective_data.get('saved_text_artifacts') or [],
-            }
-            binding_error = self._text_artifact_saved_binding_violation(
-                returned_files, extension=extension, source_name=source_name, generic=generic,
-            )
-            if binding_error:
-                return infer_result, binding_error
-        # An accepted exact target may use a candidate's bytes through the
-        # existing target writer/proof owner. Only the saved exact target can
-        # pass the checks below; the sibling itself never fulfills the duty.
-        bound_saved_repair = (infer_result.get('saved_file_consumption_evidence') or {}).get('syntax_repair')
-        if bound_saved_repair:
-            # Dispatch already saved and digested this exact repair output. A
-            # second candidate write (even stripping a trailing newline) would
-            # invalidate consumption. Verify the bytes; do not re-materialize.
-            target_materialization_error = self.saved_file_consumption_error(branch, infer_result, current_payload=current_payload)
-            try:
-                snapshot = infer_result.get('saved_file_output_snapshot') or {}
-                physical = read_saved_file_snapshot(snapshot.get('path', ''), self.resolve_saved_file_input_path)
-                if any(physical.get(key) != snapshot.get(key) for key in ('path', 'sha256', 'size_bytes')):
-                    raise ValueError('saved_file_syntax_repair_output_changed')
-            except (OSError, ValueError, KeyError, UnicodeError) as exc:
-                target_materialization_error = {'code': 'DEPENDENCY_CHAIN_REPAIR_REQUIRED',
-                    'message': str(exc), 'stage': 'saved_file_evidence_gate', 'retryable': False}
-        else:
-            infer_result, target_materialization_error = self._materialize_required_text_artifact_target_path(
-                branch,
-                infer_result,
-                effective_data,
-                extension=extension,
-                source_name=source_name,
-            )
-        if target_materialization_error:
-            return infer_result, target_materialization_error
-        target_binding_error = self._text_artifact_target_binding_violation(
-            infer_result,
-            target_path=target_path,
-            extension=extension,
-            source_name=source_name,
-        )
-        if target_binding_error:
-            return infer_result, target_binding_error
-        binding_error = self._text_artifact_saved_binding_violation(
-            infer_result, extension=extension, source_name=source_name,
-            target_path=target_path, generic=generic,
-        )
-        if binding_error:
-            return infer_result, binding_error
-        saved_text_path = str(
-            infer_result.get('saved_text_path')
-            or effective_data.get('saved_text_path')
-            or ''
-        ).strip()
-        saved_text_artifacts = [
-            item
-            for item in (
-                infer_result.get('saved_text_artifacts')
-                or effective_data.get('saved_text_artifacts')
-                or []
-            )
-            if isinstance(item, Mapping)
-        ]
-        candidate_paths = [saved_text_path]
-        candidate_paths.extend(str(item.get('path') or item.get('saved_text_path') or '').strip() for item in saved_text_artifacts)
-        for candidate_path in candidate_paths:
-            if not candidate_path:
-                continue
-            payload_extension = Path(candidate_path).suffix.lstrip('.') if generic else extension
-            payload_error = self._text_artifact_saved_payload_error(candidate_path, extension=payload_extension)
-            if payload_error:
-                return infer_result, payload_error
-        if saved_text_path or any(str(item.get('path') or item.get('saved_text_path') or '').strip() for item in saved_text_artifacts):
-            if revision_required and not isinstance(
-                infer_result.get('text_artifact_revision_write_proof'),
-                Mapping,
-            ):
-                return infer_result, {
-                    'code': 'TEXT_ARTIFACT_REVISION_WRITE_PROOF_MISSING',
-                    'message': (
-                        'Required text artifact revision has a path but no current-branch write proof. '
-                        'Existing source paths cannot fulfill an edit obligation.'
-                    ),
-                    'text_artifact_extension': extension or None,
-                    'text_artifact_source_name': source_name or None,
-                    'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-                    'retryable': True,
-                }
-            return infer_result, None
-        canonical_path = ''
-        if not revision_required:
-            canonical_path = self._matching_canonical_text_artifact_path(
-                current_payload,
-                extension=extension,
-                source_name=source_name,
-                target_path=target_path,
-                generic=generic,
-            )
-        if canonical_path:
-            updated = dict(infer_result)
-            updated['saved_text_path'] = canonical_path
-            updated['text_artifact_target_path'] = canonical_path
-            updated.setdefault('text_artifact_extension', extension)
-            updated.setdefault('text_artifact_source_name', source_name)
-            updated.setdefault('text_artifact_source', 'canonical_text_artifact_evidence')
-            return updated, None
-        return infer_result, {
-            'code': 'TEXT_ARTIFACT_NOT_PERSISTED',
-            'message': (
-                'Required text artifact branch returned without a saved text artifact path. '
-                'Chat text alone does not fulfill local file obligations.'
-            ),
-            'text_artifact_extension': extension or None,
-            'text_artifact_source_name': source_name or None,
-            'suggested_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-            'retryable': True,
-        }
+        return self.text_artifact_result_evidence._ensure_required_text_artifact_saved_truth(branch, infer_result, effective_data, current_payload)
 
     def _canonical_text_artifact_branch_fulfillment(
         self,
@@ -11612,270 +7874,16 @@ class LateFillRuntimeOwner:
         *payloads: Mapping[str, Any],
         allow_deterministic_repair: bool = True,
     ) -> dict[str, Any]:
-        if not self._branch_is_required_text_artifact(branch):
-            return {}
-        if self._artifact_gap_is_authoritative_bounded_text_artifact_repair(branch):
-            return {}
-        if self._text_artifact_revision_required(branch) and not any(
-            isinstance(payload, Mapping)
-            and self._text_artifact_revision_write_proven(branch, payload)
-            for payload in payloads
-        ):
-            return {}
-        artifact_request = branch.get('artifact_request') if isinstance(branch.get('artifact_request'), Mapping) else {}
-        if (
-            saved_file_dependency_contract(branch)
-            or artifact_request.get('saved_file_producer')
-            or branch.get('branch_contract_error') == 'saved_file_dependency_unbound'
-        ):
-            # File presence cannot replace a producer snapshot or a bound read.
-            # Reuse Closure's check and retain the complete validated result.
-            for payload in payloads:
-                if not isinstance(payload, Mapping) or not self._text_artifact_branch_has_canonical_evidence(
-                    branch, payload
-                ):
-                    continue
-                for result in (payload.get('late_fill') or {}).get('fill_results') or []:
-                    if (
-                        isinstance(result, Mapping)
-                        and result.get('branch_id') == branch.get('branch_id')
-                        and result.get('phase_id') == branch.get('phase_id')
-                    ):
-                        return dict(result)
-            return {}
-        extension = str(
-            branch.get('text_artifact_extension')
-            or artifact_request.get('extension')
-            or ''
-        ).strip().lower().lstrip('.')
-        source_name = str(
-            branch.get('text_artifact_source_name')
-            or artifact_request.get('source_name')
-            or ''
-        ).strip()
-        target_path = self._text_artifact_target_path_from_mapping(branch) or self._text_artifact_target_path_from_mapping(
-            artifact_request
-        )
-        if not extension or not source_name:
-            return {}
-        generic = text_artifact_request_is_generic({
-            **artifact_request, 'extension': extension, 'source_name': source_name,
-            'target_path': target_path,
-        })
-        canonical_result: dict[str, Any] = {}
-        for payload in payloads:
-            if not isinstance(payload, Mapping):
-                continue
-            canonical_result = self._canonical_text_artifact_saved_result(
-                payload,
-                extension=extension,
-                source_name=source_name,
-                target_path=target_path,
-                allow_deterministic_repair=allow_deterministic_repair,
-                generic=generic,
-            )
-            if canonical_result:
-                break
-        canonical_path = str(
-            canonical_result.get('saved_text_path')
-            or canonical_result.get('path')
-            or ''
-        ).strip()
-        if not canonical_path:
-            return {}
-        text_source = str(
-            canonical_result.get('text_artifact_source')
-            or 'canonical_text_artifact_evidence'
-        ).strip()
-        if not text_source:
-            text_source = 'canonical_text_artifact_evidence'
-        event_message = (
-            'Required text artifact satisfied by deterministic canonical saved file repair.'
-            if text_source == 'canonical_text_artifact_deterministic_syntax_repair'
-            else 'Required text artifact satisfied by canonical saved file evidence.'
-        )
-        branch_id = self.branch_id(branch)
-        if not branch_id:
-            return {}
-        fill_record: dict[str, Any] = {
-            'branch_id': branch_id,
-            'phase_id': str(branch.get('phase_id') or branch_id).strip() or branch_id,
-            'capability': self.branch_capability(branch) or self.capability_chat,
-            'saved_text_path': canonical_path,
-            'text_artifact_extension': (
-                canonical_result.get('text_artifact_extension') if generic else extension
-            ),
-            'text_artifact_source_name': (
-                canonical_result.get('text_artifact_source_name') if generic else source_name
-            ),
-            'text_artifact_source': text_source,
-            'result_text': event_message,
-        }
-        if target_path:
-            fill_record['text_artifact_target_path'] = target_path
-        if isinstance(artifact_request, Mapping) and artifact_request:
-            fill_record['artifact_request'] = dict(artifact_request)
-        target_repair = canonical_result.get('target_path_authoritative_repair')
-        if isinstance(target_repair, Mapping):
-            fill_record['target_path_authoritative_repair'] = dict(target_repair)
-        return {
-            key: value
-            for key, value in fill_record.items()
-            if value not in (None, '', [], {})
-        }
+        return self.text_artifact_result_evidence._canonical_text_artifact_branch_fulfillment(branch, *payloads, allow_deterministic_repair=allow_deterministic_repair)
 
     def _text_artifact_branch_has_canonical_evidence(
         self,
         branch: Mapping[str, Any],
         payload: Mapping[str, Any],
     ) -> bool:
-        if saved_file_dependency_contract(branch):
-            return not saved_file_consumption_artifact_issue(
-                branch, payload, self.resolve_saved_file_input_path)
-        if branch.get('branch_contract_error') == 'saved_file_dependency_unbound':
-            return False
-        verified_producer_path = ''
-        if (branch.get('artifact_request') or {}).get('saved_file_producer'):
-            results = [r for r in (payload.get('late_fill') or {}).get('fill_results') or []
-                if isinstance(r, Mapping) and r.get('branch_id') == branch.get('branch_id')
-                and r.get('phase_id') == branch.get('phase_id')]
-            if len(results) != 1:
-                return False
-            snapshot = results[0].get('saved_file_output_snapshot') or {}
-            artifacts = results[0].get('artifacts') or []
-            if not any(isinstance(a, Mapping) and all(snapshot.get(key) and a.get(key) == snapshot[key]
-                for key in ('artifact_ref', 'artifact_id', 'path', 'source_response_id', 'branch_id', 'phase_id'))
-                for a in artifacts):
-                return False
-            try:
-                current = read_saved_file_snapshot(snapshot['path'], self.resolve_saved_file_input_path)
-                if (snapshot.get('source_response_id') != payload.get('id') or
-                        any(current[key] != snapshot.get(key) for key in ('sha256', 'size_bytes'))):
-                    return False
-            except (OSError, ValueError, KeyError):
-                return False
-            verified_producer_path = str(snapshot['path']).strip()
+        return self.text_artifact_result_evidence._text_artifact_branch_has_canonical_evidence(branch, payload)
 
-        if self._text_artifact_revision_required(branch):
-            return self._text_artifact_revision_write_proven(branch, payload)
-        if self._artifact_gap_is_authoritative_bounded_text_artifact_repair(branch):
-            return self._authoritative_bounded_text_artifact_repair_has_write_evidence(
-                branch,
-                payload,
-            )
-        artifact_request = branch.get('artifact_request') if isinstance(branch.get('artifact_request'), Mapping) else {}
-        extension = str(
-            branch.get('text_artifact_extension')
-            or artifact_request.get('extension')
-            or ''
-        ).strip().lower().lstrip('.')
-        source_name = str(
-            branch.get('text_artifact_source_name')
-            or artifact_request.get('source_name')
-            or ''
-        ).strip()
-        target_path = self._text_artifact_target_path_from_mapping(branch) or self._text_artifact_target_path_from_mapping(
-            artifact_request
-        )
-        if not extension or not source_name:
-            return False
-        if verified_producer_path:
-            if target_path and not self._text_artifact_path_matches_target(verified_producer_path, target_path):
-                return False
-            # Keep the proven branch binding through name and syntax checks.
-            # Earlier streamed files with the same name are separate evidence.
-            target_path = verified_producer_path
-        return bool(
-            self._matching_canonical_text_artifact_path(
-                payload,
-                extension=extension,
-                source_name=source_name,
-                target_path=target_path,
-                generic=text_artifact_request_is_generic({
-                    **artifact_request, 'extension': extension, 'source_name': source_name,
-                    'target_path': target_path,
-                }),
-            )
-        )
-
-    @classmethod
-    def _authoritative_bounded_text_artifact_repair_has_write_evidence(
-        cls,
-        branch: Mapping[str, Any],
-        payload: Mapping[str, Any],
-    ) -> bool:
-        artifact_request = (
-            branch.get('artifact_request')
-            if isinstance(branch.get('artifact_request'), Mapping)
-            else {}
-        )
-        target_path = (
-            cls._text_artifact_target_path_from_mapping(branch)
-            or cls._text_artifact_target_path_from_mapping(artifact_request)
-        )
-        branch_id = str(branch.get('branch_id') or branch.get('phase_id') or '').strip()
-        if not target_path or not branch_id:
-            return False
-        late_fill = (
-            payload.get('late_fill')
-            if isinstance(payload.get('late_fill'), Mapping)
-            else {}
-        )
-
-        def path_matches(record: Mapping[str, Any]) -> bool:
-            if str(record.get('branch_id') or record.get('phase_id') or '').strip() != branch_id:
-                return False
-            candidate = str(
-                record.get('target_path')
-                or record.get('to_path')
-                or record.get('saved_text_path')
-                or record.get('path')
-                or ''
-            ).strip()
-            return bool(
-                candidate
-                and cls._text_artifact_path_matches_target(candidate, target_path)
-            )
-
-        for collection_key in (
-            'linked_artifact_rebinds',
-            'syntax_sanity_repairs',
-            'composed_page_image_representation_repairs',
-            'hero_image_composition_repairs',
-        ):
-            for raw_record in late_fill.get(collection_key) or []:
-                if not isinstance(raw_record, Mapping):
-                    continue
-                if (
-                    str(raw_record.get('status') or '').strip().lower() == 'applied'
-                    and path_matches(raw_record)
-                ):
-                    return True
-
-        write_sources = {
-            'target_path_authoritative_repair_output',
-            'target_path_deterministic_syntax_repair',
-            'canonical_text_artifact_deterministic_syntax_repair',
-        }
-        record_collections = [
-            payload.get('artifacts') or [],
-            payload.get('saved_text_artifacts') or [],
-            late_fill.get('fill_results') or [],
-        ]
-        for collection in record_collections:
-            for raw_record in collection:
-                if not isinstance(raw_record, Mapping) or not path_matches(raw_record):
-                    continue
-                source = str(raw_record.get('text_artifact_source') or '').strip()
-                if source in write_sources:
-                    return True
-                repair = raw_record.get('target_path_authoritative_repair')
-                if (
-                    isinstance(repair, Mapping)
-                    and str(repair.get('status') or '').strip().lower() == 'applied'
-                ):
-                    return True
-        return False
+    _authoritative_bounded_text_artifact_repair_has_write_evidence = staticmethod(TextArtifactResultEvidence._authoritative_bounded_text_artifact_repair_has_write_evidence)
 
     def _reconcile_satisfied_failed_text_artifact_branches(
         self,
@@ -12033,1159 +8041,80 @@ class LateFillRuntimeOwner:
             updated['status'] = 'completed'
         return updated
 
-    @staticmethod
-    def _relative_artifact_link(*, from_path: str, to_path: str) -> str:
-        if not from_path or not to_path:
-            return to_path
-        try:
-            relative = os.path.relpath(to_path, start=str(Path(from_path).expanduser().parent))
-        except (OSError, ValueError):
-            return to_path
-        return relative.replace(os.sep, '/')
+    _relative_artifact_link = staticmethod(LinkedArtifactMaterialization._relative_artifact_link)
 
-    @staticmethod
-    def _url_is_external_or_empty(value: str) -> bool:
-        token = str(value or '').strip()
-        return not token or bool(_EXTERNAL_LINK_RE.match(token))
+    _url_is_external_or_empty = staticmethod(LinkedArtifactMaterialization._url_is_external_or_empty)
 
-    @staticmethod
-    def _link_rebind_is_dynamic_template_url(
-        content: str, position: int, url: str, *, target_path: str,
-    ) -> bool:
-        """An interpolated JS template URL is an expression, not a missing file.
-
-        Limit the exemption to script source and actual template literals so
-        literal HTML placeholders still reach the ordinary repair checks.
-        This is a static mutation guard, not proof that the expression resolves.
-        """
-        if not re.search(r'(?<!\\)(?:\\\\)*\$\{', url):
-            return False
-        extension = Path(target_path).suffix.lower()
-        script = content
-        offset = 0
-        if extension not in {'.js', '.mjs', '.cjs'}:
-            enclosing = next(
-                (match for match in _INLINE_SCRIPT_RE.finditer(content)
-                 if match.start('body') <= position < match.end('body')),
-                None,
-            )
-            if enclosing is None:
-                return False
-            script = enclosing.group('body')
-            offset = enclosing.start('body')
-        # Consume ordinary quoted strings and comments as well, so backticks
-        # inside them cannot grant a template-expression exemption.
-        tokens = re.finditer(
-            r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
-            r'//[^\n]*|/\*[\s\S]*?\*/|`(?:\\.|[^`\\])*`',
-            script,
-        )
-        return any(
-            match.group(0).startswith('`')
-            and match.start() < position - offset < match.end()
-            for match in tokens
-        )
+    _link_rebind_is_dynamic_template_url = staticmethod(LinkedArtifactMaterialization._link_rebind_is_dynamic_template_url)
 
     @staticmethod
     def _link_tokens_for_artifact(record: Mapping[str, Any]) -> set[str]:
         tokens: set[str] = set()
-        path = LateFillRuntimeOwner._artifact_record_path(record)
+        path = branch_result_contracts._artifact_record_path(record)
         for value in (
             path,
             Path(path).name if path else '',
             str(record.get('url') or '').strip(),
             str(record.get('artifact_ref') or record.get('ref') or '').strip(),
-            LateFillRuntimeOwner._artifact_record_source_name(record),
+            branch_result_contracts._artifact_record_source_name(record),
         ):
             token = str(value or '').strip()
             if token:
                 tokens.add(token)
         return {token for token in tokens if len(token) >= 3}
 
-    @staticmethod
-    def _link_rebind_search_text(record: Mapping[str, Any]) -> str:
-        values: list[str] = []
-        request_payload = record.get('artifact_request') if isinstance(record.get('artifact_request'), Mapping) else {}
-        metadata = record.get('metadata') if isinstance(record.get('metadata'), Mapping) else {}
-        for value in (
-            LateFillRuntimeOwner._artifact_record_path(record),
-            LateFillRuntimeOwner._artifact_record_source_name(record),
-            record.get('name'),
-            record.get('prompt'),
-            record.get('artifact_prompt'),
-            record.get('prompt_preview'),
-            record.get('content'),
-            record.get('semantic_intent'),
-            record.get('objective'),
-            record.get('deliverable'),
-            record.get('link_rebind_search_text'),
-            request_payload.get('source_name'),
-            request_payload.get('prompt'),
-            metadata.get('prompt_preview'),
-        ):
-            text = str(value or '').strip()
-            if text:
-                values.append(text)
-        return ' '.join(values)
+    _link_rebind_search_text = staticmethod(LinkedArtifactMaterialization._link_rebind_search_text)
 
-    @staticmethod
-    def _link_rebind_semantic_tokens(value: str) -> set[str]:
-        raw_tokens = {
-            token
-            for token in re.split(r'[^a-z0-9]+', str(value or '').lower())
-            if len(token) >= 3
-        }
-        expanded_raw_tokens = set(raw_tokens)
-        for token in raw_tokens:
-            match = re.fullmatch(r'([a-z]{3,})\d+', token)
-            if match:
-                expanded_raw_tokens.add(match.group(1))
-        generic_tokens = {
-            'artifact',
-            'generated',
-            'image',
-            'images',
-            'latest',
-            'placeholder',
-            'picture',
-            'photo',
-            'png',
-            'jpg',
-            'jpeg',
-            'webp',
-        }
-        tokens = {token for token in expanded_raw_tokens if token not in generic_tokens}
-        synonym_groups = (
-            {'lab', 'laboratory', 'laboratories'},
-            {'greenhouse', 'biome', 'botanical', 'verdant', 'aeroponic', 'aeroponics'},
-            {'exterior', 'external', 'hero', 'outside'},
-        )
-        expanded = set(tokens)
-        for group in synonym_groups:
-            if tokens & group:
-                expanded.update(group)
-        return expanded
+    _link_rebind_semantic_tokens = staticmethod(LinkedArtifactMaterialization._link_rebind_semantic_tokens)
 
-    @classmethod
-    def _link_rebind_semantic_score(cls, url: str, record: Mapping[str, Any]) -> int:
-        token = str(url or '').split('?', 1)[0].split('#', 1)[0]
-        basename = Path(token).name
-        stem = Path(basename).stem
-        url_tokens = cls._link_rebind_semantic_tokens(f'{basename} {stem}')
-        if not url_tokens:
-            return 0
-        record_tokens = cls._link_rebind_semantic_tokens(cls._link_rebind_search_text(record))
-        if not record_tokens:
-            return 0
-        overlap = url_tokens & record_tokens
-        if not overlap:
-            return 0
-        score = len(overlap)
-        if stem.lower() in str(cls._link_rebind_search_text(record)).lower():
-            score += 3
-        return score
+    _link_rebind_semantic_score = staticmethod(LinkedArtifactMaterialization._link_rebind_semantic_score)
 
     def _collect_link_rebind_artifact_records(self, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
-        if not isinstance(payload, Mapping):
-            return []
-        public_artifact_refs: set[str] = set()
-        public_artifact_paths: set[str] = set()
+        return self.linked_artifact_materialization._collect_link_rebind_artifact_records(payload)
 
-        def normalized_artifact_path(value: Any) -> str:
-            token = str(value or '').strip()
-            if not token:
-                return ''
-            try:
-                return str(Path(token).expanduser().resolve(strict=False))
-            except (OSError, ValueError):
-                return token
+    _preferred_asset_for_url = staticmethod(LinkedArtifactMaterialization._preferred_asset_for_url)
 
-        def add_public_output_identity(raw_record: Any) -> None:
-            if not isinstance(raw_record, Mapping):
-                return
-            artifact_ref = str(
-                raw_record.get('artifact_ref')
-                or raw_record.get('ref')
-                or raw_record.get('artifact_id')
-                or ''
-            ).strip()
-            if artifact_ref:
-                public_artifact_refs.add(artifact_ref)
-            path = normalized_artifact_path(self._artifact_record_path(raw_record))
-            if path:
-                public_artifact_paths.add(path)
-            for key in ('artifact', 'output_artifact'):
-                add_public_output_identity(raw_record.get(key))
-            for key in ('artifacts', 'output_artifacts'):
-                for artifact in raw_record.get(key) or []:
-                    add_public_output_identity(artifact)
+    _link_rebind_url_matches_record_identity = staticmethod(LinkedArtifactMaterialization._link_rebind_url_matches_record_identity)
 
-        public_output_lists: list[list[Any]] = []
-        for raw_outputs in (payload.get('outputs'),):
-            if isinstance(raw_outputs, list):
-                public_output_lists.append(raw_outputs)
-        response_frame = (
-            payload.get('response_frame')
-            if isinstance(payload.get('response_frame'), Mapping)
-            else {}
-        )
-        frame_output = (
-            response_frame.get('output')
-            if isinstance(response_frame.get('output'), Mapping)
-            else {}
-        )
-        if not public_output_lists and isinstance(frame_output.get('outputs'), list):
-            public_output_lists.append(frame_output.get('outputs') or [])
-        legacy_output = (
-            payload.get('output')
-            if isinstance(payload.get('output'), Mapping)
-            else {}
-        )
-        if not public_output_lists and isinstance(legacy_output.get('outputs'), list):
-            public_output_lists.append(legacy_output.get('outputs') or [])
-        for output_list in public_output_lists:
-            for output in output_list:
-                if _is_public_output_artifact_record(output):
-                    add_public_output_identity(output)
-        has_public_artifact_identity = bool(
-            public_output_lists or public_artifact_refs or public_artifact_paths
-        )
+    _exact_asset_record_for_url = staticmethod(LinkedArtifactMaterialization._exact_asset_record_for_url)
 
-        def record_is_public_output(record: Mapping[str, Any]) -> bool:
-            artifact_ref = str(
-                record.get('artifact_ref')
-                or record.get('ref')
-                or record.get('artifact_id')
-                or ''
-            ).strip()
-            if artifact_ref and artifact_ref in public_artifact_refs:
-                return True
-            path = normalized_artifact_path(self._artifact_record_path(record))
-            return bool(path and path in public_artifact_paths)
+    _unique_artifact_records_by_path = staticmethod(LinkedArtifactMaterialization._unique_artifact_records_by_path)
 
-        slot_by_ref: dict[str, Mapping[str, Any]] = {}
-        for slot in payload.get('output_slots') or []:
-            if not isinstance(slot, Mapping):
-                continue
-            artifact_ref = str(slot.get('artifact_ref') or slot.get('ref') or '').strip()
-            if artifact_ref:
-                slot_by_ref[artifact_ref] = slot
+    _link_rebind_extension_families = staticmethod(LinkedArtifactMaterialization._link_rebind_extension_families)
 
-        records: list[dict[str, Any]] = []
-        index_by_key: dict[tuple[str, str, str, str], int] = {}
+    _link_rebind_record_declared_families = staticmethod(LinkedArtifactMaterialization._link_rebind_record_declared_families)
 
-        def merge_record_fields(existing: dict[str, Any], incoming: Mapping[str, Any]) -> None:
-            for key, value in incoming.items():
-                if value in (None, '', [], {}):
-                    continue
-                if existing.get(key) in (None, '', [], {}):
-                    existing[key] = value
-                    continue
-                if key == 'link_rebind_search_text':
-                    current = str(existing.get(key) or '').strip()
-                    incoming_text = str(value or '').strip()
-                    if incoming_text and incoming_text not in current:
-                        existing[key] = f'{current} {incoming_text}'.strip()
+    _link_rebind_record_families = staticmethod(LinkedArtifactMaterialization._link_rebind_record_families)
 
-        def add_record(raw_record: Any, *, defaults: Optional[Mapping[str, Any]] = None) -> None:
-            if not isinstance(raw_record, Mapping):
-                return
-            record = dict(defaults or {})
-            record.update(dict(raw_record))
-            if has_public_artifact_identity:
-                record['_link_rebind_public_output'] = record_is_public_output(record)
-            artifact_ref = str(record.get('artifact_ref') or record.get('ref') or '').strip()
-            slot = slot_by_ref.get(artifact_ref) if artifact_ref else None
-            if isinstance(slot, Mapping):
-                record['_link_rebind_output_slot'] = True
-                for key in ('branch_id', 'phase_id', 'slot_id'):
-                    if record.get(key) in (None, '', [], {}) and slot.get(key) not in (None, '', [], {}):
-                        record[key] = slot.get(key)
-            artifact_type = str(record.get('type') or record.get('kind') or '').strip().lower()
-            path = self._artifact_record_path(record)
-            if not artifact_type and path:
-                extension = Path(path).suffix.lower().lstrip('.')
-                extension_families = self._link_rebind_extension_families(extension)
-                artifact_type = next(
-                    (
-                        family
-                        for family in ('image', 'audio', 'video', 'font', 'style', 'script')
-                        if family in extension_families
-                    ),
-                    'text',
-                )
-                record['type'] = artifact_type
-                record.setdefault('kind', artifact_type)
-            key = (
-                artifact_type,
-                path,
-                str(record.get('branch_id') or '').strip(),
-                str(record.get('phase_id') or '').strip(),
-            )
-            if not artifact_type and not path:
-                return
-            if key in index_by_key:
-                merge_record_fields(records[index_by_key[key]], record)
-                return
-            index_by_key[key] = len(records)
-            records.append({key: value for key, value in record.items() if value not in (None, '', [], {})})
+    _link_rebind_record_identity_tokens = staticmethod(LinkedArtifactMaterialization._link_rebind_record_identity_tokens)
 
-        raw_artifacts = payload.get('artifacts')
-        if isinstance(raw_artifacts, Mapping):
-            for key in ('output', 'reference', 'input'):
-                for artifact in raw_artifacts.get(key) or []:
-                    add_record(
-                        artifact,
-                        defaults={
-                            '_link_rebind_public_output': key == 'output',
-                        },
-                    )
-        else:
-            for artifact in raw_artifacts or []:
-                add_record(
-                    artifact,
-                    defaults={
-                        '_link_rebind_public_output': not has_public_artifact_identity,
-                    },
-                )
-        for key in ('input_artifacts', 'reference_artifacts', 'selected_reference_artifacts'):
-            for artifact in payload.get(key) or []:
-                add_record(artifact)
-        for artifact in self.build_canonical_response_artifacts(dict(payload)):
-            add_record(artifact)
-        for item in payload.get('saved_text_artifacts') or []:
-            source = item if isinstance(item, Mapping) else {'path': item}
-            add_record({'type': 'text', **dict(source)})
-        if str(payload.get('saved_text_path') or '').strip():
-            add_record({'type': 'text', 'path': payload.get('saved_text_path')})
-        if str(payload.get('saved_image_path') or '').strip():
-            add_record({'type': 'image', 'path': payload.get('saved_image_path')})
-        if str(payload.get('saved_audio_path') or '').strip():
-            add_record({'type': 'audio', 'path': payload.get('saved_audio_path')})
+    _link_rebind_dependency_values = staticmethod(LinkedArtifactMaterialization._link_rebind_dependency_values)
 
-        late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-        batch_prompts = [
-            str(item or '').strip()
-            for item in (late_fill.get('batch_prompts') or [])
-            if str(item or '').strip()
-        ]
-        image_result_index = 0
-        for result in late_fill.get('fill_results') or []:
-            if not isinstance(result, Mapping):
-                continue
-            execution_contract = (
-                result.get('execution_contract')
-                if isinstance(result.get('execution_contract'), Mapping)
-                else {}
-            )
-            artifact_request = (
-                result.get('artifact_request')
-                if isinstance(result.get('artifact_request'), Mapping)
-                else (
-                    execution_contract.get('artifact_request')
-                    if isinstance(execution_contract.get('artifact_request'), Mapping)
-                    else {}
-                )
-            )
-            defaults = {
-                'branch_id': result.get('branch_id'),
-                'phase_id': result.get('phase_id'),
-                'depends_on': (
-                    result.get('depends_on')
-                    or execution_contract.get('depends_on')
-                    or execution_contract.get('dependencies')
-                ),
-                'dependency_contract': (
-                    result.get('dependency_contract')
-                    or execution_contract.get('dependency_contract')
-                ),
-                'source': 'late_fill_result',
-                'source_response_id': str(payload.get('id') or '').strip() or None,
-            }
-            if str(result.get('saved_text_path') or '').strip():
-                add_record(
-                    {
-                        'type': 'text',
-                        'path': result.get('saved_text_path'),
-                        'content': result.get('result_text') or result.get('content_payload'),
-                        'text_artifact_extension': (
-                            result.get('text_artifact_extension')
-                            or execution_contract.get('text_artifact_extension')
-                            or artifact_request.get('extension')
-                        ),
-                        'text_artifact_source_name': (
-                            result.get('text_artifact_source_name')
-                            or execution_contract.get('text_artifact_source_name')
-                            or artifact_request.get('source_name')
-                        ),
-                        'text_artifact_source': (
-                            result.get('text_artifact_source')
-                            or execution_contract.get('text_artifact_source')
-                            or artifact_request.get('source')
-                        ),
-                        'text_artifact_target_path': (
-                            result.get('text_artifact_target_path')
-                            or execution_contract.get('text_artifact_target_path')
-                            or artifact_request.get('target_path')
-                        ),
-                        'artifact_request': artifact_request or None,
-                    },
-                    defaults=defaults,
-                )
-            if str(result.get('saved_image_path') or '').strip():
-                prompt_text = str(
-                    result.get('artifact_prompt')
-                    or result.get('prompt')
-                    or result.get('content_payload')
-                    or ''
-                ).strip()
-                if not prompt_text and image_result_index < len(batch_prompts):
-                    prompt_text = batch_prompts[image_result_index]
-                image_result_index += 1
-                add_record(
-                    {
-                        'type': 'image',
-                        'path': result.get('saved_image_path'),
-                        'prompt': prompt_text or None,
-                        'artifact_prompt': prompt_text or None,
-                        'link_rebind_search_text': prompt_text or None,
-                    },
-                    defaults=defaults,
-                )
-            if str(result.get('saved_audio_path') or '').strip():
-                add_record(
-                    {
-                        'type': 'audio',
-                        'path': result.get('saved_audio_path'),
-                        'mime_type': result.get('audio_mimetype'),
-                    },
-                    defaults=defaults,
-                )
-            for artifact in result.get('artifacts') or []:
-                add_record(artifact, defaults=defaults)
-        return select_authoritative_artifact_records(
-            records,
-            response_id=str(payload.get('id') or '').strip(),
-        )
+    _link_rebind_consumer_dependency_ids = staticmethod(LinkedArtifactMaterialization._link_rebind_consumer_dependency_ids)
 
-    @classmethod
-    def _preferred_asset_for_url(
-        cls,
-        url: str,
-        candidates: list[dict[str, Any]],
-    ) -> Optional[dict[str, Any]]:
-        if not candidates:
-            return None
-        token = str(url or '').strip()
-        basename = Path(token.split('?', 1)[0].split('#', 1)[0]).name.lower()
-        stem = Path(basename).stem.lower()
-        extension = Path(basename).suffix.lower().lstrip('.')
-        matching_extension = [
-            record
-            for record in candidates
-            if not extension or cls._artifact_record_extension(record) == extension
-        ]
-        pool = matching_extension or candidates
-        for record in pool:
-            path = cls._artifact_record_path(record)
-            asset_basename = Path(path).name.lower() if path else ''
-            asset_stem = Path(path).stem.lower() if path else ''
-            source_name = cls._artifact_record_source_name(record).lower()
-            if basename and basename == asset_basename:
-                return record
-            if stem and stem in {asset_stem, source_name}:
-                return record
-            if stem and source_name and (stem in source_name or source_name in stem):
-                return record
-        scored = [
-            (cls._link_rebind_semantic_score(url, record), index, record)
-            for index, record in enumerate(pool)
-        ]
-        scored = [item for item in scored if item[0] > 0]
-        if scored:
-            scored.sort(key=lambda item: (-item[0], item[1]))
-            return scored[0][2]
-        if extension == 'css':
-            for record in pool:
-                source_name = cls._artifact_record_source_name(record).lower()
-                if source_name in {'style', 'styles'} or source_name.endswith('_styles'):
-                    return record
-        return pool[0] if len(pool) == 1 else None
+    _link_rebind_asset_records_for_consumer = staticmethod(LinkedArtifactMaterialization._link_rebind_asset_records_for_consumer)
 
-    @classmethod
-    def _link_rebind_url_matches_record_identity(
-        cls,
-        url: str,
-        record: Mapping[str, Any],
-    ) -> bool:
-        """Return whether a local link names the current text artifact itself."""
-        token = str(url or '').split('?', 1)[0].split('#', 1)[0].strip()
-        if not token:
-            return False
-        requested_extension = Path(token).suffix.lower().lstrip('.')
-        record_extension = cls._artifact_record_extension(record)
-        if requested_extension and record_extension and requested_extension != record_extension:
-            return False
-        requested_name = Path(token).name
-        record_path = cls._artifact_record_path(record)
-        if requested_name and record_path and requested_name.lower() == Path(record_path).name.lower():
-            return True
-        return cls._artifact_record_matches_text_artifact_source_name(
-            record,
-            requested_name,
-        )
+    _link_rebind_normalize_json_key = staticmethod(LinkedArtifactMaterialization._link_rebind_normalize_json_key)
 
-    @classmethod
-    def _exact_asset_record_for_url(
-        cls,
-        url: str,
-        candidates: list[dict[str, Any]],
-    ) -> Optional[dict[str, Any]]:
-        """Resolve a sibling text artifact from exact name and output ownership."""
-        token = str(url or '').split('?', 1)[0].split('#', 1)[0].strip()
-        requested_name = Path(token).name
-        if not requested_name:
-            return None
-        matches: list[tuple[tuple[int, ...], dict[str, Any]]] = []
-        for record in candidates:
-            path = cls._artifact_record_path(record)
-            exact_basename = bool(
-                path
-                and Path(path).name.lower() == requested_name.lower()
-            )
-            exact_source_name = cls._artifact_record_matches_text_artifact_source_name(
-                record,
-                requested_name,
-            )
-            if not exact_basename and not exact_source_name:
-                continue
-            target_path = str(record.get('text_artifact_target_path') or '').strip()
-            target_is_record_path = False
-            if path and target_path:
-                try:
-                    target_is_record_path = (
-                        Path(target_path).expanduser().resolve(strict=False)
-                        == Path(path).expanduser().resolve(strict=False)
-                    )
-                except (OSError, ValueError):
-                    target_is_record_path = target_path == path
-            rank = (
-                *artifact_authority_rank(record),
-                int(record.get('_link_rebind_output_slot') is True),
-                int(bool(str(record.get('slot_id') or '').strip())),
-                int(
-                    bool(str(record.get('branch_id') or '').strip())
-                    and bool(str(record.get('phase_id') or '').strip())
-                ),
-                int(target_is_record_path),
-                int(str(record.get('source') or '').strip() == 'late_fill_result'),
-                int(record.get('_link_rebind_public_output') is True),
-                int(exact_basename),
-            )
-            matches.append((rank, record))
-        if not matches:
-            return None
-        best_rank = max(rank for rank, _record in matches)
-        strongest = [record for rank, record in matches if rank == best_rank]
-        strongest_paths = {
-            cls._artifact_record_path(record)
-            for record in strongest
-            if cls._artifact_record_path(record)
-        }
-        if len(strongest_paths) <= 1:
-            return strongest[0]
-        # Preserve deterministic legacy behavior for unbound evidence, but do
-        # not guess between two response/branch-owned current generations.
-        return strongest[0] if best_rank[0] < 3 else None
+    _link_rebind_json_path_key_family = staticmethod(LinkedArtifactMaterialization._link_rebind_json_path_key_family)
 
-    @classmethod
-    def _unique_artifact_records_by_path(cls, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        unique: list[dict[str, Any]] = []
-        index_by_path: dict[str, int] = {}
-        for record in records:
-            path = cls._artifact_record_path(record)
-            if not path:
-                continue
-            if path not in index_by_path:
-                index_by_path[path] = len(unique)
-                unique.append(dict(record))
-                continue
-            existing = unique[index_by_path[path]]
-            for key, value in record.items():
-                if value in (None, '', [], {}):
-                    continue
-                if existing.get(key) in (None, '', [], {}):
-                    existing[key] = value
-                    continue
-                if key == 'link_rebind_search_text':
-                    current = str(existing.get(key) or '').strip()
-                    incoming = str(value or '').strip()
-                    if incoming and incoming not in current:
-                        existing[key] = f'{current} {incoming}'.strip()
-        return unique
+    _link_rebind_infer_single_family = staticmethod(LinkedArtifactMaterialization._link_rebind_infer_single_family)
 
-    @staticmethod
-    def _link_rebind_extension_families(extension: str) -> set[str]:
-        token = str(extension or '').strip().lower().lstrip('.')
-        if not token:
-            return set()
-        return {
-            family
-            for family, extensions in _LINK_REBIND_EXTENSION_FAMILIES.items()
-            if token in extensions
-        }
+    _link_rebind_attr_context_family = staticmethod(LinkedArtifactMaterialization._link_rebind_attr_context_family)
 
-    @classmethod
-    def _link_rebind_record_declared_families(cls, record: Mapping[str, Any]) -> set[str]:
-        families: set[str] = set()
-        artifact_type = str(record.get('type') or record.get('kind') or '').strip().lower()
-        mime_type = str(record.get('mime_type') or record.get('content_type') or '').strip().lower()
-        for family in ('image', 'audio', 'video', 'font'):
-            if artifact_type == family or mime_type.startswith(f'{family}/'):
-                families.add(family)
-        if artifact_type in {'style', 'stylesheet'} or mime_type == 'text/css':
-            families.add('style')
-        if artifact_type in {'script', 'javascript'} or mime_type in {'text/javascript', 'application/javascript'}:
-            families.add('script')
-        return families
+    _link_rebind_css_context_family = staticmethod(LinkedArtifactMaterialization._link_rebind_css_context_family)
 
-    @classmethod
-    def _link_rebind_record_families(cls, record: Mapping[str, Any]) -> set[str]:
-        return (
-            cls._link_rebind_record_declared_families(record)
-            or cls._link_rebind_extension_families(cls._artifact_record_extension(record))
-        )
+    _link_rebind_family_matches = staticmethod(LinkedArtifactMaterialization._link_rebind_family_matches)
 
-    @staticmethod
-    def _link_rebind_record_identity_tokens(record: Mapping[str, Any]) -> set[str]:
-        if not isinstance(record, Mapping):
-            return set()
-        return {
-            token
-            for key in (
-                'branch_id',
-                'phase_id',
-                'task_id',
-                'workload_task_id',
-                'obligation_id',
-                'output_obligation_ref',
-            )
-            if (token := str(record.get(key) or '').strip())
-        }
+    _link_rebind_records_for_family = staticmethod(LinkedArtifactMaterialization._link_rebind_records_for_family)
 
-    @staticmethod
-    def _link_rebind_dependency_values(record: Mapping[str, Any]) -> list[str]:
-        values: list[str] = []
-        if not isinstance(record, Mapping):
-            return values
-        execution_contract = (
-            record.get('execution_contract')
-            if isinstance(record.get('execution_contract'), Mapping)
-            else {}
-        )
-        for raw_values in (
-            record.get('depends_on'),
-            record.get('dependsOn'),
-            execution_contract.get('depends_on'),
-            execution_contract.get('dependencies'),
-        ):
-            candidates = raw_values if isinstance(raw_values, (list, tuple, set)) else [raw_values]
-            for value in candidates:
-                token = str(value or '').strip()
-                if token and token not in values:
-                    values.append(token)
-        return values
+    _link_rebind_records_for_extension = staticmethod(LinkedArtifactMaterialization._link_rebind_records_for_extension)
 
-    @classmethod
-    def _link_rebind_consumer_dependency_ids(
-        cls,
-        payload: Mapping[str, Any],
-        consumer_record: Mapping[str, Any],
-        *,
-        identity_only: bool = False,
-    ) -> list[str]:
-        dependency_ids = cls._link_rebind_dependency_values(consumer_record)
-        consumer_tokens = cls._link_rebind_record_identity_tokens(consumer_record)
-        consumer_path = cls._artifact_record_path(consumer_record)
+    _local_link_target_exists = staticmethod(LinkedArtifactMaterialization._local_link_target_exists)
 
-        runtime = payload.get('runtime') if isinstance(payload.get('runtime'), Mapping) else {}
-        graph = (
-            runtime.get('request_phase_graph')
-            if isinstance(runtime.get('request_phase_graph'), Mapping)
-            else {}
-        )
-        late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-        records: list[Mapping[str, Any]] = []
-        for key in ('phases', 'downstream_branches'):
-            records.extend(
-                item
-                for item in (graph.get(key) if isinstance(graph.get(key), list) else [])
-                if isinstance(item, Mapping)
-            )
-        for key in (
-            'pending_branches',
-            'active_branches',
-            'completed_branches',
-            'failed_branches',
-            'cancelled_branches',
-            'fill_results',
-        ):
-            records.extend(
-                item
-                for item in (late_fill.get(key) if isinstance(late_fill.get(key), list) else [])
-                if isinstance(item, Mapping)
-            )
+    _local_link_target_path = staticmethod(LinkedArtifactMaterialization._local_link_target_path)
 
-        def record_targets_consumer(record: Mapping[str, Any]) -> bool:
-            if identity_only:
-                branch_id = consumer_record.get('branch_id')
-                if branch_id and record.get('branch_id'):
-                    return record.get('branch_id') == branch_id
-                return bool(
-                    consumer_record.get('phase_id')
-                    and record.get('phase_id') == consumer_record.get('phase_id')
-                )
-            if consumer_tokens & cls._link_rebind_record_identity_tokens(record):
-                return True
-            artifact_request = (
-                record.get('artifact_request')
-                if isinstance(record.get('artifact_request'), Mapping)
-                else {}
-            )
-            target_path = str(
-                record.get('text_artifact_target_path')
-                or artifact_request.get('target_path')
-                or ''
-            ).strip()
-            return bool(consumer_path and target_path and consumer_path == target_path)
-
-        for record in records:
-            if not record_targets_consumer(record):
-                continue
-            for dependency_id in cls._link_rebind_dependency_values(record):
-                if dependency_id not in dependency_ids:
-                    dependency_ids.append(dependency_id)
-
-        expanded_ids = list(dependency_ids)
-        for record in records:
-            record_tokens = cls._link_rebind_record_identity_tokens(record)
-            if not record_tokens.intersection(dependency_ids):
-                continue
-            for token in record_tokens:
-                if token not in expanded_ids:
-                    expanded_ids.append(token)
-        return expanded_ids
-
-    @classmethod
-    def _link_rebind_asset_records_for_consumer(
-        cls,
-        payload: Mapping[str, Any],
-        consumer_record: Mapping[str, Any],
-        asset_records: list[dict[str, Any]],
-        *,
-        identity_only: bool = False,
-    ) -> tuple[list[dict[str, Any]], list[str], str]:
-        dependency_ids = cls._link_rebind_consumer_dependency_ids(
-            payload, consumer_record, identity_only=identity_only,
-        )
-        if not dependency_ids:
-            return list(asset_records), [], 'artifact_set_fallback_without_declared_dependencies'
-        dependency_tokens = set(dependency_ids)
-        runtime = payload.get('runtime') if isinstance(payload.get('runtime'), Mapping) else {}
-        graph = (
-            runtime.get('request_phase_graph')
-            if isinstance(runtime.get('request_phase_graph'), Mapping)
-            else {}
-        )
-        graph_records = [
-            item
-            for key in ('phases', 'downstream_branches')
-            for item in (graph.get(key) if isinstance(graph.get(key), list) else [])
-            if isinstance(item, Mapping)
-        ]
-        consumer_tokens = cls._link_rebind_record_identity_tokens(consumer_record)
-        consumer_graph_records = [
-            record
-            for record in graph_records
-            if cls._link_rebind_record_identity_tokens(record) & consumer_tokens
-        ]
-        if identity_only:
-            # A compact saved result can omit the binding policy while the
-            # exact pending/active repair still owns it. Do not consult other
-            # branches through a shared artifact ref or target path.
-            consumer_graph_records = [
-                record for record in graph_records
-                if record.get('branch_id') == consumer_record.get('branch_id')
-                or (
-                    not record.get('branch_id') and consumer_record.get('phase_id')
-                    and record.get('phase_id') == consumer_record.get('phase_id')
-                )
-            ]
-            late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-            consumer_graph_records.extend(
-                record
-                for key in ('pending_branches', 'active_branches', 'failed_branches')
-                for record in late_fill.get(key) or []
-                if isinstance(record, Mapping)
-                and record.get('branch_id') == consumer_record.get('branch_id')
-            )
-
-        def has_local_visual_binding(record: Mapping[str, Any]) -> bool:
-            execution_contract = (
-                record.get('execution_contract')
-                if isinstance(record.get('execution_contract'), Mapping)
-                else {}
-            )
-            values = (
-                record.get('dependency_contract'),
-                execution_contract.get('dependency_contract'),
-            )
-            return any(
-                'local_visual_asset_binding' in str(value or '').strip().lower()
-                for value in values
-            )
-
-        local_visual_binding = has_local_visual_binding(consumer_record) or any(
-            has_local_visual_binding(record)
-            for record in consumer_graph_records
-        )
-        dependency_graph_records = [
-            record
-            for record in graph_records
-            if cls._link_rebind_record_identity_tokens(record) & dependency_tokens
-        ]
-
-        def graph_record_requires_artifact(record: Mapping[str, Any]) -> bool:
-            output_contract = (
-                record.get('output_contract')
-                if isinstance(record.get('output_contract'), Mapping)
-                else {}
-            )
-            output_type = str(record.get('output_type') or '').strip().lower()
-            role = str(record.get('role') or '').strip().lower()
-            fulfillment_policy = str(output_contract.get('fulfillment_policy') or '').strip().lower()
-            return bool(
-                record.get('requires_artifact') is True
-                or output_type in {'image', 'audio', 'video', 'file', 'artifact'}
-                or role == 'text_artifact_output'
-                or 'artifact' in fulfillment_policy
-            )
-
-        artifact_dependency_records = [
-            record
-            for record in dependency_graph_records
-            if graph_record_requires_artifact(record)
-        ]
-        if not local_visual_binding and not artifact_dependency_records:
-            return list(asset_records), [], 'artifact_set_fallback_for_ordering_dependencies'
-
-        matched = [
-            record
-            for record in asset_records
-            if cls._link_rebind_record_identity_tokens(record) & dependency_tokens
-        ]
-        if not local_visual_binding:
-            return matched, dependency_ids, 'consumer_declared_dependency_binding'
-
-        shared_text_targets = [
-            record
-            for record in asset_records
-            if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-            and cls._artifact_record_extension(record) in _LINK_REBIND_HTML_TARGET_EXTENSIONS
-        ]
-        selected = cls._unique_artifact_records_by_path([*matched, *shared_text_targets])
-        media_dependency_records = [
-            record
-            for record in artifact_dependency_records
-            if str(record.get('output_type') or '').strip().lower() in {'image', 'audio', 'video'}
-            or str(record.get('capability') or '').strip().lower()
-            in {'image_generation', 'text_to_speech', 'audio_generation', 'video_generation'}
-        ]
-        if not media_dependency_records and local_visual_binding:
-            media_dependency_records = dependency_graph_records
-        missing_media_dependency = any(
-            not any(
-                cls._link_rebind_record_identity_tokens(asset_record)
-                & cls._link_rebind_record_identity_tokens(dependency_record)
-                for asset_record in matched
-            )
-            for dependency_record in media_dependency_records
-        )
-        if missing_media_dependency:
-            return selected, dependency_ids, 'consumer_declared_media_dependency_missing'
-        return (
-            selected,
-            dependency_ids,
-            'consumer_declared_dependency_binding_with_shared_text_targets',
-        )
-
-    @staticmethod
-    def _link_rebind_normalize_json_key(key: str) -> str:
-        value = re.sub(
-            r'(?<=[a-z0-9])(?=[A-Z])',
-            '_',
-            str(key or '').strip(),
-        )
-        return re.sub(r'[^a-z0-9]+', '_', value.lower()).strip('_')
-
-    @classmethod
-    def _link_rebind_json_path_key_family(cls, key: str) -> str:
-        normalized = cls._link_rebind_normalize_json_key(key)
-        if not normalized or not _LINK_REBIND_JSON_PATH_KEY_RE.fullmatch(normalized):
-            return ''
-        for family, tokens in (
-            ('image', ('image', 'picture', 'photo')),
-            ('audio', ('audio', 'sound', 'voice')),
-            ('video', ('video', 'movie')),
-            ('font', ('font',)),
-            ('style', ('style', 'stylesheet', 'css')),
-            ('script', ('script', 'javascript', 'js')),
-        ):
-            if any(token in normalized.split('_') for token in tokens):
-                return family
-        return ''
-
-    @classmethod
-    def _link_rebind_infer_single_family(cls, records: list[dict[str, Any]]) -> str:
-        families: set[str] = set()
-        for record in records:
-            families.update(cls._link_rebind_record_families(record))
-        return next(iter(families)) if len(families) == 1 else ''
-
-    @staticmethod
-    def _link_rebind_attr_context_family(content: str, match_start: int) -> str:
-        tag_start = str(content or '').rfind('<', 0, max(0, match_start))
-        if tag_start < 0:
-            return ''
-        source = str(content or '')
-        tag_prefix = source[tag_start:match_start].lower()
-        tag_match = re.match(r'<\s*([a-z0-9:-]+)', tag_prefix)
-        tag_name = tag_match.group(1) if tag_match else ''
-        if tag_name in {'img', 'picture'}:
-            return 'image'
-        if tag_name == 'audio':
-            return 'audio'
-        if tag_name == 'video':
-            return 'video'
-        if tag_name == 'source':
-            tag_end = source.find('>', match_start)
-            tag_text = source[tag_start : tag_end + 1 if tag_end >= 0 else match_start].lower()
-            type_match = re.search(r'\btype\s*=\s*[\'"]?(audio|video)/', tag_text)
-            if type_match:
-                return str(type_match.group(1) or '')
-            preceding = source[:tag_start].lower()
-            audio_open = preceding.rfind('<audio')
-            video_open = preceding.rfind('<video')
-            picture_open = preceding.rfind('<picture')
-            if audio_open > preceding.rfind('</audio') and audio_open > max(video_open, picture_open):
-                return 'audio'
-            if video_open > preceding.rfind('</video') and video_open > max(audio_open, picture_open):
-                return 'video'
-            if picture_open > preceding.rfind('</picture') and picture_open > max(audio_open, video_open):
-                return 'image'
-        if tag_name == 'script':
-            return 'script'
-        if tag_name == 'link':
-            if re.search(r'\brel\s*=\s*[\'"]?stylesheet\b', tag_prefix):
-                return 'style'
-            if re.search(r'\bas\s*=\s*[\'"]?font\b', tag_prefix):
-                return 'font'
-        return ''
-
-    @staticmethod
-    def _link_rebind_css_context_family(content: str, match_start: int) -> str:
-        prefix = str(content or '')[max(0, match_start - 240):match_start].lower()
-        if '@font-face' in prefix and prefix.rfind('@font-face') > prefix.rfind('}'):
-            return 'font'
-        declaration_start = max(prefix.rfind('{'), prefix.rfind(';'))
-        declaration_prefix = prefix[declaration_start + 1 :]
-        if re.search(
-            r'\b(?:background(?:-image)?|border-image(?:-source)?|list-style-image)\s*:[^{};]*$',
-            declaration_prefix,
-        ):
-            return 'image'
-        return ''
-
-    @staticmethod
-    def _link_rebind_family_matches(
-        record: Mapping[str, Any],
-        families: set[str],
-    ) -> bool:
-        if not families:
-            return False
-        return bool(LateFillRuntimeOwner._link_rebind_record_families(record) & families)
-
-    @classmethod
-    def _link_rebind_records_for_family(
-        cls,
-        family: str,
-        records: list[dict[str, Any]],
-        *,
-        declared_only: bool = False,
-    ) -> list[dict[str, Any]]:
-        token = str(family or '').strip().lower()
-        if not token:
-            return []
-        for family_name, extensions in _LINK_REBIND_EXTENSION_FAMILIES.items():
-            if token in extensions:
-                token = family_name
-                break
-        declared_matches = [
-            record
-            for record in records
-            if token in cls._link_rebind_record_declared_families(record)
-        ]
-        if declared_matches or declared_only:
-            return declared_matches
-        return [
-            record
-            for record in records
-            if token in cls._link_rebind_record_families(record)
-        ]
-
-    @classmethod
-    def _link_rebind_records_for_extension(
-        cls,
-        extension: str,
-        records: list[dict[str, Any]],
-        *,
-        preferred_family: str = '',
-    ) -> list[dict[str, Any]]:
-        token = str(extension or '').strip().lower().lstrip('.')
-        if not token:
-            family_records = cls._link_rebind_records_for_family(preferred_family, records)
-            if family_records:
-                return family_records
-            return list(records)
-        exact_matches = [
-            record
-            for record in records
-            if cls._artifact_record_extension(record) == token
-        ]
-        if preferred_family and exact_matches:
-            preferred_exact_matches = cls._link_rebind_records_for_family(
-                preferred_family,
-                exact_matches,
-                declared_only=True,
-            )
-            if preferred_exact_matches:
-                return preferred_exact_matches
-        elif exact_matches:
-            return exact_matches
-        family_records = cls._link_rebind_records_for_family(preferred_family, records)
-        if family_records:
-            return family_records
-        if exact_matches:
-            return exact_matches
-        families = cls._link_rebind_extension_families(token)
-        if not families:
-            return []
-        return [
-            record
-            for record in records
-            if cls._link_rebind_family_matches(record, families)
-        ]
-
-    @classmethod
-    def _local_link_target_exists(cls, url: str, *, target_path: str) -> bool:
-        if cls._url_is_external_or_empty(url):
-            return True
-        token = str(url or '').split('?', 1)[0].split('#', 1)[0].strip()
-        if not token:
-            return True
-        try:
-            path = Path(token).expanduser()
-            if not path.is_absolute():
-                path = Path(target_path).expanduser().parent / token
-            return path.exists()
-        except (OSError, ValueError):
-            return False
-
-    @classmethod
-    def _local_link_target_path(cls, url: str, *, target_path: str) -> str:
-        if cls._url_is_external_or_empty(url):
-            return ''
-        token = str(url or '').split('?', 1)[0].split('#', 1)[0].strip()
-        if not token:
-            return ''
-        try:
-            path = Path(token).expanduser()
-            if not path.is_absolute():
-                if not target_path:
-                    return ''
-                path = Path(target_path).expanduser().parent / token
-            return str(path.resolve(strict=False))
-        except (OSError, ValueError):
-            return ''
-
-    @classmethod
-    def _link_url_needs_rebind(
-        cls,
-        url: str,
-        asset_records: list[dict[str, Any]],
-        *,
-        target_path: str = '',
-        preferred_family: str = '',
-        preferred_record: Optional[Mapping[str, Any]] = None,
-    ) -> bool:
-        if cls._url_is_external_or_empty(url):
-            token = str(url or '').strip()
-            if not token or not _EXTERNAL_LINK_RE.match(token):
-                return False
-            if str(preferred_family or '').strip().lower() != 'image':
-                return False
-            return any(
-                cls._artifact_record_path(record)
-                and 'image' in cls._link_rebind_record_families(record)
-                for record in asset_records
-            )
-        token = str(url or '').split('?', 1)[0].split('#', 1)[0].strip()
-        if not token:
-            return False
-        extension = Path(token).suffix.lower().lstrip('.')
-        if not extension:
-            matching_records = cls._link_rebind_records_for_extension(
-                '',
-                asset_records,
-                preferred_family=preferred_family,
-            )
-            if not matching_records:
-                return False
-            if _LINK_REBIND_PLACEHOLDER_RE.search(url):
-                return True
-            if target_path and cls._local_link_target_exists(url, target_path=target_path):
-                if preferred_record:
-                    current_path = cls._local_link_target_path(url, target_path=target_path)
-                    selected_path = cls._artifact_record_path(preferred_record)
-                    if current_path and selected_path:
-                        try:
-                            selected_path = str(Path(selected_path).expanduser().resolve(strict=False))
-                        except (OSError, ValueError):
-                            pass
-                        return current_path != selected_path
-                return False
-            return bool(preferred_family)
-        matching_records = cls._link_rebind_records_for_extension(
-            extension,
-            asset_records,
-            preferred_family=preferred_family,
-        )
-        if not matching_records:
-            return False
-        if _LINK_REBIND_PLACEHOLDER_RE.search(url):
-            return True
-        if target_path and cls._local_link_target_exists(url, target_path=target_path):
-            if preferred_record:
-                current_path = cls._local_link_target_path(url, target_path=target_path)
-                selected_path = cls._artifact_record_path(preferred_record)
-                if current_path and selected_path:
-                    try:
-                        selected_path = str(Path(selected_path).expanduser().resolve(strict=False))
-                    except (OSError, ValueError):
-                        pass
-                    return current_path != selected_path
-            return False
-        return True
+    _link_url_needs_rebind = staticmethod(LinkedArtifactMaterialization._link_url_needs_rebind)
 
     def _rebind_text_artifact_content(
         self,
@@ -13197,321 +8126,7 @@ class LateFillRuntimeOwner:
         fallback_asset_records: Optional[list[dict[str, Any]]] = None,
         static_fetch_asset_records: Optional[list[dict[str, Any]]] = None,
     ) -> tuple[str, list[dict[str, Any]]]:
-        changes: list[dict[str, Any]] = []
-        used_asset_paths: set[str] = set()
-
-        def is_exact_named_text_link(url: str) -> bool:
-            extension = Path(str(url or '').split('?', 1)[0].split('#', 1)[0]).suffix.lower().lstrip('.')
-            return extension in _LINK_REBIND_TEXT_EXTENSIONS
-
-        def choose_asset_record(
-            url: str,
-            candidates: list[dict[str, Any]],
-        ) -> Optional[dict[str, Any]]:
-            viable_candidates = [
-                record
-                for record in candidates
-                if self._artifact_record_path(record)
-            ]
-            if not viable_candidates:
-                return None
-            if is_exact_named_text_link(url):
-                # A named local text dependency is one logical file even when
-                # repair attempts left sibling candidates behind. Repeated
-                # links must keep resolving to the same first canonical
-                # identity instead of consuming a different sibling per use.
-                return self._exact_asset_record_for_url(url, viable_candidates)
-            unused_candidates = [
-                record
-                for record in viable_candidates
-                if self._artifact_record_path(record) not in used_asset_paths
-            ]
-            record = self._preferred_asset_for_url(url, unused_candidates)
-            if not record and unused_candidates:
-                record = unused_candidates[0]
-            if not record:
-                record = self._preferred_asset_for_url(url, viable_candidates) or viable_candidates[0]
-            if not record:
-                return None
-            linked_path = self._artifact_record_path(record)
-            if linked_path:
-                used_asset_paths.add(linked_path)
-            return record
-
-        def replacement_for_asset(
-            url: str,
-            candidates: list[dict[str, Any]],
-        ) -> tuple[str, Optional[dict[str, Any]]]:
-            record = choose_asset_record(url, candidates)
-            if not record:
-                return url, None
-            linked_path = self._artifact_record_path(record)
-            if not linked_path:
-                return url, None
-            return self._relative_artifact_link(from_path=target_path, to_path=linked_path), record
-
-        def unique_same_response_family_fallback(
-            extension: str,
-            preferred_family: str,
-        ) -> tuple[list[dict[str, Any]], str]:
-            family = str(preferred_family or '').strip().lower()
-            if not family:
-                extension_families = self._link_rebind_extension_families(extension)
-                if len(extension_families) == 1:
-                    family = next(iter(extension_families))
-            if family not in {'image', 'audio', 'video', 'font'}:
-                return [], ''
-            family_records = self._unique_artifact_records_by_path(
-                self._link_rebind_records_for_family(
-                    family,
-                    list(fallback_asset_records or []),
-                )
-            )
-            concrete_records: list[dict[str, Any]] = []
-            for record in family_records:
-                path = self._artifact_record_path(record)
-                if not path:
-                    continue
-                try:
-                    if not Path(path).expanduser().is_file():
-                        continue
-                except OSError:
-                    continue
-                concrete_records.append(record)
-            if len(concrete_records) != 1:
-                return [], ''
-            return concrete_records, family
-
-        def replace_attr(match: re.Match[str]) -> str:
-            url = match.group('url')
-            if not url.strip():
-                # An empty image slot has no identity to rank or infer. Bind
-                # only one concrete dependency already scoped to this consumer;
-                # response-wide siblings cannot supply the missing authority.
-                family = self._link_rebind_attr_context_family(content, match.start())
-                if family != 'image' or not re.search(r'\bsrc\s*=', match.group('prefix'), re.IGNORECASE):
-                    return match.group(0)
-                candidates = self._unique_artifact_records_by_path(
-                    self._link_rebind_records_for_family('image', asset_records)
-                )
-                if len(candidates) != 1:
-                    return match.group(0)
-                linked_path = self._artifact_record_path(candidates[0])
-                if not linked_path or not Path(linked_path).expanduser().is_file():
-                    return match.group(0)
-                replacement = self._relative_artifact_link(from_path=target_path, to_path=linked_path)
-                if not replacement:
-                    return match.group(0)
-                changes.append({'from': url, 'to': replacement, 'linked_path': linked_path,
-                                'kind': 'attribute_link', 'selection_policy': 'unique_declared_image_dependency'})
-                return f"{match.group('prefix')}{match.group('quote')}{replacement}{match.group('quote')}"
-            if self._link_rebind_is_dynamic_template_url(
-                match.string, match.start('url'), url, target_path=target_path,
-            ):
-                return match.group(0)
-            if self._link_rebind_url_matches_record_identity(url, target_record):
-                if self._local_link_target_exists(url, target_path=target_path):
-                    return match.group(0)
-                linked_path = self._artifact_record_path(target_record)
-                if not linked_path:
-                    return match.group(0)
-                path_token = str(url or '').split('?', 1)[0].split('#', 1)[0]
-                suffix = str(url or '')[len(path_token):]
-                replacement = (
-                    self._relative_artifact_link(
-                        from_path=target_path,
-                        to_path=linked_path,
-                    )
-                    + suffix
-                )
-                if replacement == url:
-                    return match.group(0)
-                changes.append(
-                    {
-                        'from': url,
-                        'to': replacement,
-                        'linked_path': linked_path,
-                        'kind': 'self_attribute_link',
-                    }
-                )
-                return (
-                    f"{match.group('prefix')}{match.group('quote')}"
-                    f"{replacement}{match.group('quote')}"
-                )
-            extension = Path(url.split('?', 1)[0].split('#', 1)[0]).suffix.lower().lstrip('.')
-            preferred_family = self._link_rebind_attr_context_family(content, match.start())
-            candidates = self._link_rebind_records_for_extension(
-                extension,
-                asset_records,
-                preferred_family=preferred_family,
-            )
-            if is_exact_named_text_link(url):
-                named_text_records = (
-                    static_fetch_asset_records
-                    if static_fetch_asset_records is not None
-                    else asset_records
-                )
-                exact_named_candidates = [
-                    record
-                    for record in self._link_rebind_records_for_extension(
-                        extension,
-                        named_text_records,
-                        preferred_family=preferred_family,
-                    )
-                    if self._link_rebind_url_matches_record_identity(url, record)
-                ]
-                if exact_named_candidates:
-                    candidates = exact_named_candidates
-            fallback_family = ''
-            if not candidates:
-                candidates, fallback_family = unique_same_response_family_fallback(
-                    extension,
-                    preferred_family,
-                )
-            preferred_record = (
-                choose_asset_record(url, candidates)
-                if is_exact_named_text_link(url)
-                else None
-            )
-            if not self._link_url_needs_rebind(
-                url,
-                candidates,
-                target_path=target_path,
-                preferred_family=preferred_family,
-                preferred_record=preferred_record,
-            ):
-                return match.group(0)
-            if preferred_record:
-                record = preferred_record
-                replacement = self._relative_artifact_link(
-                    from_path=target_path,
-                    to_path=self._artifact_record_path(record),
-                )
-            else:
-                replacement, record = replacement_for_asset(url, candidates)
-            if not record or replacement == url:
-                return match.group(0)
-            changes.append(
-                {
-                    'from': url,
-                    'to': replacement,
-                    'linked_path': self._artifact_record_path(record),
-                    'kind': (
-                        'external_image_attribute_link'
-                        if _EXTERNAL_LINK_RE.match(str(url or '').strip())
-                        else 'attribute_link'
-                    ),
-                    **(
-                        {
-                            'selection_policy': (
-                                'unique_same_response_family_fallback_after_declared_dependency_gap'
-                            ),
-                            'fallback_family': fallback_family,
-                        }
-                        if fallback_family
-                        else {}
-                    ),
-                }
-            )
-            return f"{match.group('prefix')}{match.group('quote')}{replacement}{match.group('quote')}"
-
-        def replace_url(match: re.Match[str]) -> str:
-            url = match.group('url')
-            if self._link_rebind_is_dynamic_template_url(
-                match.string, match.start('url'), url, target_path=target_path,
-            ):
-                return match.group(0)
-            if self._link_rebind_url_matches_record_identity(url, target_record):
-                return match.group(0)
-            extension = Path(url.split('?', 1)[0].split('#', 1)[0]).suffix.lower().lstrip('.')
-            preferred_family = self._link_rebind_css_context_family(content, match.start())
-            candidates = self._link_rebind_records_for_extension(
-                extension,
-                asset_records,
-                preferred_family=preferred_family,
-            )
-            if not self._link_url_needs_rebind(
-                url,
-                candidates,
-                target_path=target_path,
-                preferred_family=preferred_family,
-            ):
-                return match.group(0)
-            record = choose_asset_record(url, candidates)
-            if not record:
-                return match.group(0)
-            linked_path = self._artifact_record_path(record)
-            replacement = self._relative_artifact_link(from_path=target_path, to_path=linked_path)
-            if not record or replacement == url:
-                return match.group(0)
-            changes.append(
-                {
-                    'from': url,
-                    'to': replacement,
-                    'linked_path': linked_path,
-                    'kind': 'css_url',
-                }
-            )
-            return f"{match.group('prefix')}{replacement}{match.group('suffix')}"
-
-        def replace_fetch(match: re.Match[str]) -> str:
-            url = match.group('url')
-            if self._link_rebind_url_matches_record_identity(url, target_record):
-                return match.group(0)
-            if not _static_fetch_url_is_local_file_dependency(url):
-                return match.group(0)
-            extension = Path(url.split('?', 1)[0].split('#', 1)[0]).suffix.lower().lstrip('.')
-            requested_token = url.split('?', 1)[0].split('#', 1)[0]
-            requested_name = Path(requested_token).name.lower()
-            fetch_records = (
-                static_fetch_asset_records
-                if static_fetch_asset_records is not None
-                else asset_records
-            )
-            candidates = [
-                record
-                for record in self._link_rebind_records_for_extension(extension, fetch_records)
-                if (
-                    Path(self._artifact_record_path(record)).name.lower() == requested_name
-                    or self._artifact_record_matches_text_artifact_source_name(
-                        record,
-                        requested_name,
-                    )
-                )
-            ]
-            preferred_record = self._exact_asset_record_for_url(url, candidates)
-            if not self._link_url_needs_rebind(
-                url,
-                candidates,
-                target_path=target_path,
-                preferred_record=preferred_record,
-            ):
-                return match.group(0)
-            if preferred_record:
-                record = preferred_record
-                replacement = self._relative_artifact_link(
-                    from_path=target_path,
-                    to_path=self._artifact_record_path(record),
-                )
-            else:
-                replacement, record = replacement_for_asset(url, candidates)
-            if not record or replacement == url:
-                return match.group(0)
-            changes.append(
-                {
-                    'from': url,
-                    'to': replacement,
-                    'linked_path': self._artifact_record_path(record),
-                    'kind': 'static_fetch_link',
-                    'selection_policy': 'exact_named_static_fetch_dependency',
-                }
-            )
-            return f"{match.group('prefix')}{match.group('quote')}{replacement}{match.group('quote')}"
-
-        rebound = _LINK_REBIND_ATTR_RE.sub(replace_attr, content)
-        rebound = _LINK_REBIND_URL_RE.sub(replace_url, rebound)
-        rebound = _LINK_REBIND_FETCH_RE.sub(replace_fetch, rebound)
-        return rebound, changes
+        return self.linked_artifact_materialization._rebind_text_artifact_content(content, target_path=target_path, target_record=target_record, asset_records=asset_records, fallback_asset_records=fallback_asset_records, static_fetch_asset_records=static_fetch_asset_records)
 
     def _rebind_json_artifact_content(
         self,
@@ -13520,118 +8135,7 @@ class LateFillRuntimeOwner:
         target_path: str,
         asset_records: list[dict[str, Any]],
     ) -> tuple[str, list[dict[str, Any]]]:
-        try:
-            document = json.loads(str(content or ''))
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return content, []
-
-        changes: list[dict[str, Any]] = []
-        used_asset_paths: set[str] = set()
-
-        def choose_asset_record(
-            url: str,
-            candidates: list[dict[str, Any]],
-        ) -> Optional[dict[str, Any]]:
-            viable = [
-                record
-                for record in candidates
-                if self._artifact_record_path(record)
-            ]
-            unused = [
-                record
-                for record in viable
-                if self._artifact_record_path(record) not in used_asset_paths
-            ]
-            record = self._preferred_asset_for_url(url, unused)
-            if not record and unused:
-                record = unused[0]
-            if not record:
-                record = self._preferred_asset_for_url(url, viable)
-                if not record and len(viable) == 1:
-                    record = viable[0]
-            linked_path = self._artifact_record_path(record or {})
-            if linked_path:
-                used_asset_paths.add(linked_path)
-            return record
-
-        def pointer_token(value: Any) -> str:
-            return str(value).replace('~', '~0').replace('/', '~1')
-
-        def visit(value: Any, *, field_key: str = '', pointer: str = '') -> Any:
-            if isinstance(value, dict):
-                return {
-                    key: visit(
-                        child,
-                        field_key=str(key),
-                        pointer=f'{pointer}/{pointer_token(key)}',
-                    )
-                    for key, child in value.items()
-                }
-            if isinstance(value, list):
-                return [
-                    visit(
-                        child,
-                        field_key=field_key,
-                        pointer=f'{pointer}/{index}',
-                    )
-                    for index, child in enumerate(value)
-                ]
-            if not isinstance(value, str):
-                return value
-            preferred_family = self._link_rebind_json_path_key_family(field_key)
-            normalized_key = self._link_rebind_normalize_json_key(field_key)
-            if not normalized_key or not _LINK_REBIND_JSON_PATH_KEY_RE.fullmatch(normalized_key):
-                return value
-            token = value.split('?', 1)[0].split('#', 1)[0]
-            extension = Path(token).suffix.lower().lstrip('.')
-            candidates = self._link_rebind_records_for_extension(
-                extension,
-                asset_records,
-                preferred_family=preferred_family,
-            )
-            if not preferred_family:
-                preferred_family = self._link_rebind_infer_single_family(candidates)
-                candidates = self._link_rebind_records_for_extension(
-                    extension,
-                    asset_records,
-                    preferred_family=preferred_family,
-                )
-            if not self._link_url_needs_rebind(
-                value,
-                candidates,
-                target_path=target_path,
-                preferred_family=preferred_family,
-            ):
-                return value
-            record = choose_asset_record(value, candidates)
-            linked_path = self._artifact_record_path(record or {})
-            if not linked_path:
-                return value
-            replacement = self._relative_artifact_link(
-                from_path=target_path,
-                to_path=linked_path,
-            )
-            if not replacement or replacement == value:
-                return value
-            changes.append(
-                {
-                    'from': value,
-                    'to': replacement,
-                    'linked_path': linked_path,
-                    'kind': 'json_path_link',
-                    'json_pointer': pointer or '/',
-                    'json_field': field_key,
-                }
-            )
-            return replacement
-
-        rebound_document = visit(document)
-        if not changes:
-            return content, []
-        rebound = json.dumps(rebound_document, ensure_ascii=False, indent=2)
-        if str(content or '').endswith('\n'):
-            rebound += '\n'
-        return rebound, changes
+        return self.linked_artifact_materialization._rebind_json_artifact_content(content, target_path=target_path, asset_records=asset_records)
 
     def _terminal_link_rebind_write_owners(
         self,
@@ -13643,249 +8147,10 @@ class LateFillRuntimeOwner:
         rebound: str,
         asset_records: list[dict[str, Any]],
     ) -> list[dict[str, str]]:
-        """Bind a real write to independently verified, already-owned repairs.
+        return self.linked_artifact_materialization._terminal_link_rebind_write_owners(payload, records, target_path=target_path, original=original, rebound=rebound, asset_records=asset_records)
 
-        Path grouping is only physical write coalescing. Ownership comes from
-        unmerged saved records plus the exact branch's bounded repair contract.
-        Never copy identities from same-target pending work into a saved record.
-        """
-        late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-        branches = [
-            branch
-            for key in ('pending_branches', 'active_branches', 'failed_branches')
-            for branch in late_fill.get(key) or []
-            if isinstance(branch, Mapping)
-        ]
-        # Public artifact selection may collapse a repair result into the
-        # canonical document. Keep its explicit execution identity for this
-        # bounded write; it does not become a second public artifact.
-        owned_records = [
-            *records,
-            *[
-                {**result, 'type': 'text', 'path': result['saved_text_path']}
-                for result in late_fill.get('fill_results') or []
-                if isinstance(result, Mapping)
-                and result.get('saved_text_path')
-                and not result.get('error')
-                and str(result.get('status') or '') not in {'failed', 'cancelled', 'superseded'}
-            ],
-        ]
-        owners: dict[str, dict[str, str]] = {}
-        for record in owned_records:
-            branch_id = str(record.get('branch_id') or '').strip()
-            phase_id = str(record.get('phase_id') or '').strip()
-            if (
-                not branch_id
-                or self._artifact_record_path(record) != target_path
-                or str(record.get('type') or record.get('kind') or '') != 'text'
-            ):
-                continue
-            matching = [branch for branch in branches if branch.get('branch_id') == branch_id]
-            if not matching:
-                continue
-            phases = {
-                str(item.get('phase_id')).strip()
-                for item in [*owned_records, *matching]
-                if item.get('branch_id') == branch_id
-                if item.get('phase_id')
-            }
-            if len(phases) > 1:
-                continue
-            phase_id = next(iter(phases), '')
-            # Every projection of this identity must describe the same bounded
-            # link repair; an unrelated edit cannot inherit its write proof.
-            if any(
-                branch.get('repair_action') != 'rebind_dependency_evidence'
-                or not self._artifact_gap_is_authoritative_bounded_text_artifact_repair(branch)
-                or self._text_artifact_revision_required(branch)
-                or not self._text_artifact_path_matches_target(
-                    target_path,
-                    self._text_artifact_target_path_from_mapping(branch)
-                    or self._text_artifact_target_path_from_mapping(branch.get('artifact_request') or {}),
-                )
-                for branch in matching
-            ):
-                continue
-            scoped_assets, _dependency_ids, _policy = self._link_rebind_asset_records_for_consumer(
-                payload, record, asset_records, identity_only=True,
-            )
-            if self._artifact_record_extension(record) == 'json':
-                candidate, changes = self._rebind_json_artifact_content(
-                    original, target_path=target_path, asset_records=scoped_assets,
-                )
-            else:
-                candidate, changes = self._rebind_text_artifact_content(
-                    original, target_path=target_path, target_record=record,
-                    asset_records=scoped_assets,
-                    fallback_asset_records=[],
-                    static_fetch_asset_records=scoped_assets,
-                )
-            if not changes or candidate != rebound:
-                continue
-            owners[branch_id] = {
-                'branch_id': branch_id,
-                **({'phase_id': phase_id} if phase_id else {}),
-            }
-        return list(owners.values())
-
-    @observe_state('late_fill.linked_artifact_rebind', 'saved_artifact_bindings', 'rebound_artifact_state', labels=('NEW_AUTHORITY_BOUNDARY',), new_authority_boundary=True)
-    def rebind_terminal_linked_artifacts(
-        self,
-        payload: dict[str, Any],
-        *,
-        current_outputs: Optional[list[dict[str, Any]]] = None,
-        accepted_fill_results: Optional[list[dict[str, Any]]] = None,
-    ) -> dict[str, Any]:
-        # Use the freshly reconciled eligibility view only for binding. Publishing
-        # it before Closure would add output handles to unrelated repair/rebase
-        # evidence collection; the normal final frame still owns publication.
-        records = self._collect_link_rebind_artifact_records(
-            {**payload, 'outputs': current_outputs}
-            if current_outputs is not None else payload
-        )
-        if not records:
-            return payload
-        text_records = self._unique_artifact_records_by_path(
-            [
-                record
-                for record in records
-                if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-                and self._artifact_record_extension(record) in _LINK_REBIND_TEXT_EXTENSIONS
-                and self._artifact_record_path(record)
-            ]
-        )
-        asset_records = [
-            record
-            for record in records
-            if self._artifact_record_path(record)
-        ]
-        asset_records = self._unique_artifact_records_by_path(asset_records)
-        if not text_records or not asset_records:
-            return payload
-
-        updated_payload = dict(payload or {})
-        rebinds: list[dict[str, Any]] = []
-        updated_content_by_path: dict[str, str] = {}
-        for record in text_records:
-            target_path = self._artifact_record_path(record)
-            available_asset_records = [
-                item
-                for item in asset_records
-                if self._artifact_record_path(item) != target_path
-            ]
-            consumer_asset_records, dependency_ids, selection_policy = (
-                self._link_rebind_asset_records_for_consumer(
-                    payload,
-                    record,
-                    available_asset_records,
-                )
-            )
-            fallback_asset_records = (
-                [
-                    item
-                    for item in available_asset_records
-                    if item.get('_link_rebind_public_output') is True
-                ]
-                if dependency_ids
-                else []
-            )
-            try:
-                target = Path(target_path).expanduser()
-                if not target.is_file() or target.stat().st_size > 512_000:
-                    continue
-                original = target.read_text(encoding='utf-8', errors='replace')
-            except OSError:
-                continue
-            if self._artifact_record_extension(record) == 'json':
-                rebound, changes = self._rebind_json_artifact_content(
-                    original,
-                    target_path=target_path,
-                    asset_records=consumer_asset_records,
-                )
-            else:
-                rebound, changes = self._rebind_text_artifact_content(
-                    original,
-                    target_path=target_path,
-                    target_record=record,
-                    asset_records=consumer_asset_records,
-                    fallback_asset_records=fallback_asset_records,
-                    static_fetch_asset_records=available_asset_records,
-                )
-            if not changes or rebound == original:
-                continue
-            for change in changes:
-                change.setdefault('selection_policy', selection_policy)
-                if (
-                    dependency_ids
-                    and change.get('selection_policy') != 'exact_named_static_fetch_dependency'
-                ):
-                    change['consumer_dependency_ids'] = list(dependency_ids)
-            write_owners = self._terminal_link_rebind_write_owners(
-                payload, records, target_path=target_path,
-                original=original, rebound=rebound,
-                asset_records=available_asset_records,
-            )
-            try:
-                target.write_text(rebound, encoding='utf-8')
-            except OSError as exc:
-                logging.warning('Could not rebind linked artifact paths in %s: %s', target_path, exc)
-                continue
-            updated_content_by_path[target_path] = rebound
-            for owner in write_owners or [{}]:
-                rebinds.append({
-                    'kind': 'fruth.linked_artifact_rebind',
-                    'target_path': target_path,
-                    'target_extension': self._artifact_record_extension(record),
-                    'target_source_name': self._artifact_record_source_name(record),
-                    'change_count': len(changes),
-                    'changes': changes,
-                    'status': 'applied',
-                    'source': 'terminal_late_fill_link_rebind',
-                    **owner,
-                })
-
-        if not rebinds:
-            return updated_payload
-
-        def update_text_record_content(raw_record: Any) -> Any:
-            if not isinstance(raw_record, dict):
-                return raw_record
-            record = dict(raw_record)
-            path = self._artifact_record_path(record)
-            if path in updated_content_by_path:
-                record['content'] = updated_content_by_path[path]
-                if 'result_text' in record:
-                    record['result_text'] = updated_content_by_path[path]
-                if 'content_payload' in record:
-                    record['content_payload'] = updated_content_by_path[path]
-            return record
-
-        if isinstance(updated_payload.get('artifacts'), list):
-            updated_payload['artifacts'] = [
-                update_text_record_content(item)
-                for item in updated_payload.get('artifacts') or []
-            ]
-        if isinstance(updated_payload.get('saved_text_artifacts'), list):
-            updated_payload['saved_text_artifacts'] = [
-                update_text_record_content(item)
-                for item in updated_payload.get('saved_text_artifacts') or []
-            ]
-        late_fill = dict(updated_payload.get('late_fill') or {}) if isinstance(updated_payload.get('late_fill'), Mapping) else {}
-        if isinstance(late_fill.get('fill_results'), list):
-            late_fill['fill_results'] = [
-                copy.deepcopy(item) if item in (accepted_fill_results or [])
-                else update_text_record_content(item)
-                for item in late_fill.get('fill_results') or []
-            ]
-        existing_rebinds = [
-            dict(item)
-            for item in (late_fill.get('linked_artifact_rebinds') or [])
-            if isinstance(item, Mapping)
-        ]
-        late_fill['linked_artifact_rebinds'] = [*existing_rebinds, *rebinds]
-        late_fill['linked_artifact_rebind_status'] = 'applied'
-        updated_payload['late_fill'] = late_fill
-        return updated_payload
+    def rebind_terminal_linked_artifacts(self, payload: dict[str, Any], *, current_outputs: Optional[list[dict[str, Any]]]=None, accepted_fill_results: Optional[list[dict[str, Any]]]=None) -> dict[str, Any]:
+        return self.linked_artifact_materialization.rebind_terminal_linked_artifacts(payload, current_outputs=current_outputs, accepted_fill_results=accepted_fill_results)
 
     @observe_state('late_fill.graph_closure_refresh', 'terminal_materialization_state', 'closure_reviewed_response', labels=('NEW_AUTHORITY_BOUNDARY',), new_authority_boundary=True)
     def refresh_terminal_graph_closure_review(
@@ -14055,27 +8320,16 @@ class LateFillRuntimeOwner:
         return False
 
     def _terminal_generated_image_records(self, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
-        records = self._collect_link_rebind_artifact_records(payload)
-        return self._unique_artifact_records_by_path(
-            [
-                record
-                for record in records
-                if (
-                    str(record.get('type') or record.get('kind') or '').strip().lower() == 'image'
-                    or self._artifact_record_extension(record) in _LINK_REBIND_IMAGE_EXTENSIONS
-                )
-                and self._artifact_record_path(record)
-            ]
-        )
+        return self.linked_artifact_materialization._terminal_generated_image_records(payload)
 
     def _payload_has_durable_html_css_text_artifact(self, payload: Mapping[str, Any]) -> bool:
-        records = self._collect_link_rebind_artifact_records(payload)
+        records = self.linked_artifact_materialization._collect_link_rebind_artifact_records(payload)
         for record in records:
             if str(record.get('type') or record.get('kind') or '').strip().lower() != 'text':
                 continue
-            if self._artifact_record_extension(record) not in _INLINE_HTML_CSS_EXTENSIONS:
+            if branch_result_contracts._artifact_record_extension(record) not in _INLINE_HTML_CSS_EXTENSIONS:
                 continue
-            path = self._artifact_record_path(record)
+            path = branch_result_contracts._artifact_record_path(record)
             if not path:
                 continue
             try:
@@ -14158,7 +8412,7 @@ class LateFillRuntimeOwner:
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         if not isinstance(payload, dict):
             return payload, []
-        if not self._terminal_generated_image_records(payload):
+        if not self.linked_artifact_materialization._terminal_generated_image_records(payload):
             return payload, []
         if self._payload_has_durable_html_css_text_artifact(payload):
             return payload, []
@@ -14257,7 +8511,7 @@ class LateFillRuntimeOwner:
             for item in (updated.get('saved_text_artifacts') or [])
             if isinstance(item, Mapping)
         ]
-        updated['saved_text_artifacts'] = self.merge_unique_artifact_records(
+        updated['saved_text_artifacts'] = branch_result_contracts.merge_unique_artifact_records(
             existing_saved_text_artifacts,
             saved_entries,
         )
@@ -14278,7 +8532,7 @@ class LateFillRuntimeOwner:
                 if isinstance(entry.get('artifact_request'), Mapping)
             ],
         ]
-        updated['artifacts'] = self.merge_unique_artifact_records(
+        updated['artifacts'] = branch_result_contracts.merge_unique_artifact_records(
             updated.get('artifacts'),
             saved_entries,
         )
@@ -14360,110 +8614,7 @@ class LateFillRuntimeOwner:
         *,
         accepted_fill_results: Optional[list[dict[str, Any]]] = None,
     ) -> dict[str, Any]:
-        if not isinstance(payload, dict):
-            return payload
-        records = self._collect_link_rebind_artifact_records(payload)
-        text_records = self._unique_artifact_records_by_path(
-            [
-                record
-                for record in records
-                if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-                and self._artifact_record_extension(record) in _TERMINAL_SYNTAX_REPAIR_EXTENSIONS
-                and self._artifact_record_path(record)
-            ]
-        )
-        if not text_records:
-            return payload
-
-        updated_payload = dict(payload or {})
-        updated_content_by_path: dict[str, str] = {}
-        repair_entries: list[dict[str, Any]] = []
-        for record in text_records:
-            target_path = self._artifact_record_path(record)
-            extension = self._artifact_record_extension(record)
-            try:
-                target = Path(target_path).expanduser()
-                if not target.is_file() or target.stat().st_size > 512_000:
-                    continue
-                original = target.read_text(encoding='utf-8', errors='replace')
-            except OSError:
-                continue
-            repaired, repairs = ResponseSemanticsRuntimeOwner.repair_text_artifact_syntax_content(
-                extension,
-                original,
-            )
-            if not repairs or repaired == original:
-                continue
-            try:
-                target.write_text(repaired, encoding='utf-8')
-            except OSError as exc:
-                logging.warning('Could not repair syntax in %s artifact %s: %s', extension, target_path, exc)
-                continue
-            updated_content_by_path[target_path] = repaired
-            repair_entries.append(
-                {
-                    'kind': 'fruth.text_artifact_syntax_repair',
-                    'target_path': target_path,
-                    'target_extension': extension,
-                    'target_source_name': self._artifact_record_source_name(record),
-                    'repair_count': len(repairs),
-                    'repairs': repairs,
-                    'status': 'applied',
-                    'source': 'terminal_late_fill_syntax_repair',
-                }
-            )
-
-        if not repair_entries:
-            return updated_payload
-
-        def update_text_record_content(raw_record: Any) -> Any:
-            if not isinstance(raw_record, dict):
-                return raw_record
-            record = dict(raw_record)
-            path = self._artifact_record_path(record)
-            if path in updated_content_by_path:
-                record['content'] = updated_content_by_path[path]
-                if 'result_text' in record:
-                    record['result_text'] = updated_content_by_path[path]
-                if 'content_payload' in record:
-                    record['content_payload'] = updated_content_by_path[path]
-            return record
-
-        if isinstance(updated_payload.get('artifacts'), list):
-            updated_payload['artifacts'] = [
-                update_text_record_content(item)
-                for item in updated_payload.get('artifacts') or []
-            ]
-        if isinstance(updated_payload.get('saved_text_artifacts'), list):
-            updated_payload['saved_text_artifacts'] = [
-                update_text_record_content(item)
-                for item in updated_payload.get('saved_text_artifacts') or []
-            ]
-        late_fill = (
-            dict(updated_payload.get('late_fill') or {})
-            if isinstance(updated_payload.get('late_fill'), Mapping)
-            else {}
-        )
-        if isinstance(late_fill.get('fill_results'), list):
-            late_fill['fill_results'] = [
-                copy.deepcopy(item) if item in (accepted_fill_results or [])
-                else update_text_record_content(item)
-                for item in late_fill.get('fill_results') or []
-            ]
-        existing_repairs = [
-            dict(item)
-            for item in (late_fill.get('syntax_sanity_repairs') or [])
-            if isinstance(item, Mapping)
-        ]
-        late_fill['syntax_sanity_repairs'] = [*existing_repairs, *repair_entries]
-        late_fill['syntax_sanity_repair_status'] = 'applied'
-        late_fill['syntax_sanity_repaired_paths'] = [
-            entry.get('target_path')
-            for entry in repair_entries
-            if entry.get('target_path')
-        ]
-        updated_payload['late_fill'] = late_fill
-        return updated_payload
+        return self.text_artifact_files._repair_terminal_text_artifact_syntax(payload, accepted_fill_results=accepted_fill_results)
 
     def _refresh_terminal_text_artifacts_from_saved_files(
         self,
@@ -14473,13 +8624,13 @@ class LateFillRuntimeOwner:
     ) -> dict[str, Any]:
         if not isinstance(payload, dict):
             return payload
-        records = self._collect_link_rebind_artifact_records(payload)
-        text_records = self._unique_artifact_records_by_path(
+        records = self.linked_artifact_materialization._collect_link_rebind_artifact_records(payload)
+        text_records = LinkedArtifactMaterialization._unique_artifact_records_by_path(
             [
                 record
                 for record in records
                 if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-                and self._artifact_record_path(record)
+                and branch_result_contracts._artifact_record_path(record)
             ]
         )
         if not text_records:
@@ -14499,13 +8650,13 @@ class LateFillRuntimeOwner:
             artifact_ref = str(
                 record.get('artifact_ref') or record.get('ref') or ''
             ).strip()
-            record_path = normalize_path(self._artifact_record_path(record))
+            record_path = normalize_path(branch_result_contracts._artifact_record_path(record))
             if artifact_ref and record_path:
                 path_by_artifact_ref.setdefault(artifact_ref, record_path)
             refreshed, metadata = refresh_text_artifact_record_from_saved_path(record)
             if metadata.get('final_text_artifact_refresh_status') != 'refreshed':
                 continue
-            path = normalize_path(self._artifact_record_path(refreshed))
+            path = normalize_path(branch_result_contracts._artifact_record_path(refreshed))
             if not path:
                 continue
             refreshed_by_path[path] = {
@@ -14528,8 +8679,8 @@ class LateFillRuntimeOwner:
                     'kind': 'fruth.final_text_artifact_refresh',
                     'target_path': path,
                     'target_extension': metadata.get('text_artifact_extension')
-                    or self._artifact_record_extension(refreshed),
-                    'target_source_name': self._artifact_record_source_name(record),
+                    or branch_result_contracts._artifact_record_extension(refreshed),
+                    'target_source_name': branch_result_contracts._artifact_record_source_name(record),
                     'content_sha256': metadata.get('content_sha256'),
                     'file_sha256': metadata.get('file_sha256'),
                     'file_size_bytes': metadata.get('file_size_bytes'),
@@ -14546,7 +8697,7 @@ class LateFillRuntimeOwner:
             if not isinstance(raw_record, dict):
                 return raw_record
             record = dict(raw_record)
-            path = normalize_path(self._artifact_record_path(record))
+            path = normalize_path(branch_result_contracts._artifact_record_path(record))
             if not path:
                 artifact_ref = str(
                     record.get('artifact_ref') or record.get('ref') or ''
@@ -14690,565 +8841,29 @@ class LateFillRuntimeOwner:
             open_checks.append(dict(raw_check))
         return open_checks
 
-    @staticmethod
-    def _terminal_materialization_text_record_content(record: Mapping[str, Any]) -> str:
-        path = LateFillRuntimeOwner._artifact_record_path(record)
-        if not path:
-            return ''
-        try:
-            target = Path(path).expanduser()
-            if not target.is_file() or target.stat().st_size > 512_000:
-                return ''
-            return target.read_text(encoding='utf-8', errors='replace')
-        except OSError:
-            return ''
+    _terminal_materialization_text_record_content = staticmethod(LinkedArtifactMaterialization._terminal_materialization_text_record_content)
 
     @staticmethod
     def _terminal_materialization_record_has_link(content: str, record: Mapping[str, Any]) -> bool:
         return any(token and token in content for token in LateFillRuntimeOwner._link_tokens_for_artifact(record))
 
-    @classmethod
-    def _terminal_content_has_unresolved_link_placeholder(
-        cls,
-        content: str,
-        dependency_records: list[dict[str, Any]],
-        *,
-        target_path: str = '',
-    ) -> bool:
-        if not content:
-            return False
+    _terminal_content_has_unresolved_link_placeholder = staticmethod(LinkedArtifactMaterialization._terminal_content_has_unresolved_link_placeholder)
 
-        for match in _LINK_REBIND_ATTR_RE.finditer(str(content or '')):
-            url = str(match.group('url') or '').strip()
-            if cls._link_rebind_is_dynamic_template_url(
-                content, match.start('url'), url, target_path=target_path,
-            ):
-                continue
-            if not url:
-                continue
-            extension = Path(url.split('?', 1)[0].split('#', 1)[0]).suffix.lower().lstrip('.')
-            preferred_family = cls._link_rebind_attr_context_family(content, match.start())
-            candidates = cls._link_rebind_records_for_extension(
-                extension,
-                dependency_records,
-                preferred_family=preferred_family,
-            )
-            if cls._link_url_needs_rebind(
-                url,
-                candidates,
-                target_path=target_path,
-                preferred_family=preferred_family,
-            ):
-                return True
+    _terminal_json_content_has_unresolved_dependency_link = staticmethod(LinkedArtifactMaterialization._terminal_json_content_has_unresolved_dependency_link)
 
-        for match in _LINK_REBIND_URL_RE.finditer(str(content or '')):
-            url = str(match.group('url') or '').strip()
-            if cls._link_rebind_is_dynamic_template_url(
-                content, match.start('url'), url, target_path=target_path,
-            ):
-                continue
-            if not url:
-                continue
-            extension = Path(url.split('?', 1)[0].split('#', 1)[0]).suffix.lower().lstrip('.')
-            preferred_family = cls._link_rebind_css_context_family(content, match.start())
-            candidates = cls._link_rebind_records_for_extension(
-                extension,
-                dependency_records,
-                preferred_family=preferred_family,
-            )
-            if cls._link_url_needs_rebind(
-                url,
-                candidates,
-                target_path=target_path,
-                preferred_family=preferred_family,
-            ):
-                return True
+    _mask_inline_javascript_non_code = staticmethod(LinkedArtifactMaterialization._mask_inline_javascript_non_code)
 
-        for match in _LINK_REBIND_FETCH_RE.finditer(str(content or '')):
-            url = str(match.group('url') or '').strip()
-            if not _static_fetch_url_is_local_file_dependency(url):
-                continue
-            extension = Path(url.split('?', 1)[0].split('#', 1)[0]).suffix.lower().lstrip('.')
-            candidates = cls._link_rebind_records_for_extension(extension, dependency_records)
-            if cls._link_url_needs_rebind(
-                url,
-                candidates,
-                target_path=target_path,
-            ):
-                return True
-        return False
-
-    @classmethod
-    def _terminal_json_content_has_unresolved_dependency_link(
-        cls,
-        content: str,
-        dependency_records: list[dict[str, Any]],
-        *,
-        target_path: str,
-    ) -> bool:
-        try:
-            document = json.loads(str(content or ''))
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return True
-
-        def visit(value: Any, *, field_key: str = '') -> bool:
-            if isinstance(value, Mapping):
-                return any(
-                    visit(child, field_key=str(key))
-                    for key, child in value.items()
-                )
-            if isinstance(value, list):
-                return any(visit(child, field_key=field_key) for child in value)
-            if not isinstance(value, str):
-                return False
-            normalized_key = cls._link_rebind_normalize_json_key(field_key)
-            if not normalized_key or not _LINK_REBIND_JSON_PATH_KEY_RE.fullmatch(normalized_key):
-                return False
-            preferred_family = cls._link_rebind_json_path_key_family(field_key)
-            token = value.split('?', 1)[0].split('#', 1)[0]
-            extension = Path(token).suffix.lower().lstrip('.')
-            candidates = cls._link_rebind_records_for_extension(
-                extension,
-                dependency_records,
-                preferred_family=preferred_family,
-            )
-            if not preferred_family:
-                preferred_family = cls._link_rebind_infer_single_family(candidates)
-                candidates = cls._link_rebind_records_for_extension(
-                    extension,
-                    dependency_records,
-                    preferred_family=preferred_family,
-                )
-            return cls._link_url_needs_rebind(
-                value,
-                candidates,
-                target_path=target_path,
-                preferred_family=preferred_family,
-            )
-
-        return visit(document)
-
-    @staticmethod
-    def _mask_inline_javascript_non_code(content: str) -> str:
-        """Mask strings/comments before applying deliberately small JS checks."""
-        text = str(content or '')
-        token_re = re.compile(
-            r'("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|`(?:\\.|[^`\\])*`|'
-            r'//[^\n]*|/\*[\s\S]*?\*/)'
-        )
-
-        def mask(match: re.Match[str]) -> str:
-            return ''.join('\n' if char == '\n' else ' ' for char in match.group(0))
-
-        return token_re.sub(mask, text)
-
-    @classmethod
-    def _inline_javascript_binding_issues(cls, content: str) -> list[str]:
-        issues: list[str] = []
-        for script_match in _INLINE_SCRIPT_RE.finditer(str(content or '')):
-            script = cls._mask_inline_javascript_non_code(script_match.group('body') or '')
-            invalid_identifier = next(
-                (
-                    match
-                    for match in _JS_INVALID_IDENTIFIER_SEPARATOR_RE.finditer(script)
-                    if len(str(match.group('separator') or '')) >= 2
-                    and all(
-                        unicodedata.category(char).startswith(('P', 'S'))
-                        for char in str(match.group('separator') or '')
-                    )
-                ),
-                None,
-            )
-            if invalid_identifier:
-                issues.append(
-                    'inline JavaScript contains a suspicious repeated identifier separator near '
-                    f'`{invalid_identifier.group(0)}`'
-                )
-        return issues[:4]
+    _inline_javascript_binding_issues = staticmethod(LinkedArtifactMaterialization._inline_javascript_binding_issues)
 
     def _terminal_web_binding_contract_open_checks(
         self,
         payload: Mapping[str, Any],
     ) -> list[dict[str, Any]]:
-        """Detect small, high-confidence HTML/inline-JS to local-JSON mismatches.
+        return self.linked_artifact_materialization._terminal_web_binding_contract_open_checks(payload)
 
-        This is intentionally not a JavaScript interpreter.  It only checks
-        direct ``array.forEach(item => ...)``/``map`` consumers against the
-        concrete JSON array they fetch, plus suspicious repeated punctuation
-        inside an inline-JS identifier.  A directly consumed collection is
-        required to exist and be an array; optional fields and arbitrary JS
-        semantics stay outside this guard. Browser execution remains separate.
-        """
-        records = self._collect_link_rebind_artifact_records(payload)
-        text_records = self._unique_artifact_records_by_path(
-            [
-                record
-                for record in records
-                if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-                and self._artifact_record_extension(record) in _LINK_REBIND_TEXT_EXTENSIONS
-                and self._artifact_record_path(record)
-            ]
-        )
-        if not text_records:
-            return []
-        html_paths = {
-            self._artifact_record_path(record)
-            for record in text_records
-            if self._artifact_record_extension(record) in {'html', 'htm'}
-        }
-        dependency_records = [
-            record
-            for record in text_records
-            if self._artifact_record_path(record) not in html_paths
-            and self._artifact_record_extension(record)
-            in _TERMINAL_MATERIALIZABLE_LOCAL_DEPENDENCY_EXTENSIONS
-        ]
-        late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-        checks: list[dict[str, Any]] = []
-        seen_checks: set[tuple[str, str, str]] = set()
+    _terminal_linked_artifact_dependency_records = staticmethod(LinkedArtifactMaterialization._terminal_linked_artifact_dependency_records)
 
-        def dependency_for_url(url: str, source_path: str) -> Optional[dict[str, Any]]:
-            token = str(url or '').split('?', 1)[0].split('#', 1)[0].strip()
-            requested_name = Path(token).name.lower()
-            target_path = self._local_link_target_path(token, target_path=source_path)
-            for record in dependency_records:
-                record_path = self._artifact_record_path(record)
-                if target_path and record_path and str(Path(record_path).resolve()) == target_path:
-                    return record
-                if record_path and Path(record_path).name.lower() == requested_name:
-                    return record
-                if self._artifact_record_source_name(record).lower() == Path(requested_name).stem.lower():
-                    return record
-            return None
-
-        def append_check(
-            target_record: Mapping[str, Any],
-            reason: str,
-            evidence: str,
-            *,
-            consumer_record: Optional[Mapping[str, Any]] = None,
-        ) -> None:
-            target_path = self._artifact_record_path(target_record)
-            target_extension = self._artifact_record_extension(target_record)
-            target_source_name = self._artifact_record_source_name(target_record)
-            key = (target_path, evidence, reason)
-            if not target_path or key in seen_checks:
-                return
-            seen_checks.add(key)
-            branch_hint = self._terminal_text_branch_hint_for_dependency(
-                late_fill=late_fill,
-                extension=target_extension,
-                source_name=target_source_name,
-                target_path=target_path,
-            )
-            branch_id = str(
-                branch_hint.get('branch_id')
-                or target_record.get('branch_id')
-                or ''
-            ).strip()
-            phase_id = str(
-                branch_hint.get('phase_id')
-                or target_record.get('phase_id')
-                or branch_id
-                or ''
-            ).strip()
-            target_content = self._terminal_materialization_text_record_content(target_record)
-            if len(target_content) > 90_000:
-                target_content = f'{target_content[:90_000].rstrip()}\n\n[content truncated for repair prompt size]'
-            consumer_path = self._artifact_record_path(consumer_record or {})
-            consumer_content = self._terminal_materialization_text_record_content(consumer_record or {})
-            if len(consumer_content) > 45_000:
-                consumer_content = f'{consumer_content[:45_000].rstrip()}\n\n[consumer content truncated for repair prompt size]'
-            content_lines = [
-                f'Target text artifact: {target_path}',
-                'Deterministic web binding issue:',
-                f'- {reason}',
-            ]
-            if consumer_path and consumer_path != target_path:
-                content_lines.extend(
-                    [
-                        f'Bound local consumer: {consumer_path}',
-                        '--- CURRENT CONSUMER START ---',
-                        consumer_content,
-                        '--- CURRENT CONSUMER END ---',
-                    ]
-                )
-            content_lines.extend(
-                [
-                    '--- CURRENT TARGET START ---',
-                    target_content,
-                    '--- CURRENT TARGET END ---',
-                    'Repair only the target artifact so the deterministic local web binding is coherent. '
-                    'Preserve valid copy, layout, navigation, and artifact links. Output only the complete target file body.',
-                ]
-            )
-            checks.append(
-                {
-                    'check_kind': 'web_runtime_binding',
-                    'status': 'pending',
-                    'evidence': evidence,
-                    'role': 'linked_artifact_binding_review',
-                    'requires_artifact': True,
-                    'repair_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-                    'recovery_action': RECOVERY_ACTION_RETRY_SAME_BRANCH,
-                    'repair_action_reason': 'saved local web artifacts violate a deterministic binding contract',
-                    'reason': reason,
-                    'branch_id': branch_id or None,
-                    'phase_id': phase_id or None,
-                    'source_path': consumer_path or target_path,
-                    'dependency_source_path': consumer_path or None,
-                    'content_payload': '\n'.join(content_lines).strip(),
-                    'stage_direction': 'materialize_requested_text_artifact',
-                    'dependency_policy': 'target_artifact_snapshot_only',
-                    'text_artifact_extension': target_extension,
-                    'text_artifact_source_name': target_source_name,
-                    'text_artifact_source': 'closure_web_binding_repair',
-                    'text_artifact_target_path': target_path,
-                    'artifact_request': {
-                        'extension': target_extension,
-                        'source_name': target_source_name,
-                        'source': 'closure_web_binding_repair',
-                        'target_path': target_path,
-                    },
-                    'content_payload_source': 'terminal_web_runtime_binding_review',
-                    'review_criteria': ['static_local_web_binding'],
-                }
-            )
-
-        for source_record in text_records:
-            extension = self._artifact_record_extension(source_record)
-            if extension not in {'html', 'htm', 'js', 'mjs', 'cjs'}:
-                continue
-            source_path = self._artifact_record_path(source_record)
-            content = self._terminal_materialization_text_record_content(source_record)
-            if not content:
-                continue
-            javascript_content = (
-                content
-                if extension in {'html', 'htm'}
-                else f'<script>{content}</script>'
-            )
-            for issue in self._inline_javascript_binding_issues(javascript_content):
-                append_check(
-                    source_record,
-                    issue,
-                    'inline_javascript_binding_mismatch',
-                    consumer_record=source_record,
-                )
-
-            for fetch_match in _LINK_REBIND_FETCH_RE.finditer(content):
-                url = str(fetch_match.group('url') or '').strip()
-                if (
-                    not _static_fetch_url_is_local_file_dependency(url)
-                    or not url.lower().split('?', 1)[0].split('#', 1)[0].endswith('.json')
-                ):
-                    continue
-                dependency = dependency_for_url(url, source_path)
-                if not dependency:
-                    continue
-                dependency_content = self._terminal_materialization_text_record_content(dependency)
-                try:
-                    document = json.loads(dependency_content)
-                except (TypeError, ValueError, json.JSONDecodeError):
-                    continue
-                script_start = fetch_match.end()
-                next_fetch = _LINK_REBIND_FETCH_RE.search(content, script_start)
-                script_end = next_fetch.start() if next_fetch else len(content)
-                script_content = content[script_start:script_end]
-                fetch_prefix = content[max(0, fetch_match.start() - 240):fetch_match.start()]
-                response_assignment = _JS_FETCH_RESPONSE_ASSIGNMENT_RE.search(fetch_prefix)
-                response_name = str(
-                    response_assignment.group('response')
-                    if response_assignment
-                    else ''
-                ).strip()
-                bound_json_roots = {
-                    str(binding.group('binding') or '').strip()
-                    for binding in _JS_AWAITED_JSON_BINDING_RE.finditer(script_content)
-                    if response_name
-                    and str(binding.group('response') or '').strip() == response_name
-                    and str(binding.group('binding') or '').strip()
-                }
-                for iterator in _JS_COLLECTION_ITERATOR_RE.finditer(script_content):
-                    collection_path = re.sub(r'\s+', '', iterator.group('collection') or '')
-                    collection_key = collection_path.rsplit('.', 1)[-1]
-                    body_end = script_content.find('});', iterator.end())
-                    body = script_content[iterator.end(): body_end if body_end >= 0 else iterator.end() + 12000]
-                    item_name = iterator.group('item')
-                    properties = {
-                        match.group(1)
-                        for match in re.finditer(
-                            rf'\b{re.escape(item_name)}\s*\.\s*([A-Za-z_$][A-Za-z0-9_$]*)\b',
-                            body,
-                        )
-                    }
-                    path_parts = [part for part in collection_path.split('.') if part]
-                    bound_collection = bool(
-                        path_parts
-                        and path_parts[0] in bound_json_roots
-                    )
-                    collection_found = True
-                    values: Any
-                    if bound_collection:
-                        values = document
-                        for path_part in path_parts[1:]:
-                            if not isinstance(values, Mapping) or path_part not in values:
-                                collection_found = False
-                                values = None
-                                break
-                            values = values[path_part]
-                    else:
-                        values = document.get(collection_key) if isinstance(document, Mapping) else None
-                    if bound_collection and not collection_found:
-                        append_check(
-                            dependency,
-                            f'Fetched JSON path `{".".join(path_parts[1:]) or collection_path}` is consumed as `{collection_path}` but is missing',
-                            'static_json_consumer_contract_mismatch',
-                            consumer_record=source_record,
-                        )
-                        continue
-                    if bound_collection and not isinstance(values, list):
-                        append_check(
-                            dependency,
-                            f'Fetched JSON path `{".".join(path_parts[1:]) or collection_path}` is consumed as `{collection_path}` but is not an array',
-                            'static_json_consumer_contract_mismatch',
-                            consumer_record=source_record,
-                        )
-                        continue
-                    if not isinstance(values, list) or not values:
-                        continue
-                    if not all(isinstance(item, Mapping) for item in values):
-                        if bound_collection and properties:
-                            append_check(
-                                dependency,
-                                f'JSON collection `{collection_path}` is consumed as object items but contains a non-object value',
-                                'static_json_consumer_contract_mismatch',
-                                consumer_record=source_record,
-                            )
-                        continue
-                    for property_name in sorted(properties):
-                        if any(property_name not in item for item in values):
-                            append_check(
-                                dependency,
-                                f'JSON collection `{collection_key}` is consumed as `{item_name}.{property_name}` but at least one item lacks that field',
-                                'static_json_consumer_contract_mismatch',
-                                consumer_record=source_record,
-                            )
-        return checks
-
-    @classmethod
-    def _terminal_linked_artifact_dependency_records(
-        cls,
-        payload: Mapping[str, Any],
-        records: list[dict[str, Any]],
-        consumer_record: Mapping[str, Any],
-    ) -> tuple[list[dict[str, Any]], bool]:
-        """Select owed links, not the candidate pool used to repair existing links.
-
-        A dependency edge alone also represents ordering or saved-data consumption.
-        Only the existing link contracts create an absent-link duty. Keep that
-        duty unresolved when its exact producer binding is missing or ambiguous.
-        """
-        graph = (payload.get('runtime') or {}).get('request_phase_graph') or {}
-        graph_records = [
-            record for key in ('phases', 'downstream_branches')
-            for record in graph.get(key) or [] if isinstance(record, Mapping)
-        ]
-
-        def same_owner(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
-            keys = ('branch_id', 'phase_id')
-            return bool(
-                any(left.get(key) and left.get(key) == right.get(key) for key in keys)
-                and all(not left.get(key) or not right.get(key)
-                        or left[key] == right[key] for key in keys)
-            )
-
-        dependency_ids: set[str] = set()
-        required = False
-        link_contracts = {'local_visual_asset_binding', 'shared_css_binding'}
-        owners = [consumer_record, *[
-            record for record in graph_records if same_owner(consumer_record, record)
-        ]]
-        for owner in required_intent_obligations(owners):
-            execution = owner.get('execution_contract') or {}
-            if (owner.get('dependency_contract') or execution.get('dependency_contract')) not in link_contracts:
-                continue
-            required = True
-            dependency_ids.update(owner.get('required_image_phase_ids')
-                                  or cls._link_rebind_dependency_values(owner))
-        for obligation in required_intent_obligations(graph.get('intent_obligations')):
-            target = {'branch_id': obligation.get('target_branch_id'),
-                      'phase_id': obligation.get('target_phase_id')}
-            if (obligation.get('dependency_contract') in link_contracts
-                    and same_owner(consumer_record, target)):
-                required = True
-                dependency_ids.update(obligation.get('source_phase_ids') or [])
-        if not required:
-            return [], False
-
-        selected: list[dict[str, Any]] = []
-        missing = not dependency_ids
-        response_id = str(payload.get('id') or '')
-        for dependency_id in dependency_ids:
-            producers = [record for record in graph_records
-                         if dependency_id in cls._link_rebind_record_identity_tokens(record)]
-            matches = [
-                record for record in records
-                if dependency_id in cls._link_rebind_record_identity_tokens(record)
-                and (not producers or any(same_owner(record, producer) for producer in producers))
-                and not (response_id and record.get('source_response_id')
-                         and record['source_response_id'] != response_id)
-                and record.get('_link_rebind_public_output') is not False
-                and record.get('diagnostic_only') is not True
-                and record.get('materialization_eligible') is not False
-                and record.get('status') not in {'failed', 'cancelled', 'waived', 'superseded'}
-                and cls._artifact_record_path(record)
-            ]
-            matches = cls._unique_artifact_records_by_path(matches)
-            if len(matches) != 1:
-                missing = True
-            else:
-                selected.extend(matches)
-        return cls._unique_artifact_records_by_path(selected), missing
-
-    @classmethod
-    def _terminal_artifact_link_urls(cls, record: Mapping[str, Any], content: str) -> list[str]:
-        """Read references using the same syntax boundaries as terminal rebinding."""
-        urls: list[str] = []
-        if cls._artifact_record_extension(record) == 'json':
-            def visit(value: Any, key: str = '') -> None:
-                if isinstance(value, Mapping):
-                    for child_key, child in value.items():
-                        visit(child, str(child_key))
-                elif isinstance(value, list):
-                    for child in value:
-                        visit(child, key)
-                elif isinstance(value, str) and _LINK_REBIND_JSON_PATH_KEY_RE.fullmatch(
-                    cls._link_rebind_normalize_json_key(key)
-                ):
-                    urls.append(value)
-            try:
-                visit(json.loads(content))
-            except (TypeError, ValueError):
-                pass  # Syntax validation retains ownership of malformed JSON.
-            return urls
-        path = cls._artifact_record_path(record)
-        for pattern in (_LINK_REBIND_ATTR_RE, _LINK_REBIND_URL_RE):
-            for match in pattern.finditer(content):
-                url = match.group('url')
-                if not cls._link_rebind_is_dynamic_template_url(
-                    content, match.start('url'), url, target_path=path,
-                ):
-                    urls.append(url)
-        urls.extend(match.group('url') for match in _LINK_REBIND_FETCH_RE.finditer(content)
-                    if _static_fetch_url_is_local_file_dependency(match.group('url')))
-        scripts = ([content] if cls._artifact_record_extension(record) in {'js', 'mjs', 'cjs'}
-                   else [match.group('body') for match in _INLINE_SCRIPT_RE.finditer(content)])
-        for script in scripts:
-            fetch_values = {match.group('value') for match in FETCH_LITERAL_PREFIX_RE.finditer(script)}
-            urls.extend(match.group('value') for match in JS_QUOTED_RE.finditer(script)
-                        if match.group('value') not in fetch_values)
-        return urls
+    _terminal_artifact_link_urls = staticmethod(LinkedArtifactMaterialization._terminal_artifact_link_urls)
 
     def _terminal_text_branch_hint_for_dependency(
         self,
@@ -15258,217 +8873,13 @@ class LateFillRuntimeOwner:
         source_name: str,
         target_path: str,
     ) -> dict[str, Any]:
-        target_extension = str(extension or '').strip().lower().lstrip('.')
-        target_source_name = str(source_name or '').strip().lower()
-        normalized_target_path = self._normalized_text_artifact_path_for_match(
-            target_path
-        )
-        candidate_branches = [
-            branch
-            for branch_key in (
-                'completed_branches',
-                'pending_branches',
-                'active_branches',
-                'failed_branches',
-            )
-            for branch in (late_fill.get(branch_key) or [])
-            if isinstance(branch, Mapping)
-        ]
-
-        def branch_artifact_identity(
-            branch: Mapping[str, Any],
-        ) -> tuple[str, str, str]:
-            artifact_request = (
-                branch.get('artifact_request')
-                if isinstance(branch.get('artifact_request'), Mapping)
-                else {}
-            )
-            return (
-                str(
-                    branch.get('text_artifact_extension')
-                    or artifact_request.get('extension')
-                    or ''
-                ).strip().lower().lstrip('.'),
-                str(
-                    branch.get('text_artifact_source_name')
-                    or artifact_request.get('source_name')
-                    or ''
-                ).strip().lower(),
-                str(
-                    branch.get('text_artifact_target_path')
-                    or artifact_request.get('target_path')
-                    or ''
-                ).strip(),
-            )
-
-        if normalized_target_path:
-            for branch in candidate_branches:
-                _branch_extension, _branch_source_name, branch_target_path = (
-                    branch_artifact_identity(branch)
-                )
-                if branch_target_path and self._text_artifact_path_matches_target(
-                    branch_target_path,
-                    normalized_target_path,
-                ):
-                    return dict(branch)
-
-        # Source-name fallback is only for incomplete target metadata.  Two
-        # explicit unequal targets are distinct artifact authorities even when
-        # their extension and source name are identical.
-        for branch in candidate_branches:
-            branch_extension, branch_source_name, branch_target_path = (
-                branch_artifact_identity(branch)
-            )
-            if normalized_target_path and branch_target_path:
-                continue
-            if (
-                target_extension
-                and target_source_name
-                and branch_extension == target_extension
-                and branch_source_name == target_source_name
-            ):
-                return dict(branch)
-        return {}
+        return self.linked_artifact_materialization._terminal_text_branch_hint_for_dependency(late_fill=late_fill, extension=extension, source_name=source_name, target_path=target_path)
 
     def _terminal_unresolved_local_dependency_link_open_checks(
         self,
         payload: Mapping[str, Any],
     ) -> list[dict[str, Any]]:
-        records = self._collect_link_rebind_artifact_records(payload)
-        text_records = self._unique_artifact_records_by_path(
-            [
-                record
-                for record in records
-                if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-                and self._artifact_record_extension(record) in _LINK_REBIND_TEXT_EXTENSIONS
-                and self._artifact_record_path(record)
-            ]
-        )
-        if not text_records:
-            return []
-        late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-        checks: list[dict[str, Any]] = []
-        seen: set[tuple[str, str, str]] = set()
-
-        def append_missing_link_check(source_record: Mapping[str, Any], url: str) -> None:
-            source_path = self._artifact_record_path(source_record)
-            token = str(url or '').split('?', 1)[0].split('#', 1)[0].strip()
-            extension = Path(token).suffix.lower().lstrip('.')
-            if extension not in _TERMINAL_MATERIALIZABLE_LOCAL_DEPENDENCY_EXTENSIONS:
-                return
-            target_path = self._local_link_target_path(token, target_path=source_path)
-            if not target_path or self._local_link_target_exists(token, target_path=source_path):
-                return
-            key = (source_path, token, target_path)
-            if key in seen:
-                return
-            seen.add(key)
-            source_content = self._terminal_materialization_text_record_content(source_record)
-            source_content_sha256 = hashlib.sha256(
-                source_content.encode('utf-8')
-            ).hexdigest()
-            if len(source_content) > 90_000:
-                source_content = f'{source_content[:90_000].rstrip()}\n\n[content truncated for repair prompt size]'
-            source_name = Path(token).stem or ('styles' if extension == 'css' else f'generated-{extension}')
-            branch_hint = self._terminal_text_branch_hint_for_dependency(
-                late_fill=late_fill,
-                extension=extension,
-                source_name=source_name,
-                target_path=target_path,
-            )
-            branch_id = str(
-                branch_hint.get('branch_id') or ''
-            ).strip()
-            phase_id = str(
-                branch_hint.get('phase_id')
-                or branch_id
-                or ''
-            ).strip()
-            if extension == 'json':
-                repair_instruction = (
-                    f'Create or repair only the missing `{Path(target_path).name}` JSON artifact. '
-                    'Use the static fetch consumer and its expected data access as binding context. '
-                    'Output only the complete, valid JSON document.'
-                )
-            else:
-                repair_instruction = (
-                    f'Create or repair only the missing `{Path(target_path).name}` {extension} artifact. '
-                    'Use the current source file selectors, classes, ids, and script/style expectations as binding context. '
-                    'Preserve the existing HTML structure, copy, image links, and layout intent. '
-                    'Output only the complete target file body.'
-                )
-            content_payload = '\n'.join(
-                [
-                    f'Target text artifact: {target_path}',
-                    f'Missing local dependency linked from: {source_path}',
-                    f'Missing link token: {url}',
-                    f'Dependency type: {extension}',
-                    'Dependency consumer file content (diagnostic context only; not target bytes):',
-                    '--- DEPENDENCY CONSUMER START ---',
-                    source_content,
-                    '--- DEPENDENCY CONSUMER END ---',
-                    repair_instruction,
-                ]
-            ).strip()
-            checks.append(
-                {
-                    'check_kind': 'linked_artifact_binding',
-                    'status': 'pending',
-                    'evidence': 'unresolved_local_dependency_link',
-                    'reason': 'final web artifact links a local dependency file that does not exist or is not materialized',
-                    'capability': 'chat',
-                    'output_type': 'text',
-                    'role': 'linked_artifact_binding_review',
-                    'branch_id': branch_id or None,
-                    'phase_id': phase_id or None,
-                    'requires_artifact': True,
-                    'repair_action': RECOVERY_ACTION_REBIND_DEPENDENCY_EVIDENCE,
-                    'recovery_action': RECOVERY_ACTION_REBIND_DEPENDENCY_EVIDENCE,
-                    'repair_action_reason': 'missing local web dependency must be materialized before terminal closure',
-                    'content_payload': content_payload,
-                    'content_payload_source': 'closure_local_dependency_link_review',
-                    'stage_direction': 'materialize_requested_text_artifact',
-                    'dependency_source_path': source_path,
-                    'dependency_consumer_path': source_path,
-                    'dependency_consumer_content_sha256': source_content_sha256,
-                    'target_artifact_path': target_path,
-                    'missing_dependency_url': str(url or '').strip(),
-                    'missing_dependency_target_path': target_path,
-                    'text_artifact_extension': extension,
-                    'text_artifact_source_name': source_name,
-                    'text_artifact_source': 'closure_local_dependency_link',
-                    'text_artifact_target_path': target_path,
-                    'artifact_request': {
-                        'extension': extension,
-                        'source_name': source_name,
-                        'source': 'closure_local_dependency_link',
-                        'target_path': target_path,
-                    },
-                }
-            )
-
-        for record in text_records:
-            source_path = self._artifact_record_path(record)
-            content = self._terminal_materialization_text_record_content(record)
-            if not source_path or not content:
-                continue
-            for match in _LINK_REBIND_ATTR_RE.finditer(content):
-                if self._link_rebind_is_dynamic_template_url(
-                    content, match.start('url'), match.group('url'), target_path=source_path,
-                ):
-                    continue
-                append_missing_link_check(record, str(match.group('url') or '').strip())
-            for match in _LINK_REBIND_URL_RE.finditer(content):
-                if self._link_rebind_is_dynamic_template_url(
-                    content, match.start('url'), match.group('url'), target_path=source_path,
-                ):
-                    continue
-                append_missing_link_check(record, str(match.group('url') or '').strip())
-            for match in _LINK_REBIND_FETCH_RE.finditer(content):
-                url = str(match.group('url') or '').strip()
-                if _static_fetch_url_is_local_file_dependency(url):
-                    append_missing_link_check(record, url)
-        return checks
+        return self.linked_artifact_materialization._terminal_unresolved_local_dependency_link_open_checks(payload)
 
     def _terminal_linked_artifact_contract_required(
         self, payload: Mapping[str, Any], *,
@@ -15476,20 +8887,20 @@ class LateFillRuntimeOwner:
     ) -> bool:
         if current_outputs is not None and isinstance(payload.get('outputs'), list):
             payload = {**payload, 'outputs': current_outputs}
-        records = self._collect_link_rebind_artifact_records(payload)
+        records = self.linked_artifact_materialization._collect_link_rebind_artifact_records(payload)
         text_records = [
             record
             for record in records
             if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-            and self._artifact_record_extension(record) in _LINK_REBIND_TEXT_EXTENSIONS
-            and self._artifact_record_path(record)
+            and branch_result_contracts._artifact_record_extension(record) in _LINK_REBIND_TEXT_EXTENSIONS
+            and branch_result_contracts._artifact_record_path(record)
         ]
         for consumer in text_records:
-            dependencies, missing = self._terminal_linked_artifact_dependency_records(
+            dependencies, missing = LinkedArtifactMaterialization._terminal_linked_artifact_dependency_records(
                 payload, records, consumer,
             )
-            if dependencies or missing or self._terminal_artifact_link_urls(
-                consumer, self._terminal_materialization_text_record_content(consumer),
+            if dependencies or missing or LinkedArtifactMaterialization._terminal_artifact_link_urls(
+                consumer, LinkedArtifactMaterialization._terminal_materialization_text_record_content(consumer),
             ):
                 return True
         return False
@@ -15498,207 +8909,19 @@ class LateFillRuntimeOwner:
         self, payload: Mapping[str, Any], *,
         current_outputs: Optional[list[dict[str, Any]]] = None,
     ) -> bool:
-        if current_outputs is not None and isinstance(payload.get('outputs'), list):
-            payload = {**payload, 'outputs': current_outputs}
-        records = self._collect_link_rebind_artifact_records(payload)
-        text_records = [
-            record
-            for record in records
-            if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-            and self._artifact_record_extension(record) in _LINK_REBIND_TEXT_EXTENSIONS
-            and self._artifact_record_path(record)
-        ]
-        if not text_records:
-            return False
-        if self._terminal_unresolved_local_dependency_link_open_checks(payload):
-            return False
-        if self._terminal_web_binding_contract_open_checks(payload):
-            return False
+        return self.linked_artifact_materialization._terminal_linked_artifact_contract_is_fulfilled(payload, current_outputs=current_outputs)
 
-        content_by_path: dict[str, str] = {}
-        for record in text_records:
-            path = self._artifact_record_path(record)
-            content = self._terminal_materialization_text_record_content(record)
-            if path:
-                content_by_path[path] = content
-        if not any(content_by_path.values()):
-            return False
+    _terminal_exact_link_tokens_for_artifact = staticmethod(LinkedArtifactMaterialization._terminal_exact_link_tokens_for_artifact)
 
-        text_record_by_path = {
-            self._artifact_record_path(record): record
-            for record in text_records
-            if self._artifact_record_path(record)
-        }
-        required_by_path: dict[str, list[dict[str, Any]]] = {}
-        links_by_path: dict[str, set[str]] = {}
-        for target_path, content in content_by_path.items():
-            consumer_record = text_record_by_path.get(target_path, {})
-            required_records, missing = self._terminal_linked_artifact_dependency_records(
-                payload, records, consumer_record,
-            )
-            if missing:
-                return False
-            required_by_path[target_path] = required_records
-            consumer_dependency_records, _dependency_ids, _selection_policy = (
-                self._link_rebind_asset_records_for_consumer(
-                    payload,
-                    consumer_record,
-                    [record for record in records
-                     if self._artifact_record_path(record) != target_path],
-                )
-            )
-            if self._artifact_record_extension(consumer_record) == 'json':
-                unresolved = self._terminal_json_content_has_unresolved_dependency_link(
-                    content,
-                    consumer_dependency_records,
-                    target_path=target_path,
-                )
-            else:
-                unresolved = self._terminal_content_has_unresolved_link_placeholder(
-                    content,
-                    consumer_dependency_records,
-                    target_path=target_path,
-                )
-            if unresolved:
-                return False
-            linked_paths: set[str] = set()
-            for url in self._terminal_artifact_link_urls(consumer_record, content):
-                linked_path = self._local_link_target_path(url, target_path=target_path)
-                if not linked_path:
-                    continue
-                extension = Path(url.split('?', 1)[0].split('#', 1)[0]).suffix.lower().lstrip('.')
-                if (
-                    (extension in _TERMINAL_MATERIALIZABLE_LOCAL_DEPENDENCY_EXTENSIONS
-                     or self._link_rebind_extension_families(extension))
-                    and not self._local_link_target_exists(url, target_path=target_path)
-                ):
-                    return False
-                linked_paths.add(linked_path)
-            links_by_path[str(Path(target_path).resolve(strict=False))] = linked_paths
+    _terminal_exact_content_has_artifact_link = staticmethod(LinkedArtifactMaterialization._terminal_exact_content_has_artifact_link)
 
-        for source_path, dependencies in required_by_path.items():
-            # A page may expose an image through its saved CSS/JS/JSON dependency.
-            # Only actual links from this consumer join the closure; disconnected
-            # sibling content cannot satisfy its contract.
-            normalized_source = str(Path(source_path).resolve(strict=False))
-            pending = [normalized_source]
-            if self._artifact_record_extension(text_record_by_path[source_path]) == 'css':
-                # The existing visual contract is also carried by a page's
-                # stylesheet for preparation ordering. Its image cohort belongs
-                # to the composed page, not to a second gallery inside the CSS.
-                # Admit only a saved page that actually links this stylesheet
-                # and owes the same producers. JSON manifests remain consumers
-                # in their own right and cannot borrow their callers' links.
-                required_paths = {self._artifact_record_path(record) for record in dependencies}
-                pending.extend(
-                    str(Path(page_path).resolve(strict=False))
-                    for page_path, page_dependencies in required_by_path.items()
-                    if self._artifact_record_extension(text_record_by_path[page_path]) in {'html', 'htm'}
-                    and normalized_source in links_by_path.get(str(Path(page_path).resolve(strict=False)), set())
-                    and required_paths.issubset({self._artifact_record_path(record) for record in page_dependencies})
-                )
-            reachable: set[str] = set()
-            while pending:
-                current = pending.pop()
-                for linked in links_by_path.get(current, set()) - reachable:
-                    reachable.add(linked)
-                    pending.append(linked)
-            for record in dependencies:
-                path = Path(self._artifact_record_path(record)).resolve(strict=False)
-                if str(path) not in reachable or not path.is_file():
-                    return False
-        return True
+    _terminal_html_hero_snippets = staticmethod(LinkedArtifactMaterialization._terminal_html_hero_snippets)
 
-    @staticmethod
-    def _terminal_exact_link_tokens_for_artifact(
-        *,
-        source_path: str,
-        target_path: str,
-    ) -> set[str]:
-        tokens: set[str] = set()
-        target = str(target_path or '').strip()
-        if not target:
-            return tokens
-        tokens.add(target)
-        target_name = Path(target).name
-        if target_name:
-            tokens.add(target_name)
-        if source_path:
-            relative = LateFillRuntimeOwner._relative_artifact_link(
-                from_path=source_path,
-                to_path=target,
-            )
-            if relative:
-                tokens.add(relative)
-        return {token for token in tokens if token}
+    _terminal_css_hero_snippets = staticmethod(LinkedArtifactMaterialization._terminal_css_hero_snippets)
 
-    @staticmethod
-    def _terminal_exact_content_has_artifact_link(
-        content: str,
-        *,
-        source_path: str,
-        target_path: str,
-    ) -> bool:
-        text = str(content or '')
-        if not text.strip():
-            return False
-        return any(
-            token and token in text
-            for token in LateFillRuntimeOwner._terminal_exact_link_tokens_for_artifact(
-                source_path=source_path,
-                target_path=target_path,
-            )
-        )
+    _terminal_html_inline_style_blocks = staticmethod(LinkedArtifactMaterialization._terminal_html_inline_style_blocks)
 
-    @staticmethod
-    def _terminal_html_hero_snippets(content: str) -> list[str]:
-        text = str(content or '')
-        snippets: list[str] = []
-        for match in _TERMINAL_HTML_HERO_BLOCK_RE.finditer(text):
-            tag = str(match.group('tag') or '').strip().lower()
-            attrs = str(match.group('attrs') or '')
-            if tag != 'header' and not _TERMINAL_HERO_LOCAL_IMAGE_SIGNAL_RE.search(attrs):
-                continue
-            snippet = match.group(0)
-            if snippet and snippet not in snippets:
-                snippets.append(snippet)
-        return snippets
-
-    @staticmethod
-    def _terminal_css_hero_snippets(content: str) -> list[str]:
-        text = str(content or '')
-        snippets: list[str] = []
-        for match in _TERMINAL_CSS_HERO_BLOCK_RE.finditer(text):
-            snippet = match.group(0)
-            if snippet and snippet not in snippets:
-                snippets.append(snippet)
-        return snippets
-
-    @staticmethod
-    def _terminal_html_inline_style_blocks(content: str) -> list[str]:
-        text = str(content or '')
-        return [
-            str(match.group('body') or '')
-            for match in re.finditer(
-                r'(?is)<style\b[^>]*>(?P<body>.*?)</style\s*>',
-                text,
-            )
-            if str(match.group('body') or '').strip()
-        ]
-
-    @classmethod
-    def _terminal_hero_local_image_required(
-        cls,
-        prompt_text: str,
-        *,
-        html_contents: list[str],
-        css_contents: list[str],
-    ) -> bool:
-        if _TERMINAL_HERO_LOCAL_IMAGE_SIGNAL_RE.search(str(prompt_text or '')):
-            return True
-        return any(cls._terminal_html_hero_snippets(content) for content in html_contents) or any(
-            cls._terminal_css_hero_snippets(content) for content in css_contents
-        )
+    _terminal_hero_local_image_required = staticmethod(LinkedArtifactMaterialization._terminal_hero_local_image_required)
 
     def _terminal_hero_image_composition_open_check(
         self,
@@ -15706,268 +8929,13 @@ class LateFillRuntimeOwner:
         *,
         request_payload: Optional[Mapping[str, Any]] = None,
     ) -> Optional[dict[str, Any]]:
-        records = self._collect_link_rebind_artifact_records(payload)
-        text_records = self._unique_artifact_records_by_path(
-            [
-                record
-                for record in records
-                if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-                and self._artifact_record_extension(record) in _LINK_REBIND_TEXT_EXTENSIONS
-                and self._artifact_record_path(record)
-            ]
-        )
-        html_records = [
-            record
-            for record in text_records
-            if self._artifact_record_extension(record) in {'html', 'htm'}
-        ]
-        if not html_records:
-            return None
-        css_records = [
-            record
-            for record in text_records
-            if self._artifact_record_extension(record) == 'css'
-        ]
-        image_records = self._terminal_generated_image_records(payload)
-        if not image_records:
-            return None
+        return self.linked_artifact_materialization._terminal_hero_image_composition_open_check(payload, request_payload=request_payload)
 
-        content_by_path: dict[str, str] = {}
-        for record in text_records:
-            source_path = self._artifact_record_path(record)
-            content = self._terminal_materialization_text_record_content(record)
-            if source_path and content:
-                content_by_path[source_path] = content
-        if not content_by_path:
-            return None
+    _css_url_quote = staticmethod(LinkedArtifactMaterialization._css_url_quote)
 
-        html_contents = [
-            content_by_path.get(self._artifact_record_path(record), '')
-            for record in html_records
-        ]
-        html_inline_css_contents = [
-            style_block
-            for content in html_contents
-            for style_block in self._terminal_html_inline_style_blocks(content)
-        ]
-        css_contents = [
-            content_by_path.get(self._artifact_record_path(record), '')
-            for record in css_records
-        ] + html_inline_css_contents
-        prompt_text = str(
-            (request_payload or {}).get('prompt')
-            or (request_payload or {}).get('input')
-            or ((payload.get('request') or {}).get('prompt') if isinstance(payload.get('request'), Mapping) else '')
-            or ''
-        ).strip()
-        if not self._terminal_hero_local_image_required(
-            prompt_text,
-            html_contents=html_contents,
-            css_contents=css_contents,
-        ):
-            return None
+    _repair_terminal_hero_css_content = staticmethod(LinkedArtifactMaterialization._repair_terminal_hero_css_content)
 
-        snippets: list[tuple[str, str]] = []
-        for record in html_records:
-            source_path = self._artifact_record_path(record)
-            for snippet in self._terminal_html_hero_snippets(content_by_path.get(source_path, '')):
-                snippets.append((source_path, snippet))
-        for record in css_records:
-            source_path = self._artifact_record_path(record)
-            for snippet in self._terminal_css_hero_snippets(content_by_path.get(source_path, '')):
-                snippets.append((source_path, snippet))
-        for record in html_records:
-            source_path = self._artifact_record_path(record)
-            html_content = content_by_path.get(source_path, '')
-            for style_block in self._terminal_html_inline_style_blocks(html_content):
-                for snippet in self._terminal_css_hero_snippets(style_block):
-                    snippets.append((source_path, snippet))
-        if not snippets:
-            return None
-
-        for source_path, snippet in snippets:
-            for image_record in image_records:
-                image_path = self._artifact_record_path(image_record)
-                if (
-                    image_path
-                    and self._terminal_exact_content_has_artifact_link(
-                        snippet,
-                        source_path=source_path,
-                        target_path=image_path,
-                    )
-                ):
-                    return None
-
-        target_record = next(
-            (
-                record for record in css_records
-                if self._terminal_css_hero_snippets(content_by_path.get(self._artifact_record_path(record), ''))
-            ),
-            html_records[0],
-        )
-        target_extension = self._artifact_record_extension(target_record) or 'html'
-        target_name = self._artifact_record_source_name(target_record) or ('styles' if target_extension == 'css' else 'index')
-        target_path = self._artifact_record_path(target_record)
-        target_content = content_by_path.get(target_path, '') if target_path else ''
-        bounded_content = target_content
-        if len(bounded_content) > 90_000:
-            bounded_content = f'{bounded_content[:90_000].rstrip()}\n\n[content truncated for repair prompt size]'
-        generated_paths = [
-            self._artifact_record_path(record)
-            for record in image_records
-            if self._artifact_record_path(record)
-        ]
-        generated_lines = [
-            f'- {path} (relative from target: {self._relative_artifact_link(from_path=target_path, to_path=path)})'
-            for path in generated_paths
-        ]
-        content_payload = '\n'.join(
-            [
-                f'Target text artifact: {target_path or target_name}',
-                'Hero image composition defect:',
-                '- The composed page has a hero/header area but no concrete generated image artifact path is used in that hero area.',
-                'Generated image artifact paths available for hero binding:',
-                *generated_lines,
-                'Current saved target file content:',
-                '--- CURRENT SAVED FILE START ---',
-                bounded_content,
-                '--- CURRENT SAVED FILE END ---',
-                'Update only the target text artifact. Bind one concrete generated image path above into the hero/header image or background. Preserve existing valid links, copy, layout intent, and unrelated structure.',
-            ]
-        ).strip()
-        return {
-            'check_kind': 'hero_image_composition',
-            'status': 'pending',
-            'evidence': 'generated_image_not_represented_in_hero',
-            'reason': 'final composed page hero/header area does not use a generated local image artifact',
-            'capability': 'chat',
-            'output_type': 'text',
-            'role': 'linked_artifact_binding_review',
-            'branch_id': str(target_record.get('branch_id') or '').strip() or None,
-            'phase_id': str(target_record.get('phase_id') or target_record.get('branch_id') or '').strip() or None,
-            'requires_artifact': True,
-            'repair_action': RECOVERY_ACTION_REBIND_DEPENDENCY_EVIDENCE,
-            'recovery_action': RECOVERY_ACTION_REBIND_DEPENDENCY_EVIDENCE,
-            'repair_action_reason': 'final composed page must bind a generated local image into the hero/header area',
-            'content_payload': content_payload,
-            'content_payload_source': 'closure_hero_image_composition',
-            'stage_direction': 'materialize_requested_text_artifact',
-            'generated_image_count': len(generated_paths),
-            'represented_image_count': 0,
-            'missing_image_count': 1,
-            'missing_image_paths': generated_paths[:8],
-            'text_artifact_extension': target_extension,
-            'text_artifact_source_name': target_name,
-            'text_artifact_source': 'closure_hero_image_composition',
-            'text_artifact_target_path': target_path,
-            'artifact_request': {
-                'extension': target_extension,
-                'source_name': target_name,
-                'source': 'closure_hero_image_composition',
-                'target_path': target_path,
-            },
-        }
-
-    @staticmethod
-    def _css_url_quote(value: str) -> str:
-        return str(value or '').replace('\\', '/').replace("'", "\\'")
-
-    @classmethod
-    def _repair_terminal_hero_css_content(
-        cls,
-        content: str,
-        *,
-        image_link: str,
-    ) -> tuple[str, str]:
-        text = str(content or '')
-        link = cls._css_url_quote(image_link)
-        if not text.strip() or not link:
-            return text, ''
-        for match in _TERMINAL_CSS_HERO_BLOCK_RE.finditer(text):
-            block = match.group(0)
-            if image_link in block or Path(image_link).name in block:
-                return text, ''
-            body = str(match.group('body') or '')
-            for declaration_match in re.finditer(
-                r'(?P<prefix>\bbackground(?:-image)?\s*:\s*)'
-                r'(?P<value>[^;{}]*)(?P<suffix>;|$)',
-                body,
-                flags=re.IGNORECASE | re.DOTALL,
-            ):
-                url_match = _LINK_REBIND_URL_RE.search(str(declaration_match.group('value') or ''))
-                if not url_match:
-                    continue
-                url = str(url_match.group('url') or '').strip()
-                if cls._url_is_external_or_empty(url) or _LINK_REBIND_PLACEHOLDER_RE.search(url):
-                    url_start = declaration_match.start('value') + url_match.start('url')
-                    url_end = declaration_match.start('value') + url_match.end('url')
-                    next_body = f'{body[:url_start]}{link}{body[url_end:]}'
-                    return (
-                        f'{text[:match.start("body")]}{next_body}{text[match.end("body"):]}',
-                        'replace_hero_background_url',
-                    )
-
-            insertion = (
-                "\n    background-image: url('"
-                f"{link}"
-                "');\n"
-                '    background-size: cover;\n'
-                '    background-position: center;\n'
-                '    background-repeat: no-repeat;'
-            )
-            next_body = f'{body.rstrip()}{insertion}\n'
-            return (
-                f'{text[:match.start("body")]}{next_body}{text[match.end("body"):]}',
-                'append_hero_background_image',
-            )
-        return text, ''
-
-    @classmethod
-    def _repair_terminal_hero_html_content(
-        cls,
-        content: str,
-        *,
-        image_link: str,
-    ) -> tuple[str, str]:
-        text = str(content or '')
-        link = str(image_link or '').replace('\\', '/')
-        if not text.strip() or not link:
-            return text, ''
-        css_declaration = (
-            f"background-image: url('{cls._html_attribute_escape(link)}'); "
-            'background-size: cover; background-position: center; background-repeat: no-repeat;'
-        )
-        for match in _TERMINAL_HTML_HERO_BLOCK_RE.finditer(text):
-            tag = str(match.group('tag') or '').strip().lower()
-            attrs = str(match.group('attrs') or '')
-            if tag != 'header' and not _TERMINAL_HERO_LOCAL_IMAGE_SIGNAL_RE.search(attrs):
-                continue
-            block = match.group(0)
-            if image_link in block or Path(image_link).name in block:
-                return text, ''
-            style_match = re.search(
-                r'\bstyle\s*=\s*(?P<quote>[\'"])(?P<value>.*?)(?P=quote)',
-                attrs,
-                flags=re.IGNORECASE | re.DOTALL,
-            )
-            if style_match:
-                style_value = str(style_match.group('value') or '').strip()
-                separator = '; ' if style_value and not style_value.endswith(';') else ' '
-                next_style = f'{style_value}{separator}{css_declaration}'.strip()
-                next_attrs = (
-                    f'{attrs[:style_match.start("value")]}'
-                    f'{next_style}'
-                    f'{attrs[style_match.end("value"):]}'
-                )
-                operation = 'append_hero_inline_background_image'
-            else:
-                next_attrs = f'{attrs} style="{css_declaration}"'
-                operation = 'add_hero_inline_background_image'
-            return (
-                f'{text[:match.start("attrs")]}{next_attrs}{text[match.end("attrs"):]}',
-                operation,
-            )
-        return text, ''
+    _repair_terminal_hero_html_content = staticmethod(LinkedArtifactMaterialization._repair_terminal_hero_html_content)
 
     def _repair_terminal_hero_image_composition(
         self,
@@ -15975,728 +8943,19 @@ class LateFillRuntimeOwner:
         *,
         request_payload: Optional[Mapping[str, Any]] = None,
     ) -> dict[str, Any]:
-        if not isinstance(payload, dict):
-            return payload
-        check = self._terminal_hero_image_composition_open_check(
-            payload,
-            request_payload=request_payload,
-        )
-        if not check:
-            return payload
-        target_path = str(check.get('text_artifact_target_path') or '').strip()
-        if not target_path:
-            return payload
-        image_paths = [
-            str(path or '').strip()
-            for path in (check.get('missing_image_paths') or [])
-            if str(path or '').strip()
-        ]
-        image_path = next(
-            (
-                path for path in image_paths
-                if Path(path).expanduser().is_file()
-            ),
-            '',
-        )
-        if not image_path:
-            return payload
-        try:
-            target = Path(target_path).expanduser()
-            if not target.is_file() or target.stat().st_size > 512_000:
-                return payload
-            original = target.read_text(encoding='utf-8', errors='replace')
-        except OSError:
-            return payload
+        return self.linked_artifact_materialization._repair_terminal_hero_image_composition(payload, request_payload=request_payload)
 
-        image_link = self._relative_artifact_link(from_path=target_path, to_path=image_path)
-        extension = str(
-            check.get('text_artifact_extension')
-            or Path(target_path).suffix.lower().lstrip('.')
-        ).strip().lower()
-        if extension == 'css':
-            repaired, operation = self._repair_terminal_hero_css_content(
-                original,
-                image_link=image_link,
-            )
-        elif extension in {'html', 'htm'}:
-            repaired, operation = self._repair_terminal_hero_html_content(
-                original,
-                image_link=image_link,
-            )
-        else:
-            return payload
-        if not operation or repaired == original:
-            return payload
+    _terminal_composed_site_role_label = staticmethod(LinkedArtifactMaterialization._terminal_composed_site_role_label)
 
-        snippets = (
-            self._terminal_css_hero_snippets(repaired)
-            if extension == 'css'
-            else self._terminal_html_hero_snippets(repaired)
-        )
-        if not any(
-            self._terminal_exact_content_has_artifact_link(
-                snippet,
-                source_path=target_path,
-                target_path=image_path,
-            )
-            for snippet in snippets
-        ):
-            return payload
+    _terminal_composed_site_role_is_bound = staticmethod(LinkedArtifactMaterialization._terminal_composed_site_role_is_bound)
 
-        original_issues = ResponseSemanticsRuntimeOwner.text_artifact_syntax_sanity_issues_for_extension(
-            extension,
-            original,
-        )
-        repaired_issues = ResponseSemanticsRuntimeOwner.text_artifact_syntax_sanity_issues_for_extension(
-            extension,
-            repaired,
-        )
-        if len(repaired_issues) > len(original_issues):
-            logging.warning(
-                'Skipping hero image composition repair for %s because syntax sanity regressed from %s to %s issue(s)',
-                target_path,
-                len(original_issues),
-                len(repaired_issues),
-            )
-            return payload
-
-        try:
-            target.write_text(repaired, encoding='utf-8')
-        except OSError as exc:
-            logging.warning('Could not repair hero image composition in %s: %s', target_path, exc)
-            return payload
-
-        updated_payload = dict(payload or {})
-        late_fill = (
-            dict(updated_payload.get('late_fill') or {})
-            if isinstance(updated_payload.get('late_fill'), Mapping)
-            else {}
-        )
-        repair_entry = {
-            'kind': 'fruth.hero_image_composition_repair',
-            'operation': operation,
-            'target_path': target_path,
-            'target_extension': extension,
-            'target_source_name': check.get('text_artifact_source_name'),
-            'to_path': image_path,
-            'to_token': image_link,
-            'status': 'applied',
-            'source': 'terminal_hero_image_composition_repair',
-        }
-        existing_repairs = [
-            dict(item)
-            for item in (late_fill.get('hero_image_composition_repairs') or [])
-            if isinstance(item, Mapping)
-        ]
-        late_fill['hero_image_composition_repairs'] = [*existing_repairs, repair_entry]
-        late_fill['hero_image_composition_repair_status'] = 'applied'
-        late_fill['hero_image_composition_repaired_paths'] = [image_path]
-        updated_payload['late_fill'] = late_fill
-        return updated_payload
-
-    @staticmethod
-    def _terminal_composed_site_role_label(
-        prompt: str,
-        *,
-        cohort_content: str,
-    ) -> str:
-        text = str(prompt or '').strip()
-        if not text:
-            return ''
-        section_roles = [
-            role for role in ('hero', 'listening')
-            if re.search(rf'\b{role}\b', text, re.IGNORECASE)
-        ]
-        if len(section_roles) == 1:
-            return section_roles[0]
-        candidates = [
-            str(match.group(1) or match.group(2) or '').strip()
-            for match in re.finditer(r'["“]([^"”]{2,80})["”]|\'([^\']{2,80})\'', text)
-        ]
-        for candidate in candidates:
-            if candidate and candidate.lower() in cohort_content.lower():
-                return candidate
-        role_match = re.search(
-            r'(?is)\b(?:interior|portrait|view|scene|image|photo)\s+(?:of|for)\s+(?:the\s+)?'
-            r'([^,.;:]{2,80})',
-            text,
-        )
-        if role_match:
-            candidate = re.sub(r'\s+', ' ', str(role_match.group(1) or '')).strip(' "\'')
-            if candidate and candidate.lower() in cohort_content.lower():
-                return candidate
-        return ''
-
-    @classmethod
-    def _terminal_composed_site_role_is_bound(
-        cls,
-        *,
-        role_label: str,
-        image_path: str,
-        content_by_path: Mapping[str, str],
-    ) -> bool:
-        label = str(role_label or '').strip().lower()
-        if not label or not image_path:
-            return True
-        if label in {'hero', 'listening'}:
-            for source_path, content in content_by_path.items():
-                candidates: list[str] = []
-                css_sources: list[str] = []
-                if Path(source_path).suffix.lower() in {'.html', '.htm'}:
-                    parser = _SectionImageMarkup(label)
-                    parser.feed(str(content or ''))
-                    candidates = parser.markup
-                    css_sources = parser.styles
-                elif Path(source_path).suffix.lower() == '.css':
-                    css_sources = [str(content or '')]
-                for css in css_sources:
-                    for selectors, declarations in re.findall(r'(?is)([^{}]+)\{([^{}]*)\}', css):
-                        for selector in selectors.split(','):
-                            # Sibling combinators and functional pseudo-classes
-                            # do not prove that the image belongs inside this role.
-                            if re.search(r'[+~()]', selector):
-                                continue
-                            if re.search(rf'[.#]{label}(?:[-_][\w-]+)?(?![\w-])', selector):
-                                candidates.append(declarations)
-                if any(cls._terminal_exact_content_has_artifact_link(
-                    candidate, source_path=source_path, target_path=image_path,
-                ) for candidate in candidates):
-                    return True
-            return False
-        normalized_label = re.sub(r'[^a-z0-9]+', ' ', label).strip()
-        for source_path, content in content_by_path.items():
-            source = str(content or '')
-            lowered = source.lower()
-            normalized_source = re.sub(r'[^a-z0-9]+', ' ', lowered)
-            for token in cls._terminal_exact_link_tokens_for_artifact(
-                source_path=source_path,
-                target_path=image_path,
-            ):
-                if not token:
-                    continue
-                start = 0
-                while True:
-                    position = source.find(token, start)
-                    if position < 0:
-                        break
-                    window = source[max(0, position - 1800):position + len(token) + 1800]
-                    if label in window.lower():
-                        return True
-                    normalized_window = re.sub(r'[^a-z0-9]+', ' ', window.lower())
-                    if normalized_label and normalized_label in normalized_window:
-                        return True
-                    start = position + len(token)
-            if normalized_label and normalized_label in normalized_source:
-                # A CSS nth-child or custom-property binding can keep the
-                # human label in a nearby comment while the exact path lives
-                # in the same target file.
-                if cls._terminal_exact_content_has_artifact_link(
-                    source,
-                    source_path=source_path,
-                    target_path=image_path,
-                ):
-                    return True
-        return False
-
-    @staticmethod
-    def _terminal_composed_site_unstyled_image_paths(
-        *,
-        generated_paths: list[str],
-        html_content_by_path: Mapping[str, str],
-        css_content_by_path: Mapping[str, str],
-        script_content_by_path: Mapping[str, str],
-    ) -> list[str]:
-        """Require layout evidence for each generated image, on its actual page.
-
-        This is a static binding check, not browser rendering or aesthetic review.
-        Parent section sizing and another image's CSS cannot satisfy an img.
-        """
-        owner = LateFillRuntimeOwner
-        covered: set[str] = set()
-        unstyled: set[str] = set()
-
-        def rules(content):
-            text = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
-            return [
-                (selector.strip(), declarations)
-                for selectors, declarations in re.findall(r'([^{}]+)\{([^{}]*)\}', text)
-                for selector in selectors.split(',')
-            ]
-
-        def sizes_image(declarations):
-            return any(
-                property_name.lower() in {'width', 'max-width', 'height', 'max-height'}
-                and value.strip().lower().removesuffix('!important').strip()
-                    not in {'', 'auto', 'none', 'initial', 'inherit', 'unset', 'revert'}
-                for property_name, value in re.findall(r'(?:^|;)\s*([\w-]+)\s*:([^;]+)', declarations)
-            )
-
-        for html_path, content in html_content_by_path.items():
-            parser = _SectionImageMarkup('')
-            parser.feed(content)
-            page_rules = [(html_path, selector, declarations)
-                          for style in parser.styles for selector, declarations in rules(style)]
-            for css_path, css in css_content_by_path.items():
-                if any(
-                    lineage[-1][0] == 'link'
-                    and 'stylesheet' in str(lineage[-1][1].get('rel') or '').lower().split()
-                    and owner._terminal_exact_content_has_artifact_link(
-                        str(lineage[-1][1].get('href') or ''),
-                        source_path=html_path, target_path=css_path,
-                    )
-                    for lineage in parser.elements
-                ):
-                    page_rules.extend((css_path, selector, declarations)
-                                      for selector, declarations in rules(css))
-            # Preserve the existing layout evidence for script-rendered cards.
-            # This check does not execute JS or prove its data/DOM contract;
-            # the shared web-binding review owns that. It must never excuse
-            # an unstyled concrete img occurrence checked below.
-            dynamic_sources = [(html_path, script) for script in re.findall(
-                r'(?is)<script\b[^>]*>(.*?)</script\s*>', content,
-            )]
-            dynamic_sources.extend(
-                (script_path, script) for script_path, script in script_content_by_path.items()
-                if any(
-                    lineage[-1][0] == 'script'
-                    and owner._terminal_exact_content_has_artifact_link(
-                        str(lineage[-1][1].get('src') or ''),
-                        source_path=html_path, target_path=script_path,
-                    ) for lineage in parser.elements
-                )
-            )
-            if any(sizes_image(css) and re.search(r'(?i)(?:img\b|image|photo|media|gallery|card)', selector)
-                   for _, selector, css in page_rules):
-                for script_path, script in dynamic_sources:
-                    if not re.search(r'''(?i)<img\b|createElement\(\s*['"]img['"]''', script):
-                        continue
-                    covered.update(path for path in generated_paths
-                                   if owner._terminal_exact_content_has_artifact_link(
-                                       script, source_path=script_path, target_path=path,
-                                   ))
-            for lineage in parser.elements:
-                tag, attrs = lineage[-1]
-                bound_styles = [(html_path, str(attrs.get('style') or ''))]
-                bound_styles.extend(
-                    (path, declarations) for path, selector, declarations in page_rules
-                    if parser.selector_matches(selector, lineage)
-                )
-                if tag == 'img':
-                    sources = ' '.join(str(attrs.get(k) or '') for k in ('src', 'srcset'))
-                    # A picture source is displayed by its sibling img element.
-                    if len(lineage) > 1 and lineage[-2][0] == 'picture':
-                        sources += ' ' + ' '.join(
-                            str(other[-1][1].get('srcset') or '')
-                            for other in parser.elements
-                            if len(other) > 1 and other[-2] is lineage[-2] and other[-1][0] == 'source'
-                        )
-                    for image_path in generated_paths:
-                        if owner._terminal_exact_content_has_artifact_link(
-                            sources, source_path=html_path, target_path=image_path,
-                        ):
-                            covered.add(image_path)
-                            if not any(sizes_image(css) for _, css in bound_styles):
-                                unstyled.add(image_path)
-                for style_path, declarations in bound_styles:
-                    backgrounds = re.findall(
-                        r'(?:^|;)\s*background(?:-image)?\s*:([^;]+)', declarations, re.IGNORECASE,
-                    )
-                    for image_path in generated_paths:
-                        if any(owner._terminal_exact_content_has_artifact_link(
-                            background, source_path=style_path, target_path=image_path,
-                        ) for background in backgrounds):
-                            covered.add(image_path)
-        return [path for path in generated_paths if path in unstyled or path not in covered]
+    _terminal_composed_site_unstyled_image_paths = staticmethod(LinkedArtifactMaterialization._terminal_composed_site_unstyled_image_paths)
 
     def _terminal_composed_site_image_composition_open_checks(
         self,
         payload: Mapping[str, Any],
     ) -> Optional[list[dict[str, Any]]]:
-        records = self._collect_link_rebind_artifact_records(payload)
-        text_records = self._unique_artifact_records_by_path(
-            [
-                record
-                for record in records
-                if str(record.get('type') or record.get('kind') or '').strip().lower() == 'text'
-                and self._artifact_record_extension(record) in _LINK_REBIND_TEXT_EXTENSIONS
-                and self._artifact_record_path(record)
-            ]
-        )
-        html_records = [
-            record
-            for record in text_records
-            if self._artifact_record_extension(record) in {'html', 'htm'}
-        ]
-        css_records = [
-            record
-            for record in text_records
-            if self._artifact_record_extension(record) == 'css'
-        ]
-        script_records = [
-            record
-            for record in text_records
-            if self._artifact_record_extension(record) in {'js', 'mjs', 'cjs'}
-        ]
-        # Every generated HTML cohort uses the same closure/repair owner,
-        # including single pages with embedded CSS and one generated image.
-        if not html_records:
-            return None
-
-        late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-        image_branch_ids = {
-            self.branch_id(item)
-            for item in [
-                *(late_fill.get('completed_branches') or []),
-                *(late_fill.get('fill_results') or []),
-            ]
-            if isinstance(item, Mapping)
-            and (
-                self.normalize_capability(item.get('capability')) == self.capability_image_generation
-                or str(item.get('output_type') or '').strip().lower() == 'image'
-                or str(item.get('saved_image_path') or '').strip()
-            )
-            and self.branch_id(item)
-        }
-        if not image_branch_ids:
-            return None
-        image_records = self._unique_artifact_records_by_path(
-            [
-                record
-                for record in records
-                if (
-                    str(record.get('type') or record.get('kind') or '').strip().lower() == 'image'
-                    or self._artifact_record_extension(record) in _LINK_REBIND_IMAGE_EXTENSIONS
-                )
-                and self._artifact_record_path(record)
-            ]
-        )
-        generated_image_records: list[dict[str, Any]] = []
-        for record in image_records:
-            record_branch_id = self.branch_id(record)
-            if record_branch_id and record_branch_id in image_branch_ids:
-                generated_image_records.append(record)
-            elif not record_branch_id and len(image_records) == len(image_branch_ids):
-                generated_image_records.append(record)
-        if not generated_image_records:
-            generated_image_records = image_records
-        generated_image_records.sort(key=self._image_artifact_record_sort_key)
-        if not generated_image_records:
-            return None
-
-        content_by_path: dict[str, str] = {}
-        for record in text_records:
-            path = self._artifact_record_path(record)
-            content = self._terminal_materialization_text_record_content(record)
-            if path and content:
-                content_by_path[path] = content
-        if not content_by_path:
-            return None
-        generated_paths = [
-            self._artifact_record_path(record)
-            for record in generated_image_records
-            if self._artifact_record_path(record)
-        ]
-        represented_paths = {
-            image_path
-            for image_path in generated_paths
-            if any(
-                self._terminal_exact_content_has_artifact_link(
-                    content,
-                    source_path=source_path,
-                    target_path=image_path,
-                )
-                for source_path, content in content_by_path.items()
-            )
-        }
-        missing_paths = [path for path in generated_paths if path not in represented_paths]
-        detached_marker_present = any(
-            'data-fruth-repair="composed-page-image-representation"' in content
-            or "data-fruth-repair='composed-page-image-representation'" in content
-            or 'class="fruth-generated-media"' in content
-            or "class='fruth-generated-media'" in content
-            for record in html_records
-            for content in [content_by_path.get(self._artifact_record_path(record), '')]
-        )
-        cohort_content = '\n'.join(content_by_path.values())
-        batch_prompts = [
-            str(item or '').strip()
-            for item in (late_fill.get('batch_prompts') or [])
-            if str(item or '').strip()
-        ]
-        image_assignments: list[dict[str, Any]] = []
-        role_binding_defects: list[dict[str, str]] = []
-        for index, image_path in enumerate(generated_paths):
-            prompt = batch_prompts[index] if index < len(batch_prompts) else ''
-            role_label = self._terminal_composed_site_role_label(
-                prompt,
-                cohort_content=cohort_content,
-            )
-            assignment = {
-                'slot': index + 1,
-                'path': image_path,
-                'prompt': prompt,
-                'role_label': role_label,
-            }
-            image_assignments.append(assignment)
-            if role_label and not self._terminal_composed_site_role_is_bound(
-                role_label=role_label,
-                image_path=image_path,
-                content_by_path=content_by_path,
-            ):
-                role_binding_defects.append(
-                    {'path': image_path, 'role_label': role_label}
-                )
-        unstyled_image_paths = self._terminal_composed_site_unstyled_image_paths(
-            generated_paths=generated_paths,
-            html_content_by_path={self._artifact_record_path(record): content_by_path.get(
-                self._artifact_record_path(record), '') for record in html_records},
-            css_content_by_path={self._artifact_record_path(record): content_by_path.get(
-                self._artifact_record_path(record), '') for record in css_records},
-            script_content_by_path={self._artifact_record_path(record): content_by_path.get(
-                self._artifact_record_path(record), '') for record in script_records},
-        )
-        layout_binding_defect = bool(unstyled_image_paths)
-        if not (
-            missing_paths
-            or detached_marker_present
-            or role_binding_defects
-            or layout_binding_defect
-        ):
-            return []
-
-        target_records = [*html_records, *css_records, *script_records]
-        cohort_snapshots: list[str] = []
-        remaining_snapshot_budget = 180_000
-        cohort_snapshot_truncated = False
-        for record in target_records:
-            path = self._artifact_record_path(record)
-            content = content_by_path.get(path, '')
-            allowance = min(60_000, max(0, remaining_snapshot_budget))
-            snapshot = content[:allowance]
-            if len(snapshot) < len(content):
-                cohort_snapshot_truncated = True
-                snapshot = f'{snapshot.rstrip()}\n[cohort snapshot truncated]'
-            remaining_snapshot_budget -= min(len(content), allowance)
-            cohort_snapshots.extend(
-                [
-                    f'--- COHORT FILE {path} START ---',
-                    snapshot,
-                    f'--- COHORT FILE {path} END ---',
-                ]
-            )
-        assignment_lines: list[str] = []
-        for assignment in image_assignments:
-            role_text = (
-                f'role label: {assignment["role_label"]}'
-                if assignment.get('role_label')
-                else 'role label: use the ordered prompt as role evidence'
-            )
-            assignment_lines.extend(
-                [
-                    f'- Image slot {assignment["slot"]}: {assignment["path"]}',
-                    f'  {role_text}',
-                    f'  generation prompt: {assignment["prompt"] or "unavailable"}',
-                ]
-            )
-        defect_lines = [
-            f'- Missing concrete image references: {len(missing_paths)}',
-            f'- Detached runtime repair section present: {str(detached_marker_present).lower()}',
-            f'- Unbound named image roles: {len(role_binding_defects)}',
-            *(f'- Image {item["path"]} must be inside the {item["role_label"]} section or its CSS background.'
-              for item in role_binding_defects),
-            f'- Image layout CSS missing: {str(layout_binding_defect).lower()}',
-            *(f'- Image lacks bound sizing/layout: {path}' for path in unstyled_image_paths),
-        ]
-        image_phase_ids = list(
-            dict.fromkeys(
-                str(record.get('phase_id') or record.get('branch_id') or '').strip()
-                for record in generated_image_records
-                if str(record.get('phase_id') or record.get('branch_id') or '').strip()
-            )
-        )
-        input_refs = [
-            {
-                'kind': 'artifact',
-                'artifact_ref': record.get('artifact_ref') or record.get('ref'),
-                'path': self._artifact_record_path(record),
-                'role': 'generated_image_role_evidence',
-            }
-            for record in generated_image_records
-        ]
-        input_refs.extend(
-            {
-                'kind': 'artifact',
-                'artifact_ref': record.get('artifact_ref') or record.get('ref'),
-                'path': self._artifact_record_path(record),
-                'role': 'composed_site_cohort_snapshot',
-            }
-            for record in target_records
-        )
-        checks: list[dict[str, Any]] = []
-        for record in target_records:
-            target_path = self._artifact_record_path(record)
-            target_extension = self._artifact_record_extension(record)
-            target_name = self._artifact_record_source_name(record) or Path(target_path).stem
-            target_content = content_by_path.get(target_path, '')
-            bounded_target_content = target_content
-            if len(bounded_target_content) > 90_000:
-                bounded_target_content = (
-                    f'{bounded_target_content[:90_000].rstrip()}\n[target content truncated for repair prompt size]'
-                )
-            if target_extension in {'html', 'htm'}:
-                target_instruction = (
-                    'Keep this page in its existing role. Add or preserve semantic hooks and direct image markup '
-                    'only where this page owns it. For embedded styles, provide responsive image sizing and cropping. '
-                    'Remove any Fruth detached repair section from this target. '
-                    'If JavaScript owns repeated cards, keep the shell compatible with that renderer.'
-                )
-                if detached_marker_present:
-                    target_instruction += (
-                        ' Delete the entire section marked class="fruth-generated-media" or '
-                        'data-fruth-repair="composed-page-image-representation", including its wrapper. '
-                        'Keep its required images only in their assigned site sections.'
-                    )
-                for defect in role_binding_defects:
-                    label = defect['role_label']
-                    if label in {'hero', 'listening'} and re.search(
-                        rf'(?i)\b(?:class|id)\s*=\s*[\'"][^\'"]*\b{label}\b', target_content,
-                    ):
-                        link = self._relative_artifact_link(from_path=target_path, to_path=defect['path'])
-                        target_instruction += (
-                            f' Inside the existing {label} element, insert an img element '
-                            f'whose src is "{link}". Preserve its existing text and controls.'
-                        )
-            elif target_extension == 'css':
-                target_instruction = (
-                    'Give the existing image-bearing hero, cards, galleries, or media regions a deliberate '
-                    'responsive layout. Style the exact hooks used by the cohort; include stable sizing and '
-                    'cropping such as aspect-ratio/object-fit where appropriate.'
-                )
-                if layout_binding_defect:
-                    target_instruction += (
-                        ' Add an img sizing rule, for example img {max-width:100%;height:auto;}, '
-                        'or equivalent rules for the existing image selectors. A flex/grid rule '
-                        'on the surrounding section alone does not constrain an oversized img.'
-                    )
-            else:
-                target_instruction = (
-                    'Bind the ordered image paths to the existing semantic data/items and rendered markup. '
-                    'Preserve interaction, selection, calculations, and unrelated behavior.'
-                )
-            content_payload = '\n'.join(
-                [
-                    f'Target text artifact: {target_path}',
-                    'Composed-site image-role and layout repair.',
-                    'Verified defects:',
-                    *defect_lines,
-                    'Ordered generated-image assignments:',
-                    *assignment_lines,
-                    '<fruth_promoted_context>',
-                    'Read-only cohort snapshots for cross-file consistency:',
-                    *cohort_snapshots,
-                    'Current saved target file content:',
-                    '--- CURRENT SAVED TARGET START ---',
-                    bounded_target_content,
-                    '--- CURRENT SAVED TARGET END ---',
-                    '</fruth_promoted_context>',
-                    '<fruth_bounded_task>',
-                    f'Repair only {target_path} ({target_extension}).',
-                    'Correct these defects in place; copying the defective snapshot is not a repair:',
-                    *defect_lines,
-                    f'Target-specific instruction: {target_instruction}',
-                    f'Return exactly one {target_extension} fenced block with the complete replacement for {Path(target_path).name}.',
-                    'Do not create a new sibling file. Do not rewrite another cohort file from this branch.',
-                    'Do not append a catch-all image dump or a fruth-generated-media detached repair section.',
-                    'Preserve existing valid local links and use concrete relative paths from this target when it references an image.',
-                    '</fruth_bounded_task>',
-                ]
-            ).strip()
-            target_token = hashlib.sha256(target_path.encode('utf-8')).hexdigest()[:12]
-            branch_id = (
-                str(record.get('branch_id') or record.get('phase_id') or '').strip()
-                or f'branch-composed-site-image-repair-{target_token}'
-            )
-            phase_id = (
-                str(record.get('phase_id') or record.get('branch_id') or '').strip()
-                or branch_id
-            )
-            execution_contract = {
-                'kind': 'fruth.composed_site_image_cohort_repair_contract',
-                'repair_mode': 'composed_site_image_cohort_target',
-                'execution_scope': 'target_artifact_snapshot_only',
-                'branch_id': branch_id,
-                'phase_id': phase_id,
-                'capability': 'chat',
-                'output_type': 'text',
-                'target_path': target_path,
-                'target_extension': target_extension,
-                'cohort_paths': [self._artifact_record_path(item) for item in target_records],
-                'generated_image_paths': generated_paths,
-                'image_assignments': image_assignments,
-                'cohort_snapshot_truncated': cohort_snapshot_truncated,
-                'root_prompt_replay_allowed': False,
-                'sibling_write_allowed': False,
-            }
-            checks.append(
-                {
-                    'check_kind': 'composed_page_image_representation',
-                    'status': 'pending',
-                    'evidence': 'composed_site_image_role_or_layout_unmet',
-                    'reason': 'composed site image roles and layout are not yet proven by final saved files',
-                    'capability': 'chat',
-                    'output_type': 'text',
-                    'role': 'linked_artifact_binding_review',
-                    'branch_id': branch_id,
-                    'phase_id': phase_id,
-                    'repair_owner_branch_id': str(record.get('branch_id') or '').strip() or None,
-                    'repair_owner_phase_id': str(record.get('phase_id') or '').strip() or None,
-                    'depends_on': image_phase_ids or None,
-                    'input_refs': input_refs,
-                    'execution_contract': execution_contract,
-                    'output_contract': {
-                        'output_type': 'text',
-                        'required': True,
-                        'target_path': target_path,
-                        'fulfillment_policy': 'target_bound_saved_artifact_replacement',
-                    },
-                    'review_criteria': [
-                        'uses_dependency_evidence',
-                        'does_not_restart_root_request',
-                    ],
-                    'requires_artifact': True,
-                    'repair_action': RECOVERY_ACTION_REBIND_DEPENDENCY_EVIDENCE,
-                    'recovery_action': RECOVERY_ACTION_REBIND_DEPENDENCY_EVIDENCE,
-                    'repair_action_reason': 'repair the existing composed-site file cohort against ordered image-role evidence',
-                    'content_payload': content_payload,
-                    'content_payload_source': 'closure_composed_site_image_composition',
-                    'stage_direction': 'materialize_requested_text_artifact',
-                    'generated_image_count': len(generated_paths),
-                    'represented_image_count': len(represented_paths),
-                    'missing_image_count': len(missing_paths),
-                    'generated_image_paths': generated_paths,
-                    'missing_image_paths': missing_paths,
-                    'represented_image_paths': sorted(represented_paths),
-                    'image_assignments': image_assignments,
-                    'role_binding_defects': role_binding_defects,
-                    'detached_repair_section_present': detached_marker_present,
-                    'layout_binding_defect': layout_binding_defect,
-                    'unstyled_image_paths': unstyled_image_paths,
-                    'text_artifact_extension': target_extension,
-                    'text_artifact_source_name': target_name,
-                    'text_artifact_source': 'closure_composed_site_image_composition',
-                    'text_artifact_target_path': target_path,
-                    'repair_scope': 'composed_site_cohort_target',
-                    'resource_class': 'local_text_io',
-                    'dependency_policy': 'target_artifact_snapshot_only',
-                    'artifact_request': {
-                        'extension': target_extension,
-                        'source_name': target_name,
-                        'source': 'closure_composed_site_image_composition',
-                        'target_path': target_path,
-                    },
-                }
-            )
-        return checks
+        return self.linked_artifact_materialization._terminal_composed_site_image_composition_open_checks(payload)
 
     def _terminal_composed_page_image_representation_open_checks(
         self,
@@ -16712,15 +8971,7 @@ class LateFillRuntimeOwner:
         checks = self._terminal_composed_page_image_representation_open_checks(payload)
         return checks[0] if checks else None
 
-    @staticmethod
-    def _html_attribute_escape(value: str) -> str:
-        return (
-            str(value or '')
-            .replace('&', '&amp;')
-            .replace('"', '&quot;')
-            .replace('<', '&lt;')
-            .replace('>', '&gt;')
-        )
+    _html_attribute_escape = staticmethod(LinkedArtifactMaterialization._html_attribute_escape)
 
     def _terminal_materialization_branch_has_canonical_evidence(
         self,
@@ -16750,10 +9001,10 @@ class LateFillRuntimeOwner:
                 if isinstance(candidate, Mapping)
             )
         if output_type == 'image' or capability == self.capability_image_generation:
-            records = self._collect_link_rebind_artifact_records(payload)
+            records = self.linked_artifact_materialization._collect_link_rebind_artifact_records(payload)
             for record in records:
                 record_type = str(record.get('type') or record.get('kind') or '').strip().lower()
-                if record_type != 'image' and self._artifact_record_extension(record) not in _LINK_REBIND_IMAGE_EXTENSIONS:
+                if record_type != 'image' and branch_result_contracts._artifact_record_extension(record) not in _LINK_REBIND_IMAGE_EXTENSIONS:
                     continue
                 record_branch_id = str(record.get('branch_id') or record.get('phase_id') or '').strip()
                 if branch_id and record_branch_id != branch_id:
@@ -16769,7 +9020,7 @@ class LateFillRuntimeOwner:
                     record, response_id=str(payload.get('id') or '').strip(),
                 ):
                     continue
-                path = self._artifact_record_path(record)
+                path = branch_result_contracts._artifact_record_path(record)
                 if path and Path(path).expanduser().is_file():
                     return True
         return False
@@ -16795,7 +9046,7 @@ class LateFillRuntimeOwner:
             check_kind == 'hero_image_composition'
             or evidence == 'generated_image_not_represented_in_hero'
         ):
-            return self._terminal_hero_image_composition_open_check(payload) is not None
+            return self.linked_artifact_materialization._terminal_hero_image_composition_open_check(payload) is not None
         if check_kind == 'text_artifact_syntax_sanity' or evidence == 'text_artifact_syntax_issue':
             return True
         if (
@@ -16854,7 +9105,7 @@ class LateFillRuntimeOwner:
     ) -> list[dict[str, Any]]:
         if not checks:
             return []
-        linked_artifact_contract_fulfilled = self._terminal_linked_artifact_contract_is_fulfilled(
+        linked_artifact_contract_fulfilled = self.linked_artifact_materialization._terminal_linked_artifact_contract_is_fulfilled(
             payload, current_outputs=current_outputs,
         )
         return [
@@ -16993,7 +9244,7 @@ class LateFillRuntimeOwner:
                 or ''
             ).strip()
             if branch_target and check_target:
-                return self._text_artifact_path_matches_target(
+                return text_artifact_materialization._text_artifact_path_matches_target(
                     branch_target,
                     check_target,
                 )
@@ -17142,7 +9393,7 @@ class LateFillRuntimeOwner:
                 check.get('evidence') != 'unresolved_local_dependency_link'
                 or check.get('content_payload_source') != 'closure_local_dependency_link_review'
                 or not str(check.get('content_payload') or '').strip()
-                or not self._artifact_gap_is_authoritative_bounded_text_artifact_repair(check)
+                or not text_artifact_materialization._artifact_gap_is_authoritative_bounded_text_artifact_repair(check)
                 or check.get('materialization_blocked') is True
                 or check.get('needs_external_input') is True
             ):
@@ -17421,7 +9672,7 @@ class LateFillRuntimeOwner:
             branch for branch in failed
             if branch.get('content_payload_source') == 'closure_composed_site_image_composition'
             and branch.get('status') == 'failed'
-            and not self._text_artifact_revision_required(branch)
+            and not text_artifact_materialization._text_artifact_revision_required(branch)
         ]
         if not candidates:
             return updated
@@ -17431,9 +9682,9 @@ class LateFillRuntimeOwner:
         completed = self.normalize_late_fill_branches(updated.get('completed_branches'))
         superseded_ids: set[str] = set()
         for branch in candidates:
-            target = self._text_artifact_target_path_from_mapping(branch)
+            target = LinkedArtifactMaterialization._text_artifact_target_path_from_mapping(branch)
             extension = str(branch.get('text_artifact_extension') or Path(target).suffix).lstrip('.')
-            if not target or self._text_artifact_saved_payload_error(target, extension=extension):
+            if not target or text_artifact_materialization._text_artifact_saved_payload_error(target, extension=extension):
                 continue
             try:
                 digest = hashlib.sha256(Path(target).read_bytes()).hexdigest()
@@ -17511,14 +9762,14 @@ class LateFillRuntimeOwner:
         current_output_state = prepare_response_output_state(
             updated_payload, request_payload=request_payload,
         )
-        updated_payload = self.rebind_terminal_linked_artifacts(
+        updated_payload = self.linked_artifact_materialization.rebind_terminal_linked_artifacts(
             updated_payload, current_outputs=current_output_state['outputs'],
             accepted_fill_results=accepted_fill_results,
         )
         updated_payload = self._repair_terminal_text_artifact_syntax(
             updated_payload, accepted_fill_results=accepted_fill_results,
         )
-        updated_payload = self._repair_terminal_hero_image_composition(
+        updated_payload = self.linked_artifact_materialization._repair_terminal_hero_image_composition(
             updated_payload,
             request_payload=request_payload,
         )
@@ -17534,7 +9785,7 @@ class LateFillRuntimeOwner:
         current_output_state = prepare_response_output_state(
             updated_payload, request_payload=request_payload,
         )
-        updated_payload = self.rebind_terminal_linked_artifacts(
+        updated_payload = self.linked_artifact_materialization.rebind_terminal_linked_artifacts(
             updated_payload, current_outputs=current_output_state['outputs'],
             accepted_fill_results=accepted_fill_results,
         )
@@ -17573,8 +9824,8 @@ class LateFillRuntimeOwner:
             [
                 *self._terminal_materialization_contract_open_checks(updated_payload),
                 *inline_materialization_open_checks,
-                *self._terminal_unresolved_local_dependency_link_open_checks(updated_payload),
-                *self._terminal_web_binding_contract_open_checks(updated_payload),
+                *self.linked_artifact_materialization._terminal_unresolved_local_dependency_link_open_checks(updated_payload),
+                *self.linked_artifact_materialization._terminal_web_binding_contract_open_checks(updated_payload),
             ],
             updated_payload,
             late_fill,
@@ -17609,7 +9860,7 @@ class LateFillRuntimeOwner:
                 late_fill,
                 current_outputs=current_output_state['outputs'],
             )
-        hero_image_check = self._terminal_hero_image_composition_open_check(
+        hero_image_check = self.linked_artifact_materialization._terminal_hero_image_composition_open_check(
             updated_payload,
             request_payload=request_payload,
         )
@@ -17632,7 +9883,7 @@ class LateFillRuntimeOwner:
             and self._terminal_linked_artifact_contract_required(
                 updated_payload, current_outputs=current_output_state['outputs'],
             )
-            and not self._terminal_linked_artifact_contract_is_fulfilled(
+            and not self.linked_artifact_materialization._terminal_linked_artifact_contract_is_fulfilled(
                 updated_payload, current_outputs=current_output_state['outputs'],
             )
         ):
@@ -17648,7 +9899,7 @@ class LateFillRuntimeOwner:
             and self._terminal_linked_artifact_contract_required(
                 updated_payload, current_outputs=current_output_state['outputs'],
             )
-            and not self._terminal_linked_artifact_contract_is_fulfilled(
+            and not self.linked_artifact_materialization._terminal_linked_artifact_contract_is_fulfilled(
                 updated_payload, current_outputs=current_output_state['outputs'],
             )
         ):
@@ -18215,7 +10466,7 @@ class LateFillRuntimeOwner:
             if not read:
                 raise ValueError('saved_file_read_evidence_missing')
             return saved_file_consumer_prompt(saved_contract, read, artifact_request.get('saved_file_syntax_repair'))
-        if content_payload and cls._text_artifact_revision_required(gap):
+        if content_payload and text_artifact_materialization._text_artifact_revision_required(gap):
             # Revision packets are constructed only from a complete, bounded
             # canonical source snapshot. The selected reply itself is not
             # repeated here and cannot become execution authority.
@@ -18252,7 +10503,7 @@ class LateFillRuntimeOwner:
                 ]
             )
             return '\n\n'.join(lines).strip()
-        if content_payload and cls._artifact_gap_is_authoritative_bounded_text_artifact_repair(gap):
+        if content_payload and text_artifact_materialization._artifact_gap_is_authoritative_bounded_text_artifact_repair(gap):
             if len(content_payload) > 90_000:
                 content_payload = f'{content_payload[:90_000].rstrip()}\n\n[repair evidence truncated for prompt size]'
             lines = [
@@ -18383,13 +10634,7 @@ class LateFillRuntimeOwner:
                 return focus[:180].rstrip()
         return ''
 
-    @staticmethod
-    def _branch_local_vision_requires_identity_handoff(original_prompt: str) -> bool:
-        prompt_text = str(original_prompt or '')
-        return bool(
-            _BRANCH_LOCAL_STRUCTURED_JOIN_RE.search(prompt_text)
-            and _BRANCH_LOCAL_ARTIFACT_IDENTITY_FIELD_RE.search(prompt_text)
-        )
+    _branch_local_vision_requires_identity_handoff = staticmethod(BranchDependencyEvidence._branch_local_vision_requires_identity_handoff)
 
     @classmethod
     def _branch_local_vision_has_global_join(cls, original_prompt: str) -> bool:
@@ -18403,7 +10648,7 @@ class LateFillRuntimeOwner:
         )
         return bool(
             has_multiple_artifacts
-            and cls._branch_local_vision_requires_identity_handoff(prompt_text)
+            and BranchDependencyEvidence._branch_local_vision_requires_identity_handoff(prompt_text)
         )
 
     @classmethod
@@ -18427,7 +10672,7 @@ class LateFillRuntimeOwner:
         )
         local_analysis_directive = cls._branch_local_vision_analysis_directive(original_prompt)
         local_evaluation_focus = cls._branch_local_vision_evaluation_focus(original_prompt)
-        requires_identity_handoff = cls._branch_local_vision_requires_identity_handoff(
+        requires_identity_handoff = BranchDependencyEvidence._branch_local_vision_requires_identity_handoff(
             original_prompt
         )
         # Express the bounded task directly. The previous authority/override
@@ -18801,703 +11046,34 @@ class LateFillRuntimeOwner:
         fill_results: list[Any],
         current_payload: Mapping[str, Any],
     ) -> str:
-        """Carry producer identity through an evidence consumer into a terminal join."""
+        return self.branch_dependency_evidence._dependency_result_artifact_identity_evidence(result, fill_results=fill_results, current_payload=current_payload)
 
-        consumer_capability = self.normalize_capability(result.get('capability'))
-        expected_producer_capability = {
-            'vision_analysis': self.capability_image_generation,
-            'speech_to_text': self.capability_text_to_speech,
-        }.get(consumer_capability)
-        if not expected_producer_capability:
-            return ''
+    _bounded_visual_evidence_from_selected_message = staticmethod(BranchDependencyEvidence._bounded_visual_evidence_from_selected_message)
 
-        runtime = (
-            current_payload.get('runtime')
-            if isinstance(current_payload.get('runtime'), Mapping)
-            else {}
-        )
-        phase_graph = (
-            runtime.get('request_phase_graph')
-            if isinstance(runtime.get('request_phase_graph'), Mapping)
-            else {}
-        )
-        graph_records = [
-            item
-            for key in ('phases', 'downstream_branches')
-            for item in (phase_graph.get(key) if isinstance(phase_graph.get(key), list) else [])
-            if isinstance(item, Mapping)
-        ]
-        result_tokens = {
-            str(result.get('phase_id') or '').strip(),
-            str(result.get('branch_id') or '').strip(),
-        }
-        consumer_record = next(
-            (
-                item
-                for item in graph_records
-                if result_tokens.intersection(
-                    {
-                        str(item.get('phase_id') or '').strip(),
-                        str(item.get('branch_id') or '').strip(),
-                    }
-                )
-            ),
-            {},
-        )
-        execution_contract = (
-            result.get('execution_contract')
-            if isinstance(result.get('execution_contract'), Mapping)
-            else {}
-        )
-        dependency_ids: list[str] = []
-        for raw_values in (
-            result.get('depends_on'),
-            execution_contract.get('depends_on'),
-            consumer_record.get('depends_on') if isinstance(consumer_record, Mapping) else None,
-        ):
-            if not isinstance(raw_values, list):
-                continue
-            for value in raw_values:
-                token = str(value or '').strip()
-                if token and token not in dependency_ids:
-                    dependency_ids.append(token)
-        if not dependency_ids:
-            return ''
+    _selected_reference_records_from_payload = staticmethod(BranchDependencyEvidence._selected_reference_records_from_payload)
 
-        producer_results = [
-            item
-            for item in fill_results
-            if isinstance(item, Mapping)
-            and self.normalize_capability(item.get('capability'))
-            == expected_producer_capability
-            and {
-                str(item.get('phase_id') or '').strip(),
-                str(item.get('branch_id') or '').strip(),
-            }.intersection(dependency_ids)
-        ]
-        if len(producer_results) != 1:
-            return ''
-        producer_result = producer_results[0]
-        producer_artifacts = self._artifact_records_from_late_fill_result(producer_result)
-        if not producer_artifacts:
-            return ''
-
-        canonical_artifacts: list[Mapping[str, Any]] = []
-        try:
-            canonical_artifacts = [
-                item
-                for item in self.build_canonical_response_artifacts(dict(current_payload))
-                if isinstance(item, Mapping)
-            ]
-        except Exception:
-            logging.getLogger(__name__).debug(
-                'failed to build canonical artifacts for dependency identity evidence',
-                exc_info=True,
-            )
-        evidence_blocks: list[str] = []
-        producer_phase_id = str(producer_result.get('phase_id') or '').strip()
-        producer_branch_id = str(producer_result.get('branch_id') or '').strip()
-        for artifact in producer_artifacts:
-            path = self._artifact_record_path(artifact)
-            if not path:
-                continue
-            canonical = next(
-                (
-                    item
-                    for item in canonical_artifacts
-                    if self._artifact_record_path(item) == path
-                ),
-                {},
-            )
-            artifact_ref = str(
-                canonical.get('artifact_ref')
-                or canonical.get('ref')
-                or artifact.get('artifact_ref')
-                or artifact.get('ref')
-                or ''
-            ).strip()
-            lines = [
-                'Branch dependency artifact identity (runtime evidence):',
-                f'- producer_phase_id: {producer_phase_id}' if producer_phase_id else '',
-                f'- producer_branch_id: {producer_branch_id}' if producer_branch_id else '',
-                f'- artifact_ref: {artifact_ref}' if artifact_ref else '',
-                f'- artifact_path: {path}',
-            ]
-            block = '\n'.join(line for line in lines if line)
-            if block and block not in evidence_blocks:
-                evidence_blocks.append(block)
-        return '\n\n'.join(evidence_blocks).strip()
-
-    @staticmethod
-    def _bounded_visual_evidence_from_selected_message(content: Any) -> str:
-        """Extract only preserved visual evidence from a carried message."""
-        return _extract_bounded_visual_evidence_from_selected_message(content)
-
-    @staticmethod
-    def _selected_reference_records_from_payload(
-        current_payload: Mapping[str, Any],
-    ) -> list[dict[str, Any]]:
-        records: list[dict[str, Any]] = []
-        sources = [current_payload]
-        request = current_payload.get('request')
-        if isinstance(request, Mapping):
-            sources.append(request)
-        for source in sources:
-            for key in (
-                'selected_reference_artifacts',
-                'selectedReferenceArtifacts',
-                'reference_artifacts',
-                'input_artifacts',
-            ):
-                for item in source.get(key) or []:
-                    if isinstance(item, Mapping) and dict(item) not in records:
-                        records.append(dict(item))
-        return records
-
-    @classmethod
-    def _selected_reference_dependency_payload(
-        cls,
-        branch: Mapping[str, Any],
-        *,
-        current_payload: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        selected_refs = [
-            dict(item)
-            for item in (branch.get('input_refs') or [])
-            if isinstance(item, Mapping)
-            and str(item.get('kind') or '').strip()
-            in {
-                'selected_reference',
-                'selected_reference_artifact',
-                'selected_reference_evidence',
-            }
-        ]
-        if not selected_refs:
-            return {}
-        available = cls._selected_reference_records_from_payload(current_payload)
-        evidence_blocks: list[str] = []
-        reference_artifacts: list[dict[str, Any]] = []
-        for selected in selected_refs:
-            selected_kind = str(selected.get('kind') or '').strip()
-            selected_role = str(selected.get('role') or '').strip()
-            is_artifact_reference = (
-                selected_kind == 'selected_reference_artifact'
-                or selected_role == 'preserved_visual_artifact'
-            )
-            match_keys = (
-                ('artifact_ref', 'ref', 'path')
-                if is_artifact_reference
-                else ('message_id', 'source_response_id')
-            )
-            authoritative_values = {
-                key: str(selected.get(key) or '').strip()
-                for key in match_keys
-                if str(selected.get(key) or '').strip()
-            }
-            if not authoritative_values:
-                return {
-                    'branch_contract_error': 'selected_reference_unavailable',
-                    'materialization_blocked': True,
-                    'repair_action': RECOVERY_ACTION_REPAIR_BRANCH_CONTRACT,
-                }
-            matches: list[dict[str, Any]] = []
-            matched_identities: set[tuple[str, ...]] = set()
-            for record in available:
-                record_ref = str(record.get('artifact_ref') or record.get('ref') or '').strip()
-                record_values = {
-                    'artifact_ref': record_ref,
-                    'ref': record_ref,
-                    'path': str(record.get('path') or record.get('artifact_path') or '').strip(),
-                    'message_id': str(record.get('message_id') or '').strip(),
-                    'source_response_id': str(record.get('source_response_id') or '').strip(),
-                }
-                if all(record_values.get(key) == value for key, value in authoritative_values.items()):
-                    if is_artifact_reference:
-                        identity = (
-                            'artifact',
-                            record_ref,
-                            record_values['path'],
-                            str(record.get('type') or record.get('kind') or '').strip().lower(),
-                            str(record.get('source_response_id') or '').strip(),
-                            str(
-                                record.get('source_message_id')
-                                or record.get('message_id')
-                                or ''
-                            ).strip(),
-                        )
-                    else:
-                        identity = (
-                            'message',
-                            record_values['message_id'],
-                            record_values['source_response_id'],
-                            str(record.get('content') or record.get('text') or '').strip(),
-                        )
-                    if identity not in matched_identities:
-                        matched_identities.add(identity)
-                        matches.append(record)
-            if len(matches) != 1:
-                return {
-                    'branch_contract_error': (
-                        'selected_reference_unavailable'
-                        if not matches
-                        else 'selected_reference_ambiguous'
-                    ),
-                    'materialization_blocked': True,
-                    'repair_action': RECOVERY_ACTION_REPAIR_BRANCH_CONTRACT,
-                }
-            record = matches[0]
-            if is_artifact_reference:
-                artifact_ref = str(
-                    record.get('artifact_ref') or record.get('ref') or ''
-                ).strip()
-                path = str(record.get('path') or record.get('artifact_path') or '').strip()
-                artifact = {
-                    key: value
-                    for key, value in {
-                        'type': record.get('type') or record.get('kind'),
-                        'kind': record.get('kind') or record.get('type'),
-                        'artifact_ref': artifact_ref or None,
-                        'ref': artifact_ref or None,
-                        'path': path or None,
-                        'source_response_id': record.get('source_response_id'),
-                        'source_message_id': record.get('source_message_id') or record.get('message_id'),
-                    }.items()
-                    if value not in (None, '')
-                }
-                reference_artifacts.append(artifact)
-                evidence_blocks.append(
-                    '\n'.join(
-                        line
-                        for line in (
-                            'Selected preserved visual artifact (runtime-bound; do not regenerate):',
-                            f'- artifact_ref: {artifact_ref}' if artifact_ref else '',
-                            f'- artifact_path: {path}' if path else '',
-                        )
-                        if line
-                    )
-                )
-                continue
-            visual_evidence = cls._bounded_visual_evidence_from_selected_message(
-                record.get('content') or record.get('text')
-            )
-            if not visual_evidence:
-                return {
-                    'branch_contract_error': 'selected_reference_evidence_unavailable',
-                    'materialization_blocked': True,
-                    'repair_action': RECOVERY_ACTION_REPAIR_BRANCH_CONTRACT,
-                }
-            evidence_blocks.append(
-                'Selected preserved visual evidence (runtime-bound; do not reanalyze):\n'
-                + visual_evidence
-            )
-        return {
-            'evidence_blocks': evidence_blocks,
-            'reference_artifacts': reference_artifacts,
-            'selected_reference_evidence_bound': True,
-        }
+    _selected_reference_dependency_payload = staticmethod(BranchDependencyEvidence._selected_reference_dependency_payload)
 
     def _saved_file_dependency_payload(self, branch, current_payload):
-        contract = saved_file_dependency_contract(branch)
-        try:
-            if (any(branch.get(key) != contract.get('consumer_' + key)
-                    for key in ('branch_id', 'phase_id'))
-                    or branch.get('depends_on') != [contract.get('producer_phase_id')]):
-                raise ValueError('saved_file_read_consumer_contract_mismatch')
-            results = (current_payload.get('late_fill') or {}).get('fill_results') or []
-            producers = [r for r in results if isinstance(r, Mapping)
-                and r.get('branch_id') == contract['producer_branch_id']
-                and r.get('phase_id') == contract['producer_phase_id']]
-            if len(producers) != 1:
-                raise ValueError('saved_file_read_producer_missing_or_ambiguous')
-            snapshot = producers[0].get('saved_file_output_snapshot') or {}
-            if not snapshot.get('sha256'):
-                raise ValueError('saved_file_read_saved_version_missing')
-            read = read_saved_file_snapshot(snapshot['path'], self.resolve_saved_file_input_path)
-            read.update({key: snapshot.get(key) for key in
-                ('artifact_ref', 'artifact_id', 'source_response_id', 'branch_id', 'phase_id')})
-            read.update({key: contract[key] for key in
-                ('producer_branch_id', 'producer_phase_id', 'consumer_branch_id', 'consumer_phase_id')})
-            read['response_id'] = current_payload.get('id')
-            issue = saved_file_read_issue(contract, read, current_payload)
-            if issue:
-                raise ValueError(issue)
-            return {'saved_file_read_evidence': read,
-                    'content_payload': saved_file_read_text(read), 'content_payload_source': 'saved_file_read',
-                    'input_refs': [{'kind': 'saved_file_read', **{key: value for key, value in read.items() if key != 'utf8_base64'}}],
-                    'suppress_reference_file_context': True}
-        except (OSError, ValueError, KeyError, TypeError, AttributeError, UnicodeError) as exc:
-            return {'branch_contract_error': str(exc), 'materialization_blocked': True,
-                    'repair_action': RECOVERY_ACTION_REPAIR_DEPENDENCY_CHAIN}
+        return self.branch_dependency_evidence._saved_file_dependency_payload(branch, current_payload)
 
     def saved_file_consumption_error(self, branch, infer_result, *, current_payload):
-        issue = saved_file_consumption_issue(branch, infer_result, current_payload or {})
-        if issue:
-            return {'code': 'DEPENDENCY_CHAIN_REPAIR_REQUIRED', 'reason_code': issue,
-                    'message': issue, 'stage': 'saved_file_evidence_gate', 'retryable': False,
-                    'materialization_blocked': True}
-        return None
+        return self.branch_dependency_evidence.saved_file_consumption_error(branch, infer_result, current_payload=current_payload)
 
-    @observe_state('late_fill.dependency_binding', 'saved_dependency_evidence', 'bound_branch_dependency', labels=('NEW_AUTHORITY_BOUNDARY',), new_authority_boundary=True)
     def branch_dependency_payload(
         self,
         branch: Mapping[str, Any],
         *,
         current_payload: Mapping[str, Any],
     ) -> dict[str, Any]:
-        if self._content_review_binding(branch):
-            # Closure already gathered the exact source/output packet. Replacing
-            # it with a dependency's answer would remove the review task itself.
-            return {'dependency_payload_policy': 'preserve_bound_content_review_packet'}
-        if separate_image_report_contract(branch):
-            try:
-                evidence = assemble_separate_image_reports(branch, current_payload, self.resolve_saved_file_input_path)
-                return {'content_payload': render_separate_image_reports(evidence),
-                        'content_payload_source': 'prior_artifact_result',
-                        'dependency_payload_policy': 'deliver_accepted_separate_image_reports'}
-            except (OSError, AttributeError, KeyError, TypeError, ValueError, UnicodeError) as exc:
-                return {'branch_contract_error': str(exc), 'materialization_blocked': True,
-                        'repair_action': RECOVERY_ACTION_REPAIR_DEPENDENCY_CHAIN}
-        if saved_file_dependency_contract(branch):
-            return self._saved_file_dependency_payload(branch, current_payload)
-        depends_on = [
-            str(item or '').strip()
-            for item in (branch.get('depends_on') or [])
-            if str(item or '').strip()
-        ]
-        selected_reference_payload = self._selected_reference_dependency_payload(
-            branch,
-            current_payload=current_payload,
-        )
-        if selected_reference_payload.get('branch_contract_error'):
-            return selected_reference_payload
-        if self._branch_has_current_turn_direct_media_payload(branch):
-            return {
-                'dependency_payload_policy': (
-                    'preserve_current_turn_direct_media_payload'
-                )
-            }
-        if not depends_on and not selected_reference_payload:
-            return {}
-        target_capability = self.normalize_capability(branch.get('capability'))
-        runtime_payload = (
-            current_payload.get('runtime')
-            if isinstance(current_payload.get('runtime'), Mapping)
-            else {}
-        )
-        phase_graph_payload = (
-            runtime_payload.get('request_phase_graph')
-            if isinstance(runtime_payload.get('request_phase_graph'), Mapping)
-            else {}
-        )
-        request_payload = (
-            current_payload.get('request')
-            if isinstance(current_payload.get('request'), Mapping)
-            else {}
-        )
-        identity_handoff_prompt = str(
-            phase_graph_payload.get('prompt')
-            or self._request_payload_prompt_text(request_payload)
-            or self._request_payload_prompt_text(current_payload)
-            or ''
-        ).strip()
-        structured_identity_handoff = bool(
-            target_capability == 'chat'
-            and self._branch_local_vision_requires_identity_handoff(
-                identity_handoff_prompt
-            )
-        )
-        matched_result_payloads: list[tuple[str, str]] = [
-            ('selected_reference', block)
-            for block in (selected_reference_payload.get('evidence_blocks') or [])
-            if str(block or '').strip()
-        ]
-        if 'phase-1' in depends_on:
-            output_text = str((current_payload or {}).get('output_text') or '').strip()
-            if output_text:
-                if control_json_envelope_suspected(output_text):
-                    return {
-                        'branch_contract_error': 'control_envelope_not_speakable',
-                        'materialization_blocked': True,
-                        'repair_action': RECOVERY_ACTION_REPAIR_BRANCH_CONTRACT,
-                        'content_payload_source': 'rejected_current_phase_output',
-                    }
-                runtime = (
-                    current_payload.get('runtime')
-                    if isinstance(current_payload.get('runtime'), Mapping)
-                    else {}
-                )
-                phase_graph = (
-                    runtime.get('request_phase_graph')
-                    if isinstance(runtime.get('request_phase_graph'), Mapping)
-                    else {}
-                )
-                current_capability = self.normalize_capability(
-                    phase_graph.get('current_phase_capability')
-                )
-                declared_source = str(branch.get('content_payload_source') or '').strip()
-                if current_capability and current_capability != 'chat':
-                    allowed_sources = {
-                        'current_phase_output',
-                        f'{current_capability}_branch_result',
-                    }
-                    if current_capability == 'speech_to_text':
-                        allowed_sources.add('speech_to_text_branch_result')
-                    if declared_source not in allowed_sources:
-                        output_text = ''
-                if output_text:
-                    if len(depends_on) == 1:
-                        return {
-                            'content_payload': output_text,
-                            'content_payload_source': 'current_phase_output',
-                        }
-                    matched_result_payloads.append(('phase-1', output_text))
-        late_fill = (
-            current_payload.get('late_fill')
-            if isinstance(current_payload.get('late_fill'), Mapping)
-            else {}
-        )
-        fill_results = (
-            late_fill.get('fill_results')
-            if isinstance(late_fill.get('fill_results'), list)
-            else []
-        )
-        dependency_input_artifacts: list[dict[str, Any]] = []
-        for result in fill_results:
-            if not isinstance(result, Mapping):
-                continue
-            result_tokens = {
-                str(result.get('branch_id') or '').strip(),
-                str(result.get('phase_id') or '').strip(),
-            }
-            if not any(token and token in depends_on for token in result_tokens):
-                continue
-            if self.late_fill_result_has_missing_dependency_evidence(result):
-                continue
-            result_id = str(result.get('branch_id') or result.get('phase_id') or '').strip()
-            if target_capability in {'vision_analysis', 'speech_to_text'}:
-                for artifact in self._artifact_records_from_late_fill_result(result):
-                    artifact_type = str(artifact.get('type') or artifact.get('kind') or '').strip().lower()
-                    if (
-                        target_capability == 'vision_analysis'
-                        and artifact_type in {'image', 'png', 'jpg', 'jpeg', 'webp'}
-                    ) or (
-                        target_capability == 'speech_to_text'
-                        and artifact_type in {'audio', 'wav', 'mp3', 'm4a', 'flac', 'aac', 'ogg', 'opus'}
-                    ):
-                        dependency_input_artifacts.append(artifact)
-            result_text = self.late_fill_text_from_result_payload(result)
-            if result_text:
-                if structured_identity_handoff:
-                    identity_evidence = self._dependency_result_artifact_identity_evidence(
-                        result,
-                        fill_results=fill_results,
-                        current_payload=current_payload,
-                    )
-                    if identity_evidence:
-                        result_text = f'{result_text}\n\n{identity_evidence}'.strip()
-                matched_result_payloads.append(
-                    (
-                        result_id,
-                        result_text,
-                    )
-                )
-                continue
-            artifact_evidence = self._artifact_evidence_text(result)
-            if artifact_evidence:
-                matched_result_payloads.append(
-                    (
-                        result_id,
-                        artifact_evidence,
-                    )
-                )
-        if dependency_input_artifacts and target_capability in {'vision_analysis', 'speech_to_text'}:
-            if target_capability == 'speech_to_text':
-                contract = branch.get('execution_contract') or branch
-                input_refs = contract.get('input_refs') or []
-                exact_refs = {item.get('artifact_ref') or item.get('ref') for item in input_refs
-                              if isinstance(item, Mapping) and (item.get('artifact_ref') or item.get('ref'))}
-                exact_phases = {item.get('phase_id') for item in input_refs
-                                if isinstance(item, Mapping) and item.get('kind') == 'phase_output'
-                                and item.get('phase_id')}
-                if exact_refs:
-                    dependency_input_artifacts = [a for a in dependency_input_artifacts
-                                                  if a.get('artifact_ref') in exact_refs]
-                elif exact_phases:
-                    dependency_input_artifacts = [a for a in dependency_input_artifacts
-                                                  if a.get('phase_id') in exact_phases]
-                if not dependency_input_artifacts:
-                    raise ValueError('Direct audio dependency identity unavailable for accepted input refs.')
-            first_path = str(dependency_input_artifacts[0].get('path') or '').strip()
-            evidence = '\n'.join(
-                f"{str(item.get('type') or item.get('kind') or 'artifact').strip() or 'artifact'} artifact: {str(item.get('path') or '').strip()}"
-                for item in dependency_input_artifacts
-                if str(item.get('path') or '').strip()
-            ).strip()
-            payload: dict[str, Any] = {
-                'input_artifacts': dependency_input_artifacts,
-                'reference_artifacts': dependency_input_artifacts,
-            }
-            if first_path:
-                payload['file_path'] = first_path
-            if evidence:
-                payload['content_payload'] = evidence
-                payload['content_payload_source'] = 'late_fill_dependency_artifacts'
-            return payload
-        selected_reference_artifacts = [
-            dict(item)
-            for item in (selected_reference_payload.get('reference_artifacts') or [])
-            if isinstance(item, Mapping)
-        ]
-        if len(matched_result_payloads) == 1:
-            result_id, result_text = matched_result_payloads[0]
-            if result_text:
-                payload = {
-                    'content_payload': result_text,
-                    'content_payload_source': f'late_fill_result:{result_id}',
-                }
-                if selected_reference_artifacts:
-                    payload['reference_artifacts'] = selected_reference_artifacts
-                    payload['selected_reference_evidence_bound'] = True
-                return payload
-        if matched_result_payloads:
-            combined = '\n\n'.join(
-                f'{result_id}: {result_text}' if result_id else result_text
-                for result_id, result_text in matched_result_payloads
-                if result_text
-            ).strip()
-            if combined:
-                payload = {
-                    'content_payload': combined,
-                    'content_payload_source': 'late_fill_results:' + ','.join(
-                        result_id for result_id, _text in matched_result_payloads if result_id
-                    ),
-                }
-                if selected_reference_artifacts:
-                    payload['reference_artifacts'] = selected_reference_artifacts
-                    payload['selected_reference_evidence_bound'] = True
-                return payload
-        return {}
+        return self.branch_dependency_evidence.branch_dependency_payload(branch, current_payload=current_payload)
 
     def merge_late_fill_result_fields(
         self,
         response_payload: dict[str, Any],
         infer_result: dict[str, Any],
     ) -> dict[str, Any]:
-        updated = dict(response_payload or {})
-        existing_output_artifacts = self.merge_unique_artifact_records(
-            updated.get('artifacts'),
-            [],
-        )
-        identified_existing_paths = {
-            self._artifact_record_path(item)
-            for item in existing_output_artifacts
-            if self._artifact_record_path(item)
-            and str(
-                item.get('artifact_id')
-                or item.get('artifact_ref')
-                or item.get('ref')
-                or ''
-            ).strip()
-        }
-        existing_refs = {
-            str(item.get('artifact_ref') or item.get('ref') or '').strip()
-            for item in existing_output_artifacts
-            if str(item.get('artifact_ref') or item.get('ref') or '').strip()
-        }
-        missing_existing_artifacts = [
-            item
-            for item in self.build_canonical_response_artifacts(updated)
-            if (
-                (
-                    not self._artifact_record_path(item)
-                    or self._artifact_record_path(item) not in identified_existing_paths
-                )
-                and (
-                    not str(item.get('artifact_ref') or item.get('ref') or '').strip()
-                    or str(item.get('artifact_ref') or item.get('ref') or '').strip() not in existing_refs
-                )
-            )
-        ]
-        existing_output_artifacts = self.merge_unique_artifact_records(
-            existing_output_artifacts,
-            missing_existing_artifacts,
-        )
-        for key in (
-            'saved_text_path',
-            'saved_text_artifacts',
-            'text_artifact_requests',
-            'text_artifact_revision_required',
-            'text_artifact_source_is_input',
-            'text_artifact_revision_write_proof',
-            'text_artifact_revision_preservation_evidence',
-            'saved_audio_path',
-            'saved_image_path',
-            'image_data_url',
-            'seed',
-            'image_state',
-            'audio_mimetype',
-            'lang_code',
-            'lang_code_source',
-            'voice',
-            'instruct',
-            'response_format',
-            'output_format',
-            'speed',
-            'pitch',
-            'tts_semantic_source',
-            'tts_generation_budget',
-            'tts_sampling_profile',
-            'tts_audio_integrity_evidence',
-            'reference_image_count',
-            'reference_image_kind',
-            'cached',
-            'cache_id',
-            'result',
-            'image_artifact_persisted_from_raw_late_fill',
-            'retained_input_alias_required',
-            'retained_input_binding_state',
-            'retained_input_source_path',
-            'retained_input_source_name',
-            'retained_input_target_name',
-            'retained_input_source_sha256',
-            'retained_input_target_sha256',
-            'retained_input_byte_identical',
-            'provenance_id',
-            'derived_from',
-        ):
-            if key in infer_result and infer_result.get(key) not in (None, ''):
-                updated[key] = infer_result.get(key)
-        for key in ('input_artifacts', 'reference_artifacts'):
-            if key not in infer_result:
-                continue
-            merged_artifacts = self.merge_unique_artifact_records(
-                updated.get(key),
-                infer_result.get(key),
-            )
-            if merged_artifacts:
-                updated[key] = merged_artifacts
-        existing_warnings = [
-            str(item).strip()
-            for item in (updated.get('warnings') or [])
-            if str(item).strip()
-        ]
-        new_warnings = [
-            str(item).strip()
-            for item in (infer_result.get('warnings') or [])
-            if str(item).strip()
-        ]
-        if existing_warnings or new_warnings:
-            updated['warnings'] = list(dict.fromkeys(existing_warnings + new_warnings))
-        incoming_output_artifacts = self.build_branch_local_late_fill_artifacts(
-            updated,
-            infer_result,
-        )
-        merged_output_artifacts = self.merge_unique_artifact_records(
-            existing_output_artifacts,
-            incoming_output_artifacts,
-        )
-        updated['artifacts'] = merged_output_artifacts
-        return updated
+        return self.branch_dependency_evidence.merge_late_fill_result_fields(response_payload, infer_result)
 
     def build_branch_local_late_fill_artifacts(
         self,
@@ -19506,76 +11082,7 @@ class LateFillRuntimeOwner:
         *,
         capability: Optional[str] = None,
     ) -> list[dict[str, Any]]:
-        """Canonicalize only one producer result without aggregate identity leakage."""
-        branch_payload = dict(infer_result or {})
-        response_id = str(
-            response_payload.get('id')
-            or response_payload.get('response_id')
-            or ''
-        ).strip()
-        if response_id:
-            branch_payload['id'] = response_id
-            branch_payload['response_id'] = response_id
-        artifacts = self.merge_unique_artifact_records(
-            infer_result.get('artifacts'),
-            self.build_canonical_response_artifacts(branch_payload),
-        )
-
-        normalized_capability = self.normalize_capability(
-            capability
-            or infer_result.get('capability')
-            or infer_result.get('mode')
-        )
-        artifact_type = self.artifact_type_for_capability(normalized_capability)
-        path_key_by_type = {
-            'audio': 'saved_audio_path',
-            'image': 'saved_image_path',
-            'text': 'saved_text_path',
-        }
-        primary_path = str(
-            infer_result.get(path_key_by_type.get(str(artifact_type or ''), ''))
-            or ''
-        ).strip()
-        if not primary_path:
-            for path_key in ('saved_image_path', 'saved_audio_path', 'saved_text_path'):
-                candidate = str(infer_result.get(path_key) or '').strip()
-                if candidate:
-                    primary_path = candidate
-                    break
-        primary_artifact = next(
-            (
-                item
-                for item in artifacts
-                if (
-                    (not primary_path or self._artifact_record_path(item) == primary_path)
-                    and (
-                        not artifact_type
-                        or str(item.get('type') or item.get('kind') or '').strip().lower()
-                        == artifact_type
-                    )
-                )
-            ),
-            None,
-        )
-        if primary_artifact is None and len(artifacts) == 1:
-            primary_artifact = artifacts[0]
-
-        if primary_artifact is not None:
-            explicit_artifact_id = str(infer_result.get('artifact_id') or '').strip()
-            explicit_artifact_ref = str(
-                infer_result.get('artifact_ref')
-                or infer_result.get('ref')
-                or ''
-            ).strip()
-            if explicit_artifact_id:
-                primary_artifact['artifact_id'] = explicit_artifact_id
-            if explicit_artifact_ref:
-                primary_artifact['artifact_ref'] = explicit_artifact_ref
-                primary_artifact['ref'] = explicit_artifact_ref
-            elif explicit_artifact_id:
-                primary_artifact['artifact_ref'] = f'artifact:{explicit_artifact_id}'
-                primary_artifact['ref'] = primary_artifact['artifact_ref']
-        return artifacts
+        return self.branch_dependency_evidence.build_branch_local_late_fill_artifacts(response_payload, infer_result, capability=capability)
 
     def attach_late_fill_result_artifact_identity(
         self,
@@ -19585,81 +11092,7 @@ class LateFillRuntimeOwner:
         *,
         capability: Optional[str] = None,
     ) -> dict[str, Any]:
-        """Persist a branch's own artifact identity on its durable fill result."""
-        updated = dict(fill_record or {})
-        artifacts = self.build_branch_local_late_fill_artifacts(
-            response_payload,
-            infer_result,
-            capability=capability,
-        )
-        if not artifacts:
-            return updated
-
-        binding_keys = ('branch_id', 'phase_id', 'slot_id', 'obligation_id', 'output_type')
-        bound_artifacts: list[dict[str, Any]] = []
-        for raw_artifact in artifacts:
-            artifact = dict(raw_artifact)
-            for key in binding_keys:
-                if updated.get(key) not in (None, '', [], {}):
-                    artifact.setdefault(key, updated.get(key))
-            bound_artifacts.append(artifact)
-        updated['artifacts'] = self.merge_unique_artifact_records(
-            updated.get('artifacts'),
-            bound_artifacts,
-        )
-
-        artifact_type = self.artifact_type_for_capability(
-            self.normalize_capability(
-                capability
-                or infer_result.get('capability')
-                or infer_result.get('mode')
-            )
-        )
-        path_key_by_type = {
-            'audio': 'saved_audio_path',
-            'image': 'saved_image_path',
-            'text': 'saved_text_path',
-        }
-        primary_path = str(
-            infer_result.get(path_key_by_type.get(str(artifact_type or ''), ''))
-            or ''
-        ).strip()
-        primary_artifact = next(
-            (
-                item
-                for item in updated['artifacts']
-                if (
-                    (not primary_path or self._artifact_record_path(item) == primary_path)
-                    and (
-                        not artifact_type
-                        or str(item.get('type') or item.get('kind') or '').strip().lower()
-                        == artifact_type
-                    )
-                )
-            ),
-            None,
-        )
-        if primary_artifact is None and len(updated['artifacts']) == 1:
-            primary_artifact = updated['artifacts'][0]
-        snapshot = updated.get('saved_file_output_snapshot')
-        if isinstance(snapshot, Mapping) and primary_artifact is not None:
-            if primary_artifact.get('path') != snapshot.get('path'):
-                raise ValueError('saved_file_output_identity_mismatch')
-            updated['saved_file_output_snapshot'] = {**dict(snapshot), **{
-                key: primary_artifact.get(key) for key in
-                ('artifact_ref', 'artifact_id', 'source_response_id', 'branch_id', 'phase_id')}}
-        if primary_artifact is not None:
-            for key in (
-                'artifact_id',
-                'artifact_ref',
-                'ref',
-                'provenance_id',
-                'derived_from',
-                'source_response_id',
-            ):
-                if updated.get(key) in (None, '', [], {}) and primary_artifact.get(key) not in (None, '', [], {}):
-                    updated[key] = primary_artifact.get(key)
-        return updated
+        return self.branch_dependency_evidence.attach_late_fill_result_artifact_identity(fill_record, response_payload, infer_result, capability=capability)
 
     def persist_raw_image_result_if_possible(
         self,
@@ -19754,7 +11187,7 @@ class LateFillRuntimeOwner:
                 # Do not project replacement infer fields/artifacts before the
                 # envelope owner rejects that callback's replacement evidence.
                 return attached
-        updated = self.merge_late_fill_result_fields(response_payload, infer_result)
+        updated = self.branch_dependency_evidence.merge_late_fill_result_fields(response_payload, infer_result)
         return self.attach_late_fill_state(updated, late_fill_state)
 
     def build_deferred_follow_up_gap_for_capability(
@@ -19972,7 +11405,7 @@ class LateFillRuntimeOwner:
                 'infer_payload': {},
                 'expose_input_artifacts': False,
             }
-        late_fill_request_payload = self.merge_late_fill_payload_artifacts(
+        late_fill_request_payload = branch_result_contracts.merge_late_fill_payload_artifacts(
             late_fill_request_payload,
             current_payload,
             source_route_payload,
@@ -20264,7 +11697,7 @@ class LateFillRuntimeOwner:
                 normalized['target_path'] = target_path
             normalized_requests.append(normalized)
 
-        provider_text = self.late_fill_text_from_result_payload(provider_result)
+        provider_text = branch_result_contracts.late_fill_text_from_result_payload(provider_result)
         extracted_payloads = extract_text_artifact_payloads(
             provider_text,
             normalized_requests,
@@ -20340,7 +11773,7 @@ class LateFillRuntimeOwner:
                 payload_by_request_index[request_index].get('content') or ''
             ).strip()
             canonical_content, content_error = (
-                self._text_artifact_content_payload_error(
+                text_artifact_materialization._text_artifact_content_payload_error(
                     extracted_content,
                     extension=extension,
                     saved_path=target_path,
@@ -20479,7 +11912,7 @@ class LateFillRuntimeOwner:
             }
             if target_path:
                 materialized, materialization_error = (
-                    self._materialize_required_text_artifact_target_path(
+                    text_artifact_materialization._materialize_required_text_artifact_target_path(
                         request_branch,
                         materialization_result,
                         request_payload,
@@ -20523,7 +11956,7 @@ class LateFillRuntimeOwner:
                         'TEXT_ARTIFACT_NOT_PERSISTED: Fruth could not allocate '
                         'and save the external chat file body.'
                     )
-                saved_error = self._text_artifact_saved_payload_error(
+                saved_error = text_artifact_materialization._text_artifact_saved_payload_error(
                     saved_path,
                     extension=extension,
                 )
@@ -20535,7 +11968,7 @@ class LateFillRuntimeOwner:
                     raise RuntimeError(
                         f"{code}: {saved_error.get('message') or 'The Fruth-persisted file body did not pass saved-truth checks.'}"
                     )
-                saved_artifact_request = self._required_text_artifact_request(
+                saved_artifact_request = text_artifact_materialization._required_text_artifact_request(
                     request_branch,
                     materialization_result,
                     request_payload,
@@ -20543,7 +11976,7 @@ class LateFillRuntimeOwner:
                     source_name=source_name,
                     target_path=saved_path,
                 )
-                materialized = self._with_required_text_artifact_saved_result(
+                materialized = text_artifact_materialization._with_required_text_artifact_saved_result(
                     materialization_result,
                     target_path=saved_path,
                     content=extracted_content,
@@ -20587,7 +12020,7 @@ class LateFillRuntimeOwner:
         self._validate_vision_retry_input(plan)
         infer_payload = plan.get('infer_payload') if isinstance(plan.get('infer_payload'), dict) else {}
         saved_execution = copy.deepcopy(plan.get('execution_contract') or {})
-        content_review_binding = self._content_review_binding(saved_execution)
+        content_review_binding = BranchDependencyEvidence._content_review_binding(saved_execution)
         if content_review_binding:
             submitted = str(infer_payload.get('prompt') or '')
             if hashlib.sha256(submitted.encode('utf-8')).hexdigest() != content_review_binding.get('instruction_sha256'):
@@ -20630,7 +12063,7 @@ class LateFillRuntimeOwner:
                 identity = [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
                 if current_target != target or identity != syntax_repair['file_identity']:
                     raise ValueError('saved_file_syntax_repair_target_changed')
-                issues = ResponseSemanticsRuntimeOwner.text_artifact_syntax_sanity_issues_for_extension(
+                issues = text_artifact_syntax_sanity_issues_for_extension(
                     syntax_repair['target_request']['extension'], saved_file_read_text(current_target))
                 if issues != syntax_repair['syntax_sanity_issues']:
                     raise ValueError('saved_file_syntax_repair_defect_changed')
@@ -20709,7 +12142,7 @@ class LateFillRuntimeOwner:
             infer_result = {'content': text, 'output_text': text, 'result_text': text,
                             'report_delivery_evidence': evidence, 'execution_contract': saved_execution}
         elif retained_alias_contract:
-            infer_result = self._materialize_retained_input_alias(
+            infer_result = self.text_artifact_files._materialize_retained_input_alias(
                 plan,
                 retained_alias_contract,
             )
@@ -20826,12 +12259,31 @@ class LateFillRuntimeOwner:
             internal_inputs = {}
             if plan.get('direct_audio_dependency') is not None:
                 internal_inputs['direct_audio_dependency'] = plan['direct_audio_dependency']
-            infer_result, status_code = self.invoke_internal_api_json_route(
-                payload=infer_payload,
-                upload=None,
-                **internal_inputs,
-            )
+            from fruth_core.pdf_preparation import PdfPreparationError, pdf_cancellation_scope
+
+            def pdf_branch_cancelled():
+                response_id = str(plan.get('response_id') or '').strip()
+                if not response_id:
+                    return False
+                record = self.get_response_lookup_record(response_id) or {}
+                current = record.get('response_payload')
+                if not isinstance(current, Mapping):
+                    return False
+                decision = self.semantic_execution_gate_decision(plan, current)
+                return decision.get('action') == 'skip'
+
+            # Only the existing branch authority may interrupt PDF preparation.
+            # Final post-execution relevance and compare-and-swap gates remain.
+            with pdf_cancellation_scope(pdf_branch_cancelled):
+                infer_result, status_code = self.invoke_internal_api_json_route(
+                    payload=infer_payload,
+                    upload=None,
+                    **internal_inputs,
+                )
             if status_code >= 400:
+                preparation_error = PdfPreparationError.from_response(infer_result)
+                if preparation_error is not None:
+                    raise preparation_error
                 exc = RuntimeError(str(infer_result.get('error') or 'Late fill request failed.'))
                 exc.status_code = status_code
                 raise exc
@@ -20912,7 +12364,7 @@ class LateFillRuntimeOwner:
             if len(saved_outputs) > 1 or any(item.get('path') != path for item in saved_outputs):
                 raise ValueError('saved_file_output_ambiguous')
             output_record = saved_outputs[0] if saved_outputs else {'path': path}
-            if not self._saved_text_artifact_matches_request(output_record, saved_request):
+            if not TextArtifactResultEvidence._saved_text_artifact_matches_request(output_record, saved_request):
                 raise ValueError('saved_file_output_request_mismatch')
             snapshot = read_saved_file_snapshot(path, self.resolve_saved_file_input_path)
             infer_result = dict(infer_result)
@@ -20945,7 +12397,7 @@ class LateFillRuntimeOwner:
             and self.normalize_capability(plan.get('capability'))
             == self.capability_text_to_speech
         ):
-            semantic_source = self.tts_source_evidence_from_prepared_plan(
+            semantic_source = TtsResultEvidence.tts_source_evidence_from_prepared_plan(
                 plan,
                 infer_result=infer_result,
             )
@@ -20959,7 +12411,7 @@ class LateFillRuntimeOwner:
             }
             if isinstance(execution_contract, Mapping):
                 integrity_branch.update(dict(execution_contract))
-            integrity_evidence = self.tts_audio_integrity_evidence_for_branch_result(
+            integrity_evidence = self.tts_result_evidence.tts_audio_integrity_evidence_for_branch_result(
                 integrity_branch,
                 infer_result,
             )
@@ -21149,16 +12601,16 @@ class LateFillRuntimeOwner:
             value = branch.get(key)
             if value not in (None, '', [], {}):
                 branch_gap[key] = value
-        revision_source_payload = self._text_artifact_revision_source_payload(
+        revision_source_payload = TextArtifactFiles._text_artifact_revision_source_payload(
             branch,
             branch_gap,
         )
         if revision_source_payload:
             branch_gap.update(revision_source_payload)
         if (
-            self._text_artifact_revision_required(branch, branch_gap)
+            text_artifact_materialization._text_artifact_revision_required(branch, branch_gap)
             and self._text_artifact_revision_preservation_requested(
-                self._request_payload_prompt_text(request_payload)
+                BranchDependencyEvidence._request_payload_prompt_text(request_payload)
             )
         ):
             branch_gap['text_artifact_revision_preservation_required'] = True
@@ -21166,11 +12618,11 @@ class LateFillRuntimeOwner:
                 'structural_anchor_retention_v1'
             )
         preserve_authoritative_text_repair_payload = (
-            self._artifact_gap_is_authoritative_bounded_text_artifact_repair(branch_gap)
+            text_artifact_materialization._artifact_gap_is_authoritative_bounded_text_artifact_repair(branch_gap)
             and str(branch_gap.get('content_payload') or '').strip()
         )
         preserve_text_artifact_revision_source = bool(
-            self._text_artifact_revision_required(branch, branch_gap)
+            text_artifact_materialization._text_artifact_revision_required(branch, branch_gap)
             and str(branch_gap.get('content_payload') or '').strip()
             and str(branch_gap.get('content_payload_source') or '').strip()
             == 'canonical_predecessor_text_artifact_snapshot'
@@ -21180,7 +12632,7 @@ class LateFillRuntimeOwner:
             and str(branch_gap.get('content_payload_source') or '').strip()
             == 'current_turn_direct_spoken_clause'
         )
-        dependency_payload = self.branch_dependency_payload(
+        dependency_payload = self.branch_dependency_evidence.branch_dependency_payload(
             branch,
             current_payload=current_payload,
         )
@@ -21280,7 +12732,7 @@ class LateFillRuntimeOwner:
             and not isinstance(branch_gap.get('batch_prompts'), list)
         ):
             request_prompt_units = self._extract_late_fill_image_prompt_units(
-                self._request_payload_prompt_text(request_payload)
+                BranchDependencyEvidence._request_payload_prompt_text(request_payload)
             )
             if len(request_prompt_units) >= 2:
                 branch_gap['batch_prompts'] = request_prompt_units
@@ -21381,7 +12833,7 @@ class LateFillRuntimeOwner:
             branch_gap.setdefault('image_state_enrichment_suppression_reason', 'downstream_vision_analysis')
         if (
             capability == self.capability_image_generation
-            and not self._branch_allows_gpu_heavy_concurrency(branch, branch_gap)
+            and not self.branch_selection._branch_allows_gpu_heavy_concurrency(branch, branch_gap)
             and self.response_has_required_artifact_closure_work(current_payload)
         ):
             branch_gap['suppress_image_state_enrichment'] = True
@@ -22551,119 +14003,22 @@ class LateFillRuntimeOwner:
                 return True
         return False
 
-    @staticmethod
-    def _pending_contract(record: Mapping[str, Any]) -> dict[str, Any]:
-        # Unknown fields remain binding. Do not expand this operational allowlist
-        # to recover a missing or changed semantic contract.
-        return {key: copy.deepcopy(value) for key, value in record.items()
-                if key not in {'status', 'updated_at', 'timing', 'scheduling_policy'}}
+    _pending_contract = staticmethod(PendingContinuationAuthority._pending_contract)
 
-    @classmethod
-    def _pending_accepted_evidence(cls, value):
-        # Frame compaction removes transport bytes, timestamps and empty values.
-        # Preserve every other (including unknown) identity/evidence field.
-        if isinstance(value, Mapping):
-            return {key: cls._pending_accepted_evidence(item) for key, item in value.items()
-                    if key not in {'created_at', 'updated_at', 'started_at', 'completed_at',
-                                   'failed_at', 'image_data_url'} and item not in (None, '', [], {})}
-        if isinstance(value, list):
-            return [cls._pending_accepted_evidence(item) for item in value]
-        return value
+    _pending_accepted_evidence = staticmethod(PendingContinuationAuthority._pending_accepted_evidence)
 
     def _new_pending_continuation(self, payload, request_payload):
-        late = payload.get('late_fill') or {}
-        graph = (payload.get('runtime') or {}).get('request_phase_graph') or {}
-        pending = self.normalize_late_fill_branches(late.get('pending_branches'))
-        obligations = graph.get('output_obligations') or []
-        contracts = {}
-        for branch in pending:
-            branch_id = self.branch_id(branch)
-            if (not branch_id or branch_id in contracts
-                    or branch.get('contract_state') != 'promoted'
-                    or not any(item.get('obligation_id') == branch.get('obligation_id')
-                               and item.get('branch_id') == branch_id
-                               and item.get('phase_id') == branch.get('phase_id')
-                               and item.get('contract_state') == 'promoted'
-                               for item in obligations if isinstance(item, Mapping))):
-                return None
-            contracts[branch_id] = copy.deepcopy(branch)
-        if not contracts:
-            return None
-        admission = copy.deepcopy(payload)
-        admission.setdefault('response_frame', {})['request'] = copy.deepcopy(self._pending_frame_request(payload))
-        chain = _PendingContinuationChain(admission, contracts, copy.deepcopy(request_payload))
-        return _PendingContinuation(chain, copy.deepcopy(payload))
+        return self.pending_continuation_authority._new_pending_continuation(payload, request_payload)
 
-    @staticmethod
-    def _pending_execution_binding(payload):
-        late = payload.get('late_fill') or {}
-        return tuple(copy.deepcopy(late.get(name) or {}) for name in (
-            'successor_reopen_execution', 'terminal_closure_repair_reopen', 'partial_rebase_execution'))
+    _pending_execution_binding = staticmethod(PendingContinuationAuthority._pending_execution_binding)
 
     def _pending_frame_request(self, payload):
-        # Live and wire carriers can represent different compaction passes of
-        # the same request. Resolve through the existing passive canonical owner
-        # even when a carrier is present, bound to this exact frame.
-        if not callable(self.load_latest_response_state):
-            raise ResponseMutationConflict('pending continuation canonical request unavailable')
-        durable = self.load_latest_response_state(str(payload.get('id') or ''))
-        frame = durable.get('response_frame') or {}
-        if not durable.get('ok') or (frame.get('frame_id'), frame.get('frame_sequence')) != response_wire_frame_identity(payload):
-            raise ResponseMutationConflict('pending continuation canonical request frame changed')
-        return frame.get('request')
+        return self.pending_continuation_authority._pending_frame_request(payload)
 
     def _require_pending_continuation(self, context, current, *, exact_frame=True):
-        if not isinstance(context, _PendingContinuation) or not current:
-            raise ResponseMutationConflict('pending continuation context unavailable')
-        base, admission = context.base, context.chain.admission
-        if response_persistence_blocked(current) or current.get('id') != admission.get('id'):
-            raise ResponseMutationConflict('pending continuation response/storage changed')
-        if exact_frame:
-            # Preserve normal same-frame control handling; a durable version or
-            # execution change still rejects before any new dispatch.
-            expected = {**base, 'late_fill': {**(base.get('late_fill') or {}),
-                        'branch_controls': (current.get('late_fill') or {}).get('branch_controls', []),
-                        'cancelled_branches': (current.get('late_fill') or {}).get('cancelled_branches', [])}}
-            require_response_mutation_base(expected, current)
-        # Execution operational status can advance; its immutable identity cannot.
-        if self._pending_execution_identity(base) != self._pending_execution_identity(current):
-            raise ResponseMutationConflict('pending continuation execution changed')
-        for execution in self._pending_execution_binding(current):
-            if str(execution.get('status') or '').lower() in {
-                    'completed', 'fulfilled', 'failed', 'cancelled', 'waived', 'superseded'}:
-                raise ResponseMutationConflict('pending continuation execution is terminal')
-        current_request = self._pending_frame_request(current)
-        # Admission captured the canonical request while its frame was current.
-        # Never resolve that old snapshot against the newer current frame. Every
-        # canonical request field (including unknown fields) remains binding.
-        if ((admission.get('runtime') or {}).get('request_phase_graph')
-                != (current.get('runtime') or {}).get('request_phase_graph')
-                or admission.get('request') != current.get('request')
-                or admission.get('request_meta') != current.get('request_meta')
-                or (admission.get('response_frame') or {}).get('request') != current_request):
-            raise ResponseMutationConflict('pending continuation admission changed')
-        if context.scope is not None:
-            for branch in (current.get('late_fill') or {}).get('pending_branches', []):
-                branch_id = self.branch_id(branch)
-                if branch_id not in context.chain.contracts:
-                    raise ResponseMutationConflict('pending continuation scope widened')
-                if branch_id not in context.chain.submitted and self._pending_contract(branch) != self._pending_contract(context.chain.contracts[branch_id]):
-                    raise ResponseMutationConflict('pending continuation local contract changed')
-        prior = (base.get('late_fill') or {}).get('fill_results') or []
-        accepted = (current.get('late_fill') or {}).get('fill_results') or []
-        if any(self._pending_accepted_evidence(result) not in [self._pending_accepted_evidence(r) for r in accepted]
-               for result in prior):
-            raise ResponseMutationConflict('pending continuation accepted evidence changed')
+        return self.pending_continuation_authority._require_pending_continuation(context, current, exact_frame=exact_frame)
 
-    @staticmethod
-    def _pending_execution_identity(payload):
-        late = payload.get('late_fill') or {}
-        return tuple(tuple(copy.deepcopy((late.get(name) or {}).get(key)) for key in keys)
-            for name, keys in (
-                ('successor_reopen_execution', ('successor_execution_key', 'parent_response_id',
-                    'parent_frame_id', 'parent_frame_sequence', 'successor_graph_digest', 'scheduled_branch_ids')),
-                ('terminal_closure_repair_reopen', ('execution_key',)),
-                ('partial_rebase_execution', ('execution_key',))))
+    _pending_execution_identity = staticmethod(PendingContinuationAuthority._pending_execution_identity)
 
     def _pending_branch_prerequisites(self, branch, payload, context):
         """Eligibility is separate from the invocation's scheduling permission."""
@@ -22673,7 +14028,7 @@ class LateFillRuntimeOwner:
             return False
         graph = (payload.get('runtime') or {}).get('request_phase_graph') or {}
         late = payload.get('late_fill') or {}
-        for dependency in self.late_fill_branch_dependency_ids(branch, current_payload=payload):
+        for dependency in branch_result_contracts.late_fill_branch_dependency_ids(branch, current_payload=payload):
             producers = [p for p in graph.get('phases', []) if dependency in {
                 p.get('branch_id'), p.get('phase_id'), p.get('task_id'), p.get('obligation_id')}]
             if len(producers) != 1:
@@ -22697,15 +14052,15 @@ class LateFillRuntimeOwner:
                 result = results[0]
                 if (any(producer.get(k) and result.get(k) != producer[k]
                         for k in ('branch_id', 'phase_id', 'obligation_id'))
-                        or self.late_fill_result_has_missing_dependency_evidence(result)):
+                        or branch_result_contracts.late_fill_result_has_missing_dependency_evidence(result)):
                     return False
                 if (producer.get('output_type') in {'image', 'audio'}
-                        or self._branch_is_required_text_artifact(producer)):
+                        or self.branch_selection._branch_is_required_text_artifact(producer)):
                     if not self._terminal_materialization_branch_has_canonical_evidence(producer, payload, late):
                         return False
         local = [branch.get(k) for k in ('artifact_prompt', 'content_payload', 'phase_summary', 'stage_direction')]
         if not any(isinstance(v, str) and v.strip() for v in local):
-            dependency = self.branch_dependency_payload(branch, current_payload=payload)
+            dependency = self.branch_dependency_evidence.branch_dependency_payload(branch, current_payload=payload)
             if not dependency.get('content_payload') or not dependency.get('content_payload_source'):
                 return False
         return True
@@ -22751,7 +14106,7 @@ class LateFillRuntimeOwner:
                 for branch in pending:
                     branch_id = self.branch_id(branch)
                     original = context.chain.contracts.get(branch_id)
-                    if not original or self._pending_contract(original) != self._pending_contract(branch):
+                    if not original or PendingContinuationAuthority._pending_contract(original) != PendingContinuationAuthority._pending_contract(branch):
                         raise ResponseMutationConflict('pending continuation local contract changed')
                     if (branch.get('status') == 'pending' and branch_id not in terminal
                             and branch_id not in context.chain.submitted
@@ -22828,7 +14183,7 @@ class LateFillRuntimeOwner:
             capability=candidate,
             artifact_payload=response_payload,
         )
-        if self._branch_is_required_text_artifact(branch):
+        if self.branch_selection._branch_is_required_text_artifact(branch):
             branch_already_fulfilled = self._text_artifact_branch_has_canonical_evidence(
                 branch,
                 response_payload,
@@ -23701,7 +15056,7 @@ class LateFillRuntimeOwner:
                             value = branch_spec.get(key)
                         if value not in (None, '', [], {}):
                             evidence_branch[key] = value
-                    canonical_fulfillment = self._canonical_text_artifact_branch_fulfillment(
+                    canonical_fulfillment = self.text_artifact_result_evidence._canonical_text_artifact_branch_fulfillment(
                         evidence_branch,
                         current_payload,
                         latest_payload_for_preflight,
@@ -23921,8 +15276,8 @@ class LateFillRuntimeOwner:
                     branch_result = branch_results.get(branch_id)
                     if not branch_result:
                         canonical_fulfillment: dict[str, Any] = {}
-                        if not self._text_artifact_revision_required(branch):
-                            canonical_fulfillment = self._canonical_text_artifact_branch_fulfillment(
+                        if not text_artifact_materialization._text_artifact_revision_required(branch):
+                            canonical_fulfillment = self.text_artifact_result_evidence._canonical_text_artifact_branch_fulfillment(
                                 branch,
                                 current_payload,
                                 latest_payload or {},
@@ -24139,7 +15494,7 @@ class LateFillRuntimeOwner:
                         )
                     if capability == self.capability_text_to_speech:
                         integrity_evidence = (
-                            self.tts_audio_integrity_evidence_for_branch_result(
+                            self.tts_result_evidence.tts_audio_integrity_evidence_for_branch_result(
                                 branch,
                                 infer_result,
                             )
@@ -24150,7 +15505,7 @@ class LateFillRuntimeOwner:
                                 integrity_evidence
                             )
                     tts_stt_semantic_evidence = (
-                        self.tts_stt_semantic_evidence_for_branch_result(
+                        self.tts_result_evidence.tts_stt_semantic_evidence_for_branch_result(
                             branch,
                             infer_result,
                             current_payload=current_payload,
@@ -24329,7 +15684,7 @@ class LateFillRuntimeOwner:
                             message=str(error_payload.get('message') or 'Text artifact saved truth required.'),
                         )
                         continue
-                    current_payload = self.merge_late_fill_result_fields(current_payload, infer_result)
+                    current_payload = self.branch_dependency_evidence.merge_late_fill_result_fields(current_payload, infer_result)
                     _remember_branch(completed_branch_records, completed_branches, branch, status='fulfilled')
                     last_effective_request_payload = effective_data or last_effective_request_payload
                     semantic_review_branch = self._is_semantic_review_branch(
@@ -24454,7 +15809,7 @@ class LateFillRuntimeOwner:
                                 value = execution_artifact_request.get('target_path')
                             if value not in (None, '', [], {}):
                                 fill_record[key] = value
-                    result_text = self.late_fill_text_from_result_payload(infer_result)
+                    result_text = branch_result_contracts.late_fill_text_from_result_payload(infer_result)
                     review_binding = infer_result.get('semantic_review_evidence_binding') or {}
                     if (isinstance(review_binding, Mapping)
                             and review_binding.get('content_requirement_policy') == 'named_saved_text_v1'):
@@ -24524,7 +15879,7 @@ class LateFillRuntimeOwner:
                         value = infer_result.get(key)
                         if value not in (None, '', [], {}):
                             fill_record[key] = value
-                    fill_record = self.attach_late_fill_result_artifact_identity(
+                    fill_record = self.branch_dependency_evidence.attach_late_fill_result_artifact_identity(
                         fill_record,
                         current_payload,
                         infer_result,

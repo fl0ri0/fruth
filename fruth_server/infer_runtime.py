@@ -15,10 +15,11 @@ from flask import jsonify
 
 from helpers.model_capabilities import CAPABILITY_SPEECH_TO_TEXT, supports_capability
 from fruth_core.apple_fm_tools import APPLE_FM_IMAGE_TOOL_MODES
+from fruth_core.pdf_preparation import PdfPreparationError
 from fruth_core.image_generation import parse_mlx_image_control, supports_image_steps, validate_image_steps
 from fruth_services.artifact_contracts import DirectAudioDependency, execution_input_artifact_ref, selected_audio_source_binding
 from fruth_services.responses import capture_request_intent, request_intent_payload
-from fruth_server.response_semantics_runtime import classify_phase_output_text
+from fruth_services.phase_output import classify_phase_output_text
 from helpers.session_controls import (
     normalize_reasoning_effort,
     validate_reasoning_effort_for_instance,
@@ -1454,6 +1455,24 @@ class InferRuntimeOwner:
                 message=payload.get("error") or payload.get("mode") or "Infer request completed.",
             )
             return jsonify(payload), status_code
+        except PdfPreparationError as exc:
+            # Preparation is infrastructure work, not evidence of model failure.
+            previous_status, current_status = record_instance_activity(
+                instance_id, path=self.runtime_status_path_getter(),
+                instance=runtime_status_instance, activity='idle',
+            )
+            log_runtime_status_transition(previous_status, current_status)
+            log_unified_event(
+                category='infer', action='pdf_preparation', status='failed',
+                instance_id=instance_id, model=model_name, backend=backend,
+                capability=capability, file_kind=file_kind,
+                file_name=file_name or raw_file_path, http_status=exc.status_code,
+                message=str(exc),
+            )
+            return jsonify({**getattr(exc, 'pdf_evidence', {}),
+                            'error': str(exc), 'error_code': exc.code,
+                            'pdf_preparation': {'status': 'failed', 'code': exc.code,
+                                                'operation': exc.operation}}), exc.status_code
         except request_timeout_error:
             previous_status, current_status = record_instance_failure(
                 instance_id,

@@ -71,9 +71,8 @@ refusal or evidence gates. Local Apple AI is a separate on-device backend.
 
 Fruth stays local by default. The optional ChatGPT route is disabled until the
 user explicitly enables the external connection. When ChatGPT is selected for
-a turn, the prompt, context Fruth promotes for that turn, and only the local
-files or Fruth artifacts explicitly selected for that turn leave the machine
-and are processed by OpenAI.
+a turn, Fruth explicitly supplies the current prompt, context it promotes for
+that turn, and selected local files or Fruth artifacts for OpenAI processing.
 
 Fruth:
 
@@ -82,18 +81,25 @@ Fruth:
   keychain entries, or Codex authentication files;
 - does not require a separate provider API key for this route;
 - hands recognized images to Codex through its native image-input path;
-- copies other selected regular files into a temporary per-request working
-  directory configured read-only for the Codex run;
+- stages selected regular files under neutral names in a temporary per-request
+  directory, records their byte counts and digests, and requests Codex's
+  read-only command sandbox;
 - accepts at most 5 selected files, up to 100 MiB each and 250 MiB in total,
-  and rejects URLs, folders, and symbolic links;
+  and rejects URLs, folders, and direct leaf symbolic links (a regular file
+  reached through a symlinked parent directory is accepted);
 - returns text output through this route;
-- runs Codex ephemerally while ignoring project rules and user provider
-  projections;
+- requests ephemeral execution, omission of the user `config.toml`, and omission
+  of user/project execpolicy `.rules` files; these flags do not establish that
+  all instructions, tools or managed settings are disabled;
 - does not set a fixed model.
 
-The read-only setting describes the temporary working directory used for the
-request; it is not a general remote- or multi-user-isolation guarantee. A
-regular file being accepted also does not guarantee that the selected model
+Staging and validation bound what Fruth explicitly hands off. The requested
+read-only command sandbox restricts writes; it does not establish selected-file-only
+read access. Downstream client loading and enabled tools have their own access
+boundaries, so this route does not guarantee that only selected local content
+can enter provider processing. Offline synthetic checks demonstrated broader
+local reads, but no actual disclosure of unselected data to the provider was
+demonstrated. Accepting a regular file also does not guarantee that the model
 and its available tools can interpret that format semantically.
 
 Review every selected file or artifact before sending it, and do not include

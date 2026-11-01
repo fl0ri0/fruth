@@ -192,6 +192,11 @@ def _exception_error_payload(exc: Exception, *, stage: str) -> dict[str, Any]:
     route_diagnostics = getattr(exc, 'route_diagnostics', None)
     if isinstance(route_diagnostics, dict):
         payload['route_diagnostics'] = dict(route_diagnostics)
+    from fruth_core.pdf_preparation import PdfPreparationError
+    if isinstance(exc, PdfPreparationError):
+        payload.update(getattr(exc, 'pdf_evidence', {}))
+        payload.update(code=exc.code, retryable=False,
+                       pdf_preparation={'status': 'failed', 'code': exc.code, 'operation': exc.operation})
     return payload
 
 

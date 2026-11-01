@@ -42,14 +42,8 @@ from fruth_inference.request_meta import (
     effective_developer_flags,
     extract_request_meta,
 )
-from fruth_inference.request_phase_graph import (
-    build_request_phase_graph,
-    current_phase_capability,
-    current_phase_is_graph_resolved,
-    current_phase_reason,
-    downstream_phase_capabilities,
-    downstream_phase_records,
-)
+from fruth_inference.request_phase_graph import build_request_phase_graph
+from fruth_inference.phase_graph_queries import current_phase_capability, current_phase_is_graph_resolved, current_phase_reason, downstream_phase_capabilities, downstream_phase_records
 from fruth_inference.router import (
     build_embedding_hints_from_vectors,
     build_embedding_route_audit,

@@ -42,9 +42,15 @@ from helpers.model_capabilities import (
     normalize_capability,
 )
 from fruth_core.start_policy import attach_start_audit, validate_start_source
+from fruth_core.process_ownership import (
+    capture_spawned_process, verify_spawned_process, terminate_spawned_process,
+    inspect_listener, OwnershipError,
+)
 from fruth_runtime.child_process_env import sanitized_child_process_env
 from fruth_runtime.runtime_log_hygiene import prepare_clean_global_log
 from fruth_runtime.registry import (
+    OLLAMA_DEFAULT_SERVICE,
+    is_runtime_service_entry,
     enrich_registry_entry as core_enrich_registry_entry,
     filter_active_registry_entries,
     is_port_listening as registry_is_port_listening,
@@ -255,6 +261,7 @@ def write_config(instances: List[Dict]) -> None:
         instances,
         path=CONFIG_FILE,
         preserve_agents=True,
+        preserve_services=True,
         sync_external=False,
     )
 
@@ -298,38 +305,59 @@ def allocate_instance_id(model_name: str, existing_instances: List[Dict]) -> str
 
 
 def ensure_default_server_running() -> bool:
-    if is_port_listening(DEFAULT_SERVER_PORT):
-        print(f"✅ Default server (port {DEFAULT_SERVER_PORT}) is running.")
-        return True
-
-    print(f"🧠 Default server (port {DEFAULT_SERVER_PORT}) is not running. Starting it now...")
+    spawned = None
     try:
+        if is_port_listening(DEFAULT_SERVER_PORT):
+            owned = inspect_listener(Path.cwd(), DEFAULT_SERVER_PORT)
+            if (owned is None or not owned.record
+                    or owned.record.get('runtime_service') != OLLAMA_DEFAULT_SERVICE
+                    or owned.record.get('backend') != 'ollama'):
+                raise OwnershipError('Default Ollama listener lacks verified service ownership; left untouched')
+            print(f"✅ Verified default server (port {DEFAULT_SERVER_PORT}) is running.")
+            return True
+
+        entries = read_registry_entries(CONFIG_FILE, strict=True)
+        prior = [entry for entry in entries if entry.get('instance_id') == 'ollama-default'
+                 or str(entry.get('port')) == str(DEFAULT_SERVER_PORT)]
+        if len(prior) > 1 or any(not is_runtime_service_entry(entry) for entry in prior):
+            raise OwnershipError('Conflicting default-server registry records; no process started')
+        print(f"🧠 Default server (port {DEFAULT_SERVER_PORT}) is not running. Starting it now...")
         default_env = build_ollama_env()
         log_file = LOG_DIR / f"ollama_default_server_{DEFAULT_SERVER_PORT}.log"
         default_env.pop("OLLAMA_HOST", None)
         LOG_DIR.mkdir(parents=True, exist_ok=True)
-        prepare_clean_global_log(
-            log_file,
-            metadata={
-                'service': 'ollama_default',
-                'port': DEFAULT_SERVER_PORT,
-            },
-        )
+        prepare_clean_global_log(log_file, metadata={'service': 'ollama_default', 'port': DEFAULT_SERVER_PORT})
+        command = [OLLAMA_CLI, "serve"]
         with open(log_file, "w", encoding="utf-8") as log_handle:
-            process = subprocess.Popen(
-                [OLLAMA_CLI, "serve"],
-                env=default_env,
-                stdout=log_handle,
-                stderr=subprocess.STDOUT,
-            )
+            process = subprocess.Popen(command, env=default_env, stdout=log_handle,
+                                       stderr=subprocess.STDOUT)
+            spawned = capture_spawned_process(process, command)
         time.sleep(3)
-        if is_port_listening(DEFAULT_SERVER_PORT):
-            print(f"✅ Default server started (PID: {process.pid}).")
-            return True
-        print(f"❌ Could not start the default server. Check '{log_file}'.")
-        return False
+        evidence = verify_spawned_process(spawned, port=DEFAULT_SERVER_PORT)
+        current = read_registry_entries(CONFIG_FILE, strict=True)
+        matching = [entry for entry in current if entry.get('instance_id') == 'ollama-default'
+                    or str(entry.get('port')) == str(DEFAULT_SERVER_PORT)]
+        if matching != prior:
+            raise OwnershipError('Default-server registry changed during launch; ownership not published')
+        record = {'instance_id': 'ollama-default', 'runtime_service': OLLAMA_DEFAULT_SERVICE,
+                  'backend': 'ollama', 'port': DEFAULT_SERVER_PORT, 'pid': spawned.pid,
+                  'log': str(log_file), **evidence}
+        # Replace only the prior default service record. This evidence comes from
+        # our retained child, never from whatever happens to occupy its port.
+        verify_spawned_process(spawned, port=DEFAULT_SERVER_PORT)
+        write_registry_entries([entry for entry in current if entry not in prior] + [record], path=CONFIG_FILE)
+        persisted = inspect_listener(Path.cwd(), DEFAULT_SERVER_PORT)
+        if persisted is None or persisted.pid != spawned.pid or not is_runtime_service_entry(persisted.record or {}):
+            raise OwnershipError('Default-server ownership was not persisted')
+        print(f"✅ Default server started (PID: {spawned.pid}).")
+        return True
     except Exception as exc:  # noqa: BLE001
-        print(f"❌ Error while starting the default server: {exc}")
+        if spawned is not None:
+            try:
+                terminate_spawned_process(spawned)
+            except Exception as cleanup_exc:  # noqa: BLE001
+                print(f"❌ Owned default-server cleanup unresolved: {cleanup_exc}")
+        print(f"❌ Error while starting or verifying the default server: {exc}")
         return False
 
 
@@ -588,24 +616,28 @@ def start_model(
     safe_model = safe_log_fragment(model_name)
     log_file = LOG_DIR / f"ollama_server_{safe_instance}_{port}.log"
     serve_process = None
+    spawned = None
     load_process = None
     log_handle = None
 
     try:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         log_handle = open(log_file, "w", encoding="utf-8")
+        command = [OLLAMA_CLI, "serve"]
         serve_process = subprocess.Popen(
-            [OLLAMA_CLI, "serve"],
+            command,
             env=env,
             stdout=log_handle,
             stderr=subprocess.STDOUT,
         )
+        spawned = capture_spawned_process(serve_process, command)
 
         time.sleep(2)
         if not is_port_listening(port):
             print(f"❌ The server for instance '{instance_id}' could not open port {port}.")
             raise RuntimeError("Server port is not active")
 
+        verify_spawned_process(spawned, port=port)
         show_metadata = _fetch_model_metadata(model_name, port=port)
         registry_metadata = build_registry_metadata(
             model_name,
@@ -625,6 +657,7 @@ def start_model(
                 "pid": serve_process.pid if serve_process else None,
                 "log": str(log_file),
                 **registry_metadata,
+                **verify_spawned_process(spawned, port=port),
             }
             instance_info = attach_start_audit(
                 instance_info,
@@ -650,6 +683,7 @@ def start_model(
                     "pid": serve_process.pid if serve_process else None,
                     "log": str(log_file),
                     **registry_metadata,
+                    **verify_spawned_process(spawned, port=port),
                 }
                 instance_info = attach_start_audit(
                     instance_info,
@@ -692,6 +726,7 @@ def start_model(
                 "pid": serve_process.pid if serve_process else None,
                 "log": str(log_file),
                 **registry_metadata,
+                **verify_spawned_process(spawned, port=port),
             }
             instance_info = attach_start_audit(
                 instance_info,
@@ -711,12 +746,11 @@ def start_model(
         raise RuntimeError(f"Model {model_name} did not load")
     except Exception as exc:  # noqa: BLE001
         print(f"❌ Error while starting instance '{instance_id}': {exc}")
-        if serve_process:
-            serve_process.terminate()
+        if spawned is not None:
             try:
-                serve_process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                serve_process.kill()
+                terminate_spawned_process(spawned)
+            except Exception as cleanup_exc:  # noqa: BLE001
+                print(f"❌ Owned model-server cleanup unresolved: {cleanup_exc}")
         if load_process:
             try:
                 load_process.terminate()

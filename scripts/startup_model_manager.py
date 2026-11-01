@@ -45,6 +45,7 @@ from fruth_runtime.llama_cpp_model_manager import (
 from fruth_runtime.runtime_hygiene import cleanup_runtime_hygiene
 from fruth_core.registry import (
     filter_active_registry_entries,
+    is_runtime_service_entry,
     read_registry_entries,
     write_registry_entries,
 )
@@ -232,7 +233,7 @@ def _read_active_runtime_entries() -> tuple[List[Dict[str, Any]], bool]:
     raw_entries = read_registry_entries(CONFIG_PATH)
     filtered_entries = filter_active_registry_entries(raw_entries)
     changed = filtered_entries != raw_entries
-    runtime_entries = [entry for entry in filtered_entries if not entry.get('agent')]
+    runtime_entries = [entry for entry in filtered_entries if not entry.get('agent') and not is_runtime_service_entry(entry)]
     return runtime_entries, changed
 
 
@@ -498,6 +499,7 @@ def _write_registry_once(runtime_entries: List[Dict[str, Any]]) -> None:
         runtime_entries,
         path=CONFIG_PATH,
         preserve_agents=True,
+        preserve_services=True,
         sync_external=False,
     )
 

@@ -1,9 +1,48 @@
-# Fruth validation status — October 29, 2026
+# Fruth validation status — October 31, 2026
 
-**The completed bounded property-based investigation round is integrated, and
-the latest runtime passed its full offline gate and matching-source/evidence
-checker.** The two affected reference workflows then completed successfully with
-local models. Live campaign observations below retain their actual source epochs.
+This report separates completed, source-bound observations from release-package
+validation. The 0.1.9 changes build on the bounded semantic-core and Hypothesis
+work shipped in 0.1.8; they do not claim a new universal proof or a new live matrix.
+
+## Changes and observed validation since 0.1.8
+
+- Responsibility extraction separates preparation, evidence, Closure,
+  materialization, continuation, durable commit and operator projections behind
+  existing contracts. Its final recorded source passed 380 offline cases in 38
+  profiles, 198 owner checks and the matching source/evidence checker.
+- Process startup/cleanup ownership, Whisper request admission and Python
+  bootstrap checks received bounded regressions. Codex route documentation now
+  states the actual boundary; selected inputs do not imply strict read confinement.
+- Native PDF preparation runs in owned bounded child processes. The later macOS
+  temporary-path correction passed 120 focused/API tests plus four subtests and
+  88 native tests. It preserves strict workspace identity and cleanup checks.
+- PDF continuation now keeps generated OCR output separate from selected edit
+  authority and preserves the phase of an existing repair branch. The corrected
+  source passed 1,539 distinct tests and 604 subtests, with matching dependency
+  evidence and no recorded isolation violations.
+- Two user-run PDF requests on October 31 were independently checked through
+  canonical frames, Ledger readback and exact saved Markdown. Both completed
+  with fulfilled Closure and no pending Late Fill: a three-page mixed document
+  and a four-page scanned document. A page-local prose inconsistency remains a
+  model-quality limitation, separate from successful processing and persistence.
+- The operator reports successful Flux 3 generation in both the direct tab and
+  Fruth using MLX-VLM 0.7.11 and the native prompt upsampler. This is a targeted
+  observation, not an independently inspected image conformance campaign.
+
+The refactoring gate used selected source-map digest
+e7fad1f96e08ddab38f81214521b2e5038032a68564f93d72f67245a432eaff4.
+The later PDF continuation checks used
+4cd314073c1616cf47858558149d3acb59227eb87e05b9b27dc7c29777953e24.
+These identities precede 0.1.9 release metadata. The package's
+validation/receipt.json and validation/constraints.txt record the exact source,
+environment and successful maintained jobs used for release validation. The full
+offline gate and source/evidence checker have separate retained completion
+receipts; neither historical results nor this prose substitutes for those checks.
+
+## Inherited 0.1.8 investigation and live evidence
+
+The results below keep their original revisions and dates. No full local, AFM or
+PCC live matrix was repeated for the responsibility/PDF changes.
 
 ## Investigation and resulting guarantees
 
@@ -35,7 +74,7 @@ explicit opt-ins.
 | Evidence | Result | Scope |
 | --- | --- | --- |
 | Final reference-fix regression selection, October 28 | 1,995 tests and 898 subtests passed; zero isolation violations | Common recorded source for all three reference corrections |
-| Latest offline gate, October 28 | 380/380 cases, 38 profiles; 198 owner checks in five groups; no findings/incompletes | Corrected runtime; source/evidence checker accepted |
+| Reference-fix offline gate, October 28 | 380/380 cases, 38 profiles; 198 owner checks in five groups; no findings/incompletes | Corrected runtime; source/evidence checker accepted |
 | Local live matrix, October 26–27 | Original 169 PASS/1 INCOMPLETE; linked two-case recovery 2/2 PASS | Missing audio-binding cell has passing recovery evidence on the same recorded source |
 | AFM live matrix, October 27 | Original 167 PASS/3 INCOMPLETE; linked recovery 4/4 PASS | Three missing cells have passing recovery evidence on the same recorded source |
 | PCC Cloud, October 26 and28 | First 100/100 PASS; remaining 70/70 PASS | All 170 distinct case positions covered across two documented source epochs |

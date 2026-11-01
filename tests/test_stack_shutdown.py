@@ -26,6 +26,17 @@ def shell_stack(tmp_path):
     (state / 'events').write_text('')
     (root / 'model_ports.json').write_text('[]\n')
     (root / 'scripts').mkdir()
+    (root / 'requirements.txt').write_text('Requests\n')
+    # Shell sequencing only; real interpreter/pip qualification has its own
+    # disposable fixture. Keep ownership/credential positives independent.
+    (root / 'scripts/bootstrap_preflight.py').write_text('''
+import os, sys
+from pathlib import Path
+assert not any('GRAPH_REBASE_OPERATOR' in key for key in os.environ)
+if '--interpreter-only' not in sys.argv and Path('fixture/incomplete').exists():
+    print('Active direct requirements are not satisfied', file=sys.stderr)
+    raise SystemExit(1)
+''')
     (root / 'scripts/startup_model_manager.py').write_text('''
 import os
 from pathlib import Path
@@ -38,6 +49,22 @@ raise SystemExit(int(os.environ.get('FIXTURE_MODEL_EXIT', '0')))
     for package in ('fruth_core', 'fruth_runtime'):
         (root / package).mkdir()
         (root / package / '__init__.py').write_text('')
+    # Shell sequencing fixture only. Real ownership/signals/listeners are covered
+    # by process_ownership_fixture.py, using the production ownership owner.
+    (root / 'fruth_core/process_ownership.py').write_text('''
+import runpy, sys
+from pathlib import Path
+state = Path('fixture')
+if sys.argv[1] == 'launch-webserver':
+    runpy.run_path('fruth_webserver.py')
+listeners = [line.split() for line in (state / 'ports').read_text().splitlines()
+             if line.split()[0] == '5011' and (state / ('live-' + line.split()[1])).exists()]
+with (state / 'events').open('a') as stream:
+    stream.write('listener 5011 result ' + ('0' if listeners else '1') + '\\n')
+if any(row[2] != 'python' for row in listeners):
+    raise SystemExit(1)
+raise SystemExit(0 if listeners else (3 if sys.argv[1] == 'check-webserver' else 1))
+''')
     (root / 'fruth_core/status.py').write_text(
         "from pathlib import Path\nDEFAULT_RUNTIME_STATUS_PATH = Path('state/runtime_status.json')\n"
     )
@@ -85,6 +112,7 @@ if os.environ.get('FIXTURE_WEB_FAIL') != '1':
         '#!/bin/bash\n'
         'if [[ "$1" == "-m" && "$2" == "pip" ]]; then\n'
         '  printf "pip %s\\n" "$*" >> "$FIXTURE_STATE/events"\n'
+        '  if [[ "${FIXTURE_PIP_EXIT:-0}" != 0 ]]; then touch "$FIXTURE_STATE/incomplete"; fi\n'
         '  exit "${FIXTURE_PIP_EXIT:-0}"\n'
         'fi\n'
         f'exec {shlex.quote(sys.executable)} "$@"\n'
@@ -282,6 +310,16 @@ def test_start_reuses_existing_webserver_after_model_selection(shell_stack):
     assert shell_stack.events() == ['model selection empty', 'listener 5011 result 0']
 
 
+def test_start_foreign_listener_fails_without_ready_or_dashboard(shell_stack):
+    shell_stack.listener(5011, 81001, 'foreign')
+    result = shell_stack.run('start')
+    assert result.returncode == 1
+    assert 'unresolved ownership' in result.stdout
+    assert 'Dashboard:' not in result.stdout
+    assert 'Startup complete' not in result.stdout
+    assert not any(event.startswith(('kill ', 'web start')) for event in shell_stack.events())
+
+
 @pytest.mark.parametrize('command', ['start', 'restart'])
 def test_existing_environment_never_installs_after_requirements_change(shell_stack, command):
     requirements = shell_stack.root / 'requirements.txt'
@@ -304,12 +342,18 @@ def test_new_environment_bootstraps_once_and_install_failure_stops_startup(shell
     with (shell_stack.state / 'shell-hooks').open('a') as handle:
         handle.write('''
 python3() {
-    if [[ "$1" == '-m' && "$2" == 'venv' ]]; then
-        cp -R "$FIXTURE_STATE/venv-template" "$3"
+    if [[ "$1" == '-I' && "$2" == '-m' && "$3" == 'venv' ]]; then
+        cp -R "$FIXTURE_STATE/venv-template" "$4"
         printf 'create venv\\n' >> "$FIXTURE_STATE/events"
     else
         command python3 "$@"
     fi
+}
+# This exact source-bound hook simulates base selection/creation. The separate
+# real fixture exercises actual type -P and actual venv creation.
+type() {
+    if [[ "$1" == '-P' && "$2" == 'python3' ]]; then printf 'python3\\n';
+    else builtin type "$@"; fi
 }
 ''')
     result = shell_stack.run('start', FIXTURE_PIP_EXIT=install_exit)
@@ -323,6 +367,33 @@ python3() {
         assert result.returncode == 1
         assert 'Failed to install dependencies' in result.stdout
         assert 'model selection empty' not in events
+        retry = shell_stack.run('start')
+        assert retry.returncode == 1
+        assert 'explicitly repair' in retry.stdout
+        assert shell_stack.events() == events
+
+
+@pytest.mark.parametrize('defect', ['manifest', 'python-missing', 'python-not-executable', 'activate', 'venv-file'])
+def test_start_rejects_incomplete_bootstrap_before_discovery(shell_stack, defect):
+    root = shell_stack.root
+    if defect == 'manifest':
+        (root / 'requirements.txt').unlink()
+        shutil.rmtree(root / '.venv')
+    elif defect == 'venv-file':
+        shutil.rmtree(root / '.venv')
+        (root / '.venv').write_text('not a venv')
+    elif defect == 'activate':
+        (root / '.venv/bin/activate').unlink()
+    else:
+        (root / '.venv/bin/python3').unlink()
+        if defect == 'python-not-executable':
+            (root / '.venv/bin/python3').write_text('not executable')
+    result = shell_stack.run('start')
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert shell_stack.events() == []
+    assert not (root / 'logs').exists()
+    if defect == 'manifest':
+        assert not (root / '.venv').exists()
 
 
 @pytest.mark.parametrize('failure', ['model', 'web'])

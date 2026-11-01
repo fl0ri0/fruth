@@ -11,6 +11,16 @@ from typing import Mapping
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+def copy_ownership_sources(repo_root: Path) -> None:
+    for name in ('fruth_core/__init__.py', 'fruth_core/process_identity.py',
+                 'fruth_core/process_ownership.py', 'fruth_core/registry.py',
+                 'fruth_runtime/__init__.py', 'fruth_runtime/child_process_env.py',
+                 'helpers/__init__.py', 'helpers/model_capabilities.py'):
+        target = repo_root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / name, target)
+
+
 def make_isolated_cleanup_repo(
     tmp_path: Path,
     *,
@@ -32,6 +42,7 @@ def make_isolated_cleanup_repo(
     shutil.copy2(REPO_ROOT / 'clean_repo_state.sh', cleanup_script)
     shutil.copy2(REPO_ROOT / 'scripts' / 'maintenance_archive.py', scripts_dir)
     shutil.copy2(REPO_ROOT / 'scripts' / 'storage_locations.py', scripts_dir)
+    copy_ownership_sources(repo_root)
     (repo_root / 'fruth').write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
     (repo_root / 'fruth').chmod(0o755)
     (repo_root / 'stop_multi_models.sh').write_text('#!/bin/sh\nexit 0\n', encoding='utf-8')
@@ -154,6 +165,24 @@ def test_clean_preserves_backup_and_publication_trees(tmp_path: Path) -> None:
     assert {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in protected} == before
 
 
+def test_unresolved_ownership_aborts_before_any_maintenance(tmp_path: Path) -> None:
+    root, env, readiness = make_isolated_cleanup_repo(tmp_path)
+    # Exercise the shell's failed ownership boundary without any host discovery.
+    (root / 'fruth_core/process_ownership.py').write_text(
+        "print('Unresolved ownership: missing process identity; left untouched')\n"
+        "raise SystemExit(1)\n"
+    )
+    before = {str(path.relative_to(root)): path.read_bytes()
+              for path in root.rglob('*') if path.is_file()}
+    for args in ((), ('--dry-run',), ('--archive', '--full')):
+        result = run_isolated_cleanup(root, env, *args)
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert 'cleanup aborted before retention, archive or removal' in result.stdout
+        assert not readiness.exists()
+        assert {str(path.relative_to(root)): path.read_bytes()
+                for path in root.rglob('*') if path.is_file()} == before
+
+
 def test_archive_full_dry_run_preserves_protected_inference_state(tmp_path: Path) -> None:
     result = run_fruth_dry_run(tmp_path, 'archive', '--full')
 
@@ -204,6 +233,7 @@ def test_clean_fail_closes_response_frames_when_retention_is_partial(tmp_path: P
     cleanup_script = repo_root / 'clean_repo_state.sh'
     shutil.copy2(REPO_ROOT / 'clean_repo_state.sh', cleanup_script)
     shutil.copy2(REPO_ROOT / 'scripts' / 'storage_locations.py', scripts_dir)
+    copy_ownership_sources(repo_root)
     collector = scripts_dir / 'collect_self_learning_retention_roots.py'
     collector.write_text(
         """import sys

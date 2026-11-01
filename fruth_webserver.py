@@ -1,3 +1,18 @@
+from fruth_services.response_frame_commit import ResponseFrameCommit
+from fruth_services.response_finalization import ResponseFrameFinalizer
+from fruth_services import response_lifecycle
+from fruth_services.response_lifecycle import (
+    _ACTIONABLE_RESPONSE_LIFECYCLE_STATES,
+    _OPEN_RESPONSE_LIFECYCLE_STATES,
+    _TERMINAL_RESPONSE_LIFECYCLE_STATES,
+    _attach_response_status_semantics,
+    _preserve_frozen_response_frame_identity,
+    _response_lifecycle_has_actionable_repair,
+    _response_lifecycle_has_open_continuation,
+    _response_lifecycle_is_terminal,
+    _select_canonical_response_lifecycle_state,
+)
+
 from fruth_services.state_flow import observe_state, note as state_flow_note
 from fruth_services.events import (
     observe_call,
@@ -335,24 +350,8 @@ from fruth_services.response_persistence import (
     ResponseFramePersistenceError, ResponsePersistenceError,
     attach_persistence_failure, response_persistence_blocked,
 )
-from fruth_services.response_frames import (
-    RESPONSE_FRAME_STALE_PARENT_REASON,
-    ResponseFrameParentCASMismatch,
-    append_response_frame_with_parent_cas as _append_response_frame_with_parent_cas,
-    attach_response_frame as _attach_response_frame,
-    enrich_response_frame_for_ledger_append as _enrich_response_frame_for_ledger_append,
-    enrich_response_frame_metadata as _enrich_response_frame_metadata,
-    inspect_response_frame_recovery_cache as _inspect_response_frame_recovery_cache,
-    load_latest_response_observation_state as _load_latest_response_observation_state,
-    load_latest_response_state as _load_latest_response_state,
-    load_latest_response_wire_state as _load_latest_response_wire_state,
-    load_response_frame_index as _load_response_frame_index,
-    load_graph_rebase_readiness_observation_pass as _load_graph_rebase_readiness_observation_pass,
-    persist_response_frame as _persist_response_frame,
-    response_frame_ledger_record_response_id as _response_frame_ledger_record_response_id,
-    select_graph_rebase_observation_response_ids as _select_graph_rebase_observation_response_ids,
-    verify_response_frame_epoch as _verify_response_frame_epoch,
-)
+from fruth_services.response_frames import RESPONSE_FRAME_STALE_PARENT_REASON, ResponseFrameParentCASMismatch, append_response_frame_with_parent_cas as _append_response_frame_with_parent_cas, enrich_response_frame_for_ledger_append as _enrich_response_frame_for_ledger_append, enrich_response_frame_metadata as _enrich_response_frame_metadata, inspect_response_frame_recovery_cache as _inspect_response_frame_recovery_cache, load_latest_response_observation_state as _load_latest_response_observation_state, load_latest_response_state as _load_latest_response_state, load_latest_response_wire_state as _load_latest_response_wire_state, load_response_frame_index as _load_response_frame_index, load_graph_rebase_readiness_observation_pass as _load_graph_rebase_readiness_observation_pass, persist_response_frame as _persist_response_frame, response_frame_ledger_record_response_id as _response_frame_ledger_record_response_id, select_graph_rebase_observation_response_ids as _select_graph_rebase_observation_response_ids, verify_response_frame_epoch as _verify_response_frame_epoch
+from fruth_services.response_frame_construction import attach_response_frame as _attach_response_frame
 from fruth_services.graph_rebase import (
     apply_validated_graph_rebase as _apply_validated_graph_rebase,
     build_graph_rebase_lifecycle as _build_graph_rebase_lifecycle,
@@ -686,18 +685,6 @@ def _log_unified_event(
         logging.warning("Could not append unified event log entry: %s", exc)
 
 
-_OPEN_RESPONSE_LIFECYCLE_STATES = {
-    'accepted',
-    'active',
-    'in_progress',
-    'late_fill_pending',
-    'late_fill_running',
-    'pending',
-    'queued',
-    'running',
-    'streaming',
-}
-
 _ACTIVE_LATE_FILL_BRANCH_STATUSES = {
     'accepted',
     'active',
@@ -714,189 +701,6 @@ _SAFE_LATE_FILL_RETRY_WAVE_ACTIONS = {
     RECOVERY_ACTION_RETRY_EXCLUDING_INSTANCE,
     RECOVERY_ACTION_RETRY_SAME_BRANCH,
 }
-
-_ACTIONABLE_RESPONSE_LIFECYCLE_STATES = {
-    'blocked',
-    'late_fill_repair_needed',
-    'rebuild_from_promoted_obligations',
-    'repair_branch_contract',
-    'repair_dependency_chain',
-    'repair_needed',
-}
-
-_TERMINAL_RESPONSE_LIFECYCLE_STATES = {
-    'cancelled',
-    'canceled',
-    'completed',
-    'failed',
-    'frozen',
-    'late_fill_completed',
-    'late_fill_failed',
-    'partial_cancelled',
-    'skipped',
-    'superseded',
-    'waived',
-}
-
-
-def _response_lifecycle_has_open_continuation(lifecycle_state: Any) -> bool:
-    normalized = str(lifecycle_state or '').strip().lower()
-    return normalized in _OPEN_RESPONSE_LIFECYCLE_STATES
-
-
-def _response_lifecycle_has_actionable_repair(
-    lifecycle_state: Any,
-    response_payload: Mapping[str, Any],
-) -> bool:
-    normalized = str(lifecycle_state or '').strip().lower()
-    if normalized in _ACTIONABLE_RESPONSE_LIFECYCLE_STATES:
-        return True
-    payload = response_payload if isinstance(response_payload, Mapping) else {}
-    late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-    if late_fill:
-        late_fill_status = str(late_fill.get('status') or '').strip().lower()
-        pending_branches = late_fill.get('pending_branches') if isinstance(late_fill.get('pending_branches'), list) else []
-        active_branches = late_fill.get('active_branches') if isinstance(late_fill.get('active_branches'), list) else []
-        failed_branches = late_fill.get('failed_branches') if isinstance(late_fill.get('failed_branches'), list) else []
-        recovery_candidates = (
-            late_fill.get('recovery_candidates')
-            if isinstance(late_fill.get('recovery_candidates'), list)
-            else []
-        )
-        actionable_repair_loop = late_fill_has_actionable_repair_work(late_fill)
-        if (
-            late_fill_status in {'completed', 'skipped', 'cancelled', 'waived', 'superseded'}
-            and not pending_branches
-            and not active_branches
-            and not failed_branches
-            and not recovery_candidates
-            and not actionable_repair_loop
-        ):
-            return False
-    if not late_fill:
-        return False
-    if late_fill_has_actionable_repair_work(late_fill):
-        return True
-    if isinstance(late_fill.get('recovery_candidates'), list) and late_fill.get('recovery_candidates'):
-        return True
-    if isinstance(late_fill.get('repair_actions'), list) and late_fill.get('repair_actions'):
-        return True
-    if late_fill.get('repair_action') not in (None, '', [], {}):
-        return True
-    recovery_state = late_fill.get('recovery_state') if isinstance(late_fill.get('recovery_state'), Mapping) else {}
-    if recovery_state and str(recovery_state.get('status') or '').strip().lower() in {'candidate', 'ready', 'blocked'}:
-        return True
-    failed_branches = late_fill.get('failed_branches') if isinstance(late_fill.get('failed_branches'), list) else []
-    for branch in failed_branches:
-        if not isinstance(branch, Mapping):
-            continue
-        recovery_context = (
-            branch.get('recovery_context')
-            if isinstance(branch.get('recovery_context'), Mapping)
-            else {}
-        )
-        if recovery_context.get('suggested_action') not in (None, '', [], {}):
-            return True
-    for branch in list(pending_branches) + list(active_branches):
-        if not isinstance(branch, Mapping):
-            continue
-        branch_status = str(branch.get('status') or '').strip().lower()
-        if branch_status in _ACTIONABLE_RESPONSE_LIFECYCLE_STATES or branch_status in {
-            'blocked',
-            'failed',
-            'partial_failed',
-            'repair_needed',
-        }:
-            return True
-        recovery_context = (
-            branch.get('recovery_context')
-            if isinstance(branch.get('recovery_context'), Mapping)
-            else {}
-        )
-        if recovery_context.get('suggested_action') not in (None, '', [], {}):
-            return True
-    return False
-
-
-def _response_lifecycle_is_terminal(lifecycle_state: Any) -> bool:
-    normalized = str(lifecycle_state or '').strip().lower()
-    return normalized in _TERMINAL_RESPONSE_LIFECYCLE_STATES
-
-
-def _select_canonical_response_lifecycle_state(
-    response_payload: Mapping[str, Any],
-    *,
-    compatibility_status: Optional[str] = None,
-) -> str:
-    """Choose lifecycle truth without preserving stale active continuation state."""
-
-    payload = response_payload if isinstance(response_payload, Mapping) else {}
-    return str(
-        derive_response_lifecycle_state(payload, requested_status=compatibility_status)
-        or compatibility_status
-        or ''
-    ).strip() or 'completed'
-
-
-def _attach_response_status_semantics(response_payload: dict[str, Any]) -> dict[str, Any]:
-    """Make lifecycle_state the machine-readable continuation authority."""
-
-    payload = dict(response_payload)
-    compatibility_status = str(payload.get('status') or '').strip() or None
-    lifecycle_state = _select_canonical_response_lifecycle_state(
-        payload,
-        compatibility_status=compatibility_status,
-    )
-    payload['lifecycle_state'] = lifecycle_state
-    has_open_continuation = _response_lifecycle_has_open_continuation(lifecycle_state)
-    has_actionable_repair = _response_lifecycle_has_actionable_repair(lifecycle_state, payload)
-    late_fill = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
-    late_fill_status = str(late_fill.get('status') or '').strip().lower()
-    is_terminal = bool(
-        _response_lifecycle_is_terminal(lifecycle_state)
-        or (
-            lifecycle_state == 'repair_needed'
-            and late_fill_status == 'repair_needed'
-        )
-    )
-    status_compatibility = bool(
-        compatibility_status
-        and compatibility_status != lifecycle_state
-        and (
-            compatibility_status == 'completed'
-            or has_open_continuation
-            or has_actionable_repair
-            or is_terminal
-        )
-    )
-    payload['canonical_status_field'] = 'lifecycle_state'
-    payload['status_compatibility'] = status_compatibility
-    payload['status_semantics'] = {
-        'compatibility_status': compatibility_status,
-        'canonical_lifecycle_state': lifecycle_state,
-        'canonical_status_field': 'lifecycle_state',
-        'status_compatibility': status_compatibility,
-        'has_open_continuation': has_open_continuation,
-        'has_actionable_repair': has_actionable_repair,
-        'is_terminal': is_terminal,
-        'terminal': is_terminal,
-    }
-    return payload
-
-
-def _preserve_frozen_response_frame_identity(
-    projected_frame: Mapping[str, Any],
-    frozen_frame: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Keep a read projection attached to the exact frozen frame it represents."""
-
-    preserved = dict(projected_frame)
-    for key in ('frame_id', 'frame_sequence', 'frame_relation'):
-        if key in frozen_frame:
-            preserved[key] = copy.deepcopy(frozen_frame.get(key))
-        else:
-            preserved.pop(key, None)
-    return preserved
 
 
 @observe_state('readiness.pass', 'finalized_response_frame', 'readiness_registry_representation', labels=('NEW_AUTHORITY_BOUNDARY',), new_authority_boundary=True)
@@ -980,6 +784,16 @@ def _register_durable_graph_rebase_readiness_observation(
     )
 
 
+def _publish_response_persistence_failure(failed_payload: dict[str, Any]) -> None:
+    """Reflect a failed commit in the existing lookup/stream adapter."""
+    _ensure_response_lookup_for_payload(failed_payload, mode_hint='chat')
+    _touch_response_lookup(
+        str(failed_payload.get('id') or '').strip(), status='incomplete',
+        output_text=str(failed_payload.get('output_text') or ''),
+        error_message=failed_payload['error']['message'], response_payload=failed_payload,
+    )
+
+
 @observe_call('response_frame.finalize',
               target=lambda a: {'response_id': a['response_payload'].get('id'),
                                 **exact_target(a['response_payload'].get('response_frame') or {})},
@@ -994,392 +808,26 @@ def _finalize_response_frame_payload(
     expected_parent_frame_id: Optional[str] = None,
     expected_parent_frame_sequence: Optional[int] = None,
 ) -> dict[str, Any]:
-    total_started_at = time.perf_counter()
-    response_payload = dict(response_payload)
-    if persist:
-        response_payload.pop('persistence', None)
-    raw_late_fill = response_payload.get('late_fill') if isinstance(response_payload.get('late_fill'), Mapping) else {}
-
-    def _branch_count(key: str) -> int:
-        values = raw_late_fill.get(key) if isinstance(raw_late_fill, Mapping) else None
-        return len(values) if isinstance(values, list) else 0
-
-    pending_count = _branch_count('pending_branches')
-    active_count = _branch_count('active_branches')
-    completed_count = _branch_count('completed_branches')
-    failed_count = _branch_count('failed_branches')
-    late_fill_status = str(raw_late_fill.get('status') or '').strip().lower() if raw_late_fill else ''
-    if raw_late_fill and (pending_count or active_count or late_fill_status in {'pending', 'running'}):
-        timing_phase = 'nonterminal_late_fill'
-    elif raw_late_fill:
-        timing_phase = 'terminal_late_fill'
-    else:
-        timing_phase = 'ordinary_response'
-    finalize_timing: dict[str, Any] = {
-        'kind': 'fruth.response_frame_finalize_timing',
-        'phase': timing_phase,
-        'persist_requested': bool(persist),
-        'persist_effective': bool(persist and not app.config.get("TESTING")),
-        'late_fill_status': late_fill_status or None,
-        'pending_branch_count': pending_count,
-        'active_branch_count': active_count,
-        'completed_branch_count': completed_count,
-        'failed_branch_count': failed_count,
-        'steps': [],
-    }
-
-    def _mark_step(name: str, started_at: float, **metadata: Any) -> None:
-        entry: dict[str, Any] = {
-            'name': name,
-            'elapsed_ms': round((time.perf_counter() - started_at) * 1000, 3),
-        }
-        for key, value in metadata.items():
-            if value not in (None, '', [], {}):
-                entry[key] = value
-        finalize_timing['steps'].append(entry)
-
-    def _publish_finalize_timing(payload: dict[str, Any]) -> dict[str, Any]:
-        finalize_timing.update(causal_timing())
-        telemetry = causal_snapshot(payload.get('id'))
-        finalize_timing['total_elapsed_ms'] = round((time.perf_counter() - total_started_at) * 1000, 3)
-        runtime = dict(payload.get('runtime') or {}) if isinstance(payload.get('runtime'), Mapping) else {}
-        developer_diagnostics = (
-            dict(runtime.get('developer_diagnostics'))
-            if isinstance(runtime.get('developer_diagnostics'), Mapping)
-            else {}
-        )
-        if telemetry is not None:
-            developer_diagnostics['causal_telemetry'] = telemetry
-        developer_diagnostics['response_frame_finalize_timing'] = dict(finalize_timing)
-        runtime['developer_diagnostics'] = developer_diagnostics
-        payload['runtime'] = runtime
-        frame = payload.get('response_frame') if isinstance(payload.get('response_frame'), Mapping) else None
-        if isinstance(frame, dict):
-            frame_runtime = dict(frame.get('runtime') or {}) if isinstance(frame.get('runtime'), Mapping) else {}
-            frame_diagnostics = (
-                dict(frame_runtime.get('developer_diagnostics'))
-                if isinstance(frame_runtime.get('developer_diagnostics'), Mapping)
-                else {}
-            )
-            frame_diagnostics['response_frame_finalize_timing'] = dict(finalize_timing)
-            frame_runtime['developer_diagnostics'] = frame_diagnostics
-            frame['runtime'] = frame_runtime
-            current_state = frame.get('current_state') if isinstance(frame.get('current_state'), Mapping) else None
-            if isinstance(current_state, dict):
-                current_runtime = (
-                    dict(current_state.get('runtime'))
-                    if isinstance(current_state.get('runtime'), Mapping)
-                    else {}
-                )
-                current_diagnostics = (
-                    dict(current_runtime.get('developer_diagnostics'))
-                    if isinstance(current_runtime.get('developer_diagnostics'), Mapping)
-                    else {}
-                )
-                current_diagnostics['response_frame_finalize_timing'] = dict(finalize_timing)
-                current_runtime['developer_diagnostics'] = current_diagnostics
-                current_state['runtime'] = current_runtime
-        return payload
-
-    step_started_at = time.perf_counter()
-    finalized_payload = _attach_response_status_semantics(dict(response_payload))
-    _mark_step(
-        'status_semantics',
-        step_started_at,
-        lifecycle_state=finalized_payload.get('lifecycle_state'),
-        compatibility_status=finalized_payload.get('status'),
-    )
-    existing_frame = (
-        copy.deepcopy(finalized_payload.get('response_frame'))
-        if isinstance(finalized_payload.get('response_frame'), Mapping)
-        else {}
-    )
-    if existing_frame:
-        finalized_payload['response_frame'] = existing_frame
-    step_started_at = time.perf_counter()
-    frame_relation_added = False
-    preserve_bounded_successor_relation = False
-    if persist and existing_frame:
-        response_id = str(finalized_payload.get('id') or existing_frame.get('response_id') or '').strip()
-        parent_frame_id = str(existing_frame.get('frame_id') or '').strip()
-        if response_id:
-            explicit_relation = (
-                dict(finalized_payload.get('frame_relation'))
-                if isinstance(finalized_payload.get('frame_relation'), Mapping)
-                else {}
-            )
-            explicit_relation_kind = str(explicit_relation.get('kind') or '').strip()
-            if explicit_relation_kind == 'graph_patch_terminal_review':
-                audit_identifiers = {
-                    key: explicit_relation.get(key)
-                    for key in (
-                        'audit_key',
-                        'patch_id',
-                        'proposal_id',
-                        'review_id',
-                        'policy_review_id',
-                    )
-                }
-                if all(
-                    isinstance(value, str)
-                    and bool(value)
-                    and value == value.strip()
-                    for value in audit_identifiers.values()
-                ):
-                    explicit_relation = {
-                        'kind': 'graph_patch_terminal_review',
-                        'reason': 'terminal_graph_patch_enforced_policy_denied',
-                        **audit_identifiers,
-                        'audit_only': True,
-                        'executable': False,
-                        'runtime_effect': 'audit_only_no_execution',
-                        'owed_work': 'none',
-                        'scheduled_branch_ids': [],
-                    }
-                else:
-                    explicit_relation = {}
-                    explicit_relation_kind = ''
-            preserve_bounded_successor_relation = explicit_relation_kind in {
-                'graph_patch_reopen_successor',
-                'graph_patch_terminal_review',
-                'graph_rebase_partial_successor',
-                'graph_rebase_stage_successor',
-            }
-            finalized_payload['frame_relation'] = {
-                **(explicit_relation if preserve_bounded_successor_relation else {}),
-                'kind': (
-                    explicit_relation_kind
-                    if preserve_bounded_successor_relation
-                    else 'late_fill_successor'
-                    if isinstance(finalized_payload.get('late_fill'), Mapping)
-                    else 'successor'
-                ),
-                'response_id': response_id,
-                'parent_response_id': response_id,
-                'parent_frame_id': parent_frame_id or None,
-                'parent_frame_sequence': existing_frame.get('frame_sequence'),
-            }
-            frame_relation_added = True
-    _mark_step(
-        'frame_relation',
-        step_started_at,
-        had_existing_frame=bool(existing_frame),
-        relation_added=frame_relation_added,
-    )
-    step_started_at = time.perf_counter()
-    working_frame = _build_working_frame(
+    return ResponseFrameFinalizer(
+        attach_frame=lambda *args, **kwargs: _attach_response_frame(*args, **kwargs),
+        persistence_disabled=lambda: bool(app.config.get("TESTING")),
+        frame_commit=ResponseFrameCommit(
+            frames_dir=RESPONSE_FRAMES_DIR,
+            artifact_registry_ledger=ARTIFACT_REGISTRY_LEDGER,
+            persist_artifact_registry=lambda *args, **kwargs: _persist_output_artifact_registry_records(*args, **kwargs),
+            enrich_frame_for_append=lambda *args, **kwargs: _enrich_response_frame_for_ledger_append(*args, **kwargs),
+            persist_frame=lambda *args, **kwargs: _persist_response_frame(*args, **kwargs),
+            append_frame_with_parent_cas=lambda *args, **kwargs: _append_response_frame_with_parent_cas(*args, **kwargs),
+            register_readiness_observation=lambda payload: _register_durable_graph_rebase_readiness_observation(payload),
+            publish_persistence_failure=_publish_response_persistence_failure,
+        ),
+    ).finalize(
+        response_payload,
         request_payload=request_payload,
-        response_payload=finalized_payload,
-        freeze=True,
+        persist=persist,
+        expected_parent_frame_id=expected_parent_frame_id,
+        expected_parent_frame_sequence=expected_parent_frame_sequence,
     )
-    _mark_step('build_working_frame', step_started_at)
-    finalized_payload['working_frame'] = working_frame
-    runtime = dict(finalized_payload.get('runtime') or {}) if isinstance(finalized_payload.get('runtime'), dict) else {}
-    runtime['working_frame'] = working_frame
-    finalized_payload['runtime'] = runtime
-    _publish_finalize_timing(finalized_payload)
-    step_started_at = time.perf_counter()
-    with measure_operation('attach_response_frame', role='canonical_truth'):
-        framed_payload = _attach_response_frame(finalized_payload, request_payload=request_payload)
-    with measure_operation('hoist_response_outputs', role='public_projection'):
-        framed_payload = _hoist_response_output_surfaces(framed_payload)
-    # Artifact identity is adjudicated during frame/output construction. Bind
-    # lifecycle to that final truth before persisting this new frame.
-    framed_payload = _attach_response_status_semantics(framed_payload)
-    current_state = framed_payload['response_frame'].get('current_state')
-    if isinstance(current_state, dict):
-        for key in ('lifecycle_state', 'canonical_status_field', 'status_compatibility', 'status_semantics'):
-            current_state[key] = copy.deepcopy(framed_payload[key])
-    if preserve_bounded_successor_relation:
-        # The explicit relation applies to this append only. Later frames in the
-        # successor wave derive their ordinary parent relation from response_frame.
-        framed_payload.pop('frame_relation', None)
-    _mark_step(
-        'attach_response_frame_and_hoist_outputs',
-        step_started_at,
-        output_count=len(framed_payload.get('outputs') or []) if isinstance(framed_payload.get('outputs'), list) else None,
-        artifact_count=len(framed_payload.get('artifacts') or []) if isinstance(framed_payload.get('artifacts'), list) else None,
-    )
-    _publish_finalize_timing(framed_payload)
-    response_frame = framed_payload.get('response_frame')
-    if isinstance(response_frame, Mapping):
-        step_started_at = time.perf_counter()
-        framed_payload['response_frame'] = _enrich_response_frame_metadata(
-            response_frame,
-            parent_frame=existing_frame if isinstance(existing_frame, Mapping) else None,
-        )
-        if not persist and existing_frame:
-            framed_payload['response_frame'] = _preserve_frozen_response_frame_identity(
-                framed_payload['response_frame'],
-                existing_frame,
-            )
-        _mark_step('response_frame_metadata', step_started_at)
-        _publish_finalize_timing(framed_payload)
-    frame_persisted = False
-    persistence_receipt = {}
-    writer_entered = False
-    registry_outcome = {'status': 'not_attempted'}
-    if persist and not app.config.get("TESTING"):
-        step_started_at = time.perf_counter()
-        # Migration guidance precedes Artifact Registry or Response Ledger writes.
-        # This read-only preflight never initializes/migrates storage.
-        from fruth_services.response_frames import check_response_frame_index_write
-        try:
-            check_response_frame_index_write(frames_dir=RESPONSE_FRAMES_DIR)
-        except Exception as exc:  # noqa: BLE001
-            receipt = {
-                'kind': 'fruth.response_persistence', 'version': 1,
-                'status': 'not_committed', 'stage': 'prepare', 'index_status': 'not_attempted',
-                'automatic_retry': False,
-                'artifact_registry': {'status': 'not_attempted'},
-                'error': {'code': getattr(exc, 'code', 'response_frame_persistence_failed'),
-                          'message': str(exc), 'errno': getattr(exc, 'errno', None)},
-            }
-            failed_payload = attach_persistence_failure(framed_payload, receipt)
-            _publish_finalize_timing(failed_payload)
-            failed_payload = _attach_response_status_semantics(failed_payload)
-            _ensure_response_lookup_for_payload(failed_payload, mode_hint='chat')
-            _touch_response_lookup(
-                str(failed_payload.get('id') or '').strip(), status='incomplete',
-                output_text=str(failed_payload.get('output_text') or ''),
-                error_message=failed_payload['error']['message'], response_payload=failed_payload,
-            )
-            raise ResponsePersistenceError(failed_payload) from exc
-        try:
-            _persist_output_artifact_registry_records(
-                framed_payload,
-                ledger_path=ARTIFACT_REGISTRY_LEDGER,
-            )
-            registry_outcome = {'status': 'published'}
-        except Exception as exc:  # noqa: BLE001
-            registry_outcome = {'status': 'failed', 'error': str(exc)}
-            logging.warning("Could not append output artifact registry records: %s", exc)
-        _mark_step('persist_output_artifact_registry_records', step_started_at)
-        _publish_finalize_timing(framed_payload)
-        step_started_at = time.perf_counter()
-        try:
-            if str(expected_parent_frame_id or '').strip():
-                writer_entered = True
-                append_result = _append_response_frame_with_parent_cas(
-                    framed_payload['response_frame'],
-                    expected_parent_frame_id=str(expected_parent_frame_id).strip(),
-                    expected_parent_frame_sequence=expected_parent_frame_sequence,
-                    frames_dir=RESPONSE_FRAMES_DIR,
-                    receipt=persistence_receipt,
-                )
-                framed_payload['response_frame'] = append_result['response_frame']
-            else:
-                framed_payload['response_frame'] = _enrich_response_frame_for_ledger_append(
-                    framed_payload['response_frame'],
-                    frames_dir=RESPONSE_FRAMES_DIR,
-                )
-                writer_entered = True
-                _persist_response_frame(
-                    framed_payload['response_frame'], frames_dir=RESPONSE_FRAMES_DIR,
-                    receipt=persistence_receipt,
-                )
-            frame_persisted = True
-        except ResponseFrameParentCASMismatch:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            logging.warning("Could not append response frame: %s", exc)
-            if isinstance(exc, ResponseFramePersistenceError):
-                persistence_receipt = dict(exc.receipt)
-                if exc.frame is not None:
-                    framed_payload['response_frame'] = exc.frame
-            else:
-                # Includes preparation failures before the native writer and
-                # unexpected failures without a trustworthy commit receipt.
-                persistence_receipt = {
-                    'kind': 'fruth.response_persistence', 'version': 1,
-                    'status': 'uncertain' if writer_entered else 'not_committed',
-                    'stage': 'finalizer' if writer_entered else 'prepare',
-                    'automatic_retry': False,
-                    'error': {'code': 'response_frame_persistence_failed',
-                              'message': str(exc), 'errno': getattr(exc, 'errno', None)},
-                }
-            persistence_receipt['artifact_registry'] = registry_outcome
-            if persistence_receipt.get('status') != 'committed':
-                failed_payload = attach_persistence_failure(framed_payload, persistence_receipt)
-                _mark_step('persist_response_frame', step_started_at)
-                _publish_finalize_timing(failed_payload)
-                failed_payload = _attach_response_status_semantics(failed_payload)
-                _ensure_response_lookup_for_payload(failed_payload, mode_hint='chat')
-                _touch_response_lookup(
-                    str(failed_payload.get('id') or '').strip(), status='incomplete',
-                    output_text=str(failed_payload.get('output_text') or ''),
-                    error_message=failed_payload['error']['message'],
-                    response_payload=failed_payload,
-                )
-                raise ResponsePersistenceError(failed_payload) from exc
-            # The canonical row is already fsynced. Index publication is a
-            # separate repair, never permission to append/execute the work twice.
-            frame_persisted = True
-        persistence_receipt['artifact_registry'] = registry_outcome
-        framed_payload['persistence'] = persistence_receipt
-        _mark_step('persist_response_frame', step_started_at)
-        if frame_persisted:
-            step_started_at = time.perf_counter()
-            try:
-                registry_diagnostic = (
-                    _register_durable_graph_rebase_readiness_observation(
-                        framed_payload
-                    )
-                )
-            except GraphRebaseReadinessRegistryError as exc:
-                registry_diagnostic = {
-                    'kind': 'fruth.graph_rebase_readiness_registry_append',
-                    'status': 'append_failed',
-                    'runtime_effect': 'none',
-                    'error': exc.as_dict(),
-                }
-            except Exception as exc:  # noqa: BLE001
-                registry_diagnostic = {
-                    'kind': 'fruth.graph_rebase_readiness_registry_append',
-                    'status': 'append_failed',
-                    'runtime_effect': 'none',
-                    'error': {
-                        'code': 'readiness_registry_unexpected_failure',
-                        'message': str(exc),
-                    },
-                }
-            registry_status = str(registry_diagnostic.get('status') or '')
-            if registry_status in {
-                'append_failed',
-                'hydration_binding_mismatch',
-                'hydration_failed',
-                'selection_failed',
-                'verification_failed',
-            }:
-                logging.warning(
-                    'Graph-rebase readiness observation was not retained: %s',
-                    registry_diagnostic,
-                )
-            framed_runtime = (
-                dict(framed_payload.get('runtime') or {})
-                if isinstance(framed_payload.get('runtime'), Mapping)
-                else {}
-            )
-            developer_diagnostics = (
-                dict(framed_runtime.get('developer_diagnostics') or {})
-                if isinstance(
-                    framed_runtime.get('developer_diagnostics'),
-                    Mapping,
-                )
-                else {}
-            )
-            developer_diagnostics['graph_rebase_readiness_registry'] = (
-                registry_diagnostic
-            )
-            framed_runtime['developer_diagnostics'] = developer_diagnostics
-            framed_payload['runtime'] = framed_runtime
-            _mark_step(
-                'persist_graph_rebase_readiness_observation',
-                step_started_at,
-                status=registry_status,
-            )
-    _publish_finalize_timing(framed_payload)
-    return framed_payload
 
 
 def _response_registry_now_iso() -> str:

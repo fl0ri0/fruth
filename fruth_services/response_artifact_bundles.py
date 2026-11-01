@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from fruth_services.text_artifact_syntax import text_artifact_syntax_sanity_issues_for_extension
+
 import datetime as dt
 import hashlib
 import json
@@ -1227,9 +1229,7 @@ def _text_file_syntax_sanity_issues(path: Path) -> list[str]:
     except OSError:
         return []
     try:
-        from fruth_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
-
-        return ResponseSemanticsRuntimeOwner.text_artifact_syntax_sanity_issues_for_extension(
+        return text_artifact_syntax_sanity_issues_for_extension(
             extension,
             text,
         )[:6]

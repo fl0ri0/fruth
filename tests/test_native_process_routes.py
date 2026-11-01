@@ -154,3 +154,61 @@ def test_cli_requires_exact_shapes_and_disposable_paths(tmp_path):
     for args in (['--no-persist'], ['--frames',path,'--merge-existing'], ['--frames',path,'--unknown']):
         with pytest.raises(PermissionError):
             route.cli_arguments('test_self_learning.py', 'build_self_learning_eval_cases.py', args)
+
+
+def test_codex_fixture_route_binds_bytes_paths_arguments_and_environment(tmp_path):
+    from tests.test_codex_execution import FAKE_CODEX_SOURCE
+    route = controller(tmp_path)
+    route.active = 'tests/test_codex_execution.py::CodexExecutionTests::test_login_status_probe_is_structured_and_cached'
+    cwd = route.work / 'temporary'
+    executable = cwd / 'codex'
+    body = f'#!{sys.executable}\n{FAKE_CODEX_SOURCE}'
+    executable.write_text(body)
+    executable.chmod(0o755)
+    command = [str(executable), 'login', 'status']
+    assert route.classify(command, cwd, None)[0] == 'codex-fixture'
+    alias = cwd / 'alias'
+    alias.symlink_to(executable)
+    outside = tmp_path / 'codex'
+    outside.write_text(body)
+    outside.chmod(0o755)
+    cases = [([str(outside), '--version'], cwd, None),
+             ([str(alias), '--version'], cwd, None),
+             (['/bin/sh', '-c', 'true'], cwd, None),
+             ([str(executable), 'exec', '--dangerously-bypass-approvals-and-sandbox'], cwd, None),
+             (command, ROOT, None),
+             (command, cwd, dict(os.environ, PYTHONPATH='/outside')),
+             (command, cwd, dict(os.environ, OPENAI_API_KEY='unapproved-value')),
+             (command, cwd, dict(os.environ, FAKE_CODEX_CALL_LOG=str(outside)))]
+    for args, directory, env in cases:
+        with pytest.raises(PermissionError):
+            route.classify(args, directory, env)
+    prefix = [str(executable), 'exec', '--ephemeral', '--ignore-user-config', '--ignore-rules',
+              '--skip-git-repo-check', '--sandbox', 'read-only', '--color', 'never',
+              '--output-last-message', str(cwd / 'last-message.txt')]
+    assert route.classify(prefix + ['-'], cwd, None)[0] == 'codex-fixture'
+    for tail in (['--image', '../outside.png', '-'], ['--image', '/outside.png', '-'],
+                 ['--image', 'inputs/input-01.png', '-'], ['--model', 'anything', '-']):
+        with pytest.raises(PermissionError):
+            route.classify(prefix + tail, cwd, None)
+    executable.write_text(body + '\nprint("altered")\n')
+    with pytest.raises(PermissionError):
+        route.classify(command, cwd, None)
+
+
+def test_new_session_is_exclusive_to_exact_codex_route_and_other_options_stay_denied(tmp_path):
+    route = controller(tmp_path)
+    route.validate_launch_options('codex-fixture', (), {'start_new_session': True})
+    route.validate_launch_options('owned-sleep', (), {})
+    for name, positional, options in [
+        ('owned-sleep', (), {'start_new_session': True}),
+        ('node', (), {'start_new_session': True}),
+        ('codex-fixture', (), {}),
+        ('codex-fixture', (), {'start_new_session': False}),
+        ('codex-fixture', (), {'start_new_session': 1}),
+        ('codex-fixture', (0,), {'start_new_session': True}),
+        *[('codex-fixture', (), dict(start_new_session=True, **{key: value})) for key, value in
+          [('shell', True), ('executable', '/bin/sh'), ('preexec_fn', lambda: None),
+           ('pass_fds', (1,)), ('process_group', 0), ('user', 0)]]]:
+        with pytest.raises(PermissionError):
+            route.validate_launch_options(name, positional, options)

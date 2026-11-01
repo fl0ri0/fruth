@@ -22,6 +22,9 @@ class OperatorScriptEntrypointTests(unittest.TestCase):
                             ignore=shutil.ignore_patterns('__pycache__'))
             shutil.copytree(REPO_ROOT / 'fruth_core', checkout / 'fruth_core',
                             ignore=shutil.ignore_patterns('__pycache__'))
+            (checkout / 'helpers').mkdir()
+            for helper in ('__init__.py', 'model_capabilities.py'):
+                shutil.copy2(REPO_ROOT / 'helpers' / helper, checkout / 'helpers' / helper)
             (checkout / 'model_ports.json').write_text('[]\n', encoding='utf-8')
             env = os.environ.copy()
             env.pop('PYTHONPATH', None)

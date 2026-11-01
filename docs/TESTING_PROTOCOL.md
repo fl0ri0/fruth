@@ -21,6 +21,11 @@ completed terminal-handoff replay, plus state-carrier and changed-identity check
 Include `tests/test_terminal_repair_result_continuity.py` for saved-file repair
 through terminal publication, accepted historical results, exact repair-contract
 replacement and unrelated same-target duties.
+The same routes cover the extracted branch-result, TTS evidence, exact text and
+linked-artifact materialization owners. Include
+`tests/test_c9_pending_handoff_contract.py` when changing wave selection or its
+clock dependency; the finite-clock and cancellation controls must observe the
+same clock as the continuation worker.
 Broaden to the semantics, terminal reconciliation, Responses and affected control
 handoff suites. A state-constructor pass alone is not proof that a child dispatched.
 
@@ -40,6 +45,30 @@ use isolated storage, harmless effects and server-side bytes/counters, preservin
 the signed-preview sandbox. See the [HTTP contract](HTTP_API_BOUNDARY.md). Changed
 runtime source needs a fresh complete matching offline fake gate before live
 conformance.
+
+For the MLX Whisper adapter's HTTP admission, start with
+`tests/test_whisper_http_admission.py`, `tests/test_transports_audio.py` and
+`tests/test_backend_transport_runtime.py` through the isolated runner. The handler
+tests parse full HTTP bytes in memory, with temporary WAVs and an injected
+transcription provider. Then run the shared HTTP caller/admission tests above and
+the affected speech-to-text inference/API and MLX contract slices. Do not start
+models or production services for this boundary.
+
+Repeat the handler matrix over actual TCP with the separate bounded fixture:
+
+```sh
+.venv/bin/python -B /absolute/staged-source/tests/whisper_http_fixture.py --source /absolute/staged-source --output /absolute/new-whisper-http-evidence
+```
+
+It uses ephemeral IPv4 loopback listeners, temporary audio, the actual handler
+and actual updated Fruth requests client, and a stub provider without loading
+models. It closes every listener. Foreign Host/Origin, missing/wrong markers,
+media/body/field errors and preflight must fail before path access/provider work;
+aliases, local authorities, JSON parameters and honest provider failures remain
+covered. Listener-configuration/CLI tests stay in the offline suite. The normal
+runner's network denial remains unchanged: this native fixture is a separate
+explicit route and may need host permission to bind loopback. Direct HTTP tests
+do not demonstrate browser exploitability or data exfiltration.
 
 For dashboard browser-dependency delivery, run `tests/test_browser_dependencies.py`,
 the frontend transport/reference/message and backend-target UI suites, the HTTP
@@ -86,6 +115,35 @@ actual report builder with overlapping responses, delayed backfill, reversed
 ledger/timestamp order and missing timing evidence. Unknown phases must remain
 unknown; per-wave offsets must not be combined across independent wave clocks.
 Keep timing attribution independent of Closure, artifact and frame verdicts.
+This also covers `scripts/run_report_rendering.py`; the CLI import checks retain
+their separate maintained native process route. Shadow-corpus evidence projection
+changes use `tests/test_graph_rebase_shadow_corpus_runner.py`. Self-Attack report
+changes use `tests/test_self_attack.py` and
+`tests/test_self_attack_mismatch_reporting.py`. Pure report extraction does not
+authorize running a live campaign.
+CLI truth projections also use `tests/test_fruthctl.py`. The maintained runner
+currently rejects the real child in
+`tests/test_self_attack.py::test_isolated_worker_applies_startup_controls_before_runtime_import`
+before launch because that fixture has no matching startup environment route.
+The exact pre-refactor source reproduces the rejection. Preserve its failure
+witness; do not weaken process admission or report that case as passing. The
+native offline Self-Attack gate remains a separate required acceptance route.
+
+For `phase_preparation`, `selected_reference_context`, semantic review/readback and
+branch/saved-text evidence, use the response-semantics, selected-reference,
+saved-file-consumer, saved-read-syntax-repair, audio binding and vision continuity
+suites, then the Responses API integration selection. Preserve prompt bytes and
+exact producer/consumer/version identities. For continuation and terminal repair,
+use maintained C9 pending-handoff and terminal-review controls plus graph patch,
+partial-rebase and terminal-repair selections. Native terminal-review scenarios
+can be selected individually to fit the existing per-job deadline; no scenario
+bound or assertion is relaxed.
+
+For finalizer/commit changes, use storage failure, SQLite HTTP, TTS checkpoint,
+frame persistence, readiness registry and finalizer closed-map owner suites. Keep
+preflight-before-write, committed-Ledger/failed-Index, uncertain commit, CAS,
+frozen read identity and secondary Readiness failure controls. CLI-bearing suites
+need their maintained host sandbox route; an outer sandbox denial is not a pass.
 
 ---
 
@@ -101,6 +159,15 @@ stable repeated observations, both production comparison owners and the demonstr
 legacy layout. The process is `/bin/sleep 30`, never an AFM/PCC server substitute.
 No real service start/stop/restart, PCC call, timezone conversion, subsecond PID
 identity or atomic observation/signal guarantee follows from these checks.
+
+For the downstream Codex bridge, run `tests/test_codex_execution.py`,
+`tests/test_codex_runtime_bridge.py` and `tests/test_child_process_env.py` through
+`scripts/run_tests.py`. The execution suite launches only its source-bound fake
+executable in disposable state; it never invokes the installed provider. Include
+`tests/test_native_process_routes.py` for fixture admission/containment controls
+and `tests/test_release_archive.py` when the route helper changes. Session/group
+identity and timeout kill/reap are observed on the actual fake child. These tests
+verify bridge behavior, not the real Codex client's read boundary.
 
 ## Quick Debug Flow
 
@@ -162,16 +229,93 @@ paths. Separately qualify a real model with generation and one reference edit,
 including exact output bytes, source identity, control behavior, memory and
 failure cleanup. Do not infer native model compatibility from a mocked response.
 
-For startup dependency behavior, run `tests/test_stack_shutdown.py`. Its shell
-fixtures verify that existing environments never run pip on start/restart, even
-after requirements change, while a new environment installs once and stops on
-installation failure. All commands and environment files are isolated; tests do
-not install packages or start real models.
+For cleanup/startup ownership, start with `tests/test_process_ownership.py` and
+`tests/test_apple_process_identity.py` through the isolated runner. The shared
+birth/command parser preserves the existing Apple imports and record format.
+Include the Apple backend, runtime-liveness and registry suites listed above,
+`tests/test_native_process_routes.py`, `tests/test_child_process_env.py`,
+`tests/test_startup_model_manager.py` and the shell/maintenance suites below.
+
+Run the separate bounded native fixture for actual signaling/listener evidence:
+
+```sh
+.venv/bin/python -B tests/process_ownership_fixture.py --output /absolute/new/disposable-ownership-evidence
+```
+
+It copies only the required owners, creates harmless loopback listeners on
+ephemeral ports, substitutes the webserver/model-selection bodies in disposable
+shell fixtures and retains source hashes/results. No production cleanup or model
+startup is invoked. It covers owned TERM/KILL, foreign/other-checkout survival,
+missing/stale/conflicting records, actual same-PID exec changes before TERM and
+between TERM and KILL, verified reuse, occupied/free-port startup and inert dry-run.
+Teardown uses fixture-only cooperative stop files and retained child handles;
+fallback signals require a matching child identity. Kernel PID recycling and an
+atomic observation/signal guarantee are not established by these tests. The
+ordinary isolated runner does not admit this network fixture; run it explicitly
+with loopback/process-observation permission, never by relaxing the runner guards.
+
+For launch-time evidence also run `tests/test_process_launch_ownership.py`, the
+Ollama/MLX/llama.cpp manager suites, `tests/test_embedding_backend_contract.py`,
+`tests/test_image_backend_contract.py`, `tests/test_mlx_image_success_cleanup.py`,
+`tests/test_runtime_core.py`, `tests/test_start_model_api.py` and
+`tests/test_runtime_hygiene.py`. For default-service filtering include
+`tests/test_codex_config_sync.py` and `tests/test_sync_model_providers.py` with
+temporary configuration paths. Existing mocked-launch contract tests substitute
+the ownership OS boundary; they are not proof of real capture or signaling.
+
+Run the native launch chain against the guarded runner's immutable source snapshot:
+
+```sh
+.venv/bin/python -B tests/process_launch_ownership_fixture.py --source /absolute/guarded-run/source --output /absolute/new/disposable-launch-evidence
+```
+
+This fixture compiles a harmless local listener using the installed Clang and
+provides disposable Python listener modules. It exercises the existing default
+Ollama, dedicated Ollama, MLX variants and llama.cpp launch/registration paths,
+then reads their persisted evidence in a fresh cleanup interpreter. Discovery,
+weights and provider readiness transport are substituted; process capture,
+exclusive listener checks, registry writes and signals are real. It covers
+default reuse without evidence rewriting, preservation across startup's older
+model snapshot, rejection of foreign/other-checkout/stale/conflicting evidence,
+a listener appearing during launch and an actual same-PID exec before registration.
+All ports and state are temporary; cooperative teardown addresses only fixture
+children. No model packages, inference, production cleanup or service restart are
+needed. The native fixture needs explicit loopback/process-observation permission
+and is not an ordinary runner route. Keep all runner guards unchanged.
+
+For startup dependency behavior, run `tests/test_bootstrap_preflight.py` and
+`tests/test_stack_shutdown.py` through the maintained runner. Pure helper tests
+cover interpreter/TLS and venv identity, manifest admission, pip availability and
+the offline CLI contract. Shell sequencing fixtures substitute preflight and pip;
+they verify no existing-environment installation, failed-install retry rejection,
+missing manifest/executable rejection and the unchanged ownership/credential paths.
+They are not real installation evidence. Include `tests/test_release_archive.py`
+to verify helper selection and public links, plus startup/ownership/native-route
+and child-process-environment suites for launcher changes.
+
+Qualify real interpreter selection and pip separately with the bounded fixture:
+
+```sh
+.venv/bin/python -B tests/python_bootstrap_fixture.py --output /absolute/new/bootstrap-evidence --python /absolute/suitable/python3
+```
+
+It uses actual disposable venvs and tiny local fixture wheels, with a native
+network-denial sandbox, poisoned Fruth imports and a model-selection boundary
+sentinel. It covers actual fresh install/retry, satisfied changed requirements
+and platform markers, direct/transitive failures, missing/broken/misdirected
+interpreters, unsafe manifests and hostile pip settings without model/service
+work. Python/TLS boundary variants are explicitly labelled synthetic; the host's
+unsuitable Apple Python is separately exercised when present. It does not install
+Fruth's full requirements, qualify native libraries or modify installed main/backend
+environments. Run for each claimed base interpreter. Native sandbox startup may
+need host permission; never weaken the ordinary runner or its network denial.
 
 The same module checks stop → empty model selection → web startup → TCP wait →
-browser opening. Startup's `lsof` check is required: a missing listener after
-launch fails startup and aborts restart. An existing listener is reused after
-model selection. After successful startup, `restart.sh` separately tries TCP
+browser opening. Startup's ownership gate is required: a missing or unverified
+listener after launch fails startup and aborts restart. Only a verified Fruth
+webserver from the intended checkout is reused after model selection. These shell
+sequencing fixtures substitute the ownership gate; the native fixture above
+exercises the actual owner. After successful startup, `restart.sh` separately tries TCP
 reachability up to 40 times, then opens the browser even if that wait expires.
 Neither check proves HTTP/application readiness. `fruth dashboard` only warns
 about a missing listener before opening; it does not start the stack.
@@ -859,8 +1003,9 @@ It retains the 32-scenario/32-transition/600-second limits and stops on failure.
 Use serial jobs under one aggregate evidence root; actual starts across controls,
 failed attempts and campaigns are journaled and capped at 128, with at most two
 campaign jobs. An optional task `budget.json` can impose an earlier UTC deadline
-and lower storage/start limits; it cannot raise these caps. The fixture checks a
-4 GiB aggregate storage stop before each scenario. This does not establish
+and explicit storage/start limits; it cannot raise the scenario/campaign caps.
+Before each scenario the fixture checks actual free disk space and any explicitly
+supplied `stop_bytes`, with no default aggregate evidence quota. This does not establish
 fresh-process continuation, automatic orphan resume, semantic model accuracy or
 general liveness. Existing saved-file and persistence tests remain separate
 regressions; no full campaign is implicit in this route.
@@ -880,7 +1025,8 @@ The opt-in `test_one_sealed_intake_campaign` uses a sealed 32-case corpus (six
 explicit seeds plus 26 Hypothesis draws), at most 32 boundary steps per case,
 independent aggregate start reservations, and no runtime shrinking. A study
 `budget.json` can impose a task deadline; the fixture always retains its 128-start,
-two-campaign and 4 GiB early-stop limits. Synthetic inventory, no-op planner
+two-campaign limits. Storage uses the runner's actual-free-space guard and an
+optional explicit `stop_bytes`, without a fixed aggregate evidence quota. Synthetic inventory, no-op planner
 preparation and controlled saved producer output are explicit interventions.
 This tests the selected intake/prepare boundary, not live model understanding,
 HTTP admission, fulfillment, verifier soundness or liveness. An explicit extra
@@ -1008,7 +1154,8 @@ Use a new job path per invocation under one aggregate root. Optional `budget.jso
 fields `deadline_utc`, `actual_scenario_starts`, `max_campaigns`, and `stop_bytes`
 can impose stricter task limits; this study supplies them explicitly.
 The fixture enforces at most 128 starts, two campaigns, 32 starts per job,
-32 recorded owner-boundary transitions per scenario and a 4 GiB early stop.
+32 recorded owner-boundary transitions per scenario. Storage uses actual free
+disk space and any explicit `stop_bytes`; retained evidence has no default quota.
 Terminal reconciliation precedes native freeze; a frame-finalizer call alone
 does not establish whole-request completion. Technical consumption success and
 strictly accepted model-review evidence do not establish general A2 soundness.
@@ -1106,6 +1253,11 @@ receipt/expectation exclusion, handshake timeouts and `finally` reaping.
   -o command=` only while that task-created sleep handle remains live. `ps` is an
   Apple setuid platform binary: this narrowly admitted read-only observation is
   **not OS-sandboxed**. It receives the production owner's sanitized C locale.
+- The exact fake-Codex script embedded in `tests/test_codex_execution.py`, bound
+  to its staged source digest, physical temporary executable/cwd and exact
+  version/login/exec argument schemas. Only declared dummy environment values and
+  temporary capture paths are admitted; changed bytes, paths, image traversal
+  and extra launch options are rejected.
 
 Other new children require macOS `sandbox-exec`/Seatbelt; unsupported platforms or
 blocked sandbox initialization fail closed. Python audit hooks do not sandbox
@@ -1120,9 +1272,13 @@ approved host execution to install the child sandbox; there is no unguarded fall
 
 Each admitted child records argv, environment, cwd, executable/source/fixture
 hashes, containment profile, PID, start and reaped exit in `processes.jsonl`.
-Children inherit the supervised worker group, cannot request new sessions or
-arbitrary launch options, and have a named 30-second child watchdog in addition to
-the job deadline. Existing shorter subprocess timeouts remain effective. Leftover
+Children inherit the supervised worker group and cannot request arbitrary launch
+options. The sole new-session exception is the admitted fake-Codex route, which
+requires `start_new_session=True` to exercise the production bridge's group
+cancellation. That maintained script spawns no descendants and its only sleep is
+one second; it cannot become arbitrary detached work. All routed children have a
+named 30-second child watchdog in addition to the job deadline. Existing shorter
+subprocess timeouts remain effective. Leftover
 children are terminated/reaped at item teardown. Rejected launches (even caught by
 a test), launch errors, watchdog expiry and teardown cleanup make the job fail;
 passing pytest assertions alone do not establish isolation success. Expected
@@ -1146,8 +1302,16 @@ Detached supervision uses the established new-session/no-terminal process model,
 with a wall deadline (default and maximum 600 seconds, shared across collection
 and execution), five-second interrupt and termination graces, then kill/reap.
 The supervisor measures the entire `--storage-root`, including previous jobs,
-with a 10 GiB cap and a graceful stop at 9 GiB. Keep all task output beneath that
-root. Source identities, input selection, PIDs/session/process groups, logs,
+and records the filesystem's available space. There is no fixed aggregate evidence
+quota. Staging accounts for its additional bytes; execution stops gracefully when
+free disk space falls below 1 GiB, retaining shutdown and receipt headroom. Keep all
+task output beneath that root. Configuration/receipt fields `storage_cap_bytes`
+and `storage_stop_bytes` are retained as `null`; `minimum_free_bytes` and
+`minimum_observed_free_bytes` document the active guard. Existing completed jobs
+remain readable by the passive monitor; their staged runners and recorded policies
+are unchanged. Run new jobs for this policy. `tests/test_test_storage_policy.py`
+covers large evidence retention, staging headroom, low-space rejection and explicit
+task quotas. Source identities, input selection, PIDs/session/process groups, logs,
 per-worker selection/JUnit/receipts, child journals and final `completion.json`
 are retained. A killed worker, missing receipt, source drift, isolation violation
 or deadline/storage stop cannot report PASS. Monitoring reads these records and
@@ -1431,6 +1595,58 @@ to macOS application services; a restrictive process sandbox may abort before
 Python can report an exception. Run native checks in a process with those services
 available, keeping all documents and outputs temporary.
 
+The owned preparation boundary has two distinct validation routes. Use the
+maintained isolated runner with `--record-validation` for
+`tests/test_pdf_preparation.py`, `tests/test_infer_api.py` and the maintained
+`tests/test_late_fill_c9_correction.py` regression selection. These cover protocol
+corruption/identity/coverage/PNG completeness, tiny limits, admission, cleanup
+uncertainty, exact branch cancellation authority and canonical acceptance gates.
+They do not establish native crash/hang containment. Include the original-PDF
+handoff test in `tests/test_codex_execution.py` through its existing fixed fake
+executor route; never use an installed agent. On macOS that route's Seatbelt
+launcher must itself be permitted by the enclosing execution context.
+
+For actual native/process checks, the opt-in fixed route is:
+
+```sh
+mkdir -p /private/tmp/fruth-pdf-validation
+.venv/bin/python -I -B tests/pdf_native_runner.py \
+  --output /private/tmp/fruth-pdf-validation/native-NEW \
+  --storage-root /private/tmp/fruth-pdf-validation
+```
+
+It stages public source using the maintained runner, verifies source identities,
+captures the same G1 environment inventories before/after and records exact test
+outcomes. It runs only `test_ocr_pdf.py`, `test_pdf_request_handling.py` and
+`test_pdf_worker_native.py`, with a separate 240-second supervisor and the same
+actual-free-disk-space guard. Parent audit guards block external I/O and production state; only
+fixed PDF supervisor/fixture commands with private temporary paths are admitted.
+The fresh native children are trusted synthetic fixtures, not OS-sandboxed
+children. This explicit route does not relax the general runner's subprocess
+guards. Run it where macOS application services are available; do not retry a
+PDFKit sandbox abort by silently falling back to in-process product execution.
+
+The native suite distinguishes real rendering from algorithm mocks and tests
+controlled exceptions, abrupt exit, partial output, GIL-held hangs, ignored TERM,
+deadline/cancellation, real parent SIGKILL, owned descendants and foreign-process
+survival. Core dumps are disabled in fault children. Tiny output budgets exercise
+actual native file-size enforcement without resource exhaustion. Fake providers
+cover Infer/Responses errors, Apple tool receipts, retry coverage and image
+bypass. Each job must have a checked completion receipt; retain failures and
+source maps separately from the final successful run. Do not run production PDFs,
+hostile documents, live inference or a historical full campaign for this boundary.
+
+For PDF-summary continuation and edit-source admission, include
+`tests/test_pdf_summary_continuation.py`, the request-phase-graph owner and
+terminal-repair promotion/result/execution continuity suites. A current OCR
+export or model fence cannot create predecessor edit authority. Explicitly
+selected revisions and admitted new-file promises must remain executable.
+Same-branch repair must preserve its original phase through strict mutation
+acceptance; foreign phase, capability, obligation and contract results must
+still fail. The finite-provider Responses case must reach saved completion and
+passive recovery without scheduling an unrequested file revision. This is
+orchestration coverage, separate from native parsing/rendering qualification.
+
 Run `tests/test_pdf_request_handling.py` and the PDF/OCR slice of
 `tests/test_infer_api.py` in a disposable physical checkout with production state
 absent and external I/O blocked. Mock status probes as well as providers. These
@@ -1486,6 +1702,58 @@ Use this before interpretive inference self-learning changes or larger response-
 The harness also covers the current learning/healing truth boundary: fake `/api/responses` payloads must expose `runtime.request_phase_graph.intent_obligations`, local producer-before-consumer dependency edges, and structural `intent_graph_adequacy`; accepted-learning hints may surface as soft decision-contract orientation but must not create executable graph repair proposals, graph patch lifecycle truth, staged patches, or applied patches by themselves.
 
 ## Documentation and release static validation
+
+### Validation dependency records
+
+For future release validation, freeze the final candidate's public inputs first,
+choose the intended Python environment, and add `--record-validation` to each
+already-required maintained-runner invocation. This does not authorize a wider
+test campaign. For example, a deliberately limited packaging check is:
+
+```sh
+mkdir -p /absolute/disposable-validation-evidence
+python -B scripts/run_tests.py run --storage-root /absolute/disposable-validation-evidence --output /absolute/disposable-validation-evidence/package-check --record-validation --detach tests/test_release_archive.py
+python -B scripts/run_tests.py monitor /absolute/disposable-validation-evidence/package-check
+python -B scripts/validation_record.py export --source . --job /absolute/disposable-validation-evidence/package-check --output /absolute/disposable-validation-evidence/public-record
+python -B scripts/validation_record.py verify --source . --record /absolute/disposable-validation-evidence/public-record --job /absolute/disposable-validation-evidence/package-check --environment
+```
+
+Wait for completion before exporting. Each job/output must be new. The flag
+captures inventory inside each worker before pytest and after its checks under
+the existing isolation guard. Drift fails the worker. Export accepts only
+completed successful non-collection jobs, with matching source/configuration,
+worker captures, exact selections/outcomes, JUnit and completion evidence.
+Failed/incomplete jobs retain their original evidence; they cannot be relabelled
+successful. Skips stay explicit in outcomes/counts. Old jobs without captures
+cannot acquire them by taking an inventory later. `inventory --source . --output
+/absolute/new-inventory.json` is available as a separate observation only.
+
+Repeat `--job` to combine existing matching jobs without rerunning them. All must
+have the same source and environment. Export rejects mismatched source,
+requirements, package/interpreter observations and supplied test evidence. Do not
+repeat an entire gate just to populate this format: retain prior evidence under
+its original claims, and capture the record at the next real validation.
+
+After review, copy exactly the generated pair into the candidate's `validation/`
+directory before its authorized release build. Keep raw jobs, logs and plans
+private. The builder's exact allowlist and manifest verify the pair and its source
+binding. Pair verification without `--job` checks public record/source integrity;
+`--job` additionally checks the retained private evidence; `--environment` checks
+the Python environment actually executing the verifier. Output distinguishes
+these checks. No verification mode reruns tests or proves wheel provenance.
+See [release scope](RELEASE_SCOPE.md#exact-validation-environment-records) for the
+source hash boundary, constraints usage and platform/minor-version limits.
+
+For changes to this workflow, run `tests/test_validation_record.py`,
+`tests/test_test_integration.py` and `tests/test_release_archive.py` through the
+maintained runner. Cover conditional/transitive dependencies, extras, shared
+roles, unrelated packages, missing provenance, source/requirements/interpreter/
+environment and supplied-evidence mismatches, exact pair inclusion and private
+exclusion in temporary archives. Also exercise a small actual opt-in run/export/
+verify flow with its limited scope stated. Do not build production dist or
+rewrite historical receipts for this check.
+
+### Public documentation and source packages
 
 For public reference-export changes, use the isolated runner with
 `tests/test_reference_run_export.py`, `tests/test_reference_run_evidence.py`,

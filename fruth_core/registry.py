@@ -1,8 +1,7 @@
 """Shared runtime registry helpers for Fruth.
 
-The shared registry is `model_ports.json`. Runtime model instances and agent
-entries coexist in the same file, so callers can preserve one while updating
-the other.
+The shared registry is `model_ports.json`. Runtime model instances, owned service
+records and agent entries coexist here; model-only writers preserve services.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ from helpers.model_capabilities import build_registry_metadata
 
 CONFIG_FILE_NAME = 'model_ports.json'
 DEFAULT_REGISTRY_PATH = Path(CONFIG_FILE_NAME)
+OLLAMA_DEFAULT_SERVICE = 'ollama_default'
 VOLATILE_REGISTRY_KEYS = {
     'activity',
     'backend_runtime',
@@ -100,14 +100,19 @@ def _normalise_raw_entries(raw: Any) -> List[Dict[str, Any]]:
     return []
 
 
-def read_registry_entries(path: Path | str | None = None) -> List[Dict[str, Any]]:
+def read_registry_entries(path: Path | str | None = None, *, strict: bool = False) -> List[Dict[str, Any]]:
     target = resolve_registry_path(path)
     if not target.exists():
         return []
     try:
         raw = json.loads(target.read_text(encoding='utf-8'))
     except (OSError, json.JSONDecodeError):
+        if strict:
+            raise
         return []
+    if strict and (not isinstance(raw, (list, dict))
+                   or (isinstance(raw, list) and any(not isinstance(entry, dict) for entry in raw))):
+        raise ValueError('Malformed runtime registry')
     return _normalise_raw_entries(raw)
 
 
@@ -149,15 +154,25 @@ def _sync_downstream_integrations(entries: Iterable[Dict[str, Any]]) -> None:
         print(f'⚠️ Downstream config sync skipped: {exc}')
 
 
+def is_runtime_service_entry(entry: Dict[str, Any]) -> bool:
+    return entry.get('runtime_service') == OLLAMA_DEFAULT_SERVICE
+
+
 def write_registry_entries(
     entries: Iterable[Dict[str, Any]],
     *,
     path: Path | str | None = None,
     preserve_agents: bool = False,
+    preserve_services: bool = False,
     sync_external: bool = False,
 ) -> None:
     target = resolve_registry_path(path)
-    existing = read_registry_entries(target) if preserve_agents else []
+    existing = read_registry_entries(target, strict=preserve_services) if preserve_agents or preserve_services else []
+    if preserve_services:
+        # Model-only snapshots may predate a service launch. Keep the current
+        # service evidence rather than overwriting it with that older snapshot.
+        entries = [entry for entry in entries if isinstance(entry, dict) and not is_runtime_service_entry(entry)]
+        entries.extend(entry for entry in existing if is_runtime_service_entry(entry))
     payload = (
         _merge_preserved_agents(entries, existing)
         if preserve_agents
@@ -173,7 +188,7 @@ def write_registry_entries(
         print(f'⚠️ Konnte {target} nicht schreiben: {exc}')
         return
     if sync_external:
-        _sync_downstream_integrations(payload)
+        _sync_downstream_integrations([entry for entry in payload if not is_runtime_service_entry(entry)])
 
 
 def filter_active_registry_entries(entries: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -234,7 +249,7 @@ def list_runtime_entries(
             path=path,
             sync_external=sync_external,
         )
-        if not entry.get('agent')
+        if not entry.get('agent') and not is_runtime_service_entry(entry)
     ]
 
 

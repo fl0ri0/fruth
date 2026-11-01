@@ -1688,7 +1688,7 @@ def output_artifact_is_qualified(
     execution/reuse gates; direct outputs and other modalities keep their owners.
     An explicit ref, matching labels or saved bytes cannot replace that result.
     """
-    from fruth_services.response_frames import _artifact_projection_type, _artifact_type_aliases
+    from fruth_services.artifact_contracts import _artifact_projection_type, _artifact_type_aliases
     if 'image' not in _artifact_type_aliases(_artifact_projection_type(artifact)):
         return True
     late = payload.get('late_fill') if isinstance(payload.get('late_fill'), Mapping) else {}
@@ -1700,7 +1700,7 @@ def output_artifact_is_qualified(
     snapshot = frame_late.get('full_snapshot_ref') if isinstance(frame_late.get('full_snapshot_ref'), Mapping) else {}
     if (projection.get('live_state_overlay') == 'same_frozen_frame_bounded_status_late_fill_surface_only'
             and not late.get('fill_results') and frame_late.get('fill_results')):
-        from fruth_services.response_frames import _safe_path_token
+        from fruth_services.response_persistence import _safe_path_token
         if (frame.get('response_id') != payload.get('id')
                 or snapshot.get('source_response_id') != payload.get('id')
                 or snapshot.get('source_frame_id') != _safe_path_token(frame.get('frame_id'))):

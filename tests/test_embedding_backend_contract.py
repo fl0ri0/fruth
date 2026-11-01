@@ -1,3 +1,9 @@
+import pytest
+from process_launch_test_support import mock_launch_ownership
+import fruth_runtime.mlx_model_manager as _ownership_owner_0
+import fruth_runtime.llama_cpp_model_manager as _ownership_owner_1
+
+from types import SimpleNamespace
 """Offline text-embedding contracts across existing backend owners."""
 import json
 import math
@@ -309,7 +315,7 @@ class EmbeddingBackendContractTests(unittest.TestCase):
                  patch.object(mlx, '_mlx_package_runtime_check', return_value=runtime_checks()), \
                  patch.object(mlx, '_python_module_available', return_value=True), \
                  patch.object(mlx, 'wait_for_port', return_value=True), \
-                 patch.object(mlx, 'launch_vlm_server', return_value=(Path(temp) / 'launch.log', 123)) as launch, \
+                 patch.object(mlx, 'launch_vlm_server', return_value=(Path(temp) / 'launch.log', SimpleNamespace(pid=123))) as launch, \
                  patch.object(mlx, 'launch') as launch_chat, \
                  patch.object(mlx, 'schedule_recent_mlx_instance_reconciliation'), \
                  patch.object(mlx, 'register_mlx_instance') as register:
@@ -402,3 +408,10 @@ class EmbeddingBackendContractTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+@pytest.fixture(autouse=True)
+def _mock_native_launch_evidence(monkeypatch):
+    # This module mocks native launches; test the ownership OS boundary separately.
+    mock_launch_ownership(monkeypatch, _ownership_owner_0, _ownership_owner_1)

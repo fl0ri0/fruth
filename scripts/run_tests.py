@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -21,8 +22,11 @@ import time
 import traceback
 
 
-CAP_BYTES = 10 * 1024**3
-STOP_BYTES = 9 * 1024**3
+# Evidence has no fixed aggregate quota. Retain shutdown/receipt headroom on
+# the actual filesystem, independently of how much evidence a task retained.
+MIN_FREE_BYTES = 1024**3
+CAP_BYTES = None  # Retained receipt/configuration keys; no aggregate cap.
+STOP_BYTES = None
 MAX_SECONDS = 600
 INTERRUPT_GRACE_SECONDS = 5
 TERMINATE_GRACE_SECONDS = 5
@@ -52,6 +56,25 @@ def allocated(root):
             except FileNotFoundError:
                 pass
     return total
+
+
+def storage_snapshot(root, *, additional_bytes=0, stop_bytes=None):
+    """Observe actual capacity and an optional explicitly supplied task quota."""
+    if type(additional_bytes) is not int or additional_bytes < 0:
+        raise ValueError('Additional storage must be a nonnegative integer')
+    if stop_bytes is not None and (type(stop_bytes) is not int or stop_bytes <= 0):
+        raise ValueError('Explicit task storage stop must be a positive integer')
+    usage = allocated(root)
+    disk = shutil.disk_usage(root)
+    reason = None
+    if disk.free - additional_bytes < MIN_FREE_BYTES:
+        reason = 'insufficient_free_disk'
+    elif stop_bytes is not None and usage + additional_bytes >= stop_bytes:
+        reason = 'explicit_task_storage_limit'
+    return {'allocated_bytes': usage, 'free_bytes': disk.free,
+            'total_bytes': disk.total, 'minimum_free_bytes': MIN_FREE_BYTES,
+            'additional_bytes': additional_bytes, 'explicit_stop_bytes': stop_bytes,
+            'stop_reason': reason}
 
 
 def clean_environment(job, *, hashseed):
@@ -100,9 +123,10 @@ def prepare(args):
     from scripts import build_release_archive as release
     selected = release.discover_release_files(source)
     mapping = {str(path): sha(origin) for path, origin in sorted(selected.items())}
-    usage = allocated(storage)
-    if usage + sum(max(p.stat().st_size, p.stat().st_blocks * 512) for p in selected.values()) >= STOP_BYTES:
-        raise ValueError('Aggregate storage stop threshold reached before staging')
+    capacity = storage_snapshot(storage, additional_bytes=sum(
+        max(p.stat().st_size, p.stat().st_blocks * 512) for p in selected.values()))
+    if capacity['stop_reason']:
+        raise ValueError('Insufficient free disk space before staging')
     output.mkdir()
     release.stage_release_tree(source, output / 'source', selected)
     if mapping != {str(path): sha(origin) for path, origin in sorted(selected.items())}:
@@ -118,7 +142,9 @@ def prepare(args):
     config = {'schema': 1, 'source': str(output / 'source'), 'production': str(source),
               'job': str(output), 'storage_root': str(storage), 'seconds': args.seconds,
               'mode': args.mode, 'collect_only': args.collect_only, 'selectors': selectors,
+              'record_validation': getattr(args, 'record_validation', False),
               'hashseed': args.hashseed, 'storage_cap_bytes': CAP_BYTES, 'storage_stop_bytes': STOP_BYTES,
+              'minimum_free_bytes': MIN_FREE_BYTES,
               'source_manifest_sha256': sha(output / 'source.json')}
     save(output / 'run.json', config)
     return output, config
@@ -132,10 +158,12 @@ def load_config(job):
             or not job.is_relative_to(Path(config['storage_root']).resolve())
             or job == Path(config['storage_root']).resolve()
             or config.get('storage_cap_bytes') != CAP_BYTES or config.get('storage_stop_bytes') != STOP_BYTES
+            or config.get('minimum_free_bytes') != MIN_FREE_BYTES
             or type(config['seconds']) is not int or not 0 < config['seconds'] <= MAX_SECONDS
             or config.get('hashseed') not in {'0', '1'}
             or config['mode'] not in {'regression', 'research', 'historical'}
             or not isinstance(config['collect_only'], bool)
+            or not isinstance(config.get('record_validation', False), bool)
             or sha(job / 'source.json') != config['source_manifest_sha256']):
         raise ValueError('Invalid runner configuration; collection not started')
     if Path(config['production']).resolve() == job / 'source':
@@ -202,6 +230,11 @@ def worker(job, phase):
                                production=config['production'], environment=dict(env),
                                routes=routes, cold=phase_config['group'] == 'regression' and any(
                                    p.startswith('tests/test_cold_process_recovery.py::') for p in phase_config['selectors']))
+    validation_capture, results = None, []
+    if config.get('record_validation'):
+        from scripts.validation_record import capture_environment
+        before_environment = capture_environment(source)
+        save(work / 'environment-before.json', before_environment)
     # Match the established harmless IPv6 capability observation before requests.
     # Pure workers intentionally import neither requests nor runtime modules.
     if phase_config['group'] in {'collection', 'regression'}:
@@ -227,6 +260,9 @@ def worker(job, phase):
                 routes.active = None
         def pytest_sessionfinish(self, session, exitstatus):
             selection.update(getattr(session.config, '_fruth_selection', {}))
+        def pytest_runtest_logreport(self, report):
+            if config.get('record_validation'):
+                results.append({'nodeid': report.nodeid, 'when': report.when, 'outcome': report.outcome})
     started = time.monotonic()
     code, error = 4, None
     try:
@@ -245,7 +281,19 @@ def worker(job, phase):
         if routes is not None:
             routes.finish()
         save(work / 'selection.json', selection)
+        if config.get('record_validation'):
+            after_environment = capture_environment(source)
+            save(work / 'environment-after.json', after_environment)
+            save(work / 'results.json', results)
+            validation_capture = {
+                'before_sha256': sha(work / 'environment-before.json'),
+                'after_sha256': sha(work / 'environment-after.json'),
+                'results_sha256': sha(work / 'results.json'),
+                'junit_sha256': sha(work / 'junit.xml'),
+                'environment_unchanged': before_environment == after_environment,
+            }
         save(work / 'worker.json', {'pytest_exit_code': code, 'error': error,
+             'validation_capture': validation_capture,
              'isolation_violations': violations, 'process_events': routes.events if routes else [],
              'route_failures': [e for e in routes.events if e['event'] in {'rejected', 'launch_error', 'child_deadline', 'cleanup'}] if routes else [],
              'pid': os.getpid(),
@@ -254,7 +302,8 @@ def worker(job, phase):
              'python': sys.version, 'hashseed': os.environ.get('PYTHONHASHSEED'),
              'source_file_map_sha256': verify_source(job)})
     route_failures = routes and any(e['event'] in {'rejected', 'launch_error', 'child_deadline', 'cleanup'} for e in routes.events)
-    return code or (3 if violations or route_failures else 0)
+    environment_changed = validation_capture and not validation_capture['environment_unchanged']
+    return code or (3 if violations or route_failures or environment_changed else 0)
 
 
 def stop_group(process, events):
@@ -279,10 +328,13 @@ def stop_group(process, events):
 def supervise(job):
     config = load_config(job)
     started = time.monotonic()
+    capacity = storage_snapshot(Path(config['storage_root']))
     receipt = {'started_at': datetime.now(timezone.utc).isoformat(), 'pid': os.getpid(),
                'seconds': config['seconds'], 'phases': [], 'stop_reason': None,
                'storage_cap_bytes': CAP_BYTES, 'storage_stop_bytes': STOP_BYTES,
-               'peak_observed_bytes': allocated(Path(config['storage_root'])),
+               'minimum_free_bytes': MIN_FREE_BYTES,
+               'minimum_observed_free_bytes': capacity['free_bytes'],
+               'peak_observed_bytes': capacity['allocated_bytes'],
                'source_file_map_sha256': verify_source(job), 'incomplete': True}
     code = 2
     try:
@@ -304,11 +356,13 @@ def supervise(job):
                     while process.poll() is None:
                         now = time.monotonic()
                         if now >= next_storage:
-                            usage = allocated(Path(config['storage_root']))
-                            receipt['peak_observed_bytes'] = max(receipt['peak_observed_bytes'], usage)
+                            capacity = storage_snapshot(Path(config['storage_root']))
+                            receipt['peak_observed_bytes'] = max(receipt['peak_observed_bytes'], capacity['allocated_bytes'])
+                            receipt['minimum_observed_free_bytes'] = min(
+                                receipt['minimum_observed_free_bytes'], capacity['free_bytes'])
                             next_storage = now + 2
-                            if usage >= STOP_BYTES:
-                                receipt['stop_reason'] = 'storage_budget'
+                            if capacity['stop_reason']:
+                                receipt['stop_reason'] = capacity['stop_reason']
                         if now - started >= config['seconds']:
                             receipt['stop_reason'] = receipt['stop_reason'] or 'job_deadline'
                         if receipt['stop_reason']:
@@ -356,7 +410,10 @@ def supervise(job):
         receipt.update(exit_code=2 if receipt['incomplete'] else code,
                        elapsed_seconds=time.monotonic() - started,
                        completed_at=datetime.now(timezone.utc).isoformat())
-        receipt['peak_observed_bytes'] = max(receipt['peak_observed_bytes'], allocated(Path(config['storage_root'])))
+        capacity = storage_snapshot(Path(config['storage_root']))
+        receipt['peak_observed_bytes'] = max(receipt['peak_observed_bytes'], capacity['allocated_bytes'])
+        receipt['minimum_observed_free_bytes'] = min(
+            receipt['minimum_observed_free_bytes'], capacity['free_bytes'])
         save(job / 'completion.json', receipt)
     return receipt['exit_code']
 
@@ -422,6 +479,8 @@ def main():
     run.add_argument('--mode', choices=('regression', 'research', 'historical'), default='regression')
     run.add_argument('--collect-only', action='store_true')
     run.add_argument('--detach', action='store_true')
+    run.add_argument('--record-validation', action='store_true',
+                     help='Capture exact dependency/environment evidence in each worker before and after tests')
     run.add_argument('tests', nargs='*')
     watch = sub.add_parser('monitor', help='Read job receipts without starting/stopping work')
     watch.add_argument('root', type=Path)

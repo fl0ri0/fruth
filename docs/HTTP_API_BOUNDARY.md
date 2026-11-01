@@ -107,3 +107,66 @@ curl --request POST http://127.0.0.1:5011/api/inference_preferences \
 ```
 
 Use passive reads to check reachability; do not issue effects just to test a connection.
+
+## MLX Whisper adapter
+
+`scripts/mlx_whisper_server.py` has a separate, small native HTTP contract.
+`POST /v1/audio/transcriptions` and `POST /api/transcribe` (including their
+trailing-slash aliases) require `X-Fruth-Action: 1`, even without Origin. The
+production caller `fruth_core.transports.whisper_transcribe` sends that marker.
+`GET /healthz` remains passive and needs no marker, but checks Host and Origin.
+Other implemented HTTP methods return 405; unknown methods retain the stdlib
+handler's 501. Unknown GET/POST routes return 404 after caller admission.
+
+Host must be a single permitted authority, including the **actual bound port**.
+The allowed names are `127.0.0.1`, `localhost`, `::1` (bracketed in HTTP), the
+explicit `--host` name/address and its bound address. Host comparison ignores
+case. Port 80 additionally permits the normal omitted-port form. Other ports
+must be explicit. The default bind remains `127.0.0.1`; allowing an IPv6 Host
+does not create an IPv6 listener. Explicit `--host` and `--port` remain usable;
+port 0 uses the assigned port. Wildcard binds (`0.0.0.0`, `::`, or empty) add no
+wildcard authority: their allowlist remains the loopback names. To address a
+specific non-loopback listener, configure that explicit bind name/address.
+Forwarding headers cannot add authorities, and DNS resolution of a caller's Host
+is never used for permission. This does not make remote deployment supported.
+
+Origin, if present, must be a single exact `http://` origin built from those
+lowercase authorities. Scheme and port matter; empty, `null`, foreign, malformed
+and repeated origins fail. All responses omit CORS permission headers. OPTIONS
+checks Host/Origin then returns 405, including local preflight; foreign preflight
+is rejected without permission to submit. Fruth's UI uses the control plane, not
+a browser CORS API on the Whisper port. Main-server origin configuration does
+not configure the adapter.
+
+The request must use `application/json` (media-type case is ignored; parameters
+such as `charset=utf-8` are accepted), with UTF-8 JSON bytes, one positive decimal
+Content-Length and no Transfer-Encoding. JSON-suffixed media types, forms,
+multipart and plain text are not this adapter's format. The body must be an
+object with `audio_path` as a nonempty UTF-8 string after trimming, without NUL.
+Local paths remain intentional native inputs; this is not an upload API or a
+filesystem confinement policy. Existing optional `language`, `task`, and
+`word_timestamps` normalization, provider arguments and success fields (`text`,
+`segments`, `language`, `model_path`) are preserved.
+
+Admission runs before body parsing; framing/JSON/required-field checks run before
+audio-path inspection or provider import/execution. Duplicate Host, Origin,
+action, Content-Type or Content-Length headers fail closed. Caller failures use
+the existing `HTTP_HOST_NOT_ALLOWED` (400), `HTTP_ORIGIN_NOT_ALLOWED` (403) and
+`HTTP_ACTION_REQUIRED` (403) codes. Body errors contain string `error` plus:
+
+| Problem | Status / error_code |
+| --- | --- |
+| Unsupported/missing media type | 415 / `WHISPER_UNSUPPORTED_MEDIA_TYPE` |
+| Invalid framing, empty, malformed, invalidly encoded or excessively nested JSON | 400 / `WHISPER_INVALID_JSON` |
+| Non-object JSON | 400 / `WHISPER_OBJECT_REQUIRED` |
+| Invalid required path value or filesystem path error | 400 / `WHISPER_INVALID_AUDIO_PATH` |
+
+A missing file retains its existing 400 `error`; provider exceptions retain 500
+`{"error": "..."}` and the native client raises on HTTP failure. Rejected caller,
+format and required-value requests do no audio-path access or transcription.
+Host/Origin/action checks constrain browser-originated requests; arbitrary native
+processes can supply these headers and are **not authenticated**. Protection does
+not depend on browser-specific local-network restrictions. Direct HTTP fixture
+results do not establish browser exploitability or broader security certification.
+Existing processes need a later adapter restart and Fruth client-code reload to
+activate both sides; editing these sources performs neither operation.

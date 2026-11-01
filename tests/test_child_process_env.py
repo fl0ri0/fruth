@@ -1,4 +1,9 @@
 from __future__ import annotations
+import pytest
+from process_launch_test_support import mock_launch_ownership
+import fruth_runtime.mlx_model_manager as _ownership_owner_0
+import fruth_runtime.llama_cpp_model_manager as _ownership_owner_1
+
 
 import os
 import subprocess
@@ -263,3 +268,10 @@ class ChildProcessEnvironmentTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+@pytest.fixture(autouse=True)
+def _mock_native_launch_evidence(monkeypatch):
+    # This module mocks native launches; test the ownership OS boundary separately.
+    mock_launch_ownership(monkeypatch, _ownership_owner_0, _ownership_owner_1)

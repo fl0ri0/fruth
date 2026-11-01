@@ -2,7 +2,7 @@
 
 **Knobs may change strategy, never truth.**
 
-Latest review: [October 29 validation status](SELF_ATTACK_STATUS_2026-10-29.md)
+Latest review: [October 31 validation status](SELF_ATTACK_STATUS_2026-10-31.md)
 records the completed bounded research/hardening round, the matching full offline
 gate and source/evidence checker, and source-bound local, AFM and PCC live results.
 Original incomplete attempts and targeted recoveries remain distinct. The latest

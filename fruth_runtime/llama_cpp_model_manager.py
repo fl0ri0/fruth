@@ -35,6 +35,9 @@ from helpers.model_capabilities import (
 )
 from helpers.tts_model_metadata import read_snapshot_model_metadata
 from fruth_core.start_policy import attach_start_audit, validate_start_source
+from fruth_core.process_ownership import (
+    capture_spawned_process, verify_spawned_process, terminate_spawned_process,
+)
 from fruth_core.status import remove_instance_status
 from fruth_runtime.child_process_env import sanitized_child_process_env
 from fruth_runtime.ollama_model_manager import (
@@ -770,7 +773,7 @@ def _load_config_entries() -> list[dict[str, Any]]:
 
 
 def _write_config_entries(entries: list[dict[str, Any]]) -> None:
-    write_registry_entries(entries, path=CONFIG_FILE, preserve_agents=True, sync_external=False)
+    write_registry_entries(entries, path=CONFIG_FILE, preserve_agents=True, preserve_services=True, sync_external=False)
 
 
 def _prune_stale_llama_cpp_entries() -> None:
@@ -1485,40 +1488,39 @@ def start_llama_cpp_instance(
             env=sanitized_child_process_env(),
         )
 
-    if not _wait_for_server_ready(port):
-        try:
-            process.terminate()
-            process.wait(timeout=2)
-        except Exception:  # noqa: BLE001
-            try:
-                process.kill()
-            except Exception:
-                pass
-        raise RuntimeError(f"llama.cpp model '{display_name}' did not open port {port}. See {log_path}.")
+    spawned = capture_spawned_process(process, cmd)
+    try:
+        if not _wait_for_server_ready(port):
+            raise RuntimeError(f"llama.cpp model '{display_name}' did not open port {port}. See {log_path}.")
 
-    instance = build_instance_record(
-        display_name,
-        source_kind=str(source['source_kind']),
-        port=port,
-        log_path=log_path,
-        launch_defaults=launch_defaults,
-        capability=resolved_capability,
-        pid=process.pid,
-        model_path=source.get('model_path'),
-        hf_repo=source.get('hf_repo'),
-        hf_file=source.get('hf_file'),
-        mmproj_path=source.get('mmproj_path'),
-        request_model=request_model,
-    )
-    instance = attach_start_audit(
-        instance,
-        start_source=normalized_start_source,
-        context='llama_cpp_start_model',
-        extra={'backend': 'llama_cpp', 'capability': resolved_capability},
-    )
-    if register_instance:
-        _register_instance(instance)
-    return instance
+        instance = build_instance_record(
+            display_name,
+            source_kind=str(source['source_kind']),
+            port=port,
+            log_path=log_path,
+            launch_defaults=launch_defaults,
+            capability=resolved_capability,
+            pid=process.pid,
+            model_path=source.get('model_path'),
+            hf_repo=source.get('hf_repo'),
+            hf_file=source.get('hf_file'),
+            mmproj_path=source.get('mmproj_path'),
+            request_model=request_model,
+        )
+        instance.update(verify_spawned_process(spawned, port=port))
+        instance = attach_start_audit(
+            instance,
+            start_source=normalized_start_source,
+            context='llama_cpp_start_model',
+            extra={'backend': 'llama_cpp', 'capability': resolved_capability},
+        )
+        if register_instance:
+            _register_instance(instance)
+        return instance
+
+    except Exception:
+        terminate_spawned_process(spawned)
+        raise
 
 
 def stop_llama_cpp_instance(instance_id: str) -> tuple[bool, Optional[dict[str, Any]]]:

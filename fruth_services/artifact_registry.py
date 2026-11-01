@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from fruth_services.text_artifact_syntax import text_artifact_syntax_sanity_issues_for_extension
+
 from fruth_services.state_flow import observe_state, note as state_flow_note
 
 import datetime as dt
@@ -219,9 +221,7 @@ def _syntax_sanity_issues_for_text_artifact(extension: str, content: str) -> tup
     if normalized_extension not in SYNTAX_SANITY_EXTENSIONS:
         return 'not_applicable', []
     try:
-        from fruth_server.response_semantics_runtime import ResponseSemanticsRuntimeOwner
-
-        issues = ResponseSemanticsRuntimeOwner.text_artifact_syntax_sanity_issues_for_extension(
+        issues = text_artifact_syntax_sanity_issues_for_extension(
             normalized_extension,
             content,
         )

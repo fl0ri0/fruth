@@ -13,6 +13,7 @@ from typing import Iterable, List, Tuple
 from urllib.parse import quote
 
 from fruth_core.http_contract import HTTP_ACTION_HEADER, HTTP_ACTION_VALUE
+from fruth_core.registry import is_runtime_service_entry
 DEFAULT_CONFIG_PATH = Path(os.path.expanduser("~/.codex/config.toml"))
 MODEL_PROVIDER_HEADER = re.compile(
     r'^\s*\[model_providers\.(?P<label>"[^"]+"|\'[^\']+\'|[^\]]+)\]\s*$'
@@ -81,7 +82,7 @@ def build_provider_blocks(instances: Iterable[dict]) -> Tuple[str, int]:
     for inst in instances:
         if not isinstance(inst, dict):
             continue
-        if inst.get("agent"):
+        if inst.get("agent") or is_runtime_service_entry(inst):
             continue
         port = inst.get("port")
         try:

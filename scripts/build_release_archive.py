@@ -7,6 +7,7 @@ import argparse
 import gzip
 import hashlib
 import io
+import json
 import os
 import re
 import shutil
@@ -20,6 +21,22 @@ from typing import Iterable, Sequence
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VERSION_FILE = Path('fruth_core/version.py')
 MANIFEST_NAME = 'MANIFEST.sha256'
+
+# Optional evidence for future validations, never backfilled into old releases.
+PUBLIC_VALIDATION_FILES = frozenset({
+    Path('validation/constraints.txt'), Path('validation/receipt.json'),
+})
+
+
+def source_file_map(files: dict[Path, Path]) -> dict[str, str]:
+    """Validation input identity; generated evidence/packaging outputs are excluded."""
+    excluded = PUBLIC_VALIDATION_FILES | {Path(MANIFEST_NAME), Path('model_ports.json')}
+    return {p.as_posix(): sha256_file(f) for p, f in sorted(files.items()) if p not in excluded}
+
+
+def source_map_digest(mapping: dict[str, str]) -> str:
+    # Same encoding as the maintained test runner's source.json file-map identity.
+    return hashlib.sha256(json.dumps(mapping, sort_keys=True).encode()).hexdigest()
 
 # Explicit transport-safety bounds. They are intentionally far above the
 # current source archive and prevent verify-only from becoming an extraction
@@ -73,7 +90,7 @@ PUBLIC_DOCS = frozenset(
         'RESPONSES_CONTRACT.md',
         'HTTP_API_BOUNDARY.md',
         'SELF_ATTACK.md',
-        'SELF_ATTACK_STATUS_2026-10-29.md',
+        'SELF_ATTACK_STATUS_2026-10-31.md',
         'STATE_FLOW_DIAGNOSTICS.md',
         'TESTING_PROTOCOL.md',
         'TRUTH_SOURCES.md',
@@ -216,6 +233,7 @@ RESEARCH_SOURCE_DIRECTORIES = frozenset(parent for path in RESEARCH_SOURCE_FILES
 TEST_RUNNER_FILES = frozenset(Path(name) for name in (
     'scripts/run_tests.py', 'scripts/test_isolation.py', 'scripts/test_selection.py',
     'scripts/test_process_routes.py',
+    'scripts/validation_record.py', 'scripts/bootstrap_preflight.py',
     'tests/conftest.py', 'tests/cold_process_child.py', 'tests/cold_process_trace.py',
     'tests/cold_process_oracle.py', 'tests/persistence_trace_adapter.py',
 ))
@@ -303,7 +321,7 @@ REQUIRED_RELEASE_PATHS = frozenset(
         Path('docs/RELEASE_SCOPE.md'),
         Path('docs/CAUSAL_TELEMETRY.md'),
         Path('docs/SELF_ATTACK.md'),
-        Path('docs/SELF_ATTACK_STATUS_2026-10-29.md'),
+        Path('docs/SELF_ATTACK_STATUS_2026-10-31.md'),
         Path('docs/STATE_FLOW_DIAGNOSTICS.md'),
         Path('docs/VISION_ALIGNMENT.md'),
         Path('fruth'),
@@ -486,6 +504,13 @@ def discover_release_files(source_root: Path) -> dict[Path, Path]:
 
     source_root = source_root.resolve()
     selected: dict[Path, Path] = {}
+
+    present = {p for p in PUBLIC_VALIDATION_FILES if (source_root / p).exists() or (source_root / p).is_symlink()}
+    if present and present != PUBLIC_VALIDATION_FILES:
+        raise ReleaseArchiveError('Validation constraints and receipt must be supplied together.')
+    for relative_path in sorted(present):
+        _assert_regular_source_file(source_root / relative_path, relative_path=relative_path)
+        selected[relative_path] = source_root / relative_path
 
     for name in sorted(REQUIRED_ROOT_FILES):
         relative_path = Path(name)
@@ -694,6 +719,11 @@ def validate_release_tree(
         )
         if path.is_symlink():
             raise ReleaseArchiveError(f'Symlinks are not allowed: {relative_path}')
+        if relative_path.parts[0] == 'validation' and (
+            relative_path != Path('validation') if path.is_dir()
+            else relative_path not in PUBLIC_VALIDATION_FILES
+        ):
+            raise ReleaseArchiveError(f'Non-public validation material: {relative_path}')
         if relative_path.parts[0] == 'fruth_research':
             allowed = RESEARCH_SOURCE_DIRECTORIES if path.is_dir() else RESEARCH_SOURCE_FILES
             if relative_path not in allowed:
@@ -755,6 +785,20 @@ def validate_release_tree(
     shortcuts = set(files) & PUBLIC_SHORTCUT_PATHS
     if shortcuts and shortcuts != PUBLIC_SHORTCUT_PATHS:
         raise ReleaseArchiveError('Release tree must include both PCC shortcuts or neither.')
+
+    validation = set(files) & PUBLIC_VALIDATION_FILES
+    if validation:
+        if validation != PUBLIC_VALIDATION_FILES:
+            raise ReleaseArchiveError('Validation constraints and receipt must be supplied together.')
+        if __package__:
+            from .validation_record import verify_pair
+        else:
+            from validation_record import verify_pair
+        try:
+            verify_pair(release_root / 'validation',
+                        source_file_map({p: release_root / p for p in files}))
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            raise ReleaseArchiveError(f'Invalid validation record: {exc}') from exc
 
     browser_dependencies = set(files) & RELEASE_BROWSER_DEPENDENCY_FILES
     if browser_dependencies and browser_dependencies != RELEASE_BROWSER_DEPENDENCY_FILES:

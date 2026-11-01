@@ -140,7 +140,11 @@ def test_repeated_incoming_pdf_uses_current_page_selection(local_route, tmp_path
 def test_missing_renderer_fails_scanned_pdf_without_recognition(local_route, tmp_path, monkeypatch):
     web, ocr, _history = local_route
     path = write_pdf(tmp_path / 'scan.pdf', scanned=True)
-    monkeypatch.setitem(sys.modules, 'Quartz', None)
+    # A parent import mock cannot disable Quartz in a fresh interpreter. Replay
+    # the explicit ordinary-unavailable outcome here; child dependency checks
+    # are covered by test_ocr_pdf's algorithm fixture.
+    monkeypatch.setattr(web, '_render_pdf_pages_to_base64', Mock(return_value=(
+        [], 0, ['macOS PDF rendering requires pyobjc-framework-Quartz; install requirements.txt.'])))
     response = api_client(web.app).post('/api/infer', data={
         'instance_id': 'pdf-test', 'prompt': 'Read this.',
         'file': (io.BytesIO(path.read_bytes()), 'scan.pdf'),
@@ -502,3 +506,79 @@ def test_pdf_model_failure_keeps_page_coverage_and_stops_without_retry(
     event = web._append_infer_history.call_args.args[0]
     assert event['status'] == 'error' and event['pdf_processed_pages'] == failed_page - 1
     assert event['file_sha256'] == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize('endpoint', ['/api/infer', '/api/responses'])
+@pytest.mark.parametrize('text_first', [False, True])
+def test_fatal_preparation_is_not_fallback_or_model_failure(local_route, tmp_path, monkeypatch, endpoint, text_first):
+    from fruth_core.pdf_preparation import PdfPreparationError
+    web, ocr, _ = local_route
+    path = write_pdf(tmp_path/'source.pdf')
+    failure = Mock(side_effect=PdfPreparationError('PDF_PREPARATION_TIMEOUT', 'controlled PDF deadline',
+                                                 operation='text' if text_first else 'render'))
+    forbidden = Mock(side_effect=AssertionError('fatal preparation must not fall back'))
+    monkeypatch.setattr(web, '_extract_pdf_text_content', failure if text_first else forbidden)
+    monkeypatch.setattr(web, '_render_pdf_pages_to_base64', forbidden if text_first else failure)
+    response = api_client(web.app).post(endpoint, data={
+        'instance_id': 'pdf-test', 'prompt': 'Read this.',
+        'file': (io.BytesIO(path.read_bytes()), 'source.pdf'), 'pdf_prefer_text': str(text_first).lower(),
+    })
+    assert response.status_code == 504
+    payload = response.get_json()
+    assert payload['pdf_preparation']['code'] == 'PDF_PREPARATION_TIMEOUT'
+    assert payload['pdf_preparation']['status'] == 'failed'
+    ocr.assert_not_called(); forbidden.assert_not_called()
+    web._ollama_generate.assert_not_called()
+    web.record_instance_failure.assert_not_called()
+
+
+@pytest.mark.parametrize('endpoint', ['/api/infer', '/api/responses'])
+def test_retry_preparation_failure_keeps_coverage_without_partial_success(local_route, tmp_path, monkeypatch, endpoint):
+    from fruth_core.pdf_preparation import PdfPreparationError
+    web, ocr, _ = local_route
+    path = write_pdf(tmp_path/'source.pdf', rotations=(0, 90))
+    ocr.side_effect = [('first page text', None), ('', 'page 2 failed')]
+    retry = Mock(side_effect=PdfPreparationError('PDF_PREPARATION_FAILED', 'controlled retry worker failure', operation='page'))
+    monkeypatch.setattr(web, '_render_single_pdf_page_to_base64', retry)
+    response = api_client(web.app).post(endpoint, data={
+        'instance_id': 'pdf-test', 'prompt': 'Read this.', 'pdf_dpi': '320',
+        'file': (io.BytesIO(path.read_bytes()), 'source.pdf'),
+    })
+    assert response.status_code == 502
+    payload = response.get_json()
+    assert payload['pdf_total_pages'] == 2 and payload['pdf_processed_pages'] == 1
+    assert payload['pdf_preparation']['operation'] == 'page'
+    assert not payload.get('saved_text_path')
+    assert retry.call_args.kwargs['page_index'] == 1
+    assert retry.call_args.kwargs['crop_margin_ratio'] == .04
+    assert ocr.call_count == 2
+
+
+@pytest.mark.parametrize('batch', [False, True])
+def test_auto_routed_pdf_preparation_failure_does_not_retry_provider(local_route, tmp_path, monkeypatch, batch):
+    from fruth_core.pdf_preparation import PdfPreparationError
+    web, ocr, _ = local_route
+    path = write_pdf(tmp_path/'source.pdf')
+    capability = 'image_generation' if batch else 'vision_analysis'
+    selected = dict(web._lookup_instance.return_value, capability=capability)
+    web._lookup_instance.return_value = selected
+    route = Mock(return_value=(dict(instance_id='pdf-test', instance=selected, capability=capability,
+        route_source='heuristic', route_reason='fixture'), None))
+    monkeypatch.setattr(web, '_resolve_inference_auto_route', route)
+    render = Mock(side_effect=PdfPreparationError('PDF_PREPARATION_TIMEOUT', 'PDF deadline exceeded', operation='render'))
+    monkeypatch.setattr(web, '_render_pdf_pages_to_base64', render)
+    monkeypatch.setattr(web, '_extract_pdf_text_content', render)
+    request = dict(inference_route=True, prompt='Read the PDF.', file_path=str(path))
+    owner = web._RESPONSES_REQUEST_RUNTIME
+    execute = Mock(wraps=owner.execute_prepared_materialization_branch)
+    monkeypatch.setattr(owner, 'execute_prepared_materialization_branch', execute)
+    if batch:
+        request['batch_prompts'] = ['Read the PDF.']
+    response = api_client(web.app).post('/api/responses', json=request)
+    assert response.status_code == 504
+    payload = response.get_json()
+    assert payload['error_detail']['pdf_preparation']['code'] == 'PDF_PREPARATION_TIMEOUT'
+    assert not any(call.kwargs.get('retry_failure') for call in route.call_args_list)
+    assert execute.call_count == (1 if batch else 0)
+    render.assert_called_once()
+    ocr.assert_not_called()

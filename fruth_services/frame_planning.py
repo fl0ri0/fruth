@@ -6,7 +6,8 @@ import copy
 from collections.abc import Mapping
 from typing import Any, Iterable, Optional
 
-from fruth_inference.request_phase_graph import build_request_phase_graph, downstream_phase_records
+from fruth_inference.request_phase_graph import build_request_phase_graph
+from fruth_inference.phase_graph_queries import downstream_phase_records
 from fruth_services.artifact_contracts import (
     artifact_authority_rank,
     artifact_logical_identity,

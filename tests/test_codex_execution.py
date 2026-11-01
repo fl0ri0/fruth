@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from fruth_integrations.codex.execution import (
@@ -87,6 +88,9 @@ if capture_path:
             }
         )
     capture = {
+        'pid': os.getpid(),
+        'process_group': os.getpgrp(),
+        'session_id': os.getsid(0),
         'args': args,
         'prompt': prompt,
         'cwd': os.getcwd(),
@@ -355,6 +359,9 @@ class CodexExecutionTests(unittest.TestCase):
         self.assertEqual(result.output_text, 'safe final text')
         payload = json.loads(capture.read_text(encoding='utf-8'))
         self.assertEqual(payload['prompt'], 'hello\nworld')
+        self.assertEqual(payload['process_group'], payload['pid'])
+        self.assertEqual(payload['session_id'], payload['pid'])
+        self.assertNotEqual(payload['session_id'], os.getsid(0))
         self.assertEqual(payload['entries_before_output'], [])
         self.assertEqual(
             Path(payload['cwd']).resolve(),
@@ -608,16 +615,32 @@ class CodexExecutionTests(unittest.TestCase):
         access = probe_codex_access(discovery, env=base_env)
         self.assertEqual(access.status, CodexAccessState.AVAILABLE)
 
-        result = execute_codex_text(
-            'hello',
-            timeout_seconds=0.05,
-            discovery=discovery,
-            env={**base_env, 'FAKE_CODEX_MODE': 'exec_timeout'},
-        )
+        from fruth_integrations.codex import execution
+        terminate = execution._terminate_process_group
+        observed = []
+
+        def record_and_terminate(child):
+            self.assertIsNone(child.poll())
+            self.assertEqual(os.getpgid(child.pid), child.pid)
+            self.assertEqual(os.getsid(child.pid), child.pid)
+            observed.append(child)
+            terminate(child)
+
+        with mock.patch.object(execution, '_terminate_process_group', side_effect=record_and_terminate):
+            result = execute_codex_text(
+                'hello',
+                timeout_seconds=0.05,
+                discovery=discovery,
+                env={**base_env, 'FAKE_CODEX_MODE': 'exec_timeout'},
+            )
 
         self.assertEqual(result.status, CodexExecutionState.TIMED_OUT)
         self.assertIsNone(result.output_text)
         self.assertLess(result.duration_seconds, 0.8)
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(observed[0].returncode, -9)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(observed[0].pid, 0)
 
     def test_execution_refuses_cloud_call_when_auth_is_missing(self) -> None:
         executable = self._write_codex(self.root / 'codex')

@@ -18,11 +18,8 @@ from fruth_inference.control_hints import (
 )
 from fruth_inference.image_state import image_state_anchor
 from fruth_inference.intent import analyze_prompt_intent, infer_audio_response_format
-from fruth_inference.request_phase_graph import (
-    build_request_phase_graph,
-    downstream_phase_capabilities,
-    downstream_phase_records,
-)
+from fruth_inference.request_phase_graph import build_request_phase_graph
+from fruth_inference.phase_graph_queries import downstream_phase_capabilities, downstream_phase_records
 from fruth_inference.request_meta import attach_request_meta, compact_request_meta, extract_request_meta
 from fruth_inference.router import select_router_instance
 from fruth_services.tts_source import extract_explicit_tts_source_text
